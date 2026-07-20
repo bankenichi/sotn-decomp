@@ -36,6 +36,39 @@ all five in a single build, first try:
 | `GetSineScaled` | `st_common.h:360` | matched |
 | `GetAngleBetweenEntities` | `st_common.h:420` | matched |
 
+### 1a. The technique only works for functions with NO static support data
+
+This is the single best predictor, established 2026-07-20 across 4 files and 12
+failures. Relocating a shared-header body works when the function needs only code.
+It fails when the function references **static support data** (lookup tables, anim
+frames, hitbox arrays, init structs), because RNO0 has that data only as unnamed
+raw-address globals like `D_us_801D4B4C`. Relocating the body then forces you to
+define new named data, which creates duplicate rodata/BSS that does not land at the
+original addresses. It compiles cleanly and produces wrong bytes every time.
+
+**Cheap pre-check, do this BEFORE attempting anything.** Look at the function's
+`.s` stub under `asm/us/.../nonmatchings/`:
+
+- zero `D_us_` references -> likely a free match, attempt it
+- any `D_us_` references -> it will compile and fail. Skip it.
+
+Evidence:
+
+| Function | file | `D_us_` refs | Result |
+|---|---|---|---|
+| AnimateEntity | st_common.c | none | matched |
+| BottomCornerText | popup.c | none | matched |
+| the 19 st_common.c harvest | st_common.c | none | 19/19 matched |
+| Update | st_update.c | `g_ItemIconSlots` | compiled, wrong bytes |
+| HitDetection | collision.c | 9 lookup tables | compiled, wrong bytes |
+| EntityThornweed | e_thornweed_corpseweed.c | sensors, anim, hitbox | compiled, wrong bytes |
+| EntityClockHands + 2 | e_clock_room.c | positions, anim, shadow | compiled, wrong bytes |
+
+**Probe one function per file before batching.** Viability is per-file, because
+whether the overlay carries named symbols varies by file. If the probe fails,
+abandon the whole file rather than grinding; every "then" function in that file
+will fail for the same reason.
+
 **Important caveat.** Do not blanket-add `#include "../st_common.h"` to such a file.
 `rno0/st_common.c` already defines its own `MoveEntity`, `FallEntity`, `GetSine`,
 `Ratan2Shifted`, `Ratan2`, `SetStep`, `SetSubStep` and `EntityDummy`, so a blanket
