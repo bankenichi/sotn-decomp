@@ -18,7 +18,13 @@ INCLUDE_ASM("boss/bo6/nonmatchings/richter", BO6_CheckHighJumpInput);
 
 INCLUDE_ASM("boss/bo6/nonmatchings/richter", BO6_RicMain);
 
-INCLUDE_ASM("boss/bo6/nonmatchings/richter", func_us_801B5A14);
+extern s32 D_us_801CF3C8;
+extern s32 D_us_801CF3CC;
+
+void func_us_801B5A14(s32 arg0) {
+    D_us_801CF3C8 = arg0;
+    D_us_801CF3CC = 0;
+}
 
 INCLUDE_ASM("boss/bo6/nonmatchings/richter", RichterThinking);
 
@@ -38,7 +44,17 @@ INCLUDE_ASM("boss/bo6/nonmatchings/richter", BO6_RicStepFall);
 
 INCLUDE_ASM("boss/bo6/nonmatchings/richter", BO6_RicStepCrouch);
 
-INCLUDE_ASM("boss/bo6/nonmatchings/richter", BO6_RicResetPose);
+extern u8 RIC_drawFlags;
+extern s16 RIC_poseTimer;
+extern s16 RIC_pose;
+
+void BO6_RicResetPose(void) {
+    RIC_drawFlags &= 0xFB;
+    RIC_poseTimer = 0;
+    RIC_pose = 0;
+    g_Ric.unk44 = 0;
+    g_Ric.unk46 = 0;
+}
 
 INCLUDE_ASM("boss/bo6/nonmatchings/richter", func_us_801B77D8);
 
@@ -50,9 +66,22 @@ INCLUDE_ASM("boss/bo6/nonmatchings/richter", BO6_RicStepStandInAir);
 
 INCLUDE_ASM("boss/bo6/nonmatchings/richter", BO6_RicStepEnableFlameWhip);
 
-INCLUDE_ASM("boss/bo6/nonmatchings/richter", BO6_RicStepHydrostorm);
+extern void BO6_RicSetStand(s32);
+extern s16 RIC_poseTimer;
 
-INCLUDE_ASM("boss/bo6/nonmatchings/richter", BO6_RicStepGenericSubwpnCrash);
+void BO6_RicStepHydrostorm(void) {
+    if (RIC_poseTimer < 0) {
+        BO6_RicSetStand(0);
+        g_Ric.unk46 = 0;
+    }
+}
+
+void BO6_RicStepGenericSubwpnCrash(void) {
+    if (g_Ric.unk4E != 0) {
+        BO6_RicSetStand(0);
+        g_Ric.unk46 = 0;
+    }
+}
 
 INCLUDE_ASM("boss/bo6/nonmatchings/richter", BO6_RicStepThrowDaggers);
 

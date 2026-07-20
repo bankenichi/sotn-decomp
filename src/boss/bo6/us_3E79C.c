@@ -733,8 +733,16 @@ void OVL_EXPORT(RicEntityCrashAxe)(Entity* self) {
 
 INCLUDE_ASM("boss/bo6/nonmatchings/us_3E79C", BO6_RicEntitySubwpnKnife);
 
-INCLUDE_ASM("boss/bo6/nonmatchings/us_3E79C", BO6_ReboundStoneBounce1);
+void BO6_ReboundStoneBounce1(s32 arg0) {
+    g_CurrentEntity->ext.ILLEGAL.u16[0] = ((s32)(arg0 << 16) >> 15) - g_CurrentEntity->ext.ILLEGAL.u16[0];
+    if ((s16)g_CurrentEntity->ext.ILLEGAL.u16[3] == 0) {
+        g_CurrentEntity->ext.ILLEGAL.u16[2] += 1;
+        g_CurrentEntity->ext.ILLEGAL.u16[3] += 1;
+    }
+}
 
+// Like BO6_ReboundStoneBounce1, but only updates state while the bounce
+// counter (u16[3]) is still zero, i.e. before the stone has started bouncing.
 INCLUDE_ASM("boss/bo6/nonmatchings/us_3E79C", BO6_ReboundStoneBounce2);
 
 INCLUDE_ASM("boss/bo6/nonmatchings/us_3E79C", BO6_RicEntitySubwpnReboundStone);
