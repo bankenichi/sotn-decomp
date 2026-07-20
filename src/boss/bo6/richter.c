@@ -56,7 +56,16 @@ void BO6_RicResetPose(void) {
     g_Ric.unk46 = 0;
 }
 
-INCLUDE_ASM("boss/bo6/nonmatchings/richter", func_us_801B77D8);
+extern u16 D_8007630A;
+
+// Richter (BO6): update facing-left flag based on position relative to the player
+void func_us_801B77D8(void) {
+    if (RIC.posX.i.hi - PLAYER.posX.i.hi <= 0) {
+        D_8007630A = 0;
+    } else {
+        D_8007630A = 1;  // player is to Richter's left -> face left
+    }
+}
 
 INCLUDE_ASM("boss/bo6/nonmatchings/richter", BO6_RicStepHit);
 

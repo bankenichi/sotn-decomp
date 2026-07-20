@@ -275,6 +275,86 @@ haiku work: it is mechanical, and since comments and local names cannot affect
 codegen, a full `verify_build` after each file should still return 77/77. If it
 ever does not, something other than a comment was changed.
 
+## 8b. Running the decomp-permuter (first working procedure, 2026-07-20)
+
+The permuter was installed but had never been run. It needed two fixes before it
+worked at all. Both are committed; you should not have to repeat them.
+
+**Setup fixes that were required:**
+
+1. `import.py` searched only `permuter_settings.toml`, `tools/permuter_settings.toml`
+   and `config/permuter_settings.toml`, but this project's real settings live at
+   `tools/sotn_permuter/permuter_settings.us.toml`, which it never checks. Without
+   a settings file it falls back to Makefile dry-run discovery and fails with
+   "Failed to find compile command", because this build is ninja-driven.
+   Fix: `config/permuter_settings.toml` now exists as a copy, so auto-discovery
+   finds `compiler_command` / `assembler_command` directly.
+2. `tools/decomp-permuter/src/objdump.py` looked for `mips-linux-gnu-objdump`;
+   this toolchain only has `mipsel-linux-gnu-objdump`. It also used
+   `-m mips:4300` where the PSX target is r3000.
+   Fix: added the mipsel executable to MIPS_SETTINGS and changed the arch to
+   `-m mips:3000`. This mirrors what `permuter_loader.py` already patches in
+   process, which the connector's CLI path bypasses.
+
+**Procedure:**
+
+1. The permuter needs a COMPILING, NON-MATCHING function as its seed. Our `near`
+   records were reverted to `INCLUDE_ASM` stubs, so you must first re-apply
+   compiling C to the stub and build to confirm it compiles.
+2. `permuter_import c_file=<the .c file> asm_file=<asm/us/.../NAME.s>`
+   Creates a work dir at `nonmatchings/<NAME>/` in the repo root, containing
+   `base.c`, `target.o`, `target.s`, `compile.sh`, `settings.toml`.
+3. `permuter work_dir=nonmatchings/<NAME>`
+4. Results appear as `output-<score>-<n>/` directories, each with `score.txt`,
+   `diff.txt` and `source.c`. **Score 0 means a match.** Anything above 0 is a
+   near miss; lower is closer.
+5. Always revert the seed C to the stub afterwards unless you got a real match,
+   then `make_build` + `verify_build` to confirm 77/77.
+
+**Operational hazard:** the `permuter` MCP call reliably exceeds the transport
+timeout and returns error -32001, but the process KEEPS RUNNING server-side and
+still writes output directories. Do not interpret the timeout as failure, and do
+not relaunch on top of a still-running search. Poll the `nonmatchings/<NAME>/`
+directory for `output-*` instead.
+
+**Do NOT point the permuter at a static-data failure.** It searches for equivalent
+code generation. It cannot change where rodata or BSS lands, so any function
+failing per section 1a (duplicate data at the wrong address) is out of scope. Of
+13 `near` records, only about 5 were genuine permuter candidates; the other 8 were
+1a failures.
+
+### 8c. The permuter has not yet solved anything here. Reason about types first.
+
+Honest scoreboard after the first campaign: **5 permuter runs, 0 matches.** Best
+scores were 340 on `BO6_ReboundStoneBounce2` and 220 on two others. Meanwhile 4 of
+the 5 targets were resolved by other means in the same session.
+
+What actually solved them:
+
+- `func_us_801AD2F0`: the asm had an `sll`/`sra 16` pair. That sign-extension is
+  only emitted for a parameter NARROWER than a register, so the params had to be
+  `s16`, not `s32`. Changing the types matched it outright. The permuter had been
+  stuck at 220 with the wrong types, and no amount of searching would have fixed
+  a type error.
+- `func_us_801B77D8`: the target branches `bgtz` to the store-1 block with store-0
+  as fallthrough. That layout only reproduces if the condition is written
+  INVERTED, `if (diff <= 0) {0} else {1}`. A natural if/else and a ternary both
+  failed. Branch *form*, not just branch semantics, is load-bearing.
+- `func_801D0B40` and `func_801CE228`: already implemented and already matching.
+  The queue held stale `near` records for them.
+
+The lesson: a permuter score that plateaus (220, 340) usually means the seed is
+wrong in a way the search cannot reach, typically a parameter type, a signedness,
+or a branch form. Treat a plateau as a signal to go back and re-read the asm, not
+as a reason to search longer. Use the permuter only after types, widths and branch
+shape are confirmed correct and the remaining difference really is scheduling.
+
+Also: verify a `near` record still reproduces before spending effort on it. Two of
+these four needed no work at all.
+
+First run result: `BO6_ReboundStoneBounce2`, best score 340 across several
+outputs, no match. A negative result on a genuinely hard scheduling difference.
+
 ## 9. Renaming placeholder symbols (func_XXXXXX, D_XXXXXXXX, Unk*)
 
 Comments and local names are free. Symbol renames are NOT. A placeholder name

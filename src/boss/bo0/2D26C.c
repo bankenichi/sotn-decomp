@@ -3,7 +3,13 @@
 
 INCLUDE_ASM("boss/bo0/nonmatchings/2D26C", func_us_801AD26C);
 
-INCLUDE_ASM("boss/bo0/nonmatchings/2D26C", func_us_801AD2F0);
+// Checks whether the tile at (x, y) is solid ground.
+s32 func_us_801AD2F0(s16 x, s16 y) {
+    Collider col;
+
+    g_api.CheckCollision(x, y, &col, 0);
+    return col.effects & EFFECT_SOLID;
+}
 
 INCLUDE_RODATA("boss/bo0/nonmatchings/2D26C", D_us_801A9344);
 
