@@ -217,7 +217,23 @@ void func_801CE228() {
     }
 }
 
-INCLUDE_ASM("st/rno0/nonmatchings/giantbro_helpers", polarPlacePartsList);
+// Polar Knight parts placement: iterates through a sentinel-terminated list
+// of sub-entity indices and calls polarPlacePart for any entity whose ext
+// initialization byte (offset 0x2C) is still zero.
+void polarPlacePartsList(s16* partsList) {
+    s16* iter = partsList;
+    s16 index;
+    Entity* entity;
+
+    while (*iter != 0) {
+        index = *iter;
+        entity = &g_CurrentEntity[index];
+        iter++;
+        if (entity->ext.ILLEGAL.u8[0x2C] == 0) {
+            polarPlacePart(entity);
+        }
+    }
+}
 
 INCLUDE_ASM("st/rno0/nonmatchings/giantbro_helpers", func_801CE2CC);
 

@@ -22,7 +22,17 @@ void UpdateBirdcages(Entity* self, u32 timerMinutes) {
     }
 }
 
-INCLUDE_ASM("st/rno0/nonmatchings/e_clock_room", UpdateClockHands);
+// Updates the minute and hour hand rotation angles from the room timer
+void UpdateClockHands(Entity* self, PlayerStatus* status) {
+    // self + 5 is the minute hand
+    self += 5;
+    self->ext.clockRoom.hand = status->timerMinutes * 60;
+
+    // self + 6 is the hour hand
+    self += 1;
+    self->ext.clockRoom.hand =
+        (status->timerHours * 300) + (status->timerMinutes * 5);
+}
 
 INCLUDE_ASM("st/rno0/nonmatchings/e_clock_room", EntityClockRoomController);
 

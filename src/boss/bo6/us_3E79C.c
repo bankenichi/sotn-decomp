@@ -84,7 +84,17 @@ INCLUDE_ASM("boss/bo6/nonmatchings/us_3E79C", BO6_RicEntityCrashHydroStorm);
 
 INCLUDE_ASM("boss/bo6/nonmatchings/us_3E79C", BO6_DebugShowWaitInfo);
 
-INCLUDE_ASM("boss/bo6/nonmatchings/us_3E79C", BO6_DebugInputWait);
+extern void BO6_DebugShowWaitInfo(const char* msg);
+
+// Richter (BO6) debug helper: spin while pad held, then spin while pad released
+void BO6_DebugInputWait(const char* msg) {
+    while (PadRead(0)) {
+        BO6_DebugShowWaitInfo(msg);
+    }
+    while (PadRead(0) == 0) {
+        BO6_DebugShowWaitInfo(msg);
+    }
+}
 
 s32 OVL_EXPORT(RicCheckHolyWaterCollision)(s16 height, s16 width) {
     Collider collider;
@@ -749,7 +759,27 @@ INCLUDE_ASM("boss/bo6/nonmatchings/us_3E79C", BO6_RicEntitySubwpnReboundStone);
 
 INCLUDE_ASM("boss/bo6/nonmatchings/us_3E79C", BO6_RicEntitySubwpnThrownVibhuti);
 
-INCLUDE_ASM("boss/bo6/nonmatchings/us_3E79C", BO6_PrimDecreaseBrightness);
+// Richter (BO6) variant of PrimDecreaseBrightness: floors at 16, not 0, and returns u8
+u8 BO6_PrimDecreaseBrightness(Primitive2* prim, u8 amount) {
+    s32 i, j;
+    u8 isEnd = 0;
+    struct SubPrim* subprim = &prim->prim[0];
+    u8* pColor;
+
+    for (i = 0; i < 4; i++) {
+        for (j = 0; j < 3; j++) {
+            pColor = &subprim->col[j];
+            *pColor -= amount;
+            if (*pColor < 16) {
+                *pColor = 16;   // floor brightness at 16, not 0
+            } else {
+                isEnd |= 1;
+            }
+        }
+        subprim++;
+    }
+    return isEnd;
+}
 
 INCLUDE_ASM("boss/bo6/nonmatchings/us_3E79C", BO6_RicEntitySubwpnAgunea);
 
