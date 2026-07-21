@@ -319,7 +319,19 @@ REASON_CAP = int(os.environ.get("REASON_CAP", "3000"))
 MAX_FUNC_CHARS = int(os.environ.get("MAX_FUNC_CHARS", "6000"))
 # Hard wall-clock ceiling for one function across ALL attempts. Without it,
 # MAX_ATTEMPTS forced passes at GEN_TIMEOUT each can silently burn ~40 minutes.
-FUNC_BUDGET = float(os.environ.get("FUNC_BUDGET", "900"))
+#
+# The default is BACKEND-DEPENDENT because the two differ by roughly 3x per
+# attempt. Local llama streams and is cut short by the degeneration detector,
+# so it rarely approaches the ceiling. A hosted OpenCode run returns only when
+# complete and was measured at 120-190s per attempt on 2026-07-21 (2397-2470
+# char prompts). Against the shared 900s budget that left 191s per attempt, so
+# attempts were timing out roughly as often as they finished.
+#
+# 1800s keeps four real attempts on the cli backend (~382s each). Raise it
+# rather than cutting MAX_ATTEMPTS: retries are the only consumer of asm-differ
+# feedback, so trading them away makes every attempt a blind first attempt.
+_DEFAULT_FUNC_BUDGET = "1800" if MODEL_BACKEND == "cli" else "900"
+FUNC_BUDGET = float(os.environ.get("FUNC_BUDGET", _DEFAULT_FUNC_BUDGET))
 # Per-ATTEMPT ceiling, derived from the function budget so the retries actually
 # happen. Without it a single attempt consumed the whole 900s (observed
 # 2026-07-20: "BUDGET EXHAUSTED after 900.0s (1 attempts)" repeatedly), which
@@ -1302,9 +1314,39 @@ def process_one(dry: bool = False) -> bool:
             print(f"\n[worker] attempt {attempt}/{MAX_ATTEMPTS} "
                   f"({int(_left)}s of budget left)")
             # --- generation: safe to run concurrently with other workers ---
-            raw = llama_echo(build_prompt(rec, ctx, feedback),
-                             budget_left=min(ATTEMPT_BUDGET,
-                                             _deadline - time.time()))
+            #
+            # A generation failure costs ONE ATTEMPT, never the function.
+            #
+            # This was unguarded until 2026-07-21. subprocess.TimeoutExpired from
+            # the cli backend escaped to the per-function handler, which abandoned
+            # the function and discarded every remaining attempt. Observed:
+            # BO6_CheckHighJumpInput timed out on attempt 1/4 and the worker moved
+            # straight to another function, throwing away three unused attempts.
+            #
+            # It never surfaced on the http backend because streaming plus the
+            # degeneration detector always cut in before any hard timeout. The cli
+            # backend has neither, so the timeout IS the normal failure mode:
+            # ATTEMPT_BUDGET is 191s by default and OpenCode runs take 120-190s.
+            try:
+                raw = llama_echo(build_prompt(rec, ctx, feedback),
+                                 budget_left=min(ATTEMPT_BUDGET,
+                                                 _deadline - time.time()))
+            except subprocess.TimeoutExpired:
+                print(f"  !! attempt {attempt} timed out after "
+                      f"{int(ATTEMPT_BUDGET)}s; trying the next attempt",
+                      flush=True)
+                best = f"attempt {attempt} timed out"
+                feedback = ("Your previous answer did not finish in time. Reply "
+                            "with the C function ONLY, no analysis.")
+                continue
+            except Exception as e:  # noqa: BLE001
+                # Any other generation error is also per-attempt. Truncated
+                # because the cli backend puts the entire prompt in the message,
+                # which buried the actual cause under 4KB of assembly.
+                print(f"  !! attempt {attempt} generation failed: "
+                      f"{type(e).__name__}: {str(e)[:200]}", flush=True)
+                best = f"attempt {attempt} failed: {type(e).__name__}"
+                continue
             code = clean_code(raw)
             # Persist every attempt. A failed attempt is reverted to the stub,
             # so without this the model's actual output exists only in the

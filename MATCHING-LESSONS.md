@@ -487,6 +487,34 @@ building the same tree will interleave, and each will read the other's failure a
 
 The working pattern is: parallelize analysis, serialize the build.
 
+## 10b. A generation failure must cost one attempt, never the function
+
+Until 2026-07-21 the generation call in the attempt loop was unguarded. Any
+exception escaped to the per-function handler, which abandoned the function and
+discarded every remaining attempt.
+
+It hid for weeks because the http backend never triggered it: streaming plus the
+degeneration detector always cut in before a hard timeout. The cli backend has
+neither, so the timeout IS its normal failure mode. First cli run: attempt 1/4 on
+`BO6_CheckHighJumpInput` hit the 191s attempt budget, and the worker moved
+straight to another function, throwing away three unused attempts.
+
+Two lessons, and the second is the general one:
+
+- Retries are the ONLY consumer of asm-differ feedback. Attempt 1 has no diff to
+  learn from by definition, so silently losing attempts 2-4 does not cost 75% of
+  the effort, it costs 100% of the *informed* effort.
+- **A backend swap changes which failure modes are reachable, not just speed.**
+  Guards that were never exercised on one backend become the hot path on
+  another. When adding a backend, ask which existing safety nets depended on
+  properties (streaming, incremental output, local latency) that the new one
+  does not have.
+
+Related: budgets must be backend-aware. `FUNC_BUDGET` now defaults to 1800s for
+cli and 900s for http, because measured OpenCode attempts run 120-190s against a
+191s slice. Raise the budget rather than cutting `MAX_ATTEMPTS`; trading away
+retries makes every attempt a blind first attempt.
+
 ## 11. Probe the environment; never assert it from documentation
 
 On 2026-07-21 the orchestrator told the operator a cli fleet could not run under
