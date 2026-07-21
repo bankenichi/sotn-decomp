@@ -621,10 +621,54 @@ def asm_rel_path(rec: dict, asm_rel: str) -> str:
     return f"{base}/{rec['function']}.s"
 
 
+# Overlays whose artifact is NOT build/<v>/<NAME>.BIN. Verified against
+# config/check.us.sha on 2026-07-21.
+_ARTIFACT_OVERRIDES = {
+    # The main executable is `main.exe`, lowercase, not MAIN.BIN. The derived
+    # name produced `build/us/MAIN.BIN`, which appears nowhere in the oracle, so
+    # the `grep -F <artifact> check.sha | shasum -c` lookup matched no line and
+    # every MAIN function was recorded "built, but does not match" no matter
+    # what the worker produced. Nine unmatched functions were unmatchable by
+    # construction.
+    "MAIN": "main.exe",
+}
+
+
 def overlay_artifact(rec: dict) -> str:
-    """build/<v>/<NAME>.BIN for this overlay, as it appears in check.<v>.sha."""
+    """The artifact path for this overlay, exactly as it appears in check.<v>.sha.
+
+    The string has to match the oracle byte for byte: it is fed to `grep -F`,
+    and a miss is indistinguishable from a hash mismatch.
+    """
     name = rec["overlay"].split("/")[-1].upper()
-    return f"build/{rec['build']}/{name}.BIN"
+    leaf = _ARTIFACT_OVERRIDES.get(name, f"{name}.BIN")
+    return f"build/{rec['build']}/{leaf}"
+
+
+def audit_artifact_mapping(version: str = "us") -> list[str]:
+    """Every overlay whose artifact name is absent from the oracle.
+
+    Cheap, read-only, and worth running after any change to overlay naming.
+    A missing entry does not fail loudly at runtime, it just makes that overlay
+    permanently unmatchable, which is exactly the kind of defect that hides.
+    """
+    sha = os.path.join(WIN_REPO, "config", f"check.{version}.sha")
+    try:
+        with open(sha, errors="ignore") as f:
+            known = {ln.split()[1] for ln in f if len(ln.split()) == 2}
+    except OSError:
+        return [f"cannot read {sha}"]
+    asm_root = os.path.join(WIN_REPO, "asm", version)
+    overlays, bad = set(), []
+    for dirpath, _dirs, files in os.walk(asm_root):
+        if os.path.basename(dirpath) == "nonmatchings" and files is not None:
+            rel = os.path.relpath(dirpath, asm_root)
+            overlays.add(os.path.dirname(rel).replace(os.sep, "/").upper())
+    for ov in sorted(o for o in overlays if o):
+        art = overlay_artifact({"overlay": ov, "build": version})
+        if art not in known:
+            bad.append(f"{ov} -> {art} (not in check.{version}.sha)")
+    return bad
 
 
 # ---- context preparation (all mechanical, harness-side) ----------------------

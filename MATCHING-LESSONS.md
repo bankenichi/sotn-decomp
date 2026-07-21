@@ -655,6 +655,52 @@ Corollary for triage: before escalating anything to a more expensive tier, ask
 what the cheap tier was actually shown. Escalation cannot fix missing input, it
 just pays more for the same guess.
 
+## 10g. Audit the instrumentation before believing anything it reports
+
+Two defects found in one pass on 2026-07-21, both silent, both invalidating
+conclusions that had already been drawn and acted on.
+
+**1. `rc` from a pipeline is the LAST stage's.**
+
+```python
+rc, out = wsl("make build ... 2>&1 | tail -40")   # rc is tail's. Always 0.
+```
+
+So `rc != 0` never fired and no compile failure was ever detected as one. Every
+failed compile fell through to the hash check and was reported "built, but does
+not match". Consequences: the failure taxonomy inverted (functions that never
+compiled were filed `near`, i.e. permuter work), and retry feedback was useless
+because the model was told "bytes differ" when the real message was
+`structure has no member named unk32`. It repeated that same error on all four
+attempts because nothing ever told it otherwise. Fix: `set -o pipefail`.
+
+**2. A verification lookup that silently matches nothing.**
+
+`overlay_artifact()` derived `build/<v>/<NAME>.BIN` from the overlay name. For
+the MAIN overlay the real artifact is `build/us/main.exe`. The derived string
+appears nowhere in `config/check.us.sha`, so
+`grep -F <artifact> check.sha | shasum -c` matched no line and MAIN always
+reported a mismatch. Nine functions were **unmatchable by construction**: a
+byte-perfect answer would still have been recorded as a failure.
+
+The pattern connecting them: a check that cannot report failure, and a lookup
+that cannot report success. Neither raises. Neither logs. Both produce a
+plausible-looking result forever.
+
+Practical rules:
+
+- Any `cmd | filter` whose exit status you read needs `set -o pipefail`.
+- Any lookup keyed on a DERIVED string (artifact path, symbol name, file path)
+  needs an audit that the derived value actually exists in the target. See
+  `worker_direct.audit_artifact_mapping()`; it is read-only and takes a second.
+- Before trusting a metric, ask what its failure mode looks like. If "broken"
+  and "working" produce the same output, the metric is not evidence.
+
+And the expensive meta-lesson: **a day of conclusions about model capability
+were measured through both of these.** "Compiles but wrong bytes" frequently
+meant "did not compile". Plateau claims, degeneration rates and the decision to
+switch backends all rest on that data and should be re-derived, not cited.
+
 ## 11. Probe the environment; never assert it from documentation
 
 On 2026-07-21 the orchestrator told the operator a cli fleet could not run under
