@@ -834,7 +834,38 @@ void BO6_RicEntityVibhutiCrashCloud(Entity* self) {
 
 INCLUDE_ASM("boss/bo6/nonmatchings/us_3E79C", BO6_RicEntityCrashVibhuti);
 
-INCLUDE_ASM("boss/bo6/nonmatchings/us_3E79C", func_us_801C8590);
+/* Boss entity state machine: initializes on entry (step 0), then runs a
+   4-frame timer in step 1 before destroying the entity. */
+void func_us_801C8590(Entity *arg0)
+{
+    u16 step;
+
+    step = arg0->step;
+    switch (step) {
+    case 0:
+        /* Set entity flags to 0x10000000 (likely a flag for this boss) */
+        arg0->flags = 0x10000000;
+        /* Set hitbox dimensions to 4x4 */
+        arg0->hitboxWidth = 4;
+        arg0->hitboxHeight = 4;
+        /* Advance to next state */
+        arg0->step++;
+        return;
+
+    case 1:
+        /* Increment the timer stored in ext.ILLEGAL.u16[0] (offset 0x7C) */
+        arg0->ext.ILLEGAL.u16[0]++;
+        /* If the timer has reached 4 or more, destroy the entity */
+        if ((s16)arg0->ext.ILLEGAL.u16[0] >= 4) {
+            DestroyEntity(arg0);
+        }
+        return;
+
+    default:
+        /* Unknown step value — just return without doing anything */
+        return;
+    }
+}
 
 extern s32 D_us_80182A0C[];
 

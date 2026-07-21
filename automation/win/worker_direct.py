@@ -523,17 +523,96 @@ SYSTEM = (
 )
 
 
-def _force_code(orig_prompt: str, analysis: str) -> str:
+# Hard ceiling on salvage reasoning. Even with degeneration detection, a model
+# that rambles without repeating verbatim can run to the budget producing nothing.
+SALVAGE_MAX_REASONING = int(os.environ.get("SALVAGE_MAX_REASONING", "24000"))
+
+
+def make_degeneration_detector():
+    """Degeneration detector, shared by the main stream AND the salvage pass.
+
+    This used to be a closure inside llama_echo, so _force_code had no access to
+    it: the salvage could loop for the FULL budget with no check whatsoever.
+    Observed 2026-07-21: a salvage pass reached 32000 characters of reasoning,
+    obviously stuck, and nothing stopped it. Lifted to module level so both
+    paths abort on the same evidence.
+    """
+    strikes = [0]
+
+    def degenerating(buf: list[str]) -> str:
+        text = "".join(buf)
+        lines = [l.strip() for l in text.splitlines() if len(l.strip()) > 10]
+        if len(lines) >= 8:
+            tail = lines[-8:]
+            if len(set(tail)) <= 2:
+                return "same line repeated 8x"
+            short = [l for l in tail if len(l) < 60]
+            norm = [re.sub(r"(0x)?[0-9A-Fa-f]{1,8}", "#", l) for l in short]
+            if len(short) >= 6 and len(set(norm)) <= 2:
+                return f"enumeration loop ({tail[-1][:44]!r}...)"
+        if len(text) > 4000:
+            chunk = re.sub(r"\s+", " ", text[-300:]).strip()
+            earlier = re.sub(r"\s+", " ", text[:-300])
+            if len(chunk) > 120 and chunk in earlier:
+                strikes[0] += 1
+                if strikes[0] >= 2:
+                    return "long-cycle repetition (confirmed over two checks)"
+            else:
+                strikes[0] = 0
+        return ""
+
+    return degenerating
+
+
+def _trim_to_function(code: str) -> str:
+    """Cut everything after the function's balanced closing brace.
+
+    Only needed on the reasoning-salvage path. clean_code() finds where the C
+    STARTS but has no notion of where it ends, which is fine when the model emits
+    code on the content channel and nothing else. Recovering from a reasoning
+    stream is different: the model typically writes the function and then keeps
+    talking ("That should be correct."). Splicing that trailing prose into a .c
+    file produces code that cannot compile, turning a salvaged win into a
+    guaranteed build failure.
+    """
+    depth = 0
+    seen = False
+    for i, ch in enumerate(code):
+        if ch == "{":
+            depth += 1
+            seen = True
+        elif ch == "}":
+            depth -= 1
+            if seen and depth == 0:
+                return code[:i + 1]
+    return code
+
+
+def _force_code(orig_prompt: str, analysis: str,
+                timeout: float | None = None) -> str:
     """Second pass: no analysis, just emit the function.
 
     Used when the first pass reasoned correctly but looped without producing
     code. Its own analysis is handed back as established fact.
     """
-    sys_msg = ("Output ONLY C code. No analysis, no explanation, no markdown. "
-               "Begin your reply with the function's return type. "
-               "Do not think step by step; write the function immediately.")
-    user = (f"{orig_prompt}\n\n=== YOUR ANALYSIS SO FAR (treat as correct) ===\n"
-            f"{analysis}\n\nNow write the complete C function. Code only.")
+    # The salvage fires because the model ALREADY reasoned and failed to produce
+    # code. Asking it politely not to think does not work: observed 2026-07-21,
+    # a salvage pass emitted 32000 characters of reasoning and no C at all.
+    # The thinking must be shut off, not discouraged.
+    sys_msg = (
+        "You are a C code emitter. You do not explain. You do not analyse.\n"
+        "Your ENTIRE reply must be one C function definition and nothing else.\n"
+        "The first character you emit MUST be the first character of the "
+        "function's return type (for example 'v' of void, 's' of s32).\n"
+        "Forbidden: markdown fences, prose, preamble, restating the question, "
+        "commentary before or after the code, and any form of step-by-step "
+        "thinking. Comments INSIDE the function body are allowed and wanted.\n"
+        "The analysis has already been done and is given to you as fact. Your "
+        "only remaining job is transcription into C.")
+    user = (f"{orig_prompt}\n\n=== ANALYSIS, ALREADY ESTABLISHED, TREAT AS FACT ==="
+            f"\n{analysis}\n\n"
+            f"Emit the complete C function now. Start with the return type. "
+            f"Output nothing that is not C.")
     if MODEL_BACKEND == "cli":
         # Unreachable today: this salvage path only fires from the streaming
         # degeneration detector, which the CLI backend has no stream to watch.
@@ -545,14 +624,27 @@ def _force_code(orig_prompt: str, analysis: str) -> str:
         "messages": [{"role": "system", "content": sys_msg},
                      {"role": "user", "content": user}],
         "temperature": 0.1, "stream": True,
+        # Turn thinking OFF at the API level rather than asking nicely.
+        #   chat_template_kwargs.enable_thinking -> Qwen3-family template switch
+        #   reasoning_budget: 0                  -> llama.cpp server flag
+        # Unknown fields are ignored by servers that do not implement them, so
+        # sending both is safe and covers either build.
+        "chat_template_kwargs": {"enable_thinking": False},
+        "reasoning_budget": 0,
     }).encode()
     req = urllib.request.Request(LLAMA_URL.rstrip("/") + "/chat/completions",
                                  data=body,
                                  headers=_api_headers(),
                                  method="POST")
     out: list[str] = []
+    reasoning: list[str] = []
+    _sal_degen = make_degeneration_detector()
     print("  --- forced code pass ---", flush=True)
-    with _open_with_backoff(req, GEN_TIMEOUT) as r:
+    # Bounded by the caller's remaining budget, not a flat GEN_TIMEOUT. The
+    # salvage used to be able to run the full 600s on its own, on top of the
+    # attempt that already failed.
+    _fto = GEN_TIMEOUT if timeout is None else max(30.0, min(GEN_TIMEOUT, timeout))
+    with _open_with_backoff(req, _fto) as r:
         for raw in r:
             line = raw.decode("utf-8", errors="replace").strip()
             if not line.startswith("data:"):
@@ -564,11 +656,56 @@ def _force_code(orig_prompt: str, analysis: str) -> str:
                 j = json.loads(payload)
             except json.JSONDecodeError:
                 continue
-            piece = ((j.get("choices") or [{}])[0].get("delta") or {}).get("content") or ""
+            delta = ((j.get("choices") or [{}])[0].get("delta") or {})
+            piece = delta.get("content") or ""
             if piece:
                 sys.stdout.write(piece); sys.stdout.flush(); out.append(piece)
-    print(f"\n  --- forced pass produced {len(''.join(out))} chars ---", flush=True)
-    return "".join(out)
+            # ALSO capture reasoning. This model is reasoning-distilled: told to
+            # "write the function immediately, do not think", it STILL emits
+            # reasoning_content, and the C it writes ends up inside that stream.
+            # Capturing only `content` meant the salvage pass returned 0 chars on
+            # 4 of 6 attempts (measured 2026-07-21) even when the model had in
+            # fact written a complete function. The salvage exists precisely for
+            # the case where the model reasons instead of answering, so ignoring
+            # reasoning made it useless exactly when it was needed.
+            rpiece = delta.get("reasoning_content") or delta.get("reasoning") or ""
+            if rpiece:
+                reasoning.append(rpiece)
+                nr = len(reasoning)
+                # The salvage can degenerate exactly like the main stream. Check
+                # it, and also enforce a hard character ceiling.
+                if nr % 40 == 0:
+                    why = _sal_degen(reasoning)
+                    total = sum(map(len, reasoning))
+                    if why or total > SALVAGE_MAX_REASONING:
+                        print(f"\n  !! salvage aborted: "
+                              f"{why or f'exceeded {SALVAGE_MAX_REASONING} chars'} "
+                              f"({total} chars)", flush=True)
+                        break
+                # Echo a heartbeat. Buffering reasoning silently made a long
+                # salvage indistinguishable from a hang: four workers sat in
+                # "forced code pass" for six minutes with no console output.
+                nr = len(reasoning)
+                if nr % 40 == 0:
+                    sys.stdout.write(
+                        f"\r  ... salvage still reasoning "
+                        f"({sum(map(len, reasoning))} chars)   ")
+                    sys.stdout.flush()
+    content = "".join(out)
+    if content.strip():
+        print(f"\n  --- forced pass produced {len(content)} chars ---", flush=True)
+        return content
+    # Nothing on the content channel. Try to recover the function from the
+    # reasoning text; clean_code() already discards leading prose and starts at
+    # the first line that looks like C.
+    salvaged = _trim_to_function(clean_code("".join(reasoning)))
+    if salvaged.strip() and "(" in salvaged and "{" in salvaged:
+        print(f"\n  --- forced pass: no content tokens, RECOVERED "
+              f"{len(salvaged)} chars from reasoning ---", flush=True)
+        return salvaged
+    print(f"\n  --- forced pass produced 0 chars "
+          f"({len(''.join(reasoning))} reasoning chars, no C found) ---", flush=True)
+    return ""
 
 
 def llama_echo(prompt: str, temperature: float = 0.2,
@@ -603,6 +740,10 @@ def llama_echo(prompt: str, temperature: float = 0.2,
     in_reasoning = False
     aborted = ""
 
+    # Hysteresis for the long-cycle check below: one suspicious repeat is not
+    # enough to kill a generation, two consecutive ones is.
+    _strikes = [0]
+
     def degenerating(buf: list[str]) -> str:
         """Detect degeneration, including LONG cycles.
 
@@ -624,18 +765,34 @@ def llama_echo(prompt: str, temperature: float = 0.2,
             norm = [re.sub(r"(0x)?[0-9A-Fa-f]{1,8}", "#", l) for l in short]
             if len(short) >= 6 and len(set(norm)) <= 2:
                 return f"enumeration loop ({tail[-1][:44]!r}...)"
-        # long-cycle repetition: has the recent chunk been said before?
-        if len(text) > 1200:
-            chunk = text[-250:]
-            if chunk and chunk in text[:-250]:
-                return "long-cycle repetition (re-analysing the same section)"
-        return ""
-        tail = lines[-8:]
-        if len(set(tail)) <= 2:
-            return "same line repeated 8x"
-        norm = [re.sub(r"(0x)?[0-9A-Fa-f]{1,8}", "#", l) for l in tail]
-        if len(set(norm)) <= 2:
-            return f"enumeration loop ({tail[-1][:44]!r}...)"
+        # Long-cycle repetition: has the recent chunk been said before?
+        #
+        # THIS CHECK WAS FAR TOO EAGER and was the single largest source of lost
+        # work. Measured 2026-07-21: 22 of 40 generations (55%) produced ZERO
+        # output, and the logs show nearly all of them aborted here at
+        # 1000-1720 reasoning tokens, well under REASON_CAP=3000.
+        #
+        # Why it false-positives in THIS domain specifically: the model is
+        # reasoning about MIPS assembly. It legitimately quotes instruction
+        # sequences, register lists and whole asm lines verbatim, and re-quotes
+        # them when walking a loop body a second time. An exact 250-char repeat
+        # is therefore normal analysis here, not degeneration. It was also
+        # comparing against the ENTIRE history after only 1200 chars, so a single
+        # quoted block was enough to kill the generation.
+        #
+        # Tightened three ways: only look once the stream is genuinely long,
+        # ignore whitespace-only differences, and require the repeat to persist
+        # across two consecutive checks before believing it. A model that is
+        # really stuck will trip it twice; one that quoted an asm block will not.
+        if len(text) > 4000:
+            chunk = re.sub(r"\s+", " ", text[-300:]).strip()
+            earlier = re.sub(r"\s+", " ", text[:-300])
+            if len(chunk) > 120 and chunk in earlier:
+                _strikes[0] += 1
+                if _strikes[0] >= 2:
+                    return "long-cycle repetition (confirmed over two checks)"
+            else:
+                _strikes[0] = 0
         return ""
 
     print(f"  --- streaming from llama-server "
@@ -696,7 +853,7 @@ def llama_echo(prompt: str, temperature: float = 0.2,
         print("  --> salvaging: forcing code output from its own analysis",
               flush=True)
         analysis = "".join(reason_buf)[-6000:]
-        text = _force_code(prompt, analysis)
+        text = _force_code(prompt, analysis, timeout=budget_left)
     if aborted:
         print(f"\n  !! ABORTED: {aborted}", flush=True)
     print(f"  --- done in {el:.0f}s: {n_content} content tokens, "
