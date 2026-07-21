@@ -753,7 +753,24 @@ void BO6_ReboundStoneBounce1(s32 arg0) {
 
 // Like BO6_ReboundStoneBounce1, but only updates state while the bounce
 // counter (u16[3]) is still zero, i.e. before the stone has started bouncing.
-INCLUDE_ASM("boss/bo6/nonmatchings/us_3E79C", BO6_ReboundStoneBounce2);
+// BO6_ReboundStoneBounce2: handles rebound stone bounce behavior.
+// If the signed counter at offset 0x82 is zero, updates a signed offset
+// and increments two counters at offsets 0x80 and 0x82.
+void BO6_ReboundStoneBounce2(s32 arg0) {
+    Entity* entity = g_CurrentEntity;
+
+    // branch if non-zero (bnez) -> skip block when counter != 0
+    if (entity->ext.ILLEGAL.s16[3] != 0)
+        return;
+
+    // ((s16)arg0 * 2) - entity->ext.ILLEGAL.u16[0];
+    // sll 16 / sra 15 implements signed 16-bit multiply by 2
+    entity->ext.ILLEGAL.u16[0] =
+        ((s32)(arg0 << 16) >> 15) - entity->ext.ILLEGAL.u16[0];
+
+    entity->ext.ILLEGAL.u16[2]++;
+    entity->ext.ILLEGAL.u16[3]++;
+}
 
 INCLUDE_ASM("boss/bo6/nonmatchings/us_3E79C", BO6_RicEntitySubwpnReboundStone);
 
