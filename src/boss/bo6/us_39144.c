@@ -182,7 +182,24 @@ void BO6_RicSetDeadPrologue(void) {
     BO6_RicSetStep(0x17);
 }
 
-INCLUDE_ASM("boss/bo6/nonmatchings/us_39144", BO6_RicSetSlide);
+extern AnimationFrame D_us_801822D8[];
+void BO6_RicCheckFacing(void);
+void func_us_801B9C14(void);
+
+// Richter (BO6): enter the slide - face the target, set step 0x18 and the slide
+// animation, kill vertical velocity, set slide speed, clear the afterimage
+// fields, spawn the slide effect, play the slide sfx and arm timers[0xC].
+void BO6_RicSetSlide(void) {
+    BO6_RicCheckFacing();
+    BO6_RicSetStep(0x18);
+    BO6_RicSetAnimation(D_us_801822D8);
+    g_CurrentEntity->velocityY = 0;
+    BO6_RicSetSpeedX(0x58000);
+    func_us_801B9C14();
+    BO6_RicCreateEntFactoryFromEntity(g_CurrentEntity, 0x19, 0);
+    g_api_PlaySfx(0x826);
+    g_Ric.timers[0xC] = 4;
+}
 
 INCLUDE_ASM("boss/bo6/nonmatchings/us_39144", BO6_RicSetSlideKick);
 
