@@ -140,7 +140,28 @@ void BO6_RicSetStand(s32 velocityX) {
 
 INCLUDE_ASM("boss/bo6/nonmatchings/us_39144", func_us_801B9D74);
 
-INCLUDE_ASM("boss/bo6/nonmatchings/us_39144", func_us_801B9DE4);
+extern AnimationFrame D_us_80182010[];
+void func_us_801B9D74(void);
+
+// Richter (BO6): if the dash timer is still running, defer to the dash handler;
+// otherwise begin the dash - arm timers[1] and timers[8], clear unk44, and set
+// step 2 with the dash animation and speed.
+void func_us_801B9DE4(void) {
+    if (g_Ric.timers[8] != 0) {
+        func_us_801B9D74();
+        return;
+    }
+    // The redundant store to timers[1] is present in the original asm at
+    // 0x39E18 and 0x39E28; it is not a transcription error.
+    g_Ric.timers[1] = 8;
+    g_Ric.timers[8] = 0xC;
+    g_Ric.timers[1] = 0xC;
+    g_Ric.unk44 = 0;
+    BO6_RicSetStep(2);
+    BO6_RicSetAnimation(D_us_80182010);
+    BO6_RicSetSpeedX(0x14000);
+    RIC_velocityY = 0;
+}
 
 INCLUDE_ASM("boss/bo6/nonmatchings/us_39144", func_us_801B9E70);
 

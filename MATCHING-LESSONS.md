@@ -584,13 +584,28 @@ another worker applied its own edit, and the scheduler saw
 `76/77 OK, 1 MISMATCHED` for an overlay the reporting function never touched. A
 real, verified match was rejected and filed as `escalated`.
 
-Two confirmed casualties, found in the 2026-07-21 retriage:
+The defect is structural and provable by reading the code: the report was
+outside the lock, and the scheduler's check is global. It does not depend on any
+particular record to be real.
 
-- `func_us_801B9D74`, `best_score` 100, rejected over a dirty `BO0.BIN`
-- `func_us_801B20F4`, rejected over a dirty `DRA.BIN`
+**What is NOT established: that it has actually cost a match yet.** The retriage
+first flagged `func_us_801B9D74` and `func_us_801B20F4` as confirmed casualties,
+on the strength of a scheduler rejection naming an overlay those functions never
+touched. That was wrong, and checking took ten minutes:
 
-Both had already proved their own artifact. Neither failure had anything to do
-with the function.
+- `func_us_801B9D74`'s archived C references `g_Ric.unk394`, a field that exists
+  nowhere in the tree. It also omits two stores the asm makes (`0x28` to
+  `g_Ric + 0x346`, and `RIC_velocityY = 0`). It cannot have compiled.
+- `best_score` 100 was not evidence either. `scheduler.py` `sys.exit`s on a
+  rejected `matched` BEFORE `q = Queue()`, so that path never writes a score.
+
+Both were then requeued as ordinary `near` records.
+
+The meta-lesson, which is the expensive one: **a plausible mechanism plus a
+suggestive error message is not a confirmed instance.** The race was genuine, so
+the story felt complete, and that is exactly when the evidence stops being
+checked. Confirm the instance separately from the mechanism, and label them
+differently until you have.
 
 The rule: **if a check is global, every mutation it can observe must be
 serialised with it.** A lock that covers apply and build but not the verification
