@@ -105,6 +105,39 @@ plateaued, so pairing a couple of llama workers with a couple of cli workers
 spends scarce quota on functions llama has already failed rather than on ones it
 would have matched anyway.
 
+### Model triage (bake-off, 2026-07-21)
+
+Six models were run one-per-worker against comparable functions. They split hard
+into working and useless. Use only the working three; the others waste
+account-wide quota producing nothing.
+
+WORKING (produce real C, stream cleanly):
+- `opencode/deepseek-v4-flash-free` - best of the set. Streamed 132 lines of C
+  and tolerated even a 12k-char prompt that made big-pickle drop empty.
+- `opencode/nemotron-3-ultra-free` - streams, produces candidates.
+- `opencode/mimo-v2.5-free` - lower volume but produces real C.
+
+USELESS (do not use):
+- `opencode/big-pickle` - returns rc=0 with EMPTY output on large prompts
+  (gateway drop). Zero candidates.
+- `opencode/hy3-free` - server-side `UnknownError` (rc=1) on nearly every call;
+  80 errors in one run. Broken or overloaded upstream, not a harness fault.
+- `opencode/north-mini-code-free` - a Cohere tool-trained model that ignores
+  "emit only C" and streams tool-call roleplay (`<function=read_file>` ...)
+  instead of a function. clean_code cannot rescue it. Not fixable by prompt.
+
+Streaming NOTE: contrary to an earlier claim in this file, `opencode run` DOES
+stream to stdout incrementally in a non-TTY. worker_direct.py now reads it via
+Popen, so the degeneration detector and live echo work on the cli backend too.
+See the "What the CLI backend gives up" section, now largely obsolete.
+
+Launch the survivors:
+
+```
+fleet_start(workers=3, backend="cli", force=true,
+  opencode_model="opencode/deepseek-v4-flash-free,opencode/nemotron-3-ultra-free,opencode/mimo-v2.5-free")
+```
+
 ### The HTTP path still works
 
 `MODEL_BACKEND=http` (the default) keeps the original OpenAI-compatible path for
