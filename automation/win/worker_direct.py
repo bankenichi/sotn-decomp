@@ -1317,8 +1317,25 @@ def restore(ctx: dict, original: str) -> None:
 
 def build_and_check(rec: dict) -> tuple[bool, str]:
     with Status(f"make build VERSION={rec['build']}") as st:
-        rc, out = wsl(f"make build VERSION={rec['build']} 2>&1 | tail -40",
-                      timeout=BUILD_TIMEOUT)
+        # `set -o pipefail` is LOAD-BEARING, not tidiness.
+        #
+        # This was `make build ... 2>&1 | tail -40`. In a pipeline the exit
+        # status is the LAST command's, i.e. tail's, which is always 0. So
+        # rc != 0 never fired and a compile error was indistinguishable from a
+        # successful build. Every failed compile fell through to the hash check
+        # and got reported as "built, but does not match".
+        #
+        # Two consequences, both bad:
+        #   1. The failure taxonomy inverted. Functions that never compiled were
+        #      routed to `near` (permuter work) instead of `escalated`. On
+        #      2026-07-21 func_us_801B7C44 was filed NEAR while all four of its
+        #      attempts referenced `unk32`, a field that does not exist.
+        #   2. Retry feedback was useless. The model was told "bytes differ"
+        #      when the real message was "structure has no member named unk32",
+        #      so it had no way to learn the actual mistake and repeated it on
+        #      every one of the four attempts.
+        rc, out = wsl(f"set -o pipefail; make build VERSION={rec['build']} "
+                      f"2>&1 | tail -40", timeout=BUILD_TIMEOUT)
         st.update("compiled" if rc == 0 else "BUILD FAILED")
     if rc != 0:
         return False, "BUILD FAILED:\n" + out.strip()[-1500:]
