@@ -572,6 +572,36 @@ General form: when a pipeline records outcomes, a single "failed" bucket
 collapses distinctions the downstream router needs. If two failures have
 different owners, they need different statuses.
 
+## 10e. Whole-tree verification must happen inside the build lock
+
+`scheduler.py` refuses `matched` unless it can re-verify, and it re-verifies the
+WHOLE tree: all 77 hashes, not just the overlay in question. That check is right
+and worth keeping. It is what stops a worker claiming a match while the tree is
+broken.
+
+But the worker reported the match AFTER releasing `BuildLock`. In that window
+another worker applied its own edit, and the scheduler saw
+`76/77 OK, 1 MISMATCHED` for an overlay the reporting function never touched. A
+real, verified match was rejected and filed as `escalated`.
+
+Two confirmed casualties, found in the 2026-07-21 retriage:
+
+- `func_us_801B9D74`, `best_score` 100, rejected over a dirty `BO0.BIN`
+- `func_us_801B20F4`, rejected over a dirty `DRA.BIN`
+
+Both had already proved their own artifact. Neither failure had anything to do
+with the function.
+
+The rule: **if a check is global, every mutation it can observe must be
+serialised with it.** A lock that covers apply and build but not the verification
+that consumes them is not a lock, it is a race with extra steps. Section 10 said
+parallel agents must never build; this is the same hazard one level up, where the
+verifier is the thing being raced.
+
+Symptom to recognise: a rejection naming an artifact your change does not touch.
+That is never a real failure of your function. Treat it as evidence of a
+concurrency defect, not of a hard function.
+
 ## 11. Probe the environment; never assert it from documentation
 
 On 2026-07-21 the orchestrator told the operator a cli fleet could not run under

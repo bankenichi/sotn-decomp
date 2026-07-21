@@ -330,7 +330,14 @@ def cmd_list(args):
     for r in Queue()._read():
         if args.status and r["status"] != args.status:
             continue
-        print(f"{r['status']:>9}  {r.get('best_score', 0):>3}  {r['id']}")
+        # Notes carry the FAILURE KIND ("built, but ... does not match" vs
+        # "BUILD FAILED" vs a timeout). Without them a status listing cannot be
+        # re-triaged, and the queue file lives outside the repo so it cannot be
+        # read directly. Printing them is what makes the taxonomy in
+        # MATCHING-LESSONS.md sections 6 and 10d auditable after the fact.
+        notes = " ".join((r.get("notes") or "").split())
+        line = f"{r['status']:>9}  {r.get('best_score', 0):>3}  {r['id']}"
+        print(f"{line}  |  {notes}" if notes else line)
 
 
 def cmd_stats(_args):

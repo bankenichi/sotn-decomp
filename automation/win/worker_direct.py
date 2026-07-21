@@ -1381,6 +1381,26 @@ def process_one(dry: bool = False) -> bool:
                 feedback = "empty output"; continue
 
             # --- critical section: one worker at a time touches the tree ---
+            #
+            # Reporting a match MUST happen inside this lock.
+            #
+            # scheduler.py refuses `matched` unless it can re-verify, and it
+            # re-verifies the WHOLE tree: all 77 hashes, not just this overlay.
+            # So the tree has to still be in the state this worker just proved
+            # when the scheduler looks at it.
+            #
+            # The report used to sit after the lock released. Another worker
+            # would apply its own edit in that window, the scheduler would see
+            # "76/77 OK, 1 MISMATCHED" for an overlay this function never
+            # touched, and a REAL match was thrown away and marked escalated.
+            # Confirmed on two records during the 2026-07-21 retriage:
+            # func_us_801B9D74 (best_score 100, rejected over a dirty BO0.BIN)
+            # and func_us_801B20F4 (rejected over a dirty DRA.BIN).
+            #
+            # Whole-tree verification is correct and worth keeping: it is what
+            # stops a worker reporting a match while the tree is broken. It just
+            # has to be serialised with everything else that mutates the tree.
+            matched = False
             with BuildLock(os.path.join(WIN_REPO, "automation", ".build.lock")):
                 original = apply_code(ctx, fn, code)
                 print(f"  -> applied {len(code)} chars to {ctx['src_rel']}")
@@ -1391,12 +1411,14 @@ def process_one(dry: bool = False) -> bool:
                     # someone else's build.
                     restore(ctx, original)
                     original = None
+                else:
+                    print(f"[worker] MATCHED {fn}")
+                    sched("report", "--id", rec["id"], "--status", "matched",
+                          "--score", "100", "--tier", "0",
+                          "--proof", detail[:200], "--notes", detail[:200])
+                    matched = True
             best = detail
-            if ok:
-                print(f"[worker] MATCHED {fn}")
-                sched("report", "--id", rec["id"], "--status", "matched",
-                      "--score", "100", "--tier", "0",
-                      "--proof", detail[:200], "--notes", detail[:200])
+            if matched:
                 return True
             feedback = detail
             if "BUILD FAILED" not in detail:
