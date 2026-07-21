@@ -730,6 +730,40 @@ prompt. The right context was already present in the draft; the model just had
 to be told to trust it. Reach for the cheap "trust the existing resolved
 context" fix before the expensive "inject more context" one.
 
+## 10i. m2c cannot type function parameters; give the model the Entity offset map
+
+The struct-field failure in 10h had a root cause one level deeper than "the
+model invents fields". Traced on 2026-07-21 by running m2c by hand:
+
+- m2c types GLOBALS from ctx.c, so `g_CurrentEntity->ext.ILLEGAL.u16[0xA]` comes
+  out correct.
+- m2c CANNOT type a function PARAMETER. `arg0` stays `void*`, so every access
+  through it is emitted as a synthetic `arg0->unk24`, `arg0->unk90`. Those are
+  not real fields and do not compile.
+- Hinting m2c the parameter is `Entity*` does NOT fix it: it still emits
+  `->unk24`, because the access WIDTH often differs from the field (e.g. `lbu`
+  at 0x24 reads the low byte of the u16 `zPriority`), so m2c will not use the
+  field name.
+
+So the model is handed a draft that is half-right (globals) and half-synthetic
+(`->unkNN` on parameters), and it cannot translate the synthetic half without
+knowing the struct. The fix is to give it the map: `ENTITY_LAYOUT` in
+worker_direct.py lists offset -> field for the Entity header (0x00-0x7B) from
+include/game.h, injected whenever the function touches an entity, with the rule
+"translate `->unkNN` to the field at 0xNN; 0x7C+ is the `ext` union; match the
+asm's access width".
+
+Two things this reframes:
+
+- The earlier "copy the draft's field accesses verbatim" rule (10h) was half
+  wrong: verbatim-copying a synthetic `arg0->unk24` propagates the error. The
+  rule now distinguishes named accesses (keep) from `->unkNN` (translate).
+- Injecting a map beats injecting the whole struct. The Entity `ext` union is
+  large and per-type; dumping it would bloat every prompt and still not resolve
+  a specific access. The compact header map plus the generic `ext.ILLEGAL`
+  accessor is enough for the common case, and honest about the hard residue
+  (byte-into-halfword accesses) that no map alone fixes.
+
 ## 11. Probe the environment; never assert it from documentation
 
 On 2026-07-21 the orchestrator told the operator a cli fleet could not run under

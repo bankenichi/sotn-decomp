@@ -773,16 +773,19 @@ SYSTEM = (
     "it. Use the project's real types (Entity*, Primitive*, s16/s32/u8/u16) "
     "instead of the draft's '?' placeholders. Do not invent helper functions. "
     "Keep the exact function name given.\n"
-    "STRUCT FIELDS COME FROM THE DRAFT; NEVER INVENT THEM. The m2c draft's "
-    "field accesses (`self->step`, `ent->ext.ILLEGAL.s16[N]`, `->unk24`, "
-    "`->posX`) are resolved from the REAL struct definition and are correct by "
-    "construction. Copy every struct-field access EXACTLY as the draft writes "
-    "it. Do NOT rename a field, do NOT simplify `->unk24` to a prettier name, "
-    "and NEVER write a `->field` the draft did not use. A guessed field like "
-    "`->unk24` or `->state` that is not in the struct is a hard build error "
-    "(`structure has no member named ...`) and was the single most common "
-    "failure before this rule. If you need a field the draft never accessed, "
-    "you are guessing: re-read the draft instead.\n"
+    "STRUCT FIELDS: TRANSLATE m2c's `->unkNN`, NEVER INVENT NEW ONES. m2c "
+    "writes a synthetic `->unkNN` (e.g. `arg0->unk24`) whenever it could not "
+    "type a pointer, usually a function PARAMETER. `unk24` is NOT a real field "
+    "and will not compile. When an ENTITY LAYOUT section is present, translate "
+    "every `->unkNN` to the real field at offset 0xNN from that map: "
+    "`arg0->unk24` -> `arg0->zPriority`, `arg0->unk2C` -> `arg0->step`. Offsets "
+    "0x7C and above are the `ext` union: use the same `->ext.ILLEGAL.u16[i]` "
+    "form the draft already uses for typed pointers (index i = (offset-0x7C)/2 "
+    "for a u16). MATCH THE ACCESS WIDTH from the asm: a byte read of a u16 "
+    "field is that field's low byte, so keep m2c's width. Accesses the draft "
+    "ALREADY named (`->step`, `->ext.ILLEGAL.s16[N]`) are correct; keep them "
+    "verbatim. Never write a `->field` that is neither in the draft nor the "
+    "ENTITY LAYOUT.\n"
     "THIS IS C89 (ANSI C, GCC 2.7.2), NOT MODERN C. The rules that trip up "
     "modern-C habits, in order of how often they break the build here:\n"
     "- EVERY local variable must be declared at the TOP of its block, before "
@@ -823,6 +826,35 @@ SYSTEM = (
     "- If you are unsure what something does, say so in the comment rather "
     "  than inventing a confident explanation. 'unclear, possibly a cooldown' "
     "  is useful; a wrong claim stated firmly is worse than none."
+)
+
+
+# The Entity header layout, offset -> field, from include/game.h. This is the
+# translation key for m2c's synthetic `->unkNN` accesses: m2c cannot type a
+# function parameter, so accesses through it come out as `arg0->unk24` instead
+# of `arg0->zPriority`. Giving the model the real map is what lets it fix them.
+#
+# Only the FIXED header (0x00..0x7B) is listed. Offset 0x7C is the `ext` union,
+# whose layout is per-entity-type; for those the generic `ext.ILLEGAL.uN[i]`
+# accessor that m2c already emits for typed pointers is the safe form.
+#
+# Hardcoded rather than parsed live: the header is stable, and a parser that
+# silently drifts would be worse than a constant that is obviously reviewable.
+ENTITY_LAYOUT = (
+    "=== ENTITY LAYOUT (offset: field, from include/game.h) ===\n"
+    "Use this to translate m2c's `->unkNN` (which means offset 0xNN on an "
+    "Entity the decompiler could not type). Anything at 0x7C+ is `ext` (a "
+    "per-type union): keep the draft's `->ext.ILLEGAL.uN[i]` form.\n"
+    "0x00 posX(f32) 0x04 posY(f32) 0x08 velocityX(s32) 0x0C velocityY(s32)\n"
+    "0x10 hitboxOffX(s16) 0x12 hitboxOffY(s16) 0x14 facingLeft(u16) 0x16 palette(u16)\n"
+    "0x18 blendMode(u8) 0x19 drawFlags(u8) 0x1A scaleX(s16) 0x1C scaleY(s16) 0x1E rotate(s16)\n"
+    "0x20 rotPivotX(s16) 0x22 rotPivotY(s16) 0x24 zPriority(u16) 0x26 entityId(u16) 0x28 pfnUpdate(ptr)\n"
+    "0x2C step(u16) 0x2E step_s(u16) 0x30 params(u16) 0x32 entityRoomIndex(u16) 0x34 flags(s32)\n"
+    "0x3A enemyId(u16) 0x3C hitboxState(u16) 0x3E hitPoints(s16) 0x40 attack(s16) 0x42 attackElement(u16)\n"
+    "0x44 hitParams(u16) 0x46 hitboxWidth(u8) 0x47 hitboxHeight(u8) 0x48 hitFlags(u8) 0x49 nFramesInvincibility(u8)\n"
+    "0x4A unk4A(s16) 0x4C anim(ptr) 0x50 pose(u16) 0x52 poseTimer(s16) 0x54 animSet(s16) 0x56 animCurFrame(s16)\n"
+    "0x58 stunFrames(s16) 0x5A unk5A(u16) 0x5C parent(Entity*) 0x60 nextPart(Entity*) 0x64 primIndex(s32)\n"
+    "0x68 unk68(u16) 0x6A hitEffect(u16) 0x6C opacity(u8) 0x6D unk6D[11] 0x78 unk78(s32) 0x7C ext(union)\n"
 )
 
 
@@ -1261,9 +1293,18 @@ def build_prompt(rec: dict, ctx: dict, feedback: str = "") -> str:
                 "Note the arrays: pass `NAME`, never `&NAME`. Taking the address\n"
                 "of an array generates different code and will not match.\n"
                 + "\n".join(decls) + "\n")
+    # Inject the Entity layout only when this function actually deals with an
+    # entity. The signal is either an Entity-typed thing in the draft/asm or the
+    # tell-tale `->unkNN` accesses that the layout exists to translate. Skipping
+    # it for non-entity functions keeps their prompts lean.
+    blob = (ctx.get("draft") or "") + (ctx.get("asm") or "")
+    entity_sec = ""
+    if ("Entity" in blob or "g_CurrentEntity" in blob or "g_Ric" in blob
+            or re.search(r"->unk[0-9A-Fa-f]{1,2}\b", blob)):
+        entity_sec = "\n" + ENTITY_LAYOUT
     return (
         f"Function: {rec['function']}   (overlay {rec['overlay']}, build {rec['build']})\n"
-        f"{fb}{dsec}"
+        f"{fb}{dsec}{entity_sec}"
         f"\n=== MIPS ASSEMBLY ===\n{ctx['asm']}\n\n"
         f"=== m2c DRAFT (rough, fix the types) ===\n{ctx['draft']}\n\n"
         f"Return the complete C function {rec['function']} only."
