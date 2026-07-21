@@ -217,48 +217,82 @@ def _opencode_run_once(prompt: str, timeout: float | None = None) -> str:
     if OPENCODE_ATTACH:
         argv += ["--attach", OPENCODE_ATTACH]
     argv.append(prompt)
-    print(f"  --- opencode run ({OPENCODE_MODEL}, prompt {len(prompt)} chars) ---",
-          flush=True)
+    print(f"  --- opencode run ({OPENCODE_MODEL}, prompt {len(prompt)} chars, "
+          f"streaming) ---", flush=True)
     t0 = time.time()
-    # stdin=DEVNULL is REQUIRED, not tidiness. capture_output only redirects
-    # stdout/stderr; stdin stays inherited. Run from a terminal that is fine,
-    # but opencode probes stdin when it is not a TTY and then blocks forever
-    # waiting for input nobody will send. Symptom: identical 600s timeouts on
-    # every prompt while the same command typed by hand returns instantly.
-    # Cap at the caller's remaining budget, not the flat GEN_TIMEOUT.
-    # Without this an attempt starting with 5s of budget left still ran
-    # the full 600s, so FUNC_BUDGET overshot by ~7 minutes per attempt.
     _to = GEN_TIMEOUT if timeout is None else max(15.0, min(GEN_TIMEOUT, timeout))
-    p = subprocess.run(argv, capture_output=True, text=True, encoding="utf-8",
-                       errors="replace", timeout=_to, cwd=WIN_REPO,
-                       stdin=subprocess.DEVNULL)
-    out = p.stdout or ""
-    err = (p.stderr or "").strip()
-    if p.returncode != 0:
+
+    # STREAMED via Popen, not subprocess.run.
+    #
+    # subprocess.run blocks until the process exits and hands back one final
+    # blob. That gave the cli backend no token stream, so the degeneration
+    # detector and the live echo (both of which watch a stream) were inert, and
+    # every retry re-sent the same prompt blind. Reading stdout incrementally
+    # restores all of it on the free CLI, no API key, no server.
+    #
+    # CAVEAT this design accepts: it only helps if `opencode run` writes to
+    # stdout incrementally in a non-TTY. If it buffers until exit, the reads
+    # simply all arrive at the end and behaviour degrades to the old blocking
+    # case, no worse. The live test tells us which it is on the first function.
+    #
+    # stdin=DEVNULL is still REQUIRED: opencode probes stdin when it is not a
+    # TTY and blocks forever otherwise.
+    proc = subprocess.Popen(
+        argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        stdin=subprocess.DEVNULL, cwd=WIN_REPO, text=True,
+        encoding="utf-8", errors="replace", bufsize=1)
+
+    degenerating = make_degeneration_detector()
+    buf: list[str] = []
+    last_check = [0]
+    aborted = [""]
+    done = threading.Event()
+
+    def pump():
+        try:
+            for line in proc.stdout:
+                buf.append(line)
+                print(f"  | {line.rstrip()}", flush=True)
+                total = sum(len(x) for x in buf)
+                # Check every ~500 new chars, not every line: the detector
+                # re-scans the whole buffer and per-line would be O(n^2).
+                if total - last_check[0] >= 500:
+                    last_check[0] = total
+                    why = degenerating(buf)
+                    if why:
+                        aborted[0] = why
+                        proc.kill()
+                        return
+        finally:
+            done.set()
+
+    t = threading.Thread(target=pump, daemon=True)
+    t.start()
+    try:
+        proc.wait(timeout=_to)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        raise
+    done.wait(timeout=5)
+    out = "".join(buf)
+    err = (proc.stderr.read() or "").strip() if proc.stderr else ""
+
+    if aborted[0]:
+        # Degenerate output is not empty-transient; the model IS answering, just
+        # badly. Surface it as a normal failure so the attempt is spent and the
+        # retry can carry different feedback.
+        raise RuntimeError(f"opencode degenerated: {aborted[0]}")
+    if proc.returncode not in (0, None) and not out.strip():
         raise RuntimeError(
-            f"opencode run failed (rc={p.returncode}): {err[:800]}")
+            f"opencode run failed (rc={proc.returncode}): {err[:800]}")
     print(f"  --- done in {int(time.time() - t0)}s: {len(out)} chars ---",
           flush=True)
-    # rc=0 with EMPTY stdout is a real failure wearing a success mask. opencode
-    # writes its decorative header AND its errors to stderr, so quota exhaustion,
-    # rate limiting and model errors all look like a clean exit with no answer.
-    # Discarding stderr here meant three attempts burned 22 minutes producing
-    # "0 chars" with no clue why. Surface it.
     if not out.strip():
-        # Empty output is TRANSIENT, not fatal. Observed repeatedly: rc=0, no
-        # stderr error, just nothing, after 400-480s. It correlates with larger
-        # prompts (2636/3072/4285 chars failed; 2367-2686 succeeded), so it looks
-        # like a gateway-side limit or drop rather than a model refusal.
-        #
-        # Previously this raised, which escalated the whole FUNCTION on the first
-        # occurrence and threw away the remaining attempts. Retry the call
-        # instead, and only give up after RATE_LIMIT_RETRIES tries.
+        # rc=0 with EMPTY stdout: transient gateway drop, correlated with large
+        # prompts. Retry rather than escalate the whole function.
         raise _EmptyOutput(
             f"rc=0 but NO output after {int(time.time() - t0)}s "
             f"(prompt {len(prompt)} chars). stderr: {err[:300]}")
-    # The CLI prefixes a decorative status line like "> build - big-pickle".
-    # clean_code() already discards leading non-C prose, so no special handling
-    # is needed here; returning raw output keeps this backend dumb on purpose.
     return out
 
 

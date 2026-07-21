@@ -447,15 +447,28 @@ def fleet_start(workers: int = 4, max_functions: int = 0,
     # original version ended up unable to launch anything but llama.
     parts = [f"cd {shlex.quote(str(REPO))} && mkdir -p {FLEET_LOGS} && "
              f": > {FLEET_PIDS}"]
+    # opencode_model may be a comma-separated LIST. Each cli worker is then
+    # assigned one round-robin, which is how a model bake-off runs: launch N cli
+    # workers across N models and compare hit rates from one fleet. A single
+    # value assigns that model to every cli worker, unchanged.
+    models = [m.strip() for m in (opencode_model or "").split(",") if m.strip()]
     for be, count in (("http", n_http), ("cli", n_cli)):
         if not count:
             continue
         tag = _BACKEND_TAG[be]
-        env = f"MODEL_BACKEND={be}"
-        if be == "cli" and opencode_model:
-            env += f" OPENCODE_MODEL={shlex.quote(opencode_model)}"
+        if be == "cli" and models:
+            # Bash array indexed by worker number so each gets its own model.
+            arr = " ".join(shlex.quote(m) for m in models)
+            model_setup = f"_m=({arr}); "
+            pick = '_sel=${_m[$(((i-1) % ${#_m[@]}))]}; '
+            env = "MODEL_BACKEND=cli OPENCODE_MODEL=$_sel"
+        else:
+            model_setup = ""
+            pick = ""
+            env = f"MODEL_BACKEND={be}"
         parts.append(
-            f"for i in $(seq 1 {count}); do "
+            f"{model_setup}for i in $(seq 1 {count}); do "
+            f"  {pick}"
             f"  rm -f {FLEET_LOGS}/worker-{tag}-$i.log; "
             f"  {env} WORKER_NAME=fleet-{tag}-$i setsid nohup python3 "
             f"automation/win/worker_direct.py loop{extra} "
