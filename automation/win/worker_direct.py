@@ -316,7 +316,20 @@ MAX_CTX_CHARS = int(os.environ.get("MAX_CTX_CHARS", "8000"))
 # run ~1000-2400 tokens). Runaway loops are caught by degenerating() on their
 # own, independently of this ceiling.
 REASON_CAP = int(os.environ.get("REASON_CAP", "3000"))
-MAX_FUNC_CHARS = int(os.environ.get("MAX_FUNC_CHARS", "6000"))
+# Largest function this tier will attempt, in chars of assembly.
+#
+# BACKEND-DEPENDENT. 6000 is calibrated for local llama, which loses coherence
+# well before that (the 2026-07-21 logs show degenerate-loop aborts on far
+# smaller inputs). Hosted OpenCode models take much more context, so the cli
+# tier exists precisely to pick up what llama defers.
+#
+# Deferring is therefore a HANDOFF, not a dead end: see DEFER_TOO_LARGE and
+# scheduler `next --include-deferred`.
+_DEFAULT_MAX_FUNC = "20000" if MODEL_BACKEND == "cli" else "6000"
+MAX_FUNC_CHARS = int(os.environ.get("MAX_FUNC_CHARS", _DEFAULT_MAX_FUNC))
+# Stable marker in the notes so the next tier can find exactly these records.
+# Matching on prose would break the moment someone reworded the message.
+DEFER_TOO_LARGE = "TIER_HANDOFF_TOO_LARGE"
 # Hard wall-clock ceiling for one function across ALL attempts. Without it,
 # MAX_ATTEMPTS forced passes at GEN_TIMEOUT each can silently burn ~40 minutes.
 #
@@ -477,7 +490,13 @@ def sched(*args: str) -> str:
 
 
 def claim_next() -> dict | None:
-    raw = sched("next", "--worker", WORKER_NAME)
+    # The cli tier picks up what llama handed off for size. Without this the
+    # deferred records sit forever: llama will never retry them (same gate) and
+    # nothing else claims `deferred`.
+    _next_args = ["next", "--worker", WORKER_NAME]
+    if MODEL_BACKEND == "cli":
+        _next_args.append("--include-deferred")
+    raw = sched(*_next_args)
     line = [l for l in raw.splitlines() if l.strip().startswith("{")]
     if not line:
         return None
@@ -1447,8 +1466,9 @@ def process_one(dry: bool = False) -> bool:
         print(f"[worker] SKIP: {len(ctx['asm'])} chars of asm exceeds "
               f"MAX_FUNC_CHARS={MAX_FUNC_CHARS}; too large for this tier")
         sched("report", "--id", rec["id"], "--status", "deferred",
-              "--notes", f"asm {len(ctx['asm'])} chars > {MAX_FUNC_CHARS}; "
-                         f"needs a stronger tier")
+              "--notes", f"{DEFER_TOO_LARGE}: asm {len(ctx['asm'])} chars > "
+                         f"{MAX_FUNC_CHARS} on backend={MODEL_BACKEND}; "
+                         f"handed off to the next tier")
         return True
     if dry:
         print("--- prompt preview ---")

@@ -238,8 +238,19 @@ def cmd_next(args):
     q = Queue()
     prio = _load_priority()
 
+    # Records the previous tier handed off because the function was too large
+    # for it. Only THESE deferrals are claimable here: a record deferred for a
+    # structural reason (an unlabelled union member, say) is not made solvable
+    # by a bigger context window, and re-claiming it would just burn the
+    # stronger tier's budget on the same wall.
+    HANDOFF = "TIER_HANDOFF_TOO_LARGE"
+
     def fn(records):
         todo = [r for r in records if r["status"] == "todo"]
+        if args.include_deferred:
+            todo += [r for r in records
+                     if r["status"] == "deferred"
+                     and HANDOFF in (r.get("notes") or "")]
         if not todo:
             return records, None
 
