@@ -8,11 +8,30 @@ from pathlib import Path
 
 def read_nonmatchings_from_disk():
     # Find all .s files in subdirectories of "nonmatchings"
+    #
+    # DATA SYMBOLS ARE EXCLUDED, and that exclusion is load-bearing.
+    #
+    # This sweep used to return every .s including rodata (D_*), but the
+    # "still not matching" set it is compared against is filtered to code only
+    # (see filterBySectionType(".text") below). Rodata therefore can never appear
+    # in that set, so every data symbol fell into `actually_matches` and got
+    # renamed into matchings/ unconditionally.
+    #
+    # That is not harmless. INCLUDE_RODATA expands to a hardcoded path
+    # (include/include_asm.h), nothing rewrites the .c, and splat only ever
+    # populates nonmatchings/ so `make extract` cannot undo it. On 2026-07-21 this
+    # relocated 803 data symbols and broke the us build; recovery was a manual
+    # move of all 803 back.
+    #
+    # This script's stated purpose (see the header comment) is functions that
+    # splat wrongly believes do not match. Restrict it to that.
     return [
         path
         for path in Path("./asm/us").rglob("*.s")
         if "nonmatchings" in path.parts
         and path.parts[path.parts.index("nonmatchings") - 1] != "nonmatchings"
+        and not path.stem.startswith("D_")
+        and not path.stem.startswith("jtbl_")
     ]
 
 

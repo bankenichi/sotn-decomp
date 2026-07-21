@@ -1,0 +1,19 @@
+{
+  "mcpServers": {
+    "sotn-local": {
+      "command": "wsl.exe",
+      "args": [
+        "-d",
+        "Ubuntu-24.04",
+        "-e",
+        "bash",
+        "-lc",
+        "cd /mnt/c/Users/YOUR_USER/path/to/SOTN-Decomp/automation/mcp && ./.venv/bin/python sotn_local_mcp.py"
+      ],
+      "env": {
+        "LLAMA_BASE_URL": "http://localhost:8081/v1",
+        "LLAMA_MODEL": "Qwen3.6-35B-A3B-Claude-4.7-Opus-Reasoning-Distilled-APEX-MTP-I-Compact.gguf"
+      }
+    }
+  }
+}

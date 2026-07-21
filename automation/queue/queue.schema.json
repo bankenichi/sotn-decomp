@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sotn-decomp.local/queue.schema.json",
+  "title": "SOTN decomp work queue record",
+  "description": "One JSON object per line in work/queue.jsonl. One record per target function.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "build", "overlay", "function", "status"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Stable unique key: '<build>:<overlay>:<function>'.",
+      "examples": ["pspeu:ST/NO0:func_8018XXXX"]
+    },
+    "build": {
+      "type": "string",
+      "enum": ["us", "hd", "pspeu", "saturn"],
+      "description": "Build target the function belongs to."
+    },
+    "overlay": {
+      "type": "string",
+      "description": "Overlay or binary the function lives in.",
+      "examples": ["ST/NO0", "DRA", "BIN/RIC"]
+    },
+    "function": {
+      "type": "string",
+      "description": "Function symbol name as it appears in the split output."
+    },
+    "status": {
+      "type": "string",
+      "enum": ["todo", "claimed", "near", "matched", "escalated", "deferred"],
+      "description": "Lifecycle state. Only the scheduler writes this."
+    },
+    "claimed_by": {
+      "type": "string",
+      "description": "Worker identity that currently owns the record.",
+      "default": "none"
+    },
+    "tier_reached": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 4,
+      "description": "Highest escalation tier attempted. 0 Qwen, 1 cloud, 2 Haiku, 3 Sonnet, 4 Opus.",
+      "default": 0
+    },
+    "best_score": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100,
+      "description": "Best asm-differ match percentage observed. 100 means byte match.",
+      "default": 0
+    },
+    "iterations": {
+      "type": "integer",
+      "minimum": 0,
+      "default": 0,
+      "description": "Edit/compile/diff cycles spent so far."
+    },
+    "permuter_used": {
+      "type": "boolean",
+      "default": false
+    },
+    "worktree": {
+      "type": "string",
+      "description": "Path to the git worktree for this function, relative to repo root.",
+      "examples": ["automation/wt/pspeu-NO0-8018XXXX"]
+    },
+    "branch": {
+      "type": "string",
+      "examples": ["match/pspeu-NO0-8018XXXX"]
+    },
+    "notes": {
+      "type": "string",
+      "description": "First divergence, suspected cause, and any handoff context.",
+      "default": ""
+    },
+    "pr": {
+      "type": "string",
+      "description": "Pull request URL once opened.",
+      "default": ""
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO-8601 UTC timestamp of the last scheduler write."
+    }
+  }
+}

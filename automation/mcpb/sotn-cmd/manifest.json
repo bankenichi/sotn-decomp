@@ -1,0 +1,79 @@
+{
+  "manifest_version": "0.3",
+  "name": "sotn-cmd",
+  "display_name": "SOTN Build Commands (allowlisted)",
+  "version": "1.0.0",
+  "description": "Runs an allowlisted set of SOTN build, diff, permuter, git and queue actions in WSL.",
+  "long_description": "Gives Claude a hard-allowlisted set of repo actions. There is NO general shell.\n\nEvery argument is validated (version enum, strict regexes for symbols and overlays, in-repo path checks), commands run as an argv list rather than through a shell, and output is truncated. Scoped filesystem actions let Claude read and edit the repo when the folder is not connected directly.\n\nShips with dry-run ENABLED: every tool returns the exact command it would run without executing it. Turn dry-run off only after reviewing what it produces.",
+  "author": {
+    "name": "Kenichi"
+  },
+  "server": {
+    "type": "binary",
+    "entry_point": "server/sotn_cmd_mcp.py",
+    "mcp_config": {
+      "command": "wsl.exe",
+      "args": [
+        "-d",
+        "${user_config.wsl_distro}",
+        "-e",
+        "bash",
+        "-lc",
+        "cd '${user_config.repo_path}/automation/mcp' && SOTN_REPO='${user_config.repo_path}' SOTN_PYTHON='${user_config.repo_path}/.venv/bin/python' SOTN_CMD_DRYRUN='${user_config.dry_run}' SOTN_CMD_MAXOUT=20000 ./.venv/bin/python sotn_cmd_mcp.py"
+      ],
+      "env": {}
+    }
+  },
+  "tools": [
+    { "name": "list_allowed", "description": "Show the exact allowlist and dry-run state" },
+    { "name": "make_build", "description": "make build VERSION=<v>" },
+    { "name": "make_extract", "description": "make extract VERSION=<v>" },
+    { "name": "make_expected", "description": "make expected VERSION=<v>" },
+    { "name": "make_clean", "description": "make clean VERSION=<v>" },
+    { "name": "make_force_symbols", "description": "Extract symbols from a good build" },
+    { "name": "make_function_finder", "description": "Decomp status and call graphs" },
+    { "name": "make_reports", "description": "Duplicates report plus function finder" },
+    { "name": "make_duplicates_report", "description": "Duplicate function report" },
+    { "name": "asm_diff", "description": "Run asm-differ for one function" },
+    { "name": "permuter", "description": "Run decomp-permuter on an in-repo work dir" },
+    { "name": "permuter_import", "description": "Prepare a permuter work dir" },
+    { "name": "queue_stats", "description": "Work queue counts by status" },
+    { "name": "queue_list", "description": "List queue records, optionally by status" },
+    { "name": "git_status", "description": "git status --short (read-only)" },
+    { "name": "git_add_all", "description": "git add -A" },
+    { "name": "git_commit", "description": "git commit -m <message>" },
+    { "name": "read_file", "description": "Read an in-repo text file" },
+    { "name": "write_file", "description": "Write an in-repo text file (respects dry-run)" },
+    { "name": "list_dir", "description": "List an in-repo directory" },
+    { "name": "search_repo", "description": "Search the repo (ripgrep/grep, argv-safe)" }
+  ],
+  "keywords": ["sotn", "decompilation", "build", "wsl", "allowlist"],
+  "license": "AGPL-3.0",
+  "compatibility": {
+    "claude_desktop": ">=0.10.0",
+    "platforms": ["win32"]
+  },
+  "user_config": {
+    "repo_path": {
+      "type": "string",
+      "title": "Repository path (as WSL sees it)",
+      "description": "Absolute WSL path to the sotn-decomp repo. A Windows folder C:\\Users\\you\\Documents\\SOTN-Decomp is /mnt/c/Users/you/Documents/SOTN-Decomp in WSL.",
+      "default": "/mnt/c/Users/YOUR_USER/path/to/SOTN-Decomp",
+      "required": true
+    },
+    "wsl_distro": {
+      "type": "string",
+      "title": "WSL distribution",
+      "description": "Which WSL distro to run in. Must be the one with the build toolchain, not docker-desktop.",
+      "default": "Ubuntu-24.04",
+      "required": true
+    },
+    "dry_run": {
+      "type": "string",
+      "title": "Dry run (1 = preview only, 0 = actually execute)",
+      "description": "Leave at 1 until you have reviewed the commands it produces. At 1 every tool returns the argv it would run and changes nothing.",
+      "default": "1",
+      "required": true
+    }
+  }
+}

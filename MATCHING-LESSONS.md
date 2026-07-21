@@ -1,5 +1,39 @@
 # Matching lessons (evidence-backed)
 
+## 0. READ ANY UNFAMILIAR SCRIPT BEFORE RUNNING IT
+
+This rule sits first because violating it cost more than every matching mistake in
+this document combined.
+
+`make function-finder` sounds like a read-only reporting command. It is not. It
+depends on `prepare-reports`, which runs `fix_matchings.py`, which **renames files
+on disk**. Running it once relocated 803 data symbols and broke the build (see 8d).
+
+Before invoking ANY repo script, tool or make target for the first time:
+
+1. Read it. Specifically grep for `rename`, `unlink`, `rmtree`, `remove`,
+   `shutil.move`, `os.replace`, `> file`, `git checkout`, `git reset`.
+2. Read what it DEPENDS on. `make X` may run three other things first. The
+   dangerous one is rarely the target you typed.
+3. Ask what its blast radius is if it is wrong, and whether that damage is
+   recoverable from git.
+
+**The last point is the real exposure here.** `asm/` is gitignored
+(`.gitignore:8,13`), and so is `automation/` (via `.git/info/exclude`). Git cannot
+restore either. A tool that corrupts `asm/` forces a full re-extract from the disc
+image; a tool that corrupts `automation/` destroys the harness outright. Do not
+assume a bad run is undoable just because the repo is under version control.
+
+Preconditions for running something unvetted:
+- commit or stash everything first, so `git status` is clean and the diff
+  afterwards is unambiguous
+- know which directories it can write to
+- prefer a read-only mode or a dry-run flag if one exists
+- if it touches generated directories, confirm the regeneration path actually
+  works BEFORE you need it. `make extract` does NOT restore files that were moved
+  out of `nonmatchings/`, which we discovered only while trying to recover.
+
+
 Heuristics that have actually produced verified byte-exact matches in this repo, with
 the evidence that established each one. Every claim here was confirmed by
 `verify_build us` returning 77/77, not by reasoning alone.
@@ -354,6 +388,56 @@ these four needed no work at all.
 
 First run result: `BO6_ReboundStoneBounce2`, best score 340 across several
 outputs, no match. A negative result on a genuinely hard scheduling difference.
+
+## 8d. DO NOT run `make function-finder` unpatched. It breaks the build.
+
+Diagnosed 2026-07-21 after it moved **803 data symbols** and took the build down.
+
+**What happens.** `make function-finder` depends on `prepare-reports`
+(`Makefile:296-298`), which runs `tools/function_finder/fix_matchings.py`. That
+script, NOT the finder itself, relocates `.s` files from `nonmatchings/` to
+`matchings/` (`fix_matchings.py:89-92`):
+
+```python
+for path in actually_matches:
+    new_path = Path(path.as_posix().replace("nonmatchings", "matchings"))
+    new_path.parent.mkdir(parents=True, exist_ok=True)
+    path.rename(new_path)
+```
+
+**The bug.** The disk sweep takes EVERY `.s` under `nonmatchings/`, data included
+(`fix_matchings.py:9-16`). But the "still not matching" set it compares against is
+filtered to code only (`fix_matchings.py:28`):
+
+```python
+map_file = map_file.filterBySectionType(".text")
+```
+
+Rodata symbols like `D_us_801A7028` live in `.rodata`, so they can never appear in
+that set. Line 82-84 then computes `actually_matches` as "on disk but not in the
+non-matching map", which classifies **every data symbol as matching** and moves it.
+The disk scan covers data; the correctness check does not.
+
+**Why that breaks the build.** `INCLUDE_RODATA(FOLDER, NAME)` expands to a literal
+hardcoded path (`include/include_asm.h:46-49`). There is no search across
+`nonmatchings/` and `matchings/`. `fix_matchings.py` renames the file and never
+touches the `.c`, so the source still points at the old path and the assembler
+fails with "can't open ... nonmatchings/.../D_us_801A7028.s".
+
+**`make extract` will NOT repair it.** `asm/` is gitignored (`.gitignore:8,13`),
+and splat only ever populates `nonmatchings/`. Once a file has been relocated into
+`matchings/` it is orphaned from both the source path and the extractor output.
+Recovery is a manual move back, which is what we did for all 803.
+
+**Its legitimate purpose** is narrow, per its own header comment
+(`fix_matchings.py:3-4`): cases where splat wrongly assumes a FUNCTION does not
+match, e.g. code `#ifdef`-ed out for a version. It was never meant for data.
+
+**Rule:** never run `make function-finder` or `fix_matchings.py` on this repo
+unpatched. To get the report without the mover, run
+`tools/function_finder/function_finder_psx.py` directly; it only reads
+(`function_finder_psx.py:44` requires `"nonmatchings" in str(path)`) and moves
+nothing.
 
 ## 9. Renaming placeholder symbols (func_XXXXXX, D_XXXXXXXX, Unk*)
 

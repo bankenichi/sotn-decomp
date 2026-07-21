@@ -1,0 +1,85 @@
+{
+  "manifest_version": "0.3",
+  "name": "sotn-local",
+  "display_name": "SOTN Local Model Bridge",
+  "version": "1.0.0",
+  "description": "Bridges Claude to a local llama-server for SOTN decompilation drafts.",
+  "long_description": "Exposes a locally running OpenAI-compatible model (llama.cpp / llama-server) as MCP tools for the Castlevania: Symphony of the Night decompilation project.\n\nLarge assembly and diff text are processed inside the server, so only compact structured results reach Claude's context. Drafting therefore costs zero Claude tokens.\n\nThe server runs inside WSL2 and reaches llama-server on the Windows host. That requires WSL mirrored networking (networkingMode=mirrored in .wslconfig), or a base URL pointing at the host IP instead of localhost.",
+  "author": {
+    "name": "Kenichi"
+  },
+  "server": {
+    "type": "binary",
+    "entry_point": "server/sotn_local_mcp.py",
+    "mcp_config": {
+      "command": "wsl.exe",
+      "args": [
+        "-d",
+        "${user_config.wsl_distro}",
+        "-e",
+        "bash",
+        "-lc",
+        "cd '${user_config.repo_path}/automation/mcp' && LLAMA_BASE_URL='${user_config.llama_base_url}' LLAMA_MODEL='${user_config.llama_model}' ./.venv/bin/python sotn_local_mcp.py"
+      ],
+      "env": {}
+    }
+  },
+  "tools": [
+    {
+      "name": "health",
+      "description": "Check the local llama-server is reachable and list served models"
+    },
+    {
+      "name": "local_chat",
+      "description": "Generic chat completion against the local model"
+    },
+    {
+      "name": "local_draft",
+      "description": "Produce a first-pass C draft from MIPS assembly"
+    },
+    {
+      "name": "local_summarize_diff",
+      "description": "Reduce asm-differ output to the first divergence and a score hint"
+    },
+    {
+      "name": "local_transform",
+      "description": "Apply one mechanical transformation to a C function"
+    }
+  ],
+  "keywords": ["sotn", "decompilation", "llama", "mips", "local-model"],
+  "license": "AGPL-3.0",
+  "compatibility": {
+    "claude_desktop": ">=0.10.0",
+    "platforms": ["win32"]
+  },
+  "user_config": {
+    "repo_path": {
+      "type": "string",
+      "title": "Repository path (as WSL sees it)",
+      "description": "Absolute WSL path to the sotn-decomp repo. A Windows folder C:\\Users\\you\\Documents\\SOTN-Decomp is /mnt/c/Users/you/Documents/SOTN-Decomp in WSL.",
+      "default": "/mnt/c/Users/YOUR_USER/path/to/SOTN-Decomp",
+      "required": true
+    },
+    "wsl_distro": {
+      "type": "string",
+      "title": "WSL distribution",
+      "description": "Which WSL distro to run in. Must be the one with the build toolchain, not docker-desktop.",
+      "default": "Ubuntu-24.04",
+      "required": true
+    },
+    "llama_base_url": {
+      "type": "string",
+      "title": "llama-server base URL",
+      "description": "OpenAI-compatible endpoint, ending in /v1. Reaching a Windows-hosted server from WSL requires mirrored networking.",
+      "default": "http://localhost:8081/v1",
+      "required": true
+    },
+    "llama_model": {
+      "type": "string",
+      "title": "Model id",
+      "description": "Must match exactly what /v1/models reports, or requests return 404.",
+      "default": "Qwen3.6-35B-A3B-Claude-4.7-Opus-Reasoning-Distilled-APEX-MTP-I-Compact.gguf",
+      "required": true
+    }
+  }
+}
