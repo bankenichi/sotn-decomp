@@ -211,12 +211,59 @@ def _bare(id_str: str) -> dict:
     return {"id": id_str, "build": build, "overlay": overlay, "function": function}
 
 
+PRIORITY_FILE = REPO / "automation" / "priority.us.json"
+
+
+def _load_priority() -> dict:
+    """Claim-order hints produced by automation/decl_coverage.py.
+
+    Shape: {"<function>": {"rank": int, "blocked": bool}, ...}
+
+    Kept OUT of the queue on purpose. Priority is derived from the repo (which
+    symbols are declared, which data addresses are still unnamed) and changes
+    every time a symbol gets named, while the queue records durable state. Bake
+    the ranking into the records and it is wrong by the next commit; compute it
+    at claim time and it is always current.
+
+    Missing or unreadable file means "no opinion", and claiming falls back to
+    file order exactly as before.
+    """
+    try:
+        return json.loads(PRIORITY_FILE.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
 def cmd_next(args):
     q = Queue()
+    prio = _load_priority()
 
     def fn(records):
+        todo = [r for r in records if r["status"] == "todo"]
+        if not todo:
+            return records, None
+
+        def key(r):
+            p = prio.get(r.get("function", ""), {})
+            # Blocked last. These reference data at raw addresses that nothing
+            # in the tree names, which is a structural failure (see
+            # MATCHING-LESSONS.md 1a): no model and no permuter run fixes it.
+            # As of 2026-07-21 that is 187 of 311 remaining us functions, so
+            # without this the fleet spends most of its time on work that
+            # cannot succeed.
+            return (1 if p.get("blocked") else 0,
+                    p.get("rank", 1_000_000))
+
+        if not args.include_blocked:
+            workable = [r for r in todo
+                        if not prio.get(r.get("function", ""), {}).get("blocked")]
+            # Only fall back to blocked records once the workable set is empty,
+            # so the fleet never idles, but never starts there either.
+            todo = workable or todo
+
+        best = min(todo, key=key)
         for r in records:
-            if r["status"] == "todo":
+            if r is best:
                 r["status"] = "claimed"
                 r["claimed_by"] = args.worker
                 r["updated_at"] = _now()
@@ -378,6 +425,8 @@ def main():
 
     pn = sub.add_parser("next"); pn.add_argument("--worker", required=True)
     pn.add_argument("--worktree", action="store_true", help="also create a git worktree")
+    pn.add_argument("--include-blocked", action="store_true",
+                    help="also claim functions blocked on unnamed data symbols")
     pn.set_defaults(func=cmd_next)
 
     pr = sub.add_parser("report")
