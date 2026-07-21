@@ -701,6 +701,35 @@ were measured through both of these.** "Compiles but wrong bytes" frequently
 meant "did not compile". Plateau claims, degeneration rates and the decision to
 switch backends all rest on that data and should be re-derived, not cited.
 
+## 10h. The m2c draft's struct fields are ground truth; models must not rewrite them
+
+Failure ladder observed while getting the OpenCode models productive, each layer
+uncovered only after the one above it was fixed:
+
+1. Syntax: modern-C mid-block declarations, rejected by C89 (see the SYSTEM
+   prompt's C89 block). Fixed first, dropped `parse error` from dominant to rare.
+2. THEN the dominant build error became `structure has no member named unkNN`.
+
+The second is a self-inflicted prompt bug. `tools/m2ctx.py` builds `ctx.c` with
+the real struct definitions, and m2c resolves every field access against it, so
+the draft's `self->step`, `ent->ext.ILLEGAL.s16[N]`, `->unk24` are correct BY
+CONSTRUCTION. But the SYSTEM prompt told the model to "name locals for meaning",
+and the models over-applied that to struct fields, renaming a correct `->unkA4`
+into a guessed `->unk24` or `->state` that does not exist.
+
+The fix is prompt-only and is the same principle as 10c/10f: harvest, do not
+guess. The draft is the harvest. Two rules now:
+
+- Struct-field accesses are copied from the draft VERBATIM; never rename,
+  simplify, or invent a `->field`.
+- The "name locals for meaning" licence is explicitly scoped to LOCAL VARIABLES,
+  which cannot change codegen. It does not extend to fields.
+
+Note what this did NOT require: injecting the ~80-member Entity union into every
+prompt. The right context was already present in the draft; the model just had
+to be told to trust it. Reach for the cheap "trust the existing resolved
+context" fix before the expensive "inject more context" one.
+
 ## 11. Probe the environment; never assert it from documentation
 
 On 2026-07-21 the orchestrator told the operator a cli fleet could not run under
