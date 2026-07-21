@@ -1431,8 +1431,28 @@ def build_and_check(rec: dict) -> tuple[bool, str]:
         #      when the real message was "structure has no member named unk32",
         #      so it had no way to learn the actual mistake and repeated it on
         #      every one of the four attempts.
-        rc, out = wsl(f"set -o pipefail; make build VERSION={rec['build']} "
-                      f"2>&1 | tail -40", timeout=BUILD_TIMEOUT)
+        # Capture make's REAL exit code, then extract the actual error lines,
+        # not `tail -40`.
+        #
+        # The build is ninja-parallel. When one compile fails, ninja prints its
+        # `FAILED:` block and the compiler error, then keeps running the other
+        # in-flight targets before exiting non-zero. `tail -40` therefore shows
+        # the unrelated targets that happened to finish LAST (stnz0, WEAPON0,
+        # strip steps), and the actual error scrolls off. The model was handed
+        # that noise as "BUILD FAILED" feedback and had no way to see the real
+        # cause (e.g. `implicit declaration of rand`), so retries stayed blind.
+        #
+        # Write to a temp file, keep make's rc via $?, then grep the error
+        # context out of the file. `exit $rc` makes wsl() see make's status, so
+        # a grep that finds nothing cannot masquerade as success.
+        blog = f"/tmp/sotn_build.{os.getpid()}.log"
+        rc, out = wsl(
+            f"make build VERSION={rec['build']} > {blog} 2>&1; rc=$?; "
+            f"grep -nE -A3 'error:|Error [0-9]|undefined reference|FAILED:' "
+            f"{blog} | head -60; "
+            f"[ $rc -ne 0 ] && echo '--- build tail ---' && tail -8 {blog}; "
+            f"rm -f {blog}; exit $rc",
+            timeout=BUILD_TIMEOUT)
         st.update("compiled" if rc == 0 else "BUILD FAILED")
     if rc != 0:
         return False, "BUILD FAILED:\n" + out.strip()[-1500:]
