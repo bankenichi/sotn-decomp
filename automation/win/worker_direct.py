@@ -1516,6 +1516,8 @@ def process_one(dry: bool = False) -> bool:
     # decides where the record is routed when the attempts run out. See the
     # status choice at the end of this function.
     compiled_once = False
+    produced_code = False   # did ANY attempt yield a candidate to build?
+    gen_errors = 0          # attempts that errored during generation
     try:
         _deadline = time.time() + FUNC_BUDGET
         for attempt in range(1, MAX_ATTEMPTS + 1):
@@ -1557,6 +1559,7 @@ def process_one(dry: bool = False) -> bool:
                       f"{int(ATTEMPT_BUDGET)}s; trying the next attempt",
                       flush=True)
                 best = f"attempt {attempt} timed out"
+                gen_errors += 1
                 feedback = ("Your previous answer did not finish in time. Reply "
                             "with the C function ONLY, no analysis.")
                 continue
@@ -1567,6 +1570,7 @@ def process_one(dry: bool = False) -> bool:
                 print(f"  !! attempt {attempt} generation failed: "
                       f"{type(e).__name__}: {str(e)[:200]}", flush=True)
                 best = f"attempt {attempt} failed: {type(e).__name__}"
+                gen_errors += 1
                 continue
             code = clean_code(raw)
             # Persist every attempt. A failed attempt is reverted to the stub,
@@ -1595,6 +1599,7 @@ def process_one(dry: bool = False) -> bool:
             print("  --- end ---", flush=True)
             if len(code) < 20:
                 feedback = "empty output"; continue
+            produced_code = True   # a real candidate reached the build stage
 
             # --- critical section: one worker at a time touches the tree ---
             #
@@ -1665,7 +1670,25 @@ def process_one(dry: bool = False) -> bool:
                   "--score", "50", "--tier", "0",
                   "--notes", ("compiled, byte mismatch; candidate for permuter. "
                               + best)[:250])
+        elif not produced_code:
+            # The model NEVER produced a candidate: every attempt errored during
+            # generation (server error, empty gateway drop, degeneration, or
+            # timeout). That is a model/infra failure, not evidence the function
+            # is hard, so escalating it to a paid tier is wrong. Return it to
+            # todo so a working model re-attempts it.
+            #
+            # This is what produced the 2026-07-21 escalation spike: a broken
+            # free model (hy3 returning UnknownError 80x) burned through ~40
+            # functions, escalating each after 4 failed generations it never
+            # actually evaluated.
+            print(f"[worker] REQUEUE {fn}: no candidate produced in "
+                  f"{gen_errors} error(s); back to todo", flush=True)
+            sched("report", "--id", rec["id"], "--status", "todo",
+                  "--notes", (f"requeued: model produced no candidate "
+                              f"({gen_errors} generation errors). {best}")[:250])
         else:
+            # A candidate WAS produced and it failed to build. That is a genuine
+            # escalation: the model tried and wrote non-compiling C.
             sched("report", "--id", rec["id"], "--status", "escalated",
                   "--score", "0", "--tier", "0", "--notes", best[:250])
     except KeyboardInterrupt:
