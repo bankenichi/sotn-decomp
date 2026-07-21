@@ -247,22 +247,30 @@ def cmd_next(args):
 
     def fn(records):
         todo = [r for r in records if r["status"] == "todo"]
+        deferred_ids = set()
         if args.include_deferred:
-            todo += [r for r in records
-                     if r["status"] == "deferred"
-                     and HANDOFF in (r.get("notes") or "")]
+            for r in records:
+                if (r["status"] == "deferred"
+                        and HANDOFF in (r.get("notes") or "")):
+                    todo.append(r)
+                    deferred_ids.add(r["id"])
         if not todo:
             return records, None
 
         def key(r):
             p = prio.get(r.get("function", ""), {})
-            # Blocked last. These reference data at raw addresses that nothing
-            # in the tree names, which is a structural failure (see
-            # MATCHING-LESSONS.md 1a): no model and no permuter run fixes it.
-            # As of 2026-07-21 that is 187 of 311 remaining us functions, so
-            # without this the fleet spends most of its time on work that
-            # cannot succeed.
-            return (1 if p.get("blocked") else 0,
+            # Ordering, outermost first:
+            #   1. deferred records LAST. A deferred handoff is a fallback: work
+            #      it only once the live todo pool is exhausted. Without this the
+            #      big handed-off functions (which rank high on declaration
+            #      coverage) get claimed before ordinary todo, which also makes
+            #      any model bake-off unfair, since some models draw a 12k-char
+            #      prompt that drops empty for size, not capability.
+            #   2. blocked last within a tier. Raw D_ addresses nothing names are
+            #      a structural failure (MATCHING-LESSONS.md 1a) no model fixes.
+            #   3. then declaration-coverage rank.
+            return (1 if r["id"] in deferred_ids else 0,
+                    1 if p.get("blocked") else 0,
                     p.get("rank", 1_000_000))
 
         if not args.include_blocked:
