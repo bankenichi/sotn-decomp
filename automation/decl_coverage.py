@@ -304,11 +304,21 @@ def main() -> int:
     #      address that nothing names is a structural failure (section 1a) that
     #      neither a better model nor the permuter can fix, so those go last
     #      regardless of how good the rest of their coverage looks.
-    #   2. then by declaration coverage, since that is what the prompt fix
-    #      (section 10f) actually improves.
-    #   3. then fewest symbols: a smaller surface is less to get wrong.
+    #   2. then by RESOLVED COUNT, descending.
+    #   3. then coverage, then fewest symbols as tie-breakers.
+    #
+    # Point 2 is deliberate and was wrong in the first version, which sorted by
+    # coverage ratio and then by fewest symbols. A function referencing no
+    # external symbols scores 1.0 coverage (100% of nothing) and sorted to the
+    # very top, so the 2026-07-21 run handed the fleet four 0/0 functions and
+    # the prompt-declaration fix was a no-op on every one of them: the logs show
+    # `decls: 0` for nine of eleven functions attempted.
+    #
+    # The whole point of the ordering is to spend the fix where it applies, and
+    # that scales with how many declarations actually get injected. Rank by the
+    # absolute count, not the ratio.
     rows.sort(key=lambda x: (len(x["undeclared_data"]),
-                             -x["coverage"], x["symbols"]))
+                             -x["resolved"], -x["coverage"], x["symbols"]))
 
     print(f"\n{'cov':>5}  {'res/tot':>8}  {'overlay':<12} function")
     print("-" * 72)
