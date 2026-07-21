@@ -438,6 +438,9 @@ def main():
     pn.add_argument("--worktree", action="store_true", help="also create a git worktree")
     pn.add_argument("--include-blocked", action="store_true",
                     help="also claim functions blocked on unnamed data symbols")
+    pn.add_argument("--include-deferred", action="store_true",
+                    help="also claim records a weaker tier deferred for size "
+                         "(notes containing TIER_HANDOFF_TOO_LARGE)")
     pn.set_defaults(func=cmd_next)
 
     pr = sub.add_parser("report")
