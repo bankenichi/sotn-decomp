@@ -1446,11 +1446,19 @@ def build_and_check(rec: dict) -> tuple[bool, str]:
         # context out of the file. `exit $rc` makes wsl() see make's status, so
         # a grep that finds nothing cannot masquerade as success.
         blog = f"/tmp/sotn_build.{os.getpid()}.log"
+        # The compiler is GCC 2.7 (cc1-psx-26). Its diagnostics are formatted
+        # `file.c:LINE: message` with NO `error:` keyword, e.g.
+        #   src/boss/bo0/2D26C.c:133: structure has no member named `unk32'
+        # so an `error:`-only grep matched nothing but make's own `Error 1`
+        # summary and the ✅/❌ overlay banner. Match the `file.(c|h):NN:` prefix
+        # itself, which is what every real diagnostic carries, plus ninja's
+        # `FAILED:` and linker `undefined reference`.
         rc, out = wsl(
             f"make build VERSION={rec['build']} > {blog} 2>&1; rc=$?; "
-            f"grep -nE -A3 'error:|Error [0-9]|undefined reference|FAILED:' "
+            f"grep -nE -A2 "
+            f"'[^ ]+\\.(c|h):[0-9]+:|FAILED:|undefined reference|: error' "
             f"{blog} | head -60; "
-            f"[ $rc -ne 0 ] && echo '--- build tail ---' && tail -8 {blog}; "
+            f"[ $rc -ne 0 ] && echo '--- build tail ---' && tail -6 {blog}; "
             f"rm -f {blog}; exit $rc",
             timeout=BUILD_TIMEOUT)
         st.update("compiled" if rc == 0 else "BUILD FAILED")
