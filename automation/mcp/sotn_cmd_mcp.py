@@ -104,19 +104,49 @@ def permuter_import(c_file: str, asm_file: str, timeout: int = 300) -> dict:
 
 @mcp.tool()
 def fleet_start(workers: int = 4, max_functions: int = 0,
-                force: bool = False) -> dict:
-    """Launch N detached volume workers in WSL. Returns immediately.
+                force: bool = False, backend: str = "http",
+                cli_workers: int = 0, opencode_model: str = "") -> dict:
+    """Launch detached volume workers in WSL. Returns immediately.
 
-    workers = generations in flight (1-16). apply/build/verify is lock-
-    serialised, so beyond ~4 the extras mostly queue. Requires llama-server
-    started with --parallel >= workers. Poll with fleet_status; always end with
-    fleet_stop or claims are left stranded.
+    backend picks the model tier:
+      "http"  (default) - `workers` local llama workers. Free, unlimited, but
+                          has plateaued on the remaining functions.
+      "cli"             - `workers` OpenCode CLI workers on the free Zen models.
+                          Quota is ACCOUNT-WIDE and shared across every model, so
+                          N parallel workers drain it about N times faster.
+      "mixed"           - `workers` llama workers AND `cli_workers` OpenCode
+                          workers against the same queue.
+
+    opencode_model overrides the worker default (opencode/big-pickle). Rotating
+    models does NOT grant fresh quota; see automation/opencode/ZEN-FREE-MODELS.md.
+
+    Total workers 1-16 = generations in flight. apply/build/verify is lock-
+    serialised, so beyond ~4 the extras mostly queue. llama workers need
+    llama-server started with --parallel >= that count.
+
+    Any cli worker triggers a preflight first: if the OpenCode CLI is not usable
+    from the worker's environment, NOTHING is started. Otherwise those workers
+    would claim records and escalate them for reasons unrelated to the function.
+
+    Poll with fleet_status; always end with fleet_stop or claims are stranded.
 
     HOLD: if the fleet was stopped deliberately (fleet_stop with hold), this
     REFUSES and returns held=True. That is intentional; a human may have stopped
     it to reconfigure llama-server. Automated callers must NOT pass force. Only
     override with force=True on an explicit human instruction to resume."""
-    return cc.fleet_start(workers, max_functions, force=force)
+    return cc.fleet_start(workers, max_functions, force=force, backend=backend,
+                          cli_workers=cli_workers,
+                          opencode_model=opencode_model)
+
+
+@mcp.tool()
+def opencode_preflight() -> dict:
+    """Check the OpenCode CLI is reachable from the worker environment.
+
+    Returns ok, the resolved binary path and its version. Cheap, spends no model
+    quota, and answers "will a cli fleet actually run here" without launching
+    one."""
+    return cc.opencode_preflight()
 
 
 @mcp.tool()

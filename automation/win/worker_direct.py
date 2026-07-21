@@ -41,6 +41,7 @@ import json
 import os
 import re
 import shlex
+import shutil
 import signal
 import socket
 import subprocess
@@ -89,6 +90,83 @@ OPENCODE_ATTACH = os.environ.get("OPENCODE_ATTACH", "").strip()
 # Tool-less agent defined in automation/opencode/opencode.json. Must be used, or
 # opencode run defaults to the tool-enabled "build" agent and explores the repo.
 OPENCODE_AGENT = os.environ.get("OPENCODE_AGENT", "raw")
+# Explicit path or command name. Set this if auto-detection picks the wrong one.
+OPENCODE_BIN = os.environ.get("OPENCODE_BIN", "").strip()
+
+
+class OpencodeMissing(RuntimeError):
+    """The OpenCode CLI could not be located on PATH."""
+
+
+# Resolved lazily and cached: shutil.which touches the filesystem for every PATH
+# entry, and the Windows PATH visible from WSL is long.
+_OPENCODE_RESOLVED: str | None = None
+
+
+def _opencode_candidates() -> list[str]:
+    """Names to try, most specific first.
+
+    OpenCode is installed here as a Windows program, `opencode.CMD`. A worker
+    running natively on Windows resolves a bare `opencode` fine, because cmd
+    applies PATHEXT. A worker running INSIDE WSL does not: WSL appends the
+    Windows PATH so the file is reachable, but Linux exec has no PATHEXT, so
+    the extensionless name never matches and you get FileNotFoundError on every
+    single generation. That is why the extensions are listed explicitly.
+    """
+    if OPENCODE_BIN:
+        return [OPENCODE_BIN]
+    if IS_WINDOWS:
+        return ["opencode", "opencode.cmd", "opencode.exe"]
+    # Inside WSL a native Linux install should win over the Windows one: calling
+    # across the interop boundary costs roughly 200ms per invocation and drags
+    # in Windows path translation.
+    return ["opencode", "opencode.cmd", "opencode.CMD", "opencode.exe",
+            "opencode.bat"]
+
+
+def resolve_opencode() -> str:
+    """Return an executable path for the OpenCode CLI, or raise OpencodeMissing.
+
+    An absolute OPENCODE_BIN is trusted as given so a non-PATH install works.
+    """
+    global _OPENCODE_RESOLVED
+    if _OPENCODE_RESOLVED:
+        return _OPENCODE_RESOLVED
+    tried = []
+    for name in _opencode_candidates():
+        if os.path.isabs(name) and os.path.exists(name):
+            _OPENCODE_RESOLVED = name
+            return name
+        found = shutil.which(name)
+        tried.append(name)
+        if found:
+            _OPENCODE_RESOLVED = found
+            return found
+    raise OpencodeMissing(
+        "OpenCode CLI not found. Tried: " + ", ".join(tried) +
+        f" (platform={'windows' if IS_WINDOWS else 'posix/wsl'}). "
+        "Set OPENCODE_BIN to the full path, or run the fleet on Windows where "
+        "opencode.CMD lives.")
+
+
+def opencode_preflight(timeout: float = 30.0) -> dict:
+    """Prove the CLI exists AND runs before a fleet commits to it.
+
+    Launching four workers against a broken CLI is not a harmless mistake: each
+    one claims a queue record, fails every attempt, and marks the function
+    escalated. The queue ends up poisoned with failures that say nothing about
+    the function. So check once, up front, and refuse rather than discover it
+    four workers deep.
+    """
+    path = resolve_opencode()
+    p = subprocess.run([path, "--version"], capture_output=True, text=True,
+                       encoding="utf-8", errors="replace", timeout=timeout,
+                       stdin=subprocess.DEVNULL)
+    ok = p.returncode == 0
+    return {"ok": ok, "path": path,
+            "version": (p.stdout or "").strip()[:120],
+            "stderr": (p.stderr or "").strip()[:300],
+            "returncode": p.returncode}
 
 
 class _EmptyOutput(RuntimeError):
@@ -134,7 +212,7 @@ def _opencode_run_once(prompt: str, timeout: float | None = None) -> str:
     # The "raw" agent is defined in automation/opencode/opencode.json with every
     # tool disabled, so it can only answer. OPENCODE_CONFIG must point at that
     # file or the agent will not be found.
-    argv = ["opencode", "run", "--model", OPENCODE_MODEL,
+    argv = [resolve_opencode(), "run", "--model", OPENCODE_MODEL,
             "--agent", OPENCODE_AGENT, "--auto"]
     if OPENCODE_ATTACH:
         argv += ["--attach", OPENCODE_ATTACH]
@@ -1315,10 +1393,41 @@ def main() -> int:
     p2 = sub.add_parser("loop")
     p2.add_argument("--max", type=int, default=0)
     p2.add_argument("--dry-run", action="store_true")
+    sub.add_parser("preflight",
+                   help="check the configured backend is reachable, then exit")
     a = ap.parse_args()
 
     if not os.path.isdir(WIN_REPO):
         print(f"repo not found: {WIN_REPO}", file=sys.stderr); return 1
+
+    if a.cmd == "preflight":
+        # Machine-readable so the connector can gate a fleet launch on it.
+        try:
+            if MODEL_BACKEND == "cli":
+                r = opencode_preflight()
+            else:
+                r = {"ok": True, "backend": "http", "url": LLAMA_URL,
+                     "note": "http backend is checked per-request, not here"}
+        except (OpencodeMissing, subprocess.SubprocessError, OSError) as e:
+            r = {"ok": False, "error": f"{type(e).__name__}: {e}"}
+        r["backend"] = MODEL_BACKEND
+        print(json.dumps(r))
+        return 0 if r.get("ok") else 1
+
+    # A cli worker that cannot find the CLI will claim a record, fail every
+    # attempt and escalate a function for reasons that have nothing to do with
+    # the function. Refuse at startup instead.
+    if MODEL_BACKEND == "cli":
+        try:
+            _pf = opencode_preflight()
+        except (OpencodeMissing, subprocess.SubprocessError, OSError) as e:
+            print(f"[worker] cli backend unusable: {e}", file=sys.stderr)
+            return 1
+        if not _pf["ok"]:
+            print(f"[worker] cli backend unusable: {_pf}", file=sys.stderr)
+            return 1
+        print(f"[worker] opencode: {_pf['path']} {_pf['version']}",
+              file=sys.stderr)
 
     # fleet_stop sends SIGTERM. Python does NOT raise KeyboardInterrupt for it,
     # so without this handler a killed worker skipped every cleanup path and left

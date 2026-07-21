@@ -12,8 +12,10 @@ Stdlib only, so it is importable and unit-testable anywhere.
 """
 from __future__ import annotations
 import datetime as dt
+import json
 import os
 import re
+import shlex
 import subprocess
 import time
 from pathlib import Path
@@ -321,24 +323,83 @@ FLEET_PIDS = "automation/logs/fleet.pids"
 FLEET_HOLD = "automation/logs/FLEET_HOLD"
 
 
+# Worker log/PID basenames per backend. _fleet_pids_alive globs worker-*.pid and
+# fleet_status globs worker-*.log, so any name of that shape is reaped and
+# reported. Keeping the backend IN the name is what makes a mixed fleet legible:
+# "worker-oc-2.log" says which model produced a given line without cross-
+# referencing anything.
+_BACKEND_TAG = {"http": "llama", "cli": "oc"}
+
+
+def opencode_preflight(timeout: int = 90) -> dict:
+    """Ask the worker itself whether the OpenCode CLI is usable.
+
+    Delegated rather than reimplemented: the worker owns binary resolution, so
+    a check written here would be a second implementation free to drift from
+    the one that actually runs.
+    """
+    argv = [PYTHON, "automation/win/worker_direct.py", "preflight"]
+    env = dict(os.environ, MODEL_BACKEND="cli")
+    try:
+        p = subprocess.run(argv, cwd=str(REPO), capture_output=True, text=True,
+                           timeout=timeout, env=env)
+    except subprocess.SubprocessError as e:
+        return {"ok": False, "error": f"{type(e).__name__}: {e}"}
+    out = (p.stdout or "").strip()
+    try:
+        return json.loads(out.splitlines()[-1]) if out else {
+            "ok": False, "error": "preflight produced no output",
+            "stderr": (p.stderr or "")[:400]}
+    except (ValueError, IndexError):
+        return {"ok": False, "error": "preflight output was not JSON",
+                "stdout": out[:400], "stderr": (p.stderr or "")[:400]}
+
+
 def fleet_start(workers: int = 4, max_functions: int = 0,
-                force: bool = False) -> dict:
-    """Launch N detached worker_direct.py processes inside WSL.
+                force: bool = False, backend: str = "http",
+                cli_workers: int = 0, opencode_model: str = "") -> dict:
+    """Launch detached worker_direct.py processes inside WSL.
 
     Lets the orchestrator run the volume tier without a human at a PowerShell
     prompt. Workers run natively here (worker_direct.py is OS-aware), write to
-    automation/logs/worker-N.log, and record their PIDs so fleet_stop can reap
-    them.
+    automation/logs/worker-<tag>-N.log, and record their PIDs so fleet_stop can
+    reap them.
 
-    N is generations in flight. apply/build/verify is serialised by a lock, so
-    beyond ~4 workers the extra ones mostly queue. llama-server must be started
-    with --parallel >= N or generation serialises too.
+    backend:
+      "http"  - `workers` local llama workers (the original behaviour)
+      "cli"   - `workers` OpenCode CLI workers on the free Zen models
+      "mixed" - `workers` llama workers AND `cli_workers` OpenCode workers,
+                against the same queue
+
+    Why mixed is worth having: the two backends fail differently. llama is free
+    and unlimited but has plateaued; the Zen models may be stronger but draw on
+    a shared account-wide quota that parallel workers drain proportionally
+    faster. Running both means the quota is spent on functions llama has already
+    failed rather than on ones it would have got anyway.
+
+    Total workers is generations in flight. apply/build/verify is serialised by
+    a lock, so beyond ~4 the extras mostly queue. llama-server must be started
+    with --parallel >= the llama worker count or generation serialises too.
     """
-    if not 1 <= int(workers) <= 16:
-        raise Rejected("workers must be 1-16")
+    backend = (backend or "http").strip().lower()
+    if backend not in ("http", "cli", "mixed"):
+        raise Rejected("backend must be http, cli or mixed")
+
+    n_http = int(workers) if backend in ("http", "mixed") else 0
+    n_cli = (int(workers) if backend == "cli"
+             else int(cli_workers) if backend == "mixed" else 0)
+    if backend == "mixed" and n_cli < 1:
+        raise Rejected("backend=mixed needs cli_workers >= 1")
+    total = n_http + n_cli
+    if not 1 <= total <= 16:
+        raise Rejected(f"total workers must be 1-16 (got {total})")
+
+    plan = {"backend": backend, "llama_workers": n_http, "cli_workers": n_cli,
+            "opencode_model": opencode_model or "(worker default)"}
     if DRYRUN:
-        return {"action": "fleet_start", "workers": workers, "dry_run": True,
+        return {"action": "fleet_start", "dry_run": True, **plan,
                 "note": "would launch detached workers"}
+
     (REPO / FLEET_LOGS).mkdir(parents=True, exist_ok=True)
     hold = REPO / FLEET_HOLD
     if hold.exists() and not force:
@@ -361,25 +422,63 @@ def fleet_start(workers: int = 4, max_functions: int = 0,
         return {"action": "fleet_start", "started": 0, "already_running": running,
                 "note": "fleet already active; call fleet_stop first"}
 
+    # Preflight BEFORE spawning anything. A cli worker that cannot reach the CLI
+    # still claims queue records and escalates them, so the damage is a poisoned
+    # queue rather than a clean failure. Check once; refuse if it fails.
+    pf = None
+    if n_cli:
+        pf = opencode_preflight()
+        if not pf.get("ok"):
+            return {"action": "fleet_start", "started": 0, **plan,
+                    "preflight": pf,
+                    "note": "OpenCode CLI is not usable from the worker's "
+                            "environment, so NO workers were started. The fleet "
+                            "runs inside WSL; opencode is installed on Windows. "
+                            "Set OPENCODE_BIN, or launch via "
+                            "automation\\win\\start_fleet.ps1 on Windows."}
+
     extra = f" --max {int(max_functions)}" if int(max_functions) > 0 else ""
     # One bash invocation launches every worker and writes the pid file, so a
     # slow MCP round trip cannot leave a half-started, untracked fleet.
-    script = (
-        f"cd {REPO} && mkdir -p {FLEET_LOGS} && : > {FLEET_PIDS} && "
-        f"for i in $(seq 1 {int(workers)}); do "
-        f"  rm -f {FLEET_LOGS}/worker-$i.log; "
-        f"  WORKER_NAME=fleet-$i setsid nohup python3 "
-        f"automation/win/worker_direct.py loop{extra} "
-        f"> {FLEET_LOGS}/worker-$i.log 2>&1 < /dev/null & "
-        f"  echo $! >> {FLEET_PIDS}; "
-        f"done; cat {FLEET_PIDS}"
-    )
+    #
+    # Env is set per-worker on the command line rather than exported once: the
+    # two groups need DIFFERENT values for MODEL_BACKEND, and a single export
+    # would silently give every worker the last one set. That is exactly how the
+    # original version ended up unable to launch anything but llama.
+    parts = [f"cd {shlex.quote(str(REPO))} && mkdir -p {FLEET_LOGS} && "
+             f": > {FLEET_PIDS}"]
+    for be, count in (("http", n_http), ("cli", n_cli)):
+        if not count:
+            continue
+        tag = _BACKEND_TAG[be]
+        env = f"MODEL_BACKEND={be}"
+        if be == "cli" and opencode_model:
+            env += f" OPENCODE_MODEL={shlex.quote(opencode_model)}"
+        parts.append(
+            f"for i in $(seq 1 {count}); do "
+            f"  rm -f {FLEET_LOGS}/worker-{tag}-$i.log; "
+            f"  {env} WORKER_NAME=fleet-{tag}-$i setsid nohup python3 "
+            f"automation/win/worker_direct.py loop{extra} "
+            f"> {FLEET_LOGS}/worker-{tag}-$i.log 2>&1 < /dev/null & "
+            f"  echo $! >> {FLEET_PIDS}; "
+            f"  sleep 0.4; "
+            f"done"
+        )
+    parts.append(f"cat {FLEET_PIDS}")
+    script = " && ".join(parts)
+
     p = subprocess.run(["bash", "-lc", script], cwd=str(REPO),
-                       capture_output=True, text=True, timeout=60)
+                       capture_output=True, text=True, timeout=120)
     pids = [int(x) for x in p.stdout.split() if x.isdigit()]
-    return {"action": "fleet_start", "started": len(pids), "pids": pids,
-            "logs": FLEET_LOGS,
-            "note": "detached; poll with fleet_status, stop with fleet_stop"}
+    out = {"action": "fleet_start", "started": len(pids), "pids": pids,
+           **plan, "logs": FLEET_LOGS,
+           "note": "detached; poll with fleet_status, stop with fleet_stop"}
+    if pf:
+        out["preflight"] = pf
+    if len(pids) != total:
+        out["warning"] = (f"expected {total} workers, launched {len(pids)}; "
+                          f"stderr: {(p.stderr or '')[:300]}")
+    return out
 
 
 def _fleet_pids_alive() -> list[int]:

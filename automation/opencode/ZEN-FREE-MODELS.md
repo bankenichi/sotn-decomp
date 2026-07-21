@@ -52,6 +52,59 @@ Then start the fleet from the same shell. Optional but worth it for a fleet: run
 Because these are hosted, the local `--parallel` constraint is gone. The Zen
 usage limit is the binding constraint now, not VRAM.
 
+## Launching a cli or mixed fleet from the connector
+
+`fleet_start` takes a `backend` parameter, so no terminal is required:
+
+```
+fleet_start(workers=4, backend="cli")                     # 4 OpenCode workers
+fleet_start(workers=2, backend="mixed", cli_workers=2)    # 2 llama + 2 OpenCode
+fleet_start(workers=4, backend="cli", opencode_model="opencode/hy3-free")
+```
+
+Workers are named and logged by backend, so a mixed run stays legible:
+`automation/logs/worker-llama-N.log` and `worker-oc-N.log`. Both shapes are
+picked up by `fleet_status` and reaped by `fleet_stop`.
+
+Env is set per worker on the command line, not exported once for the whole
+launch. That matters for `mixed`: a single export would give every worker
+whichever `MODEL_BACKEND` was set last, silently making a "mixed" fleet
+uniform. This was the original defect, where `fleet_start` passed only
+`WORKER_NAME` and so could never launch anything but llama.
+
+### Preflight
+
+Any `cli` worker triggers a preflight first (`opencode_preflight`, or
+`worker_direct.py preflight`). If the CLI is not usable, **nothing** starts,
+including the llama half of a mixed fleet.
+
+This is not politeness. A cli worker that cannot reach the CLI still claims a
+queue record and fails every attempt, marking the function `escalated` for
+reasons that have nothing to do with the function. Four such workers poison the
+queue faster than they fail. Check once, refuse, start nothing.
+
+### Binary resolution
+
+The worker resolves the CLI via `resolve_opencode()`, trying bare `opencode`
+first and falling back to `opencode.cmd` / `.CMD` / `.exe` / `.bat`. Override
+with `OPENCODE_BIN` (an absolute path is trusted as given).
+
+The fallbacks exist because WSL appends the Windows PATH but has no `PATHEXT`,
+so an extensionless name will not match a `.CMD`. A native Linux install of
+OpenCode inside WSL resolves on the first candidate and never reaches them.
+
+### Parallelism and shared quota
+
+The Zen limit is account-wide (see below), so `cli_workers` divides one pool
+rather than multiplying throughput: 4 workers exhaust the day's quota roughly 4x
+sooner. Prefer fewer cli workers running longer unless you are deliberately
+spending the pool in one sitting.
+
+A mixed fleet is the useful shape here: llama is free and unlimited but has
+plateaued, so pairing a couple of llama workers with a couple of cli workers
+spends scarce quota on functions llama has already failed rather than on ones it
+would have matched anyway.
+
 ### The HTTP path still works
 
 `MODEL_BACKEND=http` (the default) keeps the original OpenAI-compatible path for

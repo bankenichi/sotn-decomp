@@ -486,3 +486,31 @@ Therefore parallel agents must never build. Two agents editing different `.c` fi
 building the same tree will interleave, and each will read the other's failure as its own.
 
 The working pattern is: parallelize analysis, serialize the build.
+
+## 11. Probe the environment; never assert it from documentation
+
+On 2026-07-21 the orchestrator told the operator a cli fleet could not run under
+WSL, because `ORCHESTRATOR.md` said "OpenCode | Windows native, `opencode.CMD`".
+The operator had already been running OpenCode inside WSL that day. The doc line
+was a snapshot of one install, restated later as a property of the system.
+
+Two distinct errors, worth separating:
+
+1. **Reasoning from a doc instead of the machine.** A table row records what was
+   true when someone wrote it. Environments change without the doc changing.
+2. **Reporting an inference at the confidence of an observation.** The claim was
+   phrased as "would almost certainly fail". Nothing had been run.
+
+Cost: a fabricated blocker, and a recommendation to take a slower path around a
+problem that did not exist.
+
+The rule: an environment claim (a binary exists, a path resolves, a service
+answers, a flag is supported) is only reportable if something was **run** to
+establish it. If it cannot be run right now, say so and label the claim a guess.
+
+Practical consequence, and why `opencode_preflight` exists: build the probe
+instead of arguing about the answer. It is cheap, spends no quota, and settles
+the question. Prefer a tool that reports what is true over a document that
+asserts it. Doc rows describing the environment should point at the probe rather
+than restate its result, which is why that row now reads "never assume; run
+`opencode_preflight`".
