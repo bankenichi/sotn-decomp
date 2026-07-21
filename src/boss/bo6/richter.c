@@ -34,7 +34,27 @@ INCLUDE_ASM("boss/bo6/nonmatchings/richter", EntityRichter);
 
 INCLUDE_ASM("boss/bo6/nonmatchings/richter", BO6_RicStepStand);
 
-INCLUDE_ASM("boss/bo6/nonmatchings/richter", BO6_RicStepWalk);
+extern s32 BO6_RicCheckInput(s32);
+extern void DecelerateX(s32);
+extern s32 BO6_RicCheckFacing(void);
+extern void BO6_RicSetStand(s32);
+extern void BO6_RicSetSpeedX(s32);
+extern u16 D_80076306;
+
+/* Ric's walking step in BOSS/BO6: when no directional input is held,
+ * decelerate and either stand still or resume walk speed if facing
+ * an open direction (D_80076306 == 0). */
+void BO6_RicStepWalk(void) {
+    /* 0x305C is the directional-pad bitmask checked for any held input */
+    if (BO6_RicCheckInput(0x305C) == 0) {
+        DecelerateX(0x2000);
+        if (BO6_RicCheckFacing() == 0) {
+            BO6_RicSetStand(0);
+        } else if (D_80076306 == 0) {
+            BO6_RicSetSpeedX(0x14000);
+        }
+    }
+}
 
 INCLUDE_ASM("boss/bo6/nonmatchings/richter", BO6_RicStepRun);
 
