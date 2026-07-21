@@ -1295,6 +1295,11 @@ def process_one(dry: bool = False) -> bool:
         return True
 
     original, feedback, best = None, "", "no attempt completed"
+    # Did ANY attempt produce C that compiled and merely missed on bytes?
+    # That is a fundamentally different outcome from "never built", and it
+    # decides where the record is routed when the attempts run out. See the
+    # status choice at the end of this function.
+    compiled_once = False
     try:
         _deadline = time.time() + FUNC_BUDGET
         for attempt in range(1, MAX_ATTEMPTS + 1):
@@ -1395,14 +1400,36 @@ def process_one(dry: bool = False) -> bool:
                 return True
             feedback = detail
             if "BUILD FAILED" not in detail:
+                compiled_once = True
                 with Status("asm-differ (collecting feedback)"):
                     feedback += "\n\nDIFF:\n" + diff_feedback(rec)
             for dl in detail.splitlines()[:6]:
                 print(f"    | {dl[:110]}")
         if original is not None:
             restore(ctx, original)
-        sched("report", "--id", rec["id"], "--status", "escalated",
-              "--score", "0", "--tier", "0", "--notes", best[:250])
+        # Route by FAILURE KIND, not just by "did not match".
+        #
+        # "compiled but the bytes differ" and "never built" are different
+        # problems with different owners. MATCHING-LESSONS.md section 6 says so,
+        # and the tier table routes `near` to the permuter FIRST because it
+        # costs no tokens. Reporting both as `escalated` sent codegen near-misses
+        # to the expensive model tier and starved the permuter of exactly the
+        # records it exists to solve.
+        #
+        # Evidence this is the common case, 2026-07-21: on func_us_801B9DE4 two
+        # unrelated models produced identical, semantically CORRECT C (every
+        # struct offset verified by hand against include/game.h) that still
+        # missed. No larger model fixes that; a codegen search might.
+        if compiled_once:
+            print(f"[worker] NEAR {fn}: compiled, bytes differ -> permuter",
+                  flush=True)
+            sched("report", "--id", rec["id"], "--status", "near",
+                  "--score", "50", "--tier", "0",
+                  "--notes", ("compiled, byte mismatch; candidate for permuter. "
+                              + best)[:250])
+        else:
+            sched("report", "--id", rec["id"], "--status", "escalated",
+                  "--score", "0", "--tier", "0", "--notes", best[:250])
     except KeyboardInterrupt:
         # Ctrl-C must never leave a half-applied edit in a real source file.
         print("\n[worker] interrupted; restoring source and releasing record")
