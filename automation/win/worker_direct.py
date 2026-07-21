@@ -491,6 +491,83 @@ _INDEX: dict[str, tuple[str, int, str]] | None = None
 RX_INC = re.compile(r'INCLUDE_ASM\(\s*"([^"]+)"\s*,\s*([A-Za-z0-9_]+)\s*\)')
 
 
+# ---- symbol declarations for the prompt -------------------------------------
+#
+# WHY THIS EXISTS
+#
+# The prompt used to contain only the assembly and the m2c draft. Nothing told
+# the model which symbols exist, what type they are, or that it had to declare
+# them. So the model guessed, and a guess that is semantically right can still
+# generate different code.
+#
+# Measured cost, 2026-07-21: func_us_801B9DE4 and BO6_RicSetSlide were both
+# recorded as near-misses for hours. Both matched on the first try once the
+# animation array was declared `extern AnimationFrame D_us_X[];` and passed as
+# `D_us_X` rather than the model's `&D_us_X`. The declaration was already
+# present in the SAME source file. The harness simply never showed it.
+#
+# So: pull every symbol the assembly references, find how the repo already
+# declares it, and put that in the prompt verbatim.
+
+# %hi(sym) / %lo(sym), optionally with an offset like `g_Ric + 0x340`, plus
+# direct `jal sym` call targets.
+_ASM_SYM_RE = re.compile(
+    r"%(?:hi|lo)\(\s*([A-Za-z_][A-Za-z0-9_]*)|"
+    r"\bjal\s+([A-Za-z_][A-Za-z0-9_]*)")
+# Cheap guard: these are addressing helpers, not real symbols.
+_SYM_SKIP = {"hi", "lo"}
+_DECL_CACHE: dict[str, str] = {}
+
+
+def extract_asm_symbols(asm: str, exclude: str = "") -> list[str]:
+    """Every distinct symbol the assembly references, in first-seen order.
+
+    `exclude` drops the function's own name, which appears in glabel/.size and
+    would otherwise ask the model to declare the thing it is writing.
+    """
+    out: list[str] = []
+    for m in _ASM_SYM_RE.finditer(asm or ""):
+        s = m.group(1) or m.group(2)
+        if s and s != exclude and s not in _SYM_SKIP and s not in out:
+            out.append(s)
+    return out
+
+
+def lookup_declarations(symbols: list[str], limit: int = 40) -> list[str]:
+    """Existing declarations for `symbols`, harvested from the repo itself.
+
+    Deliberately NOT synthesised. A guessed `extern s32 D_us_X;` for something
+    the repo declares as `extern AnimationFrame D_us_X[];` would produce exactly
+    the codegen mismatch this is meant to prevent. If the tree does not already
+    declare a symbol, we say nothing about it rather than inventing a type.
+    """
+    wanted = [s for s in symbols if s not in _DECL_CACHE][:limit]
+    if wanted:
+        # One grep for all of them: per-symbol greps over src/ and include/ cost
+        # seconds each and this runs before every attempt.
+        alt = "|".join(re.escape(s) for s in wanted)
+        pat = rf"^[[:space:]]*extern[^;]*\b({alt})\b[^;]*;"
+        rc, out = wsl(
+            f"grep -rhoE {shlex.quote(pat)} src include "
+            f"--include='*.c' --include='*.h' 2>/dev/null | sort -u",
+            timeout=120)
+        found: dict[str, str] = {}
+        if rc == 0:
+            for line in out.splitlines():
+                line = line.strip()
+                for s in wanted:
+                    # Bind each declaration to its symbol, shortest wins: the
+                    # shortest matching line is the plain declaration rather
+                    # than something that merely mentions the name.
+                    if re.search(rf"\b{re.escape(s)}\b", line):
+                        if s not in found or len(line) < len(found[s]):
+                            found[s] = line
+        for s in wanted:
+            _DECL_CACHE[s] = found.get(s, "")
+    return [_DECL_CACHE[s] for s in symbols
+            if _DECL_CACHE.get(s)]
+
+
 def find_source(function: str, overlay: str | None = None):
     """Locate a function's INCLUDE_ASM stub, preferring the RIGHT overlay.
 
@@ -556,6 +633,7 @@ def prepare(rec: dict, located) -> dict:
     src_rel, lineno, asm_rel = located
     asm_file = asm_rel_path(rec, asm_rel)
     fn = rec["function"]
+    _ = _DECL_CACHE  # module-level cache, populated by lookup_declarations
 
     asm_text = ""
     p = win_path(asm_file)
@@ -580,9 +658,12 @@ def prepare(rec: dict, located) -> dict:
         rc, draft = wsl(f"python3 tools/m2c/m2c.py --target mipsel-gcc-c "
                         f"-f {fn} {asm_file}", timeout=300)
     draft = draft.strip()[:MAX_CTX_CHARS]
-    print(f"[prep] draft: {len(draft)} chars, asm: {len(asm_text)} chars")
+    decls = lookup_declarations(extract_asm_symbols(asm_text, exclude=fn))
+    print(f"[prep] draft: {len(draft)} chars, asm: {len(asm_text)} chars, "
+          f"decls: {len(decls)}")
     return {"asm": asm_text, "draft": draft, "src_rel": src_rel,
-            "lineno": lineno, "asm_rel": asm_rel, "asm_file": asm_file}
+            "lineno": lineno, "asm_rel": asm_rel, "asm_file": asm_file,
+            "decls": decls}
 
 
 # ---- the model call (single shot, no tools) ---------------------------------
@@ -595,6 +676,13 @@ SYSTEM = (
     "it. Use the project's real types (Entity*, Primitive*, s16/s32/u8/u16) "
     "instead of the draft's '?' placeholders. Do not invent helper functions. "
     "Keep the exact function name given.\n"
+    "DECLARE WHAT YOU USE. If a DECLARATIONS section is present it is ground "
+    "truth taken from the project; copy those lines verbatim above your "
+    "function and match their types exactly. Never guess a type for a symbol "
+    "that section already declares. For an array declared `extern T NAME[];` "
+    "pass `NAME`, NOT `&NAME`: taking the address of an array compiles but "
+    "generates different code and will not match. This exact mistake caused "
+    "two functions to be misfiled as unmatchable.\n"
     "ANNOTATE THE CODE. 'No prose' means no text outside the C; it does NOT "
     "mean no comments. A matching decompilation that nobody can read is worth "
     "very little, and comments and local variable names cannot change the "
@@ -1036,9 +1124,22 @@ def clean_code(text: str) -> str:
 
 def build_prompt(rec: dict, ctx: dict, feedback: str = "") -> str:
     fb = f"\nPREVIOUS ATTEMPT FAILED:\n{feedback}\nFix it.\n" if feedback else ""
+    # Declarations harvested from the tree. These are ground truth about types,
+    # so they go BEFORE the asm: the model should read them as constraints, not
+    # as an afterthought to the draft it has already committed to.
+    decls = ctx.get("decls") or []
+    dsec = ""
+    if decls:
+        dsec = ("\n=== DECLARATIONS ALREADY IN THE PROJECT ===\n"
+                "These are the real types for the symbols this function uses.\n"
+                "Copy any you need verbatim. Do NOT invent a different type.\n"
+                "Note the arrays: pass `NAME`, never `&NAME`. Taking the address\n"
+                "of an array generates different code and will not match.\n"
+                + "\n".join(decls) + "\n")
     return (
         f"Function: {rec['function']}   (overlay {rec['overlay']}, build {rec['build']})\n"
-        f"{fb}\n=== MIPS ASSEMBLY ===\n{ctx['asm']}\n\n"
+        f"{fb}{dsec}"
+        f"\n=== MIPS ASSEMBLY ===\n{ctx['asm']}\n\n"
         f"=== m2c DRAFT (rough, fix the types) ===\n{ctx['draft']}\n\n"
         f"Return the complete C function {rec['function']} only."
     )

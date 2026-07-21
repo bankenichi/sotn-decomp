@@ -617,6 +617,44 @@ Symptom to recognise: a rejection naming an artifact your change does not touch.
 That is never a real failure of your function. Treat it as evidence of a
 concurrency defect, not of a hard function.
 
+## 10f. Give the model the declarations, or it will guess a type and miss
+
+`build_prompt` used to send exactly two things: the assembly and the m2c draft.
+Nothing told the model which symbols existed, what type they were, or that it
+had to declare them. So it guessed. A guess can be semantically right and still
+generate different code.
+
+Measured, 2026-07-21. `func_us_801B9DE4` and `BO6_RicSetSlide` sat as
+near-misses for hours and were used as evidence that the local model had
+plateaued. Both matched on the first try after one change:
+
+```c
+extern AnimationFrame D_us_80182010[];   /* was absent entirely */
+BO6_RicSetAnimation(D_us_80182010);      /* model wrote &D_us_80182010 */
+```
+
+For `extern T NAME[]`, passing `NAME` and passing `&NAME` compile to different
+code. The declaration was already present in the SAME source file. The harness
+never showed it.
+
+**The fix is to harvest, never to synthesise.** `lookup_declarations()` greps
+`src/` and `include/` for how the tree already declares each symbol the asm
+references, and puts those lines in the prompt verbatim. If the repo does not
+declare a symbol, the prompt says nothing about it. A synthesised
+`extern s32 D_us_X;` for something the repo declares as
+`extern AnimationFrame D_us_X[];` would manufacture the exact bug this prevents.
+
+The wider lesson, and the reason this went unnoticed for so long: **two failing
+consumers with a shared input means the input is the suspect** (see 10c). Both
+models produced identical wrong code, which read as "the models agree, so the
+function must be hard". It actually read "both were handed the same incomplete
+context". A capability ceiling and a context defect look the same from the
+outside; the difference is whether you checked what the model was given.
+
+Corollary for triage: before escalating anything to a more expensive tier, ask
+what the cheap tier was actually shown. Escalation cannot fix missing input, it
+just pays more for the same guess.
+
 ## 11. Probe the environment; never assert it from documentation
 
 On 2026-07-21 the orchestrator told the operator a cli fleet could not run under
