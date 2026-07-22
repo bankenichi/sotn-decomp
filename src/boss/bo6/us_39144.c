@@ -213,7 +213,32 @@ INCLUDE_ASM("boss/bo6/nonmatchings/us_39144", BO6_RicGetFreeEntityReverse);
 
 INCLUDE_ASM("boss/bo6/nonmatchings/us_39144", func_us_801BB314);
 
-INCLUDE_ASM("boss/bo6/nonmatchings/us_39144", func_us_801BB370);
+// Loads attack/defense/hitbox attributes for this entity from the subweapon definition table,
+// indexed by entity's subweapon type (at offset 0xB0).
+// If the player has a certain timer active, the base attack value is doubled (signed multiply).
+extern unsigned char subweapons_def[];
+
+void func_us_801BB370(Entity* entity) {
+    // Compute pointer into subweapons_def array: offset = (s16)entity->ext.u[0x34] * 20
+    // 0xB0 = 0x7C (ext start) + 0x34, stored as signed halfword.
+    unsigned char* entry = subweapons_def + (*(s16*)((unsigned char*)entity + 0xB0) * 20);
+
+    // If the player's timer at index 13 (offset 0x34A in g_Ric) is non‑zero, the attack
+    // value is taken as a signed halfword and multiplied by 2.
+    // Otherwise it's taken as an unsigned halfword (directly stored).
+    if (*(s16*)((unsigned char*)&g_Ric + 0x34A) != 0) {
+        entity->attack = *(s16*)(entry + 0) * 2;
+    } else {
+        entity->attack = *(u16*)(entry + 0);
+    }
+
+    entity->attackElement = *(u16*)(entry + 4);
+    entity->hitboxState = *(u16*)(entry + 12);
+    entity->nFramesInvincibility = *(entry + 7);
+    entity->stunFrames = *(u16*)(entry + 8);
+    entity->hitEffect = *(u16*)(entry + 14);
+    entity->entityRoomIndex = *(u16*)(entry + 18);
+}
 
 INCLUDE_ASM("boss/bo6/nonmatchings/us_39144", BO6_RicCheckSubweapon);
 

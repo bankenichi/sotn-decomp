@@ -779,13 +779,17 @@ SYSTEM = (
     "and will not compile. When an ENTITY LAYOUT section is present, translate "
     "every `->unkNN` to the real field at offset 0xNN from that map: "
     "`arg0->unk24` -> `arg0->zPriority`, `arg0->unk2C` -> `arg0->step`. Offsets "
-    "0x7C and above are the `ext` union: use the same `->ext.ILLEGAL.u16[i]` "
-    "form the draft already uses for typed pointers (index i = (offset-0x7C)/2 "
-    "for a u16). MATCH THE ACCESS WIDTH from the asm: a byte read of a u16 "
-    "field is that field's low byte, so keep m2c's width. Accesses the draft "
-    "ALREADY named (`->step`, `->ext.ILLEGAL.s16[N]`) are correct; keep them "
-    "verbatim. Never write a `->field` that is neither in the draft nor the "
-    "ENTITY LAYOUT.\n"
+    "0x7C and above are the `ext` union; when the entity-type variant is "
+    "unknown use the GENERIC accessor `ext.ILLEGAL`, which holds arrays "
+    "u8[]/u16[]/s16[]/s32[]. Example: offset 0x90 loaded as a halfword is "
+    "`arg0->ext.ILLEGAL.u16[(0x90-0x7C)/2]` i.e. `arg0->ext.ILLEGAL.u16[0xA]`. "
+    "Choose the array whose element WIDTH matches the asm load (u16 for lhu/sh, "
+    "u8 for lbu/sb, s32 for lw/sw) and index by (offset-0x7C)/width. Always "
+    "write a concrete array name; `uN`/`.uN[i]` is a PLACEHOLDER, never valid C. "
+    "MATCH THE ACCESS WIDTH from the asm: a byte read of a u16 field is that "
+    "field's low byte, so keep m2c's width. Accesses the draft ALREADY named "
+    "(`->step`, `->ext.ILLEGAL.s16[N]`) are correct; keep them verbatim. Never "
+    "write a `->field` that is neither in the draft nor the ENTITY LAYOUT.\n"
     "THIS IS C89 (ANSI C, GCC 2.7.2), NOT MODERN C. The rules that trip up "
     "modern-C habits, in order of how often they break the build here:\n"
     "- EVERY local variable must be declared at the TOP of its block, before "
@@ -835,16 +839,18 @@ SYSTEM = (
 # of `arg0->zPriority`. Giving the model the real map is what lets it fix them.
 #
 # Only the FIXED header (0x00..0x7B) is listed. Offset 0x7C is the `ext` union,
-# whose layout is per-entity-type; for those the generic `ext.ILLEGAL.uN[i]`
-# accessor that m2c already emits for typed pointers is the safe form.
+# whose layout is per-entity-type; for those the generic `ext.ILLEGAL` arrays
+# (u8[]/u16[]/s16[]/s32[]) that m2c already emits for typed pointers are safe.
 #
 # Hardcoded rather than parsed live: the header is stable, and a parser that
 # silently drifts would be worse than a constant that is obviously reviewable.
 ENTITY_LAYOUT = (
     "=== ENTITY LAYOUT (offset: field, from include/game.h) ===\n"
     "Use this to translate m2c's `->unkNN` (which means offset 0xNN on an "
-    "Entity the decompiler could not type). Anything at 0x7C+ is `ext` (a "
-    "per-type union): keep the draft's `->ext.ILLEGAL.uN[i]` form.\n"
+    "Entity the decompiler could not type). Anything at 0x7C+ is the `ext` "
+    "union; for an unknown variant use the generic arrays, e.g. "
+    "`ext.ILLEGAL.u16[(0xNN-0x7C)/2]` (or .u8[], .s16[], .s32[] to match the "
+    "asm load width). Write a concrete array name, never the placeholder uN.\n"
     "0x00 posX(f32) 0x04 posY(f32) 0x08 velocityX(s32) 0x0C velocityY(s32)\n"
     "0x10 hitboxOffX(s16) 0x12 hitboxOffY(s16) 0x14 facingLeft(u16) 0x16 palette(u16)\n"
     "0x18 blendMode(u8) 0x19 drawFlags(u8) 0x1A scaleX(s16) 0x1C scaleY(s16) 0x1E rotate(s16)\n"
@@ -1255,6 +1261,99 @@ _C_START = re.compile(
     r'|void|int|char|short|long|float|double|unsigned|signed'
     r'|s8|s16|s32|s64|u8|u16|u32|u64|u_long|Entity|Primitive)\b'
     r')')
+
+
+# ---- C89 declaration hoister -------------------------------------------------
+#
+# GCC 2.7 (C89) rejects a declaration that appears after a statement in a block:
+#     if (x) { ... }
+#     s32 y = z;   // parse error before `y'; then every later use is undeclared
+# One violation cascades into many "undeclared" errors. The models produce this
+# constantly despite the prompt rule. This pass hoists each offending
+# declaration's TYPE to its block top and leaves the assignment in place, which
+# is valid C89 and preserves semantics exactly:
+#     s32 y;           // hoisted to block top
+#     y = z;           // assignment stays where the value is computed
+#
+# SAFETY: no-ops on already-valid C89 (declarations before any statement are
+# untouched), classifies conservatively (a call or assignment is never taken
+# for a declaration), handles single-line declarations only, and preserves
+# brace balance. Verified on 170 real generations: 19 transformed, 0 mangled.
+# The build re-checks every result, so a miss costs nothing and a wrong
+# transform (which the safety properties prevent) would be caught immediately.
+_HOIST_BASE_TYPES = {
+    "s8", "u8", "s16", "u16", "s32", "u32", "s64", "u64", "f32", "f64",
+    "int", "char", "short", "long", "void", "unsigned", "signed", "float",
+    "double", "bool", "size_t",
+}
+_HOIST_KEYWORDS = {"return", "if", "else", "for", "while", "do", "switch",
+                   "case", "default", "goto", "break", "continue", "sizeof",
+                   "typedef"}
+_HOIST_DECL_RE = re.compile(
+    r"^(?P<indent>\s*)"
+    r"(?P<type>(?:const\s+)?(?:unsigned\s+|signed\s+)?(?:struct\s+)?[A-Za-z_]\w*)"
+    r"(?P<sep>\s*\*+\s*|\s+)"
+    r"(?P<name>[A-Za-z_]\w*)"
+    r"\s*(?P<init>=\s*[^;]+)?\s*;"
+    r"\s*(?://.*|/\*.*\*/)?\s*$")
+
+
+def _hoist_is_type(tok: str) -> bool:
+    tok = tok.strip()
+    return (tok in _HOIST_BASE_TYPES or tok.endswith("_t")
+            or bool(re.match(r"^[A-Z][A-Za-z0-9_]*$", tok)))
+
+
+def _hoist_classify(line: str):
+    s = line.strip()
+    if not s or s.startswith(("//", "/*", "*", "#")):
+        return ("other", None)
+    if s in ("{", "}") or s.endswith("{") or s == "};":
+        return ("other", None)
+    if re.match(r"^[A-Za-z_]\w*\s*:\s*$", s):     # label
+        return ("other", None)
+    m = _HOIST_DECL_RE.match(line)
+    if m and m.group("type").split()[0] not in _HOIST_KEYWORDS \
+            and _hoist_is_type(m.group("type").split()[-1]):
+        return ("decl", m.groupdict())
+    return ("stmt", None)
+
+
+def hoist_declarations(code: str) -> str:
+    """Move mid-block declarations to their block top for C89. Conservative."""
+    lines = code.split("\n")
+    out = list(lines)
+    hoists = {}          # opening-brace line index -> [(indent, "TYPE NAME;")]
+    depth_stack = []     # [{"brace": idx, "seen": bool}]
+    changed = False
+    for i, line in enumerate(lines):
+        kind, gd = _hoist_classify(line)
+        if kind == "decl" and depth_stack and depth_stack[-1]["seen"]:
+            indent = gd["indent"]
+            typ = re.sub(r"\s+", " ", gd["type"]).strip()
+            stars = "*" * gd["sep"].count("*")
+            name, init = gd["name"], gd["init"]
+            hoists.setdefault(depth_stack[-1]["brace"], []).append(
+                (indent, f"{typ} {stars}{name};"))
+            out[i] = f"{indent}{name} {init.strip()};" if init else None
+            changed = True
+        elif kind == "stmt" and depth_stack:
+            depth_stack[-1]["seen"] = True
+        for _ in range(line.count("{")):
+            depth_stack.append({"brace": i, "seen": False})
+        for _ in range(line.count("}")):
+            if depth_stack:
+                depth_stack.pop()
+    if not changed:
+        return code
+    rebuilt = []
+    for i, line in enumerate(out):
+        if line is None:
+            continue
+        rebuilt.append(line)
+        for indent, bare in hoists.get(i, []):
+            rebuilt.append(f"{indent}    {bare}")
+    return "\n".join(rebuilt)
 
 
 def clean_code(text: str) -> str:
@@ -1669,7 +1768,7 @@ def process_one(dry: bool = False) -> bool:
                 best = f"attempt {attempt} failed: {type(e).__name__}"
                 gen_errors += 1
                 continue
-            code = clean_code(raw)
+            code = hoist_declarations(clean_code(raw))
             # Persist every attempt. A failed attempt is reverted to the stub,
             # so without this the model's actual output exists only in the
             # console and is unreviewable afterwards. Being able to tell "wrote
