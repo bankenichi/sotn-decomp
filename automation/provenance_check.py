@@ -47,6 +47,46 @@ UPSTREAM = "upstream/master"
 
 VERBATIM, ADAPTED, DERIVED = 0.95, 0.80, 0.55
 
+# A similarity score is only meaningful once a body has enough shape to be
+# distinctive. Erasing identifiers and numbers is what lets the metric see
+# through a rename, and it is also what makes every "load a pointer, store
+# three fields" setter look like every other one.
+#
+# Measured, not guessed. A manual pass over the flagged functions found THREE
+# misattributions of exactly this kind, all scoring 1.000:
+#   BO6_RicSetAnimation  -> dop_anim.h:func_8010DA2C   (real twin: ric/pl_utils.c)
+#   SetSubStep           -> dop_anim.h:func_8010DA2C   (real twin: st/st_common.h)
+#   func_us_801B9C14     -> bo4:EnableAfterImage       (2 statements vs our 4)
+# The first two matching the SAME upstream function was the tell. Once control
+# flow enters, shape alone can no longer be satisfied by unrelated code, and
+# RicEntitySubwpnCross's 0.809 held up under line-by-line review.
+# Flatness alone is the WRONG test, and trying it proved that: it suppressed
+# UpdateClockHands, a confirmed real copy verified instruction-by-instruction
+# against two overlays' ground truth. The problem was never that a body is
+# short. It is that a short body can match MANY upstream functions equally
+# well, and picking one of them to name is arbitrary.
+#
+# So gate on ambiguity instead. If several unrelated upstream functions tie at
+# the top score, the shape is generic and no attribution is honest. If exactly
+# one function stands at the top, the attribution means something however short
+# the body is. That keeps UpdateClockHands (a unique twin in st/no0) and drops
+# the three-field setters (dozens of equals across the tree).
+MAX_TIES = 3            # distinct upstream functions allowed at the top score
+
+# Shingles are a SET, and repeated statements collapse in a set. `a=0; b=0;
+# c=0; d=0;` and `a=0; b=0;` erase to the SAME shingles, so Jaccard reports
+# 1.000 for bodies of visibly different length. That is how func_us_801B9C14
+# (four field-zeroings) scored a perfect match against bo4's EnableAfterImage
+# (two). Set similarity cannot see multiplicity, so carry length separately:
+# two bodies of materially different size are not the same body whatever their
+# shingles say.
+LEN_RATIO = 0.75        # shorter/longer normalised token count, minimum
+
+
+def _token_len(body: str) -> int:
+    return len(re.findall(r"[A-Za-z_]\w*|0x[0-9A-Fa-f]+|\d+|[^\s\w]",
+                          _normalise(body)))
+
 
 def _git(*args: str, timeout: int = 300) -> str:
     try:
@@ -106,7 +146,7 @@ def _functions(src: str) -> list[tuple[str, str]]:
     return out
 
 
-def upstream_corpus() -> dict[str, tuple[str, set[str]]]:
+def upstream_corpus() -> dict[str, tuple[str, set[str], int]]:
     """Every function upstream defines: key -> (where, shingles).
 
     Headers included. src/st deduplicates by putting the shared implementation
@@ -116,7 +156,7 @@ def upstream_corpus() -> dict[str, tuple[str, set[str]]]:
     files = [f for f in _git("ls-tree", "-r", "--name-only", UPSTREAM).splitlines()
              if f.startswith("src/") and f.endswith((".c", ".h"))
              and "saturn" not in f]
-    corpus: dict[str, tuple[str, set[str]]] = {}
+    corpus: dict[str, tuple[str, set[str], int]] = {}
     CH = 400
     for i in range(0, len(files), CH):
         batch = files[i:i + CH]
@@ -139,7 +179,7 @@ def upstream_corpus() -> dict[str, tuple[str, set[str]]]:
             for name, body in _functions(text):
                 sh = _shingles(body)
                 if len(sh) >= 8:              # ignore trivial one-liners
-                    corpus[f"{f}:{name}"] = (f, sh)
+                    corpus[f"{f}:{name}"] = (f, sh, _token_len(body))
     return corpus
 
 
@@ -190,24 +230,43 @@ def main() -> int:
             rows.append({"file": rel, "function": name, "score": None,
                          "grade": "trivial", "match": ""})
             continue
-        best, score = "", 0.0
+
+        best, score, ties = "", 0.0, 0
         selfkey = f"{rel}:{name}"
-        for key, (_, osh) in corpus.items():
+        ourlen = _token_len(body)
+        scored: list[tuple[float, str]] = []
+        for key, (_, osh, olen) in corpus.items():
             if key == selfkey:
                 continue            # a function cannot be a copy of itself
             inter = len(sh & osh)
             if not inter:
                 continue
             j = inter / len(sh | osh)
+            # Penalise by length agreement, so a set-similarity tie between
+            # bodies of different size cannot masquerade as verbatim.
+            if ourlen and olen:
+                j *= min(ourlen, olen) / max(ourlen, olen)
+            scored.append((j, key))
             if j > score:
                 best, score = key, j
+        # How many DISTINCT upstream functions sit at that same top score?
+        ties = len({k.rsplit(":", 1)[-1] for j, k in scored
+                    if score - j < 1e-9})
+        if score > 0 and ties > MAX_TIES:
+            rows.append({"file": rel, "function": name, "score": round(score, 3),
+                         "grade": "unattributable", "match": "",
+                         "note": f"{ties} distinct upstream functions tie at "
+                                 f"{score:.3f}; the shape is generic, so naming "
+                                 f"one source would be arbitrary"})
+            continue
         grade = ("verbatim" if score >= VERBATIM else
                  "adapted" if score >= ADAPTED else
                  "derived" if score >= DERIVED else "original")
         rows.append({"file": rel, "function": name, "score": round(score, 3),
                      "grade": grade, "match": best})
 
-    order = ["verbatim", "adapted", "derived", "original", "trivial"]
+    order = ["verbatim", "adapted", "derived", "original",
+             "unattributable", "trivial"]
     by = defaultdict(list)
     for r in rows:
         by[r["grade"]].append(r)

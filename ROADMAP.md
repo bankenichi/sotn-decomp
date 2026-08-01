@@ -111,37 +111,61 @@ damage the tree rather than merely fail.
 **Done when:** `shim_viable` reports VIABLE for the five, each is shimmed one at
 a time, and 81/81 holds after each.
 
-## P3b — The 9 copies that shimming will NOT fix
+## P3b — (resolved 2026-08-01) The 9 non-shimmable copies, classified
 
-**Why separate from P3:** `provenance_check.py` grades every function we
-authored against upstream. 83 of 124 are copies, which substantiates upstream's
-"just copies of functions we already have" exactly. But 74 of those come from a
-shared `src/st/*.h` and vanish the moment P3 lands. Nine do not:
+Two subagents read all nine against their claimed source AND against this
+overlay's own ground-truth asm. **None is functionally wrong.** The split:
 
-| ours | copied from |
-|---|---|
-| `us_39144.c:BO6_RicSetAnimation` | `boss/dop_anim.h:func_8010DA2C` |
-| `us_39144.c:func_us_801B9C14` | `boss/bo4/unk_45354.c:EnableAfterImage` |
-| `us_3E79C.c:RicEntitySubwpnCross` | `ric/pl_subweapon_cross.c` (0.809) |
-| `e_clock_room.c:UpdateBirdcages` | `st/no0/clock_room.c` |
-| `e_clock_room.c:UpdateClockHands` | `st/no0/clock_room.c` |
-| `giantbro_helpers.c:func_801CE1E8` | `st/no2/4966C.c` |
-| `giantbro_helpers.c:func_801CE228` | `st/no2/4966C.c` |
-| `st_common.c:DestroyEntity` | `destroy_entity.h` |
-| `st_common.c:SetSubStep` | `boss/dop_anim.h:func_8010DA2C` |
+**Four should become shared headers.** This is the outcome upstream would most
+want, and it converts a copy into infrastructure rather than deleting it:
 
-For each, the question is which of three it is, and the answer differs per row:
+| ours | destination | consumers |
+|---|---|---|
+| `e_clock_room.c:UpdateBirdcages` | `src/st/clock_room_entities.h` | no0, rno0, rno0_psp |
+| `e_clock_room.c:UpdateClockHands` | `src/st/clock_room_entities.h` | no0, rno0, rno0_psp |
+| `giantbro_helpers.c:func_801CE1E8` | `src/st/giantbro_helpers.h` | no2, np3, rno0, rno0_psp |
+| `giantbro_helpers.c:func_801CE228` | `src/st/giantbro_helpers.h` | no2, np3, rno0, rno0_psp |
 
-1. the body genuinely recurs per overlay and a private copy is correct
-   (upstream ships 55 of these itself, so this is a real category);
-2. it should become a shared header the way `destroy_entity.h` and
-   `dop_anim.h` already are, which is the strongest outcome and the one
-   upstream would most want;
-3. it is a copy that was never checked against this overlay's own asm and may
-   be wrong in a way the byte match cannot show, since two overlays' versions
-   can differ in constants while sharing a shape.
+Each was verified instruction-by-instruction against 2 or 3 overlays' asm with
+zero divergence. `UpdateClockHands` needs its `#ifdef VERSION_PSP` split
+preserved; `clock_room_entities.h` already uses that idiom.
 
-Do not batch these. Each needs its own asm comparison.
+Why the clock-room pair sat outside the header while its neighbour
+`UpdateStatueTiles` sat inside it: the header groups the *entity update*
+functions, and these two are utilities called from `EntityClockRoomController`,
+which is not shared because it is full of per-overlay room-state logic. The
+boundary was drawn at "everything after the controller", not at "everything
+reusable". No functional reason blocks the move.
+
+**Two are covered by P3 after all** and were only listed here because the
+scanner named the wrong source: `st_common.c:DestroyEntity` (real twin
+`src/destroy_entity.h`, which `src/st/st_common.h` already includes) and
+`st_common.c:SetSubStep` (real twin `src/st/st_common.h`). 27 of 28 stage
+overlays get both free from a 4-line shim; rno0 is the sole outlier.
+
+**Three are legitimate per-overlay implementations.** `BO6_RicSetAnimation` is
+an idiom duplicated 5+ times across the tree. `func_us_801B9C14` zeroes four
+fields where the cited match zeroes two. `RicEntitySubwpnCross` adds an entire
+"knocked out of the air while spinning" state RIC does not have, including a
+double store of `timer` that the byte-matched asm confirms is in the original.
+
+### What this cost the tool, and what it bought
+
+Three of the nine were MISATTRIBUTIONS by `provenance_check.py`, and finding
+that was worth more than the classifications. Two defects, both now fixed and
+both regression-tested against these nine cases:
+
+1. **Generic shapes.** Erasing identifiers is what lets the metric see through
+   a rename; it is also what makes every "load pointer, store three fields"
+   setter identical. Now gated on ambiguity, not on length: if more than 3
+   distinct upstream functions tie at the top score, no attribution is made.
+   Gating on flatness instead was tried first and wrongly suppressed
+   `UpdateClockHands`, a real copy.
+2. **Set similarity cannot count.** `a=0;b=0;c=0;d=0;` and `a=0;b=0;` erase to
+   the same shingle SET, so Jaccard returned 1.000 for bodies of different
+   size. Scores are now scaled by length agreement.
+
+Corrected distribution: 79 of 124 are copies (was 83), 3 unattributable.
 
 ## P4 — Wire the review checks into the worker
 
