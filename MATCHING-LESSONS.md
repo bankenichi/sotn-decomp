@@ -764,6 +764,53 @@ Two things this reframes:
   accessor is enough for the common case, and honest about the hard residue
   (byte-into-halfword accesses) that no map alone fixes.
 
+## 10j. A byte match is the FLOOR. Upstream reviews for STRUCTURE, not bytes
+
+Upstream reviewed this fork on 2026-07-21 and rejected matching code. The
+verdict worth memorising: *"Matching is just the very most basic requirement for
+decomp."* Every objection was mechanical, and every one is now detected by
+`automation/quality_audit.py`:
+
+1. **Fake symbols.** `extern u16 D_80076306;` is really `g_Entities[64].step_s`
+   (verified: g_Entities=0x800733D8, sizeof(Entity)=0xBC, 0x2F2E = index 64
+   remainder 0x2E = step_s). Declaring a new extern for an address that already
+   has a meaning hides structure and is unmergeable.
+2. **`ext.ILLEGAL` where a named variant exists.** `ext.ILLEGAL.u16[0]` should be
+   `ext.reboundStone.stoneAngle`. **This one was self-inflicted**: the SYSTEM
+   prompt had been changed hours earlier to actively recommend the generic
+   accessor. We shipped 14 new instances of the anti-pattern (19 -> 33) by
+   telling the model to.
+3. **Magic bitmask literals.** `drawFlags &= 0xFB` should be
+   `&= ~ENTITY_ROTATE`. The struct even names its enum in a comment
+   (`u8 drawFlags; // refer to enum EntityDrawFlags`).
+4. **Raw casts instead of an existing struct.** A wall of `*(u16*)(entry + 4)`
+   where `SubweaponDef* p` gives `p->attackElement`.
+5. **Copy-paste duplicates** of functions that already exist elsewhere.
+
+Audit result on our 133 added functions: 39 findings across 19 functions
+(18 fake symbols, 14 ILLEGAL, 5 duplicates, 2 magic masks). So ~86% were clean
+and the damage was concentrated, but the concentrated part was exactly the part
+a reviewer opens first.
+
+**The tooling lesson.** Every one of these is detectable without a human, so
+none of them should ever have reached review. `automation/codebase_index.py`
+harvests the ground truth once (symbols, Entity layout, 461 ext variants, enum
+groups, field->enum comments, 2656 function bodies) into `index.us.json`, and
+both the audit AND the prompt read from it. Harvest once, reference everywhere.
+
+**The advice lesson.** The first version of the bitmask check suggested
+"DRAW_COLORS / PAD_L1 / ELEMENT_UNK_4" for bit 0x4 because it looked up the bare
+value across the whole codebase, where ~50 constants share it. Wrong advice is
+worse than silence: it invites picking a plausible wrong constant. Scoping by
+the struct's own `// refer to enum X` comment makes the answer unique
+(ENTITY_ROTATE) and is authoritative rather than guessed.
+
+**The framing lesson, and the expensive one.** Every metric this project
+optimised was "does it match". That target was measurable, automatable, and
+insufficient, so the harness got very good at producing byte-identical code a
+maintainer will not merge. When choosing what to measure, ask what the ACCEPTING
+party checks, not what is easiest to check.
+
 ## 11. Probe the environment; never assert it from documentation
 
 On 2026-07-21 the orchestrator told the operator a cli fleet could not run under

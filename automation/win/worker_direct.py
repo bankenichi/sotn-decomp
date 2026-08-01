@@ -773,19 +773,37 @@ SYSTEM = (
     "it. Use the project's real types (Entity*, Primitive*, s16/s32/u8/u16) "
     "instead of the draft's '?' placeholders. Do not invent helper functions. "
     "Keep the exact function name given.\n"
+    "A BYTE MATCH IS THE FLOOR, NOT THE BAR. Upstream review rejects matching "
+    "code that hides structure. These are the rejection reasons, in the order "
+    "they actually occur:\n"
+    "- NEVER declare a new `extern` for a raw address that already has a "
+    "  meaning. `extern u16 D_80076306;` is really `g_Entities[64].step_s`; "
+    "  declaring it invents a fake symbol and is unmergeable. If an address "
+    "  lands inside a known array or struct, express it that way.\n"
+    "- Use NAMED CONSTANTS, not bitmask literals. `drawFlags &= 0xFB` must be "
+    "  `drawFlags &= ~ENTITY_ROTATE`. If a flag enum exists for the field, use "
+    "  it; a bare hex mask is a review rejection.\n"
+    "- Use the EXISTING STRUCT, not pointer arithmetic. If the data is a known "
+    "  table entry (e.g. SubweaponDef), declare `SubweaponDef* p = &table[i];` "
+    "  and use `p->attackElement`. A wall of `*(u16*)(base + 4)` casts matches "
+    "  but is unreadable and gets rejected.\n"
+    "- Prefer the codebase's own helpers and names over re-deriving them.\n"
+    "The goal is code a maintainer would merge, not merely bytes that match.\n"
     "STRUCT FIELDS: TRANSLATE m2c's `->unkNN`, NEVER INVENT NEW ONES. m2c "
     "writes a synthetic `->unkNN` (e.g. `arg0->unk24`) whenever it could not "
     "type a pointer, usually a function PARAMETER. `unk24` is NOT a real field "
     "and will not compile. When an ENTITY LAYOUT section is present, translate "
     "every `->unkNN` to the real field at offset 0xNN from that map: "
     "`arg0->unk24` -> `arg0->zPriority`, `arg0->unk2C` -> `arg0->step`. Offsets "
-    "0x7C and above are the `ext` union; when the entity-type variant is "
-    "unknown use the GENERIC accessor `ext.ILLEGAL`, which holds arrays "
-    "u8[]/u16[]/s16[]/s32[]. Example: offset 0x90 loaded as a halfword is "
-    "`arg0->ext.ILLEGAL.u16[(0x90-0x7C)/2]` i.e. `arg0->ext.ILLEGAL.u16[0xA]`. "
-    "Choose the array whose element WIDTH matches the asm load (u16 for lhu/sh, "
-    "u8 for lbu/sb, s32 for lw/sw) and index by (offset-0x7C)/width. Always "
-    "write a concrete array name; `uN`/`.uN[i]` is a PLACEHOLDER, never valid C. "
+    "0x7C and above are the `ext` union. PREFER THE NAMED VARIANT for this "
+    "entity type: `ext.reboundStone.stoneAngle`, `ext.subweapon.timer`. An EXT "
+    "VARIANTS section lists the real field names when one applies; use them. "
+    "`ext.ILLEGAL.u16[N]` is a LAST RESORT for a genuinely unknown variant and "
+    "is rejected in review when a named field exists, so only fall back to it "
+    "if no listed variant fits, and say so in a comment. When you must, pick "
+    "the array matching the asm load width (u16 for lhu/sh, u8 for lbu/sb, s32 "
+    "for lw/sw), index by (offset-0x7C)/width, and write a concrete array name; "
+    "`uN` is a placeholder, never valid C. "
     "MATCH THE ACCESS WIDTH from the asm: a byte read of a u16 field is that "
     "field's low byte, so keep m2c's width. Accesses the draft ALREADY named "
     "(`->step`, `->ext.ILLEGAL.s16[N]`) are correct; keep them verbatim. Never "
@@ -1319,6 +1337,52 @@ def _hoist_classify(line: str):
     return ("stmt", None)
 
 
+_EXT_INDEX_CACHE: dict | None = None
+
+
+def ext_variants_for(function: str, blob: str, limit: int = 4) -> str:
+    """Named ext-variant field lists relevant to this function.
+
+    Reads automation/index.us.json (built by codebase_index.py). Selection is by
+    name affinity: BO6_ReboundStoneBounce2 -> the `reboundStone` variant,
+    BO6_RicDoSubweapon -> `subweapon`. Only a handful are injected, because the
+    union has 461 variants and dumping them would bury the prompt.
+
+    Without this the "prefer the named variant" rule is unactionable: the model
+    has no way to know `stoneAngle` exists, so it falls back to
+    `ext.ILLEGAL.u16[0]`, which upstream rejects.
+    """
+    global _EXT_INDEX_CACHE
+    if _EXT_INDEX_CACHE is None:
+        try:
+            p = os.path.join(WIN_REPO, "automation", "index.us.json")
+            with open(p, encoding="utf-8") as f:
+                _EXT_INDEX_CACHE = json.load(f).get("ext_variants", {})
+        except (OSError, ValueError):
+            _EXT_INDEX_CACHE = {}
+    variants = _EXT_INDEX_CACHE
+    if not variants:
+        return ""
+    hay = (function + " " + blob).lower()
+    scored = []
+    for vname, meta in variants.items():
+        if len(vname) < 4:
+            continue
+        if vname.lower() in hay:
+            scored.append((len(vname), vname, meta))
+    if not scored:
+        return ""
+    scored.sort(reverse=True)
+    out = ["\n=== EXT VARIANTS (real field names; prefer these over ILLEGAL) ==="]
+    for _, vname, meta in scored[:limit]:
+        fields = [f["name"] for f in meta.get("fields", []) if f.get("name")]
+        if not fields:
+            continue
+        out.append(f"ext.{vname} ({meta.get('type','?')}): "
+                   + ", ".join(fields[:14]))
+    return "\n".join(out) + "\n" if len(out) > 1 else ""
+
+
 def hoist_declarations(code: str) -> str:
     """Move mid-block declarations to their block top for C89. Conservative."""
     lines = code.split("\n")
@@ -1401,6 +1465,12 @@ def build_prompt(rec: dict, ctx: dict, feedback: str = "") -> str:
     if ("Entity" in blob or "g_CurrentEntity" in blob or "g_Ric" in blob
             or re.search(r"->unk[0-9A-Fa-f]{1,2}\b", blob)):
         entity_sec = "\n" + ENTITY_LAYOUT
+        # Real ext field names for whichever variants this function plausibly
+        # touches. Telling the model "prefer the named variant" is useless
+        # without the names, which is how ext.ILLEGAL got written everywhere.
+        ev = ext_variants_for(rec.get("function", ""), blob)
+        if ev:
+            entity_sec += ev
     return (
         f"Function: {rec['function']}   (overlay {rec['overlay']}, build {rec['build']})\n"
         f"{fb}{dsec}{entity_sec}"
