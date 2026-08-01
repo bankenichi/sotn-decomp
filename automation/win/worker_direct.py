@@ -1376,6 +1376,92 @@ def resolve_raw_symbols(asm: str, limit: int = 10) -> str:
 
 # MIPS load/store -> the C type that access width implies. Used to type a
 # symbol that the linker knows about but no C file declares.
+def quality_gate(code: str, asm: str) -> list[str]:
+    """Reject generated C that matches bytes but would fail review.
+
+    PROMPT RULES ARE NOT ENOUGH. Every defect class below was already forbidden
+    in SYSTEM and the models produced it anyway. A rule the pipeline cannot
+    enforce is a suggestion; this makes the same checks a hard gate, so a
+    defective candidate is spent as a failed attempt and its specific defect
+    becomes the retry feedback.
+
+    Returns a list of human-readable defects, empty when the code is clean.
+    Deliberately conservative: only patterns with a verified, unambiguous fix,
+    because a false rejection wastes an attempt on good code.
+    """
+    idx = _load_index()
+    problems: list[str] = []
+
+    # 1. Invented externs for addresses that already have a meaning.
+    syms = idx.get("symbols", {}).get("name_to_addr", {})
+    ent = idx.get("entity", {}).get("fields", {})
+    try:
+        base = int(syms.get("g_Entities", "0x0"), 16)
+    except ValueError:
+        base = 0
+    for m in re.finditer(r"^\s*extern\s[^;]*?\bD_(?:us_)?([0-9A-Fa-f]{8})\b",
+                         code, re.M):
+        addr = int(m.group(1), 16)
+        if base and base <= addr < base + 0xBC * 256:
+            i, f = divmod(addr - base, 0xBC)
+            fld = ent.get(f"0x{f:X}") or ent.get(f"0x{f:02X}")
+            where = (f"g_Entities[{i}].{fld['name']}" if fld
+                     else f"g_Entities[{i}].ext + 0x{f - 0x7C:02X}")
+            problems.append(
+                f"declares `D_{m.group(1)}` but that address IS {where}; "
+                f"use the real expression, do not declare a new symbol")
+
+    # 2. Raw pointer arithmetic where the project has a struct. Flagged only
+    #    when casting off a byte pointer, which is the unambiguous smell.
+    n_casts = len(re.findall(
+        r"\*\(\s*[a-z]?[su]?\w*\s*\*\s*\)\s*\(\s*\(?\s*(?:unsigned char|u8|char)\s*\*",
+        code))
+    if n_casts:
+        problems.append(
+            f"{n_casts} raw byte-pointer cast(s) like `*(u16*)((u8*)p + N)`; "
+            f"use the real struct and named members instead")
+
+    # 3. `unsigned char` etc. instead of the project's own scalar typedefs.
+    for bad, good in (("unsigned char", "u8"), ("unsigned short", "u16"),
+                      ("unsigned int", "u32")):
+        if re.search(rf"\b{bad}\b", code):
+            problems.append(f"uses `{bad}`; this codebase uses `{good}`")
+
+    # 4. ext.ILLEGAL where the asm shows which named variant applies.
+    if "ext.ILLEGAL" in code:
+        problems.append(
+            "uses `ext.ILLEGAL`; prefer the named ext variant for this entity "
+            "type (see the EXT VARIANTS section)")
+
+    # 5. Bitmask literals that have a named constant for that field.
+    fe = idx.get("constants", {}).get("field_enum", {})
+    groups = idx.get("constants", {}).get("groups", {})
+    for m in re.finditer(r"([A-Za-z_][\w\.\->]*)\s*(&=|\|=)\s*(~?)\s*(0x[0-9A-Fa-f]+)",
+                         code):
+        var, op, tilde, lit = m.groups()
+        try:
+            val = int(lit, 16)
+        except ValueError:
+            continue
+        cand = (~val) & 0xFF if (op == "&=" and not tilde) else val
+        if not cand or (cand & (cand - 1)):
+            continue                                   # not a single bit
+        tail = re.split(r"[\.\->]", var)[-1].lower()
+        for field, enum_name in fe.items():
+            if tail.endswith(field.lower()):
+                for cname, cval in (groups.get(enum_name) or {}).items():
+                    try:
+                        if int(cval, 16) == cand:
+                            problems.append(
+                                f"`{var} {op} {lit}` should use the named "
+                                f"constant {cname}")
+                            break
+                    except ValueError:
+                        continue
+                break
+    return problems
+
+
 def shared_implementation(function: str, src_rel: str) -> str:
     """Does a SHARED implementation of this function already exist?
 
@@ -2077,6 +2163,22 @@ def process_one(dry: bool = False) -> bool:
             if len(code) < 20:
                 feedback = "empty output"; continue
             produced_code = True   # a real candidate reached the build stage
+
+            # QUALITY GATE, before the build. A byte match is not acceptance:
+            # code that matches but re-implements tree code, invents symbols or
+            # uses raw casts gets rejected upstream, so rejecting it here costs
+            # one attempt instead of a review cycle. The specific defect becomes
+            # the retry feedback, which is what makes the next attempt better
+            # rather than merely different.
+            defects = quality_gate(code, ctx.get("asm", ""))
+            if defects:
+                print(f"  !! QUALITY REJECT ({len(defects)}): "
+                      + "; ".join(d[:70] for d in defects[:3]), flush=True)
+                best = f"quality reject: {defects[0][:120]}"
+                feedback = ("Your previous answer compiled but would be "
+                            "REJECTED in review:\n- " + "\n- ".join(defects)
+                            + "\nFix these and return the function again.")
+                continue
 
             # --- critical section: one worker at a time touches the tree ---
             #
