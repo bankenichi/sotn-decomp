@@ -249,6 +249,22 @@ def git_push(timeout: int = 300) -> dict:
 
 
 @mcp.tool()
+def queue_prune(pattern: str, apply: bool = False, timeout: int = 120) -> dict:
+    """Remove queue records matching a regex. DRY RUN unless apply=True.
+
+    Exists because `init` is additive with no inverse. 34 rodata string labels
+    (aCdlnop, aComplete, ...) were seeded as decomp targets by a name-based
+    filter; they are `.asciz` constants and a worker claiming one burns its
+    whole budget on nothing.
+
+    Deletes rather than marks: `deferred` would be wrong, since
+    `next --include-deferred` hands those straight back to a cli worker. Only
+    `todo` records are eligible, so matched/near/escalated work is never at
+    risk. Always run once without apply and read the list first."""
+    return cc.run("queue_prune", timeout=timeout, pattern=pattern, apply=apply)
+
+
+@mcp.tool()
 def queue_init(from_file: str = "automation/seed.us.txt", timeout: int = 120) -> dict:
     """`scheduler.py init --from <file>`: add queue records for new functions.
 

@@ -78,6 +78,23 @@ def _reject_fmt(fmt):
 STATUSES = {"todo", "claimed", "near", "matched", "escalated", "deferred"}
 
 
+def _pattern(p: str) -> str:
+    """A prune pattern must be a compilable regex of sane length.
+
+    Deliberately NOT restricted to a character class: pruning by overlay
+    (`^us:MAIN:`) and by symbol shape (`a[A-Z0-9]`) both need real regex. The
+    protection against a careless pattern is elsewhere and stronger: prune is
+    dry-run by default and refuses any record that is not `todo`.
+    """
+    if not isinstance(p, str) or not 1 <= len(p) <= 200:
+        raise Rejected("prune pattern must be 1-200 chars")
+    try:
+        re.compile(p)
+    except re.error as e:
+        raise Rejected(f"prune pattern is not a valid regex: {e}")
+    return p
+
+
 def _status(status: str) -> str:
     if status not in STATUSES:
         raise Rejected(f"status must be one of {sorted(STATUSES)}")
@@ -132,6 +149,12 @@ REGISTRY = {
     "queue_init": lambda from_file="automation/seed.us.txt": [
         PYTHON, "automation/scheduler.py", "init",
         "--from", _inrepo(from_file)],
+    # queue pruning. The ONLY destructive queue action, so it is dry-run unless
+    # apply=True is passed explicitly, and scheduler.py refuses to touch
+    # anything that is not `todo`.
+    "queue_prune": lambda pattern, apply=False: (
+        [PYTHON, "automation/scheduler.py", "prune", "--pattern", _pattern(pattern)]
+        + (["--apply"] if apply else [])),
     # queue visibility (read-only): lets the orchestrator poll in one call
     "queue_stats": lambda: [PYTHON, "automation/scheduler.py", "stats"],
     "queue_list":  lambda status="": ([PYTHON, "automation/scheduler.py", "list"]

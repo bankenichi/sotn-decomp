@@ -25,6 +25,7 @@ Env:
   SOTN_REPO    repo root (default: two levels up from this file)
 """
 from __future__ import annotations
+import re
 import argparse
 import datetime as dt
 import json
@@ -392,6 +393,52 @@ def cmd_report(args):
     print("updated" if q.transaction(fn) else f"id not found: {args.id}")
 
 
+def cmd_prune(args):
+    """Remove records that are not decompilable functions at all.
+
+    Needed because `init` is additive and has no inverse. 34 rodata string
+    labels (aCdlnop, aComplete, a0123456789abcd ...) were seeded as decomp
+    targets because the seed filtered data by NAME, and these are `.asciz`
+    constants whose names look like ordinary identifiers. A cli worker claiming
+    one burns its entire 1800s budget on something with nothing to decompile.
+
+    DELETES rather than marks. A status like `deferred` would be wrong twice
+    over: it implies a weaker tier handed the record on, and
+    `next --include-deferred` would hand it straight back to a cli worker,
+    which is the exact failure this prevents.
+
+    DRY RUN BY DEFAULT. `--apply` is required to write, because this is the
+    only destructive queue operation and a mistyped pattern would otherwise
+    silently drop real work. Refuses to touch anything not in `todo`: a
+    matched, near or escalated record represents work already done and is never
+    prunable by pattern.
+    """
+    pat = re.compile(args.pattern)
+    doomed, protected = [], []
+    for r in Queue()._read():
+        if not pat.search(r["id"]):
+            continue
+        (doomed if r.get("status") == "todo" else protected).append(r)
+
+    for r in doomed:
+        print(f"  prune  {r['id']}")
+    for r in protected:
+        print(f"  KEEP   {r['id']}  (status={r.get('status')}, not todo)")
+
+    if not args.apply:
+        print(f"\ndry run: {len(doomed)} would be pruned, "
+              f"{len(protected)} protected. Re-run with --apply to write.")
+        return
+
+    ids = {r["id"] for r in doomed}
+
+    def fn(records):
+        kept = [r for r in records if r["id"] not in ids]
+        return kept, len(records) - len(kept)
+
+    print(f"\npruned {Queue().transaction(fn)} records")
+
+
 def cmd_list(args):
     for r in Queue()._read():
         if args.status and r["status"] != args.status:
@@ -466,6 +513,14 @@ def main():
     pl.set_defaults(func=cmd_list)
 
     ps = sub.add_parser("stats"); ps.set_defaults(func=cmd_stats)
+
+    pp = sub.add_parser("prune")
+    pp.add_argument("--pattern", required=True,
+                    help="regex matched against the record id; only `todo` "
+                         "records are eligible")
+    pp.add_argument("--apply", action="store_true",
+                    help="actually write; without it this is a dry run")
+    pp.set_defaults(func=cmd_prune)
 
     prc = sub.add_parser("reclaim"); prc.add_argument("--older-than-min", type=int, default=60)
     prc.set_defaults(func=cmd_reclaim)
