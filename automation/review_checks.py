@@ -295,8 +295,241 @@ def check_lost_comment(path: Path, src: str) -> list[dict]:
     return out
 
 
+
+# ---------------------------------------------------------------- shared-copy
+
+def _us_source(text: str) -> str:
+    """Resolve VERSION_* guards down to the US PSX branch.
+
+    Without this, "does our signature match the shared one" degrades to
+    "does it match ANY branch", which is too weak to be useful: e_collect.h
+    defines CollectDummy as both `(void)` (ST0/BETA) and `(u16 id)` (US), so a
+    copy that dropped the parameter matched the ST0 branch and looked clean.
+
+    Reuses codebase_index.preprocess_us so there is one implementation of this
+    and not two that can drift apart.
+    """
+    try:
+        sys.path.insert(0, str(REPO / "automation"))
+        from codebase_index import preprocess_us
+        return preprocess_us(text)
+    except Exception:
+        return text          # degrade to the weaker "any branch" behaviour
+
+
+def _shared_header(path: Path) -> Path | None:
+    """src/st/<stage>/<name>.c  ->  src/st/<name>.h, if it exists."""
+    rel = path.relative_to(REPO)
+    if rel.parts[:2] != ("src", "st") or len(rel.parts) < 4:
+        return None
+    h = REPO / "src" / "st" / (rel.stem + ".h")
+    return h if h.exists() else None
+
+
+def _header_defs(hsrc: str) -> dict[str, list[dict]]:
+    """name -> LIST of definitions in a shared header, one per version branch.
+
+    A list, not a single entry, and that is load-bearing. e_collect.h defines
+    CollectDummy twice:
+
+        #if defined VERSION_BETA || (STAGE == STAGE_ST0 && !defined(VERSION_PSP))
+        static void CollectDummy(void)
+        #else
+        static void CollectDummy(u16 id)
+        #endif
+
+    Keeping only the first made signature_drift compare our correct US-branch
+    `(u16 id)` against the ST0 branch's `(void)` and report a defect on code
+    that had just been fixed to match. Version guards are not resolved here, so
+    every check must treat "matches ANY branch" as clean.
+    """
+    out: dict[str, list[dict]] = {}
+    for m in re.finditer(
+            r"((?:^[ \t]*//[^\n]*\n)*)"
+            r"^[ \t]*(static\s+)?[A-Za-z_][\w \*]*?\**\s*"
+            r"([A-Za-z_]\w*)\s*\(([^;{]*)\)\s*\{", hsrc, re.M):
+        name = m.group(3)
+        if name in ("if", "for", "while", "switch", "return", "sizeof"):
+            continue
+        out.setdefault(name, []).append({
+            "static": bool(m.group(2)),
+            "params": " ".join(m.group(4).split()),
+            "comment": m.group(1),
+        })
+    return out
+
+
+def _our_defs(src: str) -> dict[str, dict]:
+    out: dict[str, dict] = {}
+    for m in re.finditer(
+            r"((?:^[ \t]*//[^\n]*\n)*)"
+            r"^[ \t]*(static\s+)?[A-Za-z_][\w \*]*?\**\s*"
+            r"([A-Za-z_]\w*)\s*\(([^;{]*)\)\s*\{", src, re.M):
+        name = m.group(3)
+        if name in ("if", "for", "while", "switch", "return", "sizeof"):
+            continue
+        out.setdefault(name, {
+            "static": bool(m.group(2)),
+            "params": " ".join(m.group(4).split()),
+            "comment": m.group(1),
+            "line": src[:m.start()].count("\n") + 1,
+        })
+    return out
+
+
+def check_static_dropped(path: Path, src: str) -> list[dict]:
+    """We dropped `static` that the shared implementation has.
+
+    Caught func_801CF778, CollectLifeVessel and CollectDummy. Widening a
+    symbol's linkage for no reason is how a generic address-derived name like
+    func_801CF778 ends up colliding with an unrelated one at link time.
+
+    Pairs with check_linkage_vs_asm, which is the SAFETY side: this says the
+    header wants it static, that one says whether assembly elsewhere would
+    break if we did it. Act on this only when that one is silent -- exactly
+    the mistake made with StepTowards.
+    """
+    h = _shared_header(path)
+    if not h:
+        return []
+    try:
+        hdefs = _header_defs(_us_source(h.read_text(errors="ignore")))
+    except OSError:
+        return []
+    out = []
+    for name, ours in _our_defs(src).items():
+        variants = hdefs.get(name) or []
+        if variants and all(v["static"] for v in variants) and not ours["static"]:
+            out.append({
+                "check": "static_dropped", "file": str(path.relative_to(REPO)),
+                "line": ours["line"], "function": name,
+                "detail": f"shared {h.name} declares it static in every version "
+                          f"branch; our copy does not",
+                "fix": "restore static -- but confirm check_linkage_vs_asm is "
+                       "silent for this symbol first",
+            })
+    return out
+
+
+def check_signature_drift(path: Path, src: str) -> list[dict]:
+    """Our parameter list differs from the shared implementation's.
+
+    CollectDummy lost its `u16 id` parameter and the matching call-site
+    argument. It kept working only because the compiled caller happened to
+    leave the value in $a0 already, which is a property of one codegen run and
+    not of the source.
+    """
+    h = _shared_header(path)
+    if not h:
+        return []
+    try:
+        hdefs = _header_defs(_us_source(h.read_text(errors="ignore")))
+    except OSError:
+        return []
+    out = []
+    for name, ours in _our_defs(src).items():
+        variants = hdefs.get(name) or []
+        if not variants or not ours["params"]:
+            continue
+        b = ours["params"]
+        shapes = [v["params"] for v in variants if v["params"]]
+        if not shapes:
+            continue
+        def same(a: str) -> bool:
+            return a == b or (a.count(",") == b.count(",")
+                              and (a == "void") == (b == "void"))
+        if not any(same(a) for a in shapes):
+            out.append({
+                "check": "signature_drift", "file": str(path.relative_to(REPO)),
+                "line": ours["line"], "function": name,
+                "detail": f"shared {h.name} has ({' | '.join(shapes)}), "
+                          f"ours has ({b}) -- matches no version branch",
+                "fix": "match one of the shared signatures, and fix every call site",
+            })
+    return out
+
+
+def check_param_argN(path: Path, src: str) -> list[dict]:
+    """A descriptive parameter name in the header, replaced by argN in ours.
+
+    CollectHeart(u16 heartIdx) became CollectHeart(u16 arg0). argN is what the
+    decompiler emits when it knows nothing; replacing a name that WAS known
+    throws away information for free.
+    """
+    h = _shared_header(path)
+    if not h:
+        return []
+    try:
+        hdefs = _header_defs(_us_source(h.read_text(errors="ignore")))
+    except OSError:
+        return []
+    out = []
+    for name, ours in _our_defs(src).items():
+        variants = hdefs.get(name) or []
+        if not variants:
+            continue
+        want = max(variants, key=lambda v: len(v["params"]))
+        hn = re.findall(r"(\w+)\s*(?:\[\s*\])?\s*(?:,|$)", want["params"])
+        on = re.findall(r"(\w+)\s*(?:\[\s*\])?\s*(?:,|$)", ours["params"])
+        if len(hn) != len(on):
+            continue
+        for a, b in zip(hn, on):
+            if re.fullmatch(r"arg\d+", b) and not re.fullmatch(r"arg\d+", a):
+                out.append({
+                    "check": "param_argN", "file": str(path.relative_to(REPO)),
+                    "line": ours["line"], "function": name,
+                    "detail": f"shared {h.name} names this parameter `{a}`; "
+                              f"ours calls it `{b}`",
+                    "fix": f"rename {b} back to {a}",
+                })
+    return out
+
+
+def check_lost_comment_block(path: Path, src: str) -> list[dict]:
+    """Comment lines above a function in the shared header, absent from ours.
+
+    EntityPrizeDrop lost four lines describing how the ST0, MAD and PSP
+    versions relate. Deliberately narrow: only reports when the header's block
+    is at least 3 lines and we kept FEWER THAN HALF of them, so ordinary
+    condensation (which create_entity.c does throughout, losing nothing) stays
+    quiet. Substring matching, so a reworded line still counts as kept.
+    """
+    h = _shared_header(path)
+    if not h:
+        return []
+    try:
+        hdefs = _header_defs(_us_source(h.read_text(errors="ignore")))
+    except OSError:
+        return []
+    out = []
+    for name, ours in _our_defs(src).items():
+        variants = hdefs.get(name) or []
+        if not variants:
+            continue
+        want = max(variants, key=lambda v: len(v["comment"]))
+        hlines = [l.strip().lstrip("/ ").strip()
+                  for l in want["comment"].splitlines() if l.strip()]
+        hlines = [l for l in hlines if len(l) > 20]
+        if len(hlines) < 3:
+            continue
+        kept = sum(1 for l in hlines if l[:40] in src)
+        if kept * 2 < len(hlines):
+            out.append({
+                "check": "lost_comment_block", "file": str(path.relative_to(REPO)),
+                "line": ours["line"], "function": name,
+                "detail": f"shared {h.name} has a {len(hlines)}-line note above "
+                          f"{name}; only {kept} line(s) survive in our copy",
+                "fix": "restore the dropped lines, or say why they do not apply",
+            })
+    return out
+
+
 CHECKS = {
     "ext": check_ext_variant_outlier,
+    "static": check_static_dropped,
+    "signature": check_signature_drift,
+    "argn": check_param_argN,
+    "block": check_lost_comment_block,
     "linkage": check_linkage_vs_asm,
     "angle": check_angle_comment,
     "stub": check_entity_stub_signature,
@@ -365,7 +598,9 @@ def main() -> int:
     # findings carry the check function's full name, not the short CLI key
     LONG = {"ext": "ext_variant_outlier", "linkage": "linkage_vs_asm",
             "angle": "angle_comment", "stub": "entity_stub_signature",
-            "comment": "lost_comment"}
+            "comment": "lost_comment", "static": "static_dropped",
+            "signature": "signature_drift", "argn": "param_argN",
+            "block": "lost_comment_block"}
     findings: list[dict] = []
     files = _our_c_files()
     for p in files:

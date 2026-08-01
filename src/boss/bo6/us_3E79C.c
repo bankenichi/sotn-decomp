@@ -53,8 +53,11 @@ INCLUDE_ASM("boss/bo6/nonmatchings/us_3E79C", BO6_RicEntityWhip);
 INCLUDE_ASM("boss/bo6/nonmatchings/us_3E79C", BO6_RicEntityArmBrandishWhip);
 
 extern s16 D_us_80182870[];
-// same as `ric` `func_80167964` except `g_Ric`/`g_Player` reference and lookup
-// table
+// Mirrors `ric` func_80167964 (src/ric/pl_whip.c:540) but the flags differ
+// beyond the g_Ric/g_Player and lookup-table swap: RIC sets
+// FLAG_UNK_20000 | FLAG_POS_PLAYER_LOCKED | FLAG_KEEP_ALIVE_OFFCAMERA |
+// FLAG_UNK_10000, this sets FLAG_UNK_10000000 | FLAG_POS_CAMERA_LOCKED.
+// Locked to the camera rather than the player, and no off-camera keep-alive.
 void func_us_801C2688(Entity* entity) {
     if (g_Ric.unk46 == 0) {
         DestroyEntity(entity);
@@ -96,7 +99,12 @@ void BO6_DebugInputWait(const char* msg) {
     }
 }
 
-s32 OVL_EXPORT(RicCheckHolyWaterCollision)(s16 height, s16 width) {
+// baseY/baseX are position OFFSETS added to the entity's position, not
+// dimensions; the previous names height/width invited confusion with the
+// real Entity.hitboxHeight/hitboxWidth fields. Named as upstream does in
+// src/ric/pl_subweapon_holywater.c. Static because every caller is in this
+// file and no assembly references it across a translation unit.
+static s32 OVL_EXPORT(RicCheckHolyWaterCollision)(s16 baseY, s16 baseX) {
     Collider collider;
     Collider collider2;
     s16 maskedEffects;
@@ -105,16 +113,16 @@ s32 OVL_EXPORT(RicCheckHolyWaterCollision)(s16 height, s16 width) {
     s16 posY;
     s16 newPosY;
 
-    if ((g_CurrentEntity->posX.val + width) < 0 ||
-        (g_CurrentEntity->posX.i.hi + width) > 256) {
-        if ((g_CurrentEntity->posY.i.hi + height) >= 212) {
-            g_CurrentEntity->posY.i.hi = 212 - height;
+    if ((g_CurrentEntity->posX.val + baseX) < 0 ||
+        (g_CurrentEntity->posX.i.hi + baseX) > 256) {
+        if ((g_CurrentEntity->posY.i.hi + baseY) >= 212) {
+            g_CurrentEntity->posY.i.hi = 212 - baseY;
             return EFFECT_SOLID;
         }
         return EFFECT_NONE;
     }
-    posX = g_CurrentEntity->posX.i.hi + width;
-    posY = g_CurrentEntity->posY.i.hi + height;
+    posX = g_CurrentEntity->posX.i.hi + baseX;
+    posY = g_CurrentEntity->posY.i.hi + baseY;
 
     g_api.CheckCollision(posX, posY, &collider, 0);
     maskedEffects = collider.effects &
@@ -123,7 +131,7 @@ s32 OVL_EXPORT(RicCheckHolyWaterCollision)(s16 height, s16 width) {
     posY = posY - 1 + collider.unk18;
     g_api.CheckCollision(posX, posY, &collider2, 0);
 
-    newPosY = height + (g_CurrentEntity->posY.i.hi + collider.unk18);
+    newPosY = baseY + (g_CurrentEntity->posY.i.hi + collider.unk18);
     if ((maskedEffects & (EFFECT_UNK_8000 | EFFECT_UNK_0800 | EFFECT_SOLID)) ==
             EFFECT_SOLID ||
         (maskedEffects & (EFFECT_UNK_8000 | EFFECT_UNK_0800 | EFFECT_SOLID)) ==
@@ -890,7 +898,11 @@ void func_us_801C8590(Entity *arg0)
 
 extern s32 D_us_80182A0C[];
 
-// same as RIC func_8016D9C4
+// Mirrors RIC func_8016D9C4 (src/ric/319C4.c:11) with two differences
+// beyond the g_Ric/lookup-table swap: flags are
+// FLAG_UNK_10000000 | FLAG_HAS_PRIMS rather than
+// FLAG_KEEP_ALIVE_OFFCAMERA | FLAG_HAS_PRIMS, and case 0 does not play
+// SFX_RIC_RSTONE_TINK before advancing the step.
 void func_us_801C8618(Entity* self) {
     PrimLineG2* prim;
     Primitive* prim2;

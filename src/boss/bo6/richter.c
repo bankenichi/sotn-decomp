@@ -44,7 +44,12 @@ extern void BO6_RicSetSpeedX(s32);
  * decelerate and either stand still or resume walk speed while the
  * sub-step counter is still zero. */
 void BO6_RicStepWalk(void) {
-    /* 0x305C is the directional-pad bitmask checked for any held input */
+    /* 0x305C is a capability mask, NOT pad state. BO6_RicCheckInput never
+       reads the pad itself; it ANDs this argument against fixed bits to
+       decide which transitions (crouch, jump, attack, dash) the current
+       state is allowed to take. Every caller passes a different constant:
+       BO6_RicStepStand 0x4305C, BO6_RicStepCrouch 0x4105C, BO6_RicStepJump
+       0x11009. The same idiom appears in src/boss/bo4/unk_45354.c. */
     if (BO6_RicCheckInput(0x305C) == 0) {
         DecelerateX(0x2000);
         if (BO6_RicCheckFacing() == 0) {

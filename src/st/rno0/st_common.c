@@ -156,7 +156,12 @@ void MoveEntity(void) {
     g_CurrentEntity->posY.val += g_CurrentEntity->velocityY;
 }
 
-// Apply gravity/downward acceleration, with terminal velocity cap
+// Apply gravity/downward acceleration, with terminal velocity cap.
+// DELIBERATE DIVERGENCE from src/st/st_common.h, which writes this as
+// `velocityY < TERMINAL_VELOCITY` with TERMINAL_VELOCITY = FIX(6) = 0x60000.
+// The asm builds the literal 0x5FFFF and compares `0x5FFFF < velocityY`,
+// so the `<= 0x5FFFF` form here is load-bearing. Do NOT 'resync' this with
+// the shared header; it will stop matching.
 void FallEntity(void) {
     s32 velocityY;
 

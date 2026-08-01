@@ -7,7 +7,7 @@
 // drops. Storage lives in an undecompiled data blob.
 extern u16 D_us_80180F8C[];
 
-// Heart pickup values, indexed by CollectHeart's arg0. Storage lives in an
+// Heart pickup values, indexed by CollectHeart's heartIdx. Storage lives in an
 // undecompiled data blob.
 extern s8 D_us_80181898[];
 
@@ -116,9 +116,9 @@ static void PrizeDropFall2(u16 arg0) {
 }
 
 // This function is messy, maybe there's a better way.
-static void CollectHeart(u16 arg0) {
+static void CollectHeart(u16 heartIdx) {
     g_api.PlaySfx(SFX_HEART_PICKUP);
-    g_Status.hearts += D_us_80181898[arg0];
+    g_Status.hearts += D_us_80181898[heartIdx];
 
     if (g_Status.hearts > g_Status.heartsMax) {
         g_Status.hearts = g_Status.heartsMax;
@@ -198,7 +198,7 @@ static void CollectLifeVessel(void) {
     DestroyEntity(g_CurrentEntity);
 }
 
-void CollectDummy(void) {
+static void CollectDummy(u16 id) {
     DestroyEntity(g_CurrentEntity);
 }
 
@@ -223,7 +223,12 @@ INCLUDE_RODATA("st/rno0/nonmatchings/e_collect", D_us_801B5B58);
 INCLUDE_RODATA("st/rno0/nonmatchings/e_collect", D_us_801B5B60);
 
 // if self->params & 0x8000 then the item will not disappear
+// ST0 seems to contain the earliest known version of this entity.
+// MAD has some very minor enhancements that brings it closer to the US build,
+// such as Life/Heart upgrade drops.
 // US essentially adds castle flags for unique drops
+// PSP iterates on top of the US version by adding drops for Maria
+// PSP ST0 iterates on top of ST0 with the only change on CollectDummy params
 void EntityPrizeDrop(Entity* self) {
     Primitive* prim;
     u16 itemId;
@@ -338,7 +343,7 @@ void EntityPrizeDrop(Entity* self) {
         } else if (itemId == 12) {
             CollectHeartVessel();
         } else if (itemId < 14) {
-            CollectDummy();
+            CollectDummy(itemId);
         } else if (itemId < 23) {
             CollectSubweapon(itemId);
         } else if (itemId == 23) {

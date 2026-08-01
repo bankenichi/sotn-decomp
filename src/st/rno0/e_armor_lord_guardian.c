@@ -7,7 +7,9 @@ INCLUDE_ASM("st/rno0/nonmatchings/e_armor_lord_guardian", func_us_801D1388_from_
 
 INCLUDE_ASM("st/rno0/nonmatchings/e_armor_lord_guardian", EntityArmorLordFireWave);
 
-void RNO0_Unused801C2C50(void) {}
+// Takes Entity* even though it ignores it: e_init.c declares it that way and
+// stores it in EntityUpdates[], typed void (*)(struct Entity*).
+void RNO0_Unused801C2C50(Entity* self) {}
 
 INCLUDE_ASM("st/rno0/nonmatchings/e_armor_lord_guardian", func_us_801D1A9C_from_are);
 

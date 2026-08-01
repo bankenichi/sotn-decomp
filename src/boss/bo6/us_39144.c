@@ -115,9 +115,10 @@ void func_us_801B9C14(void) {
 
 void BO6_RicSetStep(s32);
 
-// Richter (BO6): set step to 0xF0 (possibly a special state)
+// Richter (BO6): enter the debug step. RIC's equivalent is explicit:
+// src/ric/pl_setstep.c RicSetDebug() { RicSetStep(PL_S_DEBUG); }
 void func_us_801B9C3C(void) {
-    BO6_RicSetStep(0xF0);
+    BO6_RicSetStep(PL_S_DEBUG);
 }
 
 INCLUDE_ASM("boss/bo6/nonmatchings/us_39144", BO6_RicSetCrouch);
