@@ -208,9 +208,10 @@ sonnet. Escalate on cap, never loop.
 
 ### 4.4 How to spawn (Claude Desktop / Cowork)
 
-Cowork does NOT use `.claude/agents/` auto-discovery or a `--agent` flag; those
-are Claude Code CLI features. Spawn with the Agent tool, passing a model
-override and the agent file body as the prompt:
+This project runs entirely in Claude Desktop; there is no CLI in the loop.
+Nothing auto-discovers `.claude/agents/` and no `--agent` flag exists here, so a
+file in that directory is inert until you paste it. Spawn with the Agent tool,
+passing a model override and the agent file body as the prompt:
 
 - mechanical: Agent tool, `model: haiku`, prompt = body of
   `.claude/agents/sotn-mechanical-loop.md` + the task block from 4.5
