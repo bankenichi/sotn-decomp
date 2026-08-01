@@ -71,7 +71,46 @@ void DecelerateY(s32 deceleration) {
     }
 }
 
-INCLUDE_ASM("boss/bo6/nonmatchings/us_39144", BO6_RicCheckFacing);
+// Richter (BO6): turn to follow the pad, and report which way the player is
+// pushing. Returns -1 when the facing changed this frame, 1 when the pad is
+// already pushing the way Richter faces, 0 otherwise.
+//
+// This is BO6's copy of RicCheckFacing in src/ric/pl_utils.c. Not shareable:
+// RIC's version reads g_Player and PLAYER, BO6's reads g_Ric and RIC, and
+// those are different objects in the same address space.
+//
+// Symbol resolution, all confirmed by address rather than by name affinity:
+//   g_Ric + 0x394 -> PlayerState.unk44      (game.h:1976)
+//   g_Ric + 0x318 -> PlayerState.padPressed (game.h:1946)
+//   g_Ric + 0x39C -> PlayerState.unk4C      (game.h:1984)
+//   0x800762EC    -> g_Entities[64] + 0x14, which is RIC.facingLeft; the
+//                    splat symbol RIC_facingLeft in symbols.us.bobo6.txt
+//                    names the same address.
+s32 BO6_RicCheckFacing(void) {
+    if (g_Ric.unk44 & 2) {
+        return 0;
+    }
+
+    if (RIC.facingLeft == 1) {
+        if (g_Ric.padPressed & PAD_RIGHT) {
+            RIC.facingLeft = 0;
+            g_Ric.unk4C = 1;
+            return -1;
+        } else if (g_Ric.padPressed & PAD_LEFT) {
+            return 1;
+        }
+    } else {
+        if (g_Ric.padPressed & PAD_RIGHT) {
+            return 1;
+        }
+        if (g_Ric.padPressed & PAD_LEFT) {
+            RIC.facingLeft = 1;
+            g_Ric.unk4C = 1;
+            return -1;
+        }
+    }
+    return 0;
+}
 
 // Richter (BO6): set X velocity with facing direction applied
 void BO6_RicSetSpeedX(s32 speed) {
@@ -181,7 +220,6 @@ void BO6_RicSetDeadPrologue(void) {
 }
 
 extern AnimationFrame D_us_801822D8[];
-void BO6_RicCheckFacing(void);
 void func_us_801B9C14(void);
 
 // Richter (BO6): enter the slide - face the target, set step 0x18 and the slide
