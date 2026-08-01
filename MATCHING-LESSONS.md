@@ -1095,3 +1095,45 @@ exact line exists verbatim upstream is not our finding.** That single rule
 retired an entire category of argument, because most false positives here turn
 out to be upstream's own conventions measured against a standard upstream never
 adopted.
+
+## 21. `ast.parse` is not a test, and a diagnostic must not be able to kill its host
+
+Adding a startup guard to the MCP connector took the connector down. The guard's
+job was to prevent a broken connector.
+
+The code was syntactically perfect, so `ast.parse` passed. It referenced `sys`
+and `Path`, and the module imported neither. The insert that was supposed to add
+them was conditional on finding `from pathlib import Path`, which the file did
+not contain, so it silently did nothing and reported success. Every check run
+was a check of the wrong property.
+
+Two rules, both cheap:
+
+**Import it, do not just parse it.** Syntax checking cannot see a `NameError`.
+When the real dependency is unavailable (here, the `mcp` package is not in the
+sandbox), stub it and import anyway:
+
+```python
+fake = types.ModuleType("mcp"); ...
+sys.modules.update({"mcp": fake, "mcp.server": srv, "mcp.server.fastmcp": fast})
+import sotn_cmd_mcp            # now the NameError would actually fire
+```
+
+This is the same failure as the `args.include_deferred` incident: `py_compile`
+could not see an unregistered argparse flag either, and five workers died.
+
+**Wrap any startup diagnostic in `try/except Exception`.** A check that reports
+a problem is worth having; a check that CAUSES one is strictly negative. If the
+cross-check cannot run, it should say so on stderr and let the server start.
+
+### 21a. An allowlist is not an interface
+
+The same change exposed a second trap. The connector has two surfaces:
+`commands_client.REGISTRY` decides what is *permitted*, and the `@mcp.tool()`
+decorators in `sotn_cmd_mcp.py` decide what is *callable*. Adding `git_push` to
+the registry alone made `list_allowed` truthfully report 18 commands including
+it, while it remained impossible to invoke. The connector looked correctly
+updated and was not, and it cost a restart to find out.
+
+When adding an action, update both, and confirm by CALLING it rather than by
+listing it. That is what the guard now checks automatically.

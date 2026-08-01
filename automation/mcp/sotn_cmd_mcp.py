@@ -19,6 +19,10 @@ until you have reviewed the argv it produces, and never widen the registry into
 a general 'run any command' tool.
 """
 from __future__ import annotations
+import re
+import sys
+from pathlib import Path
+
 from mcp.server.fastmcp import FastMCP
 import commands_client as cc
 
@@ -300,16 +304,23 @@ def _assert_registry_is_exposed() -> None:
     Warn rather than exit: a missing wrapper makes one action unreachable, and
     refusing to start would take the other seventeen down with it.
     """
-    import re as _re
+    # Everything below is wrapped, because a STARTUP DIAGNOSTIC MUST NOT BE
+    # ABLE TO KILL THE SERVER IT DIAGNOSES. The first version of this function
+    # referenced `sys` and `Path`, neither of which this module imported, and
+    # took the whole connector down on launch -- a check meant to prevent a
+    # broken connector became the thing that broke it. Syntax was fine, so
+    # ast.parse said nothing; only running it would have shown the NameError.
     try:
         src = Path(__file__).read_text(encoding="utf-8")
-    except OSError:
-        return
-    exposed = {m.group(1) for m in _re.finditer(r"@mcp\.tool\(\)\s*\ndef (\w+)", src)}
-    missing = sorted(set(cc.REGISTRY) - exposed)
-    if missing:
-        print(f"WARNING: allowlisted but NOT exposed as tools, so uncallable: "
-              f"{missing}. Add an @mcp.tool() wrapper for each.", file=sys.stderr)
+        exposed = {m.group(1)
+                   for m in re.finditer(r"@mcp\.tool\(\)\s*\ndef (\w+)", src)}
+        missing = sorted(set(cc.REGISTRY) - exposed)
+        if missing:
+            print(f"WARNING: allowlisted but NOT exposed as tools, so "
+                  f"uncallable: {missing}. Add an @mcp.tool() wrapper for each.",
+                  file=sys.stderr)
+    except Exception as exc:                                  # never fatal
+        print(f"registry/tool cross-check skipped: {exc!r}", file=sys.stderr)
 
 
 if __name__ == "__main__":
