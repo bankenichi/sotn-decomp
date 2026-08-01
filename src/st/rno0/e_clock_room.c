@@ -60,4 +60,7 @@ INCLUDE_ASM("st/rno0/nonmatchings/e_clock_room", UpdateStoneDoorTiles);
 
 INCLUDE_ASM("st/rno0/nonmatchings/e_clock_room", EntityStoneDoor);
 
-void RNO0_Unused801C2338(void) {}
+// Takes Entity* even though it ignores it: e_init.c declares it that way and
+// stores it in EntityUpdates[], whose element type is
+// PfnEntityUpdate = void (*)(struct Entity*).
+void RNO0_Unused801C2338(Entity* self) {}

@@ -505,6 +505,7 @@ s32 UnkCollisionFunc(s16* hitSensors, s16 sensorCount) {
     // implicit return
 }
 
+// original name: v_side_hosei
 void CheckFieldCollision(s16* hitSensors, s16 sensorCount) {
     Collider collider;
     s32 velocityX;

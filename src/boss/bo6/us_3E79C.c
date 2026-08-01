@@ -412,7 +412,7 @@ void OVL_EXPORT(RicEntitySubwpnCross)(Entity* self) {
         if (--self->ext.crossBoomerang.timer < 0 &&
             ((self->hitFlags == 2) || (self->flags & FLAG_DEAD))) {
             self->velocityY = FIX(-3.0);
-            self->ext.holywater.timer = 50;
+            self->ext.crossBoomerang.timer = 50;
             self->hitboxState = 0;
             self->step = 6;
             self->velocityX = -((s32)self->velocityX / 2);
@@ -853,8 +853,16 @@ void BO6_RicEntityVibhutiCrashCloud(Entity* self) {
 
 INCLUDE_ASM("boss/bo6/nonmatchings/us_3E79C", BO6_RicEntityCrashVibhuti);
 
-/* Boss entity state machine: initializes on entry (step 0), then runs a
-   4-frame timer in step 1 before destroying the entity. */
+/* BO6's rebound stone crash particles. Identified by position, not by guess:
+   the blueprint table D_us_8018158C lists
+     ... AguneaCircle, AguneaLightning, THIS, HitByDark, HitByHoly ...
+   and RIC's equivalent table (src/ric/pl_blueprints.c:458) has exactly
+     ... AguneaCircle, AguneaLightning, CrashReboundStoneParticles,
+         HitByDark, HitByHoly ...
+   so this slot is RicEntityCrashReboundStoneParticles (src/ric/2F8E8.c:945),
+   which uses ext.subweapon.timer for the same counter. BO6 diverges from RIC
+   here in two ways: it sets FLAG_UNK_10000000 rather than
+   FLAG_KEEP_ALIVE_OFFCAMERA, and it does not call RicSetSubweaponParams. */
 void func_us_801C8590(Entity *arg0)
 {
     u16 step;
@@ -862,34 +870,20 @@ void func_us_801C8590(Entity *arg0)
     step = arg0->step;
     switch (step) {
     case 0:
-        /* Set entity flags to 0x10000000 (likely a flag for this boss) */
-        arg0->flags = 0x10000000;
-        /* Set hitbox dimensions to 4x4 */
+        arg0->flags = FLAG_UNK_10000000;
         arg0->hitboxWidth = 4;
         arg0->hitboxHeight = 4;
-        /* Advance to next state */
         arg0->step++;
         return;
 
     case 1:
-        /* DELIBERATELY still ext.ILLEGAL. This is the first field of ext
-           (+0x7C) used as a frame counter, and 57 named ext variants begin
-           with a timer there, so naming one would be a guess rather than a
-           reading. The entity type is not recoverable from this file: nothing
-           in src/ calls this function, it is dispatched from entity data. The
-           (s16) cast is consistent with an s16 timer, and the neighbouring
-           BO6_RicEntityCrashVibhuti makes ext.vibhutiCrash the likeliest
-           candidate, but likeliest is not established. Resolve it by finding
-           the factory that spawns this entity, then use the named variant. */
-        arg0->ext.ILLEGAL.u16[0]++;
-        /* If the timer has reached 4 or more, destroy the entity */
-        if ((s16)arg0->ext.ILLEGAL.u16[0] >= 4) {
+        arg0->ext.subweapon.timer++;
+        if (arg0->ext.subweapon.timer >= 4) {
             DestroyEntity(arg0);
         }
         return;
 
     default:
-        /* Unknown step value — just return without doing anything */
         return;
     }
 }

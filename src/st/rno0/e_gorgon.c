@@ -15,6 +15,11 @@ INCLUDE_ASM("st/rno0/nonmatchings/e_gorgon", func_us_801CF380);
 
 // EntitySpectralSword primarily uses this as a method to smoothly rotate, but
 // also to retract it's outer ring after an attack by decreasing the radius.
+// NOT static, despite the shared src/st/step_towards.h defaulting to static.
+// src/st/rno0/unk_4F968.c still holds INCLUDE_ASM stubs that `jal StepTowards`
+// across the translation-unit boundary, so this needs external linkage until
+// those are decompiled. A source-level grep does not show this: the callers
+// are assembly, not C.
 bool StepTowards(s16* val, s32 target, s32 step) {
     if (abs(*val - target) < step) {
         *val = target;
