@@ -17,9 +17,20 @@ var saturnSplitterYAMLs = []string{
 	"config/saturn/alucard.prg.yaml",
 	"config/saturn/richter.prg.yaml",
 	"config/saturn/maria.prg.yaml",
+	"config/saturn/rstage15.prg.yaml",
+	"config/saturn/stage_15.prg.yaml",
+	"config/saturn/rstage16.prg.yaml",
+	"config/saturn/stage_16.prg.yaml",
 }
 
 func buildSaturn() error {
+	if err := buildSaturnObjects(); err != nil {
+		return err
+	}
+	return checkVersions(os.Stderr, []string{"saturn"})
+}
+
+func buildSaturnObjects() error {
 	if err := extractSaturn(); err != nil {
 		return fmt.Errorf("extract: %w", err)
 	}
@@ -29,7 +40,7 @@ func buildSaturn() error {
 	if err := deps.Ninja(); err != nil {
 		return fmt.Errorf("ninja: %w", err)
 	}
-	return checkVersions(os.Stderr, []string{"saturn"})
+	return nil
 }
 
 var saturnExtractSentinels = []string{
@@ -39,7 +50,11 @@ var saturnExtractSentinels = []string{
 	"config/saturn/game.ld",
 	"config/saturn/maria.ld",
 	"config/saturn/richter.ld",
+	"config/saturn/rstage15.ld",
+	"config/saturn/rstage16.ld",
 	"config/saturn/stage_02.ld",
+	"config/saturn/stage_15.ld",
+	"config/saturn/stage_16.ld",
 	"config/saturn/t_bat.ld",
 	"config/saturn/warp.ld",
 	"config/saturn/zero.ld",
@@ -65,10 +80,19 @@ func runSaturnSplitter() error {
 	return nil
 }
 
+const saturnNinjaStampFile = "build.ninja.version"
+
 func genSaturnNinjaIfNeeded() error {
 	const ninjaFile = "build.ninja"
-	const stampFile = "build.ninja.version"
-	const stamp = "saturn"
+	const stampFile = saturnNinjaStampFile
+	compiler := os.Getenv("SOTN_SATURN_COMPILER")
+	if compiler == "" {
+		compiler = "native64"
+	}
+	stamp := "saturn,compiler=" + compiler
+	if compilerPath, ok := os.LookupEnv("SOTN_SATURN_CC1"); ok {
+		stamp += ",cc1=" + compilerPath
+	}
 
 	needsRegen := false
 	if stampData, err := os.ReadFile(stampFile); err != nil || string(stampData) != stamp {

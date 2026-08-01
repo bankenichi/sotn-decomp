@@ -133,6 +133,7 @@ set(SOURCE_FILES_PC
     src/pc/sotn.c
     src/pc/replay.c
     src/pc/pc.c
+    src/pc/cutscene_pc.c
     src/pc/io.c
     src/pc/sim_pc.c
     src/pc/pl_arc.c
@@ -216,10 +217,7 @@ set(SOURCE_FILES_RIC
     src/ric/pl_subweapons.c
     src/ric/2F8E8.c
     src/ric/319C4.c
-    src/ric/spritebank0.c
-    src/ric/spritebank1.c
-    src/ric/spritebank2.c
-    src/ric/spritebank3.c
+    src/ric/spritebanks.c
     src/ric/pl_crash_cross.c
     src/ric/bss.c
     src/ric/d_18568.c
@@ -239,7 +237,7 @@ SET(SOURCE_FILES_MARIA
     src/maria/pl_sensors.c
     src/maria/pl_collision.c
     src/maria/pl_blueprints.c
-    src/maria/spritebank0.c
+    src/maria/spritebanks.c
     src/maria/ovl_load.c
 )
 
@@ -284,6 +282,121 @@ set(SOURCE_FILES_STAGE_SEL
     src/st/sel/cutscene_data.c
 )
 
+set(SOURCE_FILES_STAGE_NO2
+    src/pc/stages/stage_no2.c
+    src/st/no2/header.c
+    src/st/no2/gen/e_laydef.c
+    src/st/no2/e_init.c
+    src/st/no2/gen/rooms.c
+    src/st/no2/gen/e_layout.c
+    src/st/no2/gen/sprites.c
+    src/st/no2/graphics_banks.c
+    src/st/no2/layers.c
+    src/st/no2/palette_def.c
+    src/st/no2/sprite_banks.c
+    src/st/no2/tilemaps.c
+    src/st/no2/stage_data.c
+    src/st/no2/background_block_init.c
+    src/st/no2/e_room_bg.c
+    src/st/no2/e_lock_camera.c
+    src/st/no2/e_breakable.c
+    src/st/no2/d_prize_drops.c
+    src/st/no2/st_update.c
+    src/st/no2/collision.c
+    src/st/no2/create_entity.c
+    src/st/no2/e_red_door_tiles.c
+    src/st/no2/e_red_door.c
+    src/st/no2/st_common.c
+    src/st/no2/e_collect.c
+    src/st/no2/e_misc.c
+    src/st/no2/e_stage_name.c
+    src/st/no2/e_particles.c
+    src/st/no2/e_room_fg.c
+    src/st/no2/popup.c
+    src/st/no2/prim_helpers.c
+    src/st/no2/33D8C.c
+    src/st/no2/34DA4.c
+    src/st/no2/372E8.c
+    src/st/no2/37580.c
+    src/st/no2/4966C.c
+    src/st/no2/blade.c
+    src/st/no2/e_background_house.c
+    src/st/no2/e_bloody_zombie.c
+    src/st/no2/e_life_up.c
+    src/st/no2/e_owl_knight.c
+    src/st/no2/e_prisoner.c
+    src/st/no2/e_sealed_door.c
+    src/st/no2/e_secrets.c
+    src/st/no2/e_skelerang.c
+    src/st/no2/e_spectral_sword.c
+    src/st/no2/e_spikes.c
+    src/st/no2/e_valhalla_knight.c
+    src/st/no2/giantbro_helpers.c
+    src/st/no2/gurkha.c
+    src/st/no2/hammer.c
+)
+
+set(SOURCE_FILES_STAGE_DAI
+    src/pc/stages/stage_dai.c
+    src/st/dai/header.c
+    src/st/dai/gen/e_laydef.c
+    src/st/dai/e_init.c
+    src/st/dai/gen/rooms.c
+    src/st/dai/gen/e_layout.c
+    src/st/dai/gen/us/sprites.c
+    src/st/dai/gfx_data.c
+    src/st/dai/graphics_banks.c
+    src/st/dai/layers.c
+    src/st/dai/palette_def.c
+    src/st/dai/pal_stained_glass.c
+    src/st/dai/sprite_banks.c
+    src/st/dai/tilemaps.c
+    src/st/dai/background_block_init.c
+    src/st/dai/e_room_bg.c
+    src/st/dai/e_room_bg_2.c
+    src/st/dai/e_lock_camera.c
+    src/st/dai/e_breakable.c
+    src/st/dai/d_prize_drops.c
+    src/st/dai/cutscene_data.c
+    src/st/dai/st_update.c
+    src/st/dai/st_collision.c
+    src/st/dai/create_entity.c
+    src/st/dai/e_red_door_tiles.c
+    src/st/dai/e_red_door.c
+    src/st/dai/st_common.c
+    src/st/dai/e_collect.c
+    src/st/dai/e_misc.c
+    src/st/dai/e_stage_name.c
+    src/st/dai/e_particles.c
+    src/st/dai/e_room_fg.c
+    src/st/dai/e_room_fg_2.c
+    src/st/dai/popup.c
+    src/st/dai/prim_helpers.c
+    src/st/dai/e_bat.c
+    src/st/dai/e_bell.c
+    src/st/dai/e_bone_halberd.c
+    src/st/dai/e_bone_pillar.c
+    src/st/dai/e_chair.c
+    src/st/dai/e_clouds.c
+    src/st/dai/e_confessional.c
+    src/st/dai/e_corner_guard.c
+    src/st/dai/e_crow.c
+    src/st/dai/e_cutscene_actors.c
+    src/st/dai/e_cutscene_dialogue.c
+    src/st/dai/e_dai_no2_shortcut.c
+    src/st/dai/e_end_chime.c
+    src/st/dai/e_gargoyle.c
+    src/st/dai/e_hunting_girl.c
+    src/st/dai/e_mist_door.c
+    src/st/dai/e_sealed_door.c
+    src/st/dai/e_skelerang.c
+    src/st/dai/e_spectral_sword.c
+    src/st/dai/e_spikes.c
+    src/st/dai/e_stained_glass.c
+    src/st/dai/e_tower_exit.c
+    src/st/dai/e_winged_guard.c
+)
+
 set(SOURCE_FILES_STAGE_CEN
     src/pc/stages/stage_cen.c
     src/st/cen/header.c
@@ -326,7 +439,6 @@ set(SOURCE_FILES_STAGE_NZ0
     src/st/nz0/e_init.c
     src/st/nz0/gen/rooms.c
     src/st/nz0/gen/e_layout.c
-    src/st/nz0/cutscene_data.c
     src/st/nz0/stage_data.c
     src/st/nz0/gen/sprites.c
     src/st/nz0/background_block_init.c
@@ -374,47 +486,6 @@ set(SOURCE_FILES_STAGE_NZ0
     src/st/nz0/e_life_up.c
 )
 
-set (SOURCE_FILES_STAGE_ST0
-    src/pc/stages/stage_st0.c
-    src/st/st0/header.c
-    src/st/st0/bss.c
-    src/st/st0/gen/e_laydef.c
-    src/st/st0/e_init.c
-    src/st/st0/gen/rooms.c
-    src/st/st0/gen/e_layout.c
-    src/st/st0/stage_data.c
-    src/st/st0/gen/sprites.c
-    src/st/st0/background_block_init.c
-    src/st/st0/e_room_bg.c
-    src/st/st0/e_lock_camera.c
-    src/st/st0/2805C.c
-    src/st/st0/cutscene.c
-    src/st/st0/cutscene_data.c
-    src/st/st0/2A218.c
-    src/st/st0/2A8DC.c
-    src/st/st0/title_card.c
-    src/st/st0/2C564.c
-    src/st/st0/2DAC8.c
-    src/st/st0/prologue_scroll.c
-    src/st/st0/3101C_psx.c
-    src/st/st0/st_update.c
-    src/st/st0/collision.c
-    src/st/st0/create_entity.c
-    src/st/st0/e_red_door_tiles.c
-    src/st/st0/e_red_door.c
-    src/st/st0/st_common.c
-    src/st/st0/e_collect.c
-    src/st/st0/e_misc.c
-    src/st/st0/e_particles.c
-    src/st/st0/e_room_fg.c
-    src/st/st0/popup.c
-    src/st/st0/3AB08.c
-    src/st/st0/3C5C0.c
-    src/st/st0/prim_helpers.c
-    src/st/st0/3D8F0.c
-    src/st/st0/e_bg_vortex.c
-)
-
 set(SOURCE_FILES_STAGE_WRP
     src/pc/stages/stage_wrp.c
     src/st/wrp/header.c
@@ -448,6 +519,85 @@ set(SOURCE_FILES_STAGE_WRP
     src/st/wrp/popup.c
     src/st/wrp/prim_helpers.c
     src/st/wrp/bss.c
+)
+
+set(SOURCE_FILES_STAGE_DRE
+    src/pc/stages/stage_dre.c
+    src/st/dre/header.c
+    src/st/dre/gen/e_laydef.c
+    src/st/dre/e_init.c
+    src/st/dre/gen/rooms.c
+    src/st/dre/gen/e_layout.c
+    src/st/dre/gen/us/sprites.c
+    src/st/dre/gfx_banks.c
+    src/st/dre/gfx_data.c
+    src/st/dre/layers.c
+    src/st/dre/palette_def.c
+    src/st/dre/sprite_banks.c
+    src/st/dre/tilemaps.c
+    src/st/dre/background_block_init.c
+    src/st/dre/e_room_bg.c
+    src/st/dre/e_lock_camera.c
+    src/st/dre/e_breakable.c
+    src/st/dre/d_prize_drops.c
+    src/st/dre/st_update.c
+    src/st/dre/collision.c
+    src/st/dre/create_entity.c
+    src/st/dre/e_red_door_tiles.c
+    src/st/dre/e_red_door.c
+    src/st/dre/st_common.c
+    src/st/dre/e_collect.c
+    src/st/dre/e_misc.c
+    src/st/dre/e_stage_name.c
+    src/st/dre/e_particles.c
+    src/st/dre/e_room_fg.c
+    src/st/dre/popup.c
+    src/st/dre/prim_helpers.c
+    src/st/dre/e_background_clouds.c
+    src/st/dre/e_background_house.c
+    src/st/dre/e_cutscene_actors.c
+    src/st/dre/e_cutscene_dialogue.c
+    src/st/dre/e_succubus.c
+)
+
+set (SOURCE_FILES_STAGE_ST0
+    src/pc/stages/stage_st0.c
+    src/st/st0/header.c
+    src/st/st0/bss.c
+    src/st/st0/gen/e_laydef.c
+    src/st/st0/e_init.c
+    src/st/st0/gen/rooms.c
+    src/st/st0/gen/e_layout.c
+    src/st/st0/stage_data.c
+    src/st/st0/gen/sprites.c
+    src/st/st0/background_block_init.c
+    src/st/st0/e_room_bg.c
+    src/st/st0/e_lock_camera.c
+    src/st/st0/2805C.c
+    src/st/st0/cutscene.c
+    src/st/st0/2A218.c
+    src/st/st0/2A8DC.c
+    src/st/st0/title_card.c
+    src/st/st0/2C564.c
+    src/st/st0/2DAC8.c
+    src/st/st0/prologue_scroll.c
+    src/st/st0/3101C_psx.c
+    src/st/st0/st_update.c
+    src/st/st0/collision.c
+    src/st/st0/create_entity.c
+    src/st/st0/e_red_door_tiles.c
+    src/st/st0/e_red_door.c
+    src/st/st0/st_common.c
+    src/st/st0/e_collect.c
+    src/st/st0/e_misc.c
+    src/st/st0/e_particles.c
+    src/st/st0/e_room_fg.c
+    src/st/st0/popup.c
+    src/st/st0/3AB08.c
+    src/st/st0/3C5C0.c
+    src/st/st0/prim_helpers.c
+    src/st/st0/3D8F0.c
+    src/st/st0/e_bg_vortex.c
 )
 
 SET(SOURCE_FILES_BOSS_BO4
@@ -490,6 +640,141 @@ SET(SOURCE_FILES_BOSS_BO4
     src/boss/bo4/unk_45354.c
     src/boss/bo4/unk_46E7C.c
     src/boss/bo4/bss.c
+)
+
+set(SOURCE_FILES_STAGE_RWRP
+    src/pc/stages/stage_rwrp.c
+    src/st/rwrp/header.c
+    src/st/rwrp/sprite_banks.c
+    src/st/rwrp/palette_def.c
+    src/st/rwrp/layers.c
+    src/st/rwrp/graphics_banks.c
+    src/st/rwrp/gen/e_laydef.c
+    src/st/rwrp/e_init.c
+    src/st/rwrp/gen/rooms.c
+    src/st/rwrp/gen/e_layout.c
+    src/st/rwrp/gen/us/sprites.c
+    src/st/rwrp/stage_data.c
+    src/st/rwrp/background_block_init.c
+    src/st/rwrp/e_room_bg.c
+    src/st/rwrp/e_lock_camera.c
+    src/st/rwrp/e_breakable.c
+    src/st/rwrp/d_prize_drops.c
+    src/st/rwrp/warp.c
+    src/st/rwrp/st_update.c
+    src/st/rwrp/collision.c
+    src/st/rwrp/create_entity.c
+    src/st/rwrp/e_red_door_tiles.c
+    src/st/rwrp/e_red_door.c
+    src/st/rwrp/st_common.c
+    src/st/rwrp/e_collect.c
+    src/st/rwrp/e_misc.c
+    src/st/rwrp/e_stage_name.c
+    src/st/rwrp/e_particles.c
+    src/st/rwrp/e_room_fg.c
+    src/st/rwrp/popup.c
+    src/st/rwrp/prim_helpers.c
+    src/st/rwrp/bss.c
+)
+
+set(SOURCE_FILES_STAGE_NO3
+    src/pc/stages/stage_no3.c
+    src/st/no3/header.c
+    src/st/no3/gen/e_laydef.c
+    src/st/no3/e_init.c
+    src/st/no3/gen/rooms.c
+    src/st/no3/gen/e_layout.c
+    src/st/no3/gen/sprites.c
+    src/st/no3/graphics_banks.c
+    src/st/no3/layers.c
+    src/st/no3/palette_def.c
+    src/st/no3/sprite_banks.c
+    src/st/no3/tilemaps.c
+    src/st/no3/stage_data.c
+    src/st/no3/background_block_init.c
+    src/st/no3/e_room_bg.c
+    src/st/no3/e_lock_camera.c
+    src/st/no3/e_breakable.c
+    src/st/no3/d_prize_drops.c
+    src/st/no3/cutscene.c
+    src/st/no3/st_update.c
+    src/st/no3/collision.c
+    src/st/no3/create_entity.c
+    src/st/no3/e_red_door_tiles.c
+    src/st/no3/e_red_door.c
+    src/st/no3/st_common.c
+    src/st/no3/e_collect.c
+    src/st/no3/e_misc.c
+    src/st/no3/e_stage_name.c
+    src/st/no3/e_particles.c
+    src/st/no3/e_room_fg.c
+    src/st/no3/popup.c
+    src/st/no3/prim_helpers.c
+    src/st/no3/d_water_data.c
+    src/st/no3/e_background_bushes_trees.c
+    src/st/no3/e_background_lightning.c
+    src/st/no3/e_bat.c
+    src/st/no3/e_bone_scimitar.c
+    src/st/no3/e_castle_door.c
+    src/st/no3/e_cavern_door.c
+    src/st/no3/e_death.c
+    src/st/no3/e_death_sky_swirl.c
+    src/st/no3/e_explosion_puff_opaque.c
+    src/st/no3/e_fire_warg.c
+    src/st/no3/e_heartroom.c
+    src/st/no3/e_jewel_sword_puzzle.c
+    src/st/no3/e_merman.c
+    src/st/no3/e_merman2.c
+    src/st/no3/entrance_weights.c
+    src/st/no3/e_outdoor_ents.c
+    src/st/no3/e_shutting_window.c
+    src/st/no3/e_sky_entities.c
+    src/st/no3/e_stairway.c
+    src/st/no3/e_tilemap_shuffler.c
+    src/st/no3/e_transparent_water.c
+    src/st/no3/e_trapdoor.c
+    src/st/no3/e_unkId16.c
+    src/st/no3/e_warg.c
+    src/st/no3/e_zombie.c
+    src/st/no3/water_effects.c
+)
+
+set(SOURCE_FILES_STAGE_MAD
+    src/pc/stages/stage_mad.c
+    src/st/mad/header.c
+    src/st/mad/sprite_banks.c
+    src/st/mad/palette_def.c
+    src/st/mad/layers.c
+    src/st/mad/graphics_banks.c
+    src/st/mad/gen/e_laydef.c
+    src/st/mad/e_init.c
+    src/st/mad/background_block_init.c
+    src/st/mad/e_red_door_tiles.c
+    src/st/mad/e_lock_camera.c
+    src/st/mad/e_breakable.c
+    src/st/mad/st_update.c
+    src/st/mad/collision.c
+    src/st/mad/e_red_door.c
+    src/st/mad/st_common.c
+    src/st/mad/e_collect.c
+    src/st/mad/d_prize_drops.c
+    src/st/mad/e_misc.c
+    src/st/mad/e_particles.c
+    src/st/mad/e_room_fg.c
+    src/st/mad/gen/rooms.c
+    src/st/mad/gen/e_layout.c
+    src/st/mad/stage_data.c
+    src/st/mad/pal.c
+    src/st/mad/tilemaps.c
+    src/st/mad/tiledef_1.c
+    src/st/mad/gen/sprites.c
+    src/st/mad/D8C8.c
+    src/st/mad/e_room_bg.c
+    src/st/mad/create_entity.c
+    src/st/mad/e_stage_name.c
+    src/st/mad/popup.c
+    src/st/mad/prim_helpers.c
+    src/st/mad/bss.c
 )
 
 set(SOURCE_FILES_WEAPON
@@ -620,11 +905,17 @@ function(add_overlay name)
     sotn_str_apply(${name})
 endfunction()
 
-add_overlay(cen ${SOURCE_FILES_STAGE_CEN})
 add_overlay(sel ${SOURCE_FILES_STAGE_SEL})
-add_overlay(wrp ${SOURCE_FILES_STAGE_WRP})
+add_overlay(no2 ${SOURCE_FILES_STAGE_NO2})
+add_overlay(dai ${SOURCE_FILES_STAGE_DAI})
+add_overlay(cen ${SOURCE_FILES_STAGE_CEN})
 add_overlay(nz0 ${SOURCE_FILES_STAGE_NZ0})
+add_overlay(wrp ${SOURCE_FILES_STAGE_WRP})
+add_overlay(dre ${SOURCE_FILES_STAGE_DRE})
 add_overlay(st0 ${SOURCE_FILES_STAGE_ST0})
+add_overlay(rwrp ${SOURCE_FILES_STAGE_RWRP})
+add_overlay(no3 ${SOURCE_FILES_STAGE_NO3})
+add_overlay(mad ${SOURCE_FILES_STAGE_MAD})
 
 add_overlay(tt_000 ${SOURCE_FILES_TT_000})
 add_overlay(tt_001 ${SOURCE_FILES_TT_001})

@@ -134,13 +134,13 @@ void RicInit(s16 initParam) {
     }
     spriteptr = g_api.o.spriteBanks;
     spriteptr += 0x10;
-    *spriteptr = (SpriteParts*)D_801530AC;
+    *spriteptr = (SpriteParts*)spritebank0;
     spriteptr++;
-    *spriteptr = (SpriteParts*)D_80153AA0;
+    *spriteptr = (SpriteParts*)spritebank1;
     spriteptr++;
-    *spriteptr = (SpriteParts*)D_80153D24;
+    *spriteptr = (SpriteParts*)spritebank2;
     spriteptr++;
-    *spriteptr = (SpriteParts*)D_801541A8;
+    *spriteptr = (SpriteParts*)spritebank3;
     for (e = &g_Entities[E_AFTERIMAGE_1], i = 0; i < 3; i++, e++) {
         DestroyEntity(e);
         e->animSet = ANIMSET_OVL(0x10);
@@ -420,7 +420,7 @@ void RicMain(void) {
 #endif
 #endif
 
-#if defined(VERSION_PC) || defined(VERSION_PSP)
+#if defined(FIX_UB) || defined(VERSION_PSP)
     damageEffects = 0;
 #endif
     for (i = 0; i < LEN(g_Player.timers); i++) {
@@ -641,7 +641,7 @@ void RicMain(void) {
         break;
     }
     g_Player.unk08 = g_Player.status;
-#if defined(VERSION_PC) || defined(VERSION_PSP)
+#if defined(FIX_UB) || defined(VERSION_PSP)
     // uninitialized on PSX, it was a coincidence it worked
     newStatus = 0;
 #endif

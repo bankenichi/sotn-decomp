@@ -246,7 +246,6 @@ void CreateAdditionalBats(s32 amount, s32 entityId) {
 
 static void UpdatePrimitives(Entity* entity, s32 frameIndex) {
     Primitive* prim;
-    s32 tpage;
     s32 x, y;
     s32 index;
 
@@ -428,7 +427,7 @@ void OVL_EXPORT(ServantInit)(InitializeMode mode) {
     SpriteParts** spriteBanks;
     Entity* e;
 
-#ifdef VERSION_PC
+#ifdef FIX_UB
     const int len = LEN(g_ServantClut);
 #else
     const int len = 256;

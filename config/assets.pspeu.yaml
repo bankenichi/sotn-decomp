@@ -189,6 +189,11 @@ files:
           - [0x2D590, skip]
           - [0x2D718, blueprintsdef, psp/blueprints, RicBlueprints, RicEntities]
           - [0x2D8F0, skip]
+          - [0x2E0A8, spriteset, spritebank3]
+          - [0x2E4D0, spriteset, spritebank0]
+          - [0x2EEC8, spriteset, spritebank1]
+          - [0x2F1A0, spriteset, spritebank2]
+          - [0x2F6B8, skip]
   - target: disks/pspeu/PSP_GAME/USRDIR/res/ps/PSPBIN/maria.bin
     asset_path: assets/maria
     src_path: src/maria
@@ -209,6 +214,7 @@ files:
           - [0x1F260, skip]
           - [0x1F3B0, blueprintsdef, blueprints, MarBlueprints, MarEntities]
           - [0x1F588, skip]
+          - [0x1FC80, spriteset, maria_spr]
           - [0x20250, palette, maria_pal, 16]
           - [0x20850, spriteset, wpn_owl_spr]
           - [0x20B28, palette, wpn_owl_pal, 16]
@@ -363,6 +369,7 @@ files:
           - [0x3F9B8, skip]
           - [0x3FB08, blueprintsdef, blueprints, MarBlueprints, MarEntities]
           - [0x3FCE0, skip]
+          - [0x403D8, spriteset, maria_spr]
           - [0x409A8, palette, maria_pal, 16]
           - [0x40FA8, spriteset, wpn_owl_spr]
           - [0x41280, palette, wpn_owl_pal, 16]
@@ -771,6 +778,27 @@ files:
           - [0x19E60, cmpgfx, stage_name_ge, 128, 64, 4]
           - [0x1A008, cmpgfx, stage_name_fr, 128, 64, 4]
           - [0x1A270, skip]
+          - [0x1FB10, cutscene, cutscene_script_post_fight_it]
+          - [0x1FCCC, binary, cutscene_data_post_fight_it]
+          - [0x1FCF0, cutscene, cutscene_script_post_fight_sp]
+          - [0x1FEA8, binary, cutscene_data_post_fight_sp]
+          - [0x1FEC8, cutscene, cutscene_script_post_fight_fr]
+          - [0x200AA, binary, cutscene_data_post_fight_fr]
+          - [0x200C8, cutscene, cutscene_script_post_fight_ge]
+          - [0x202A6, binary, cutscene_data_post_fight_ge]
+          - [0x202C8, cutscene, cutscene_script_post_fight_en]
+          - [0x20478, binary, cutscene_data_post_fight_en]
+          - [0x20498, cutscene, cutscene_script_talk_it]
+          - [0x20586, binary, cutscene_data_talk_it]
+          - [0x205C0, cutscene, cutscene_script_talk_sp]
+          - [0x206AC, binary, cutscene_data_talk_sp]
+          - [0x206E8, cutscene, cutscene_script_talk_fr]
+          - [0x207DE, binary, cutscene_data_talk_fr]
+          - [0x20818, cutscene, cutscene_script_talk_ge]
+          - [0x2090C, binary, cutscene_data_talk_ge]
+          - [0x20948, cutscene, cutscene_script_talk_en]
+          - [0x20A32, binary, cutscene_data_talk_en]
+          - [0x20A70, skip]
   - target: disks/pspeu/PSP_GAME/USRDIR/res/ps/PSPBIN/wrp.bin
     asset_path: assets/st/wrp
     src_path: src/st/wrp
@@ -854,7 +882,13 @@ files:
           - [0x1C320, cutscene, cutscene_script_post_fight_en]
           - [0x1C420, skip]
   - target: disks/pspeu/PSP_GAME/USRDIR/res/ps/PSPBIN/rchi.bin
+    asset_path: assets/st/rchi
+    src_path: src/st/rchi
+    splat_config_path: config/splat.pspeu.strchi.yaml
   - target: disks/pspeu/PSP_GAME/USRDIR/res/ps/PSPBIN/rdai.bin
+    asset_path: assets/st/rdai
+    src_path: src/st/rdai
+    splat_config_path: config/splat.pspeu.strdai.yaml
   - target: disks/pspeu/PSP_GAME/USRDIR/res/ps/PSPBIN/rlib.bin
   - target: disks/pspeu/PSP_GAME/USRDIR/res/ps/PSPBIN/rno0.bin
     asset_path: assets/st/rno0
@@ -959,6 +993,24 @@ files:
   - target: disks/pspeu/PSP_GAME/USRDIR/res/ps/PSPBIN/rnz1.bin
   - target: disks/pspeu/PSP_GAME/USRDIR/res/ps/PSPBIN/rtop.bin
   - target: disks/pspeu/PSP_GAME/USRDIR/res/ps/PSPBIN/rwrp.bin
+    asset_path: assets/st/rwrp
+    src_path: src/st/rwrp
+    splat_config_path: config/splat.pspeu.strwrp.yaml
+    segments:
+      - start: 0x80
+        vram: 0x09237700
+        assets:
+          - [0x80, skip]
+          - [0x11918, sprite_banks, psp/sprite_banks]
+          - [0x11978, layers, layers]
+          - [0x11A68, paldef, palette_def]
+          - [0x11A88, gfx_banks, graphics_banks]
+          - [0x11C30, rooms, rooms]
+          - [0x11CB0, skip]
+          - [0x11D00, cmpgfx, stage_title_rwrp_jp, 128, 128, 4]
+          - [0x12048, cmpgfx, stage_placeholder_rwrp, 128, 128, 4]
+          - [0x125F0, palette, D_80181D08, 16]
+          - [0x128B0, skip]
   - target: disks/pspeu/PSP_GAME/USRDIR/res/ps/PSPBIN/mar.bin
   - target: disks/pspeu/PSP_GAME/USRDIR/res/ps/PSPBIN/bo0.bin
     asset_path: assets/boss/bo0

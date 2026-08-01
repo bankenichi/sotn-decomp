@@ -31,16 +31,13 @@ static cloudData data[] = {
     {.unkPtr = D_801820EC, .unk4 = 0xFEE0, .priority = 0x1C},
     {.unkPtr = D_8018212C, .unk4 = 0x00C0, .priority = 0x18}};
 #ifdef VERSION_PSP
-extern E_ID(ID_2D);
+extern E_ID(PHOTOGRAPH_FIRE);
 extern SVECTOR empty; // bss on PSP
 #else
 static SVECTOR empty = {0, 0, 0};
 #endif
 
-void EntityClouds(Entity* self) {
-#ifdef VERSION_PC
-    u8 sp[SP_LEN];
-#endif
+void EntityBackgroundClouds(Entity* self) {
     Primitive* prim;
     s16* var_s1;
     s32 var_s2;
@@ -357,9 +354,6 @@ SVECTOR* s_ClockVertexSets[] = {
     D_80182298, D_801822D8, D_80182318, D_80182358};
 
 void EntityClockTower3D(Entity* self) {
-#ifdef VERSION_PC
-    u8 sp[SP_LEN];
-#endif
     s32 unusedHalfZ;
     SVECTOR rotVector;
     VECTOR transVector;
@@ -1008,7 +1002,7 @@ void EntityCutscenePhotograph(Entity* self) {
         }
         otherEnt = AllocEntity(self, &g_Entities[256]);
         if (otherEnt != NULL) {
-            CreateEntityFromCurrentEntity(E_ID(ID_2D), otherEnt);
+            CreateEntityFromCurrentEntity(E_ID(PHOTOGRAPH_FIRE), otherEnt);
             otherEnt->posX.i.hi = newEntX;
             otherEnt->posY.i.hi = newEntY;
             otherEnt->facingLeft = dualFlag;
@@ -1017,7 +1011,7 @@ void EntityCutscenePhotograph(Entity* self) {
 
         otherEnt = AllocEntity(self, &g_Entities[256]);
         if (otherEnt != NULL) {
-            CreateEntityFromCurrentEntity(E_ID(ID_2D), otherEnt);
+            CreateEntityFromCurrentEntity(E_ID(PHOTOGRAPH_FIRE), otherEnt);
             otherEnt->posX.i.hi = newEntX;
             otherEnt->posY.i.hi = newEntY + 0xC;
             otherEnt->facingLeft = dualFlag;

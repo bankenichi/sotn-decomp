@@ -60,5 +60,6 @@ u8 D_801816C4[4] = {0};
 
 u8 OVL_EXPORT(cutscene_script)[] = {
 #include "gen/cutscene_script_psx.h"
+#include "gen/cutscene_events.h"
 };
 #endif

@@ -450,6 +450,38 @@ s32 LoadFileSim(s32 fileId, SimFileType type) {
             sim.path = "BIN/F_PROLO1.BIN";
             sim.kind = SIM_12;
             break;
+        // gof.bin, gob.bin, c_gof.bin, c_gob.bin are packed back-to-back
+        // inside a single combined BIN/F_GO.BIN on disk
+        case 8: // game over bitmap foreground
+            if (FileReadToBuf(
+                    "disks/us/BIN/F_GO.BIN", D_80280000, 0x00000, 0x8000) < 0) {
+                return -1;
+            }
+            LoadImage(&g_Vram.D_800ACDD0, D_80280000);
+            return 0;
+        case 9: // game over bitmap background
+            if (FileReadToBuf("disks/us/BIN/F_GO.BIN", D_80280000, 0x08000,
+                              0x10000) < 0) {
+                return -1;
+            }
+            LoadImage(&g_Vram.D_800ACDD8, D_80280000);
+            return 0;
+        case 10: // game over palette foreground
+            if (FileReadToBuf(
+                    "disks/us/BIN/F_GO.BIN", D_80280000, 0x18000, 0x2000) < 0) {
+                return -1;
+            }
+            LoadImage(&g_Vram.D_800ACDB8, D_80280000);
+            StoreImage(&g_Vram.D_800ACDB8, g_Clut[2]);
+            return 0;
+        case 11: // game over palette background
+            if (FileReadToBuf(
+                    "disks/us/BIN/F_GO.BIN", D_80280000, 0x1A000, 0x2000) < 0) {
+                return -1;
+            }
+            LoadImage(&g_Vram.D_800ACDA8, D_80280000);
+            StoreImage(&g_Vram.D_800ACDA8, g_Clut[0]);
+            return 0;
         case 12:
             sim.path = "ST/SEL/F_SEL.BIN";
             sim.kind = SIM_STAGE_CHR;
@@ -468,7 +500,13 @@ s32 LoadFileSim(s32 fileId, SimFileType type) {
             if (g_GameParams.player >= 0) {
                 g_PlayableCharacter = g_GameParams.player;
             }
-            if (g_GameParams.stage >= 0) {
+            if (g_GameParams.demo >= 0) {
+                D_80097C98 = 0x80000000 |
+                             (g_GameParams.demo & STAGE_INVERTEDCASTLE_MASK);
+                DemoInit(2);
+                SetGameState(Game_NowLoading);
+                g_GameStep = 1;
+            } else if (g_GameParams.stage >= 0) {
                 g_StageId = g_GameParams.stage;
                 SetGameState(Game_NowLoading);
                 g_GameStep = 1;
@@ -578,6 +616,9 @@ s32 LoadFileSim(s32 fileId, SimFileType type) {
             sim.kind = SIM_VB;
         }
         break;
+    case SimFileType_Seq:
+        LoadFileSimToMem(SIM_SEQ);
+        return 0;
     case SimFileType_StageChr:
         sim.kind = SIM_STAGE_CHR;
         sim.path = smolbuf;

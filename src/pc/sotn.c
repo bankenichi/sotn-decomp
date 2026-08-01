@@ -4,12 +4,15 @@
 #include "stage.h"
 #include "dra_bss.h"
 #include "servant.h"
+#include <scratchpad.h>
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #undef HARD_LINK
+
+u8 g_Scratchpad[SP_LEN];
 
 u16 g_RawVram[VRAM_W * VRAM_H];
 GameApi g_ApiInit = {0};
@@ -45,7 +48,7 @@ extern u_long* D_800A3BB8[];
 
 FactoryBlueprint g_FactoryBlueprints[0xC0] = {0};
 u8 g_BmpCastleMap[0x20000];
-u8 D_psp_08D95C40[0x2000];
+u8 g_DemoRecordingBuffer[DEMO_MAX_LEN];
 
 extern u16 g_PalEquipIcon[320 * 16];
 

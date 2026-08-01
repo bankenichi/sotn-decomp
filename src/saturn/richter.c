@@ -165,7 +165,7 @@ static void func_80159C04(void) {
 }
 INCLUDE_ASM("asm/saturn/richter/f_nonmat", f60A7310, func_060A7310);
 INCLUDE_ASM("asm/saturn/richter/f_nonmat", f60A7B78, func_060A7B78);
-INCLUDE_ASM("asm/saturn/richter/data", d60A7CF0, d_060A7CF0);
+INCLUDE_ASM("asm/saturn/richter/f_nonmat", f60A7CF0, RicStepDead);
 extern u16 D_80155528[];
 extern u32 g_SubwpnCrashTimer;
 void RicStepStandInAir(void) {
@@ -202,7 +202,7 @@ checkVelocity:
 void RicStepEnableFlameWhip(void) {
     if (PLAYER.animCurFrame == 181 && PLAYER.poseTimer == 1) {
         RicCreateEntFactoryFromEntity(g_CurrentEntity, BP_35, 0);
-        func_06011278(0x62F);
+        PlaySfx(SFX_WEAPON_APPEAR);
     }
 
     if (PLAYER.poseTimer < 0) {
@@ -284,7 +284,7 @@ INCLUDE_ASM("asm/saturn/richter/f_nonmat", f60A82F8, func_060A82F8);
 INCLUDE_ASM("asm/saturn/richter/f_nonmat", f60A8664, func_060A8664);
 extern s32 g_PlayerX;
 static void func_8015BB80(void) {
-    if (DAT_0605d750.stageID == STAGE_TOP) {
+    if (g_CurrentRoom.stageID == STAGE_TOP) {
         if (ABS((g_Tilemap.left << 8) + g_PlayerX) - 8079 > 0) {
             PLAYER.posX.i.hi--;
         }
@@ -292,7 +292,7 @@ static void func_8015BB80(void) {
             PLAYER.posX.i.hi++;
         }
     }
-    if (DAT_0605d750.stageID == (STAGE_TOP | STAGE_INVERTEDCASTLE_FLAG)) {
+    if (g_CurrentRoom.stageID == (STAGE_TOP | STAGE_INVERTEDCASTLE_FLAG)) {
         if (ABS((g_Tilemap.left << 8) + g_PlayerX) - 8430 > 0) {
             PLAYER.posX.i.hi--;
         }
@@ -481,7 +481,7 @@ void RicSetHighJump(void) {
     RicSetAnimation(ric_anim_high_jump);
     func_8015CC28();
     RicCreateEntFactoryFromEntity(g_CurrentEntity, BP_HIGH_JUMP, 0);
-    func_06011278(0x712);
+    PlaySfx(SFX_UNUSED_712);
     g_Player.timers[PL_T_12] = 4;
     if (g_Player.unk72) {
         PLAYER.velocityY = 0;
@@ -489,7 +489,7 @@ void RicSetHighJump(void) {
 }
 
 // func_060A938C
-static s32 RicCheckSubwpnChainLimit(s16 subwpnId, s16 limit) {
+s32 RicCheckSubwpnChainLimit(s16 subwpnId, s16 limit) {
     Entity* entity;
     s32 i;
     s32 nFound;
@@ -542,7 +542,7 @@ void RicSetSlide(void) {
     RicSetSpeedX(FIX(6.625));
     func_8015CC28();
     RicCreateEntFactoryFromEntity(g_CurrentEntity, BP_25, 0);
-    func_06011278(0x71A);
+    PlaySfx(SFX_TOAD_CROAK);
     g_Player.timers[PL_T_12] = 4;
 }
 
@@ -575,8 +575,8 @@ void RicSetBladeDash(void) {
     g_Player.timers[PL_T_12] = 4;
     RicCreateEntFactoryFromEntity(g_CurrentEntity, BP_BLADE_DASH, 0);
     func_8015CC28();
-    func_06011278(0x712);
-    func_06011278(0x71A);
+    PlaySfx(SFX_UNUSED_712);
+    PlaySfx(SFX_TOAD_CROAK);
 }
 
 // ===== pl_utils.c
@@ -682,7 +682,7 @@ void DisableAfterImage(s32 resetAnims, s32 arg1) {
         entity = &g_Entities[E_AFTERIMAGE_1];
         for (i = 0; i < 3; i++, entity++) {
             entity->animCurFrame = 0;
-            entity->unk0->unk0 = 0;
+            entity->unk0->flags = 0;
         }
         prim = &g_PrimBuf[g_Entities[E_AFTERIMAGE_1].primIndex];
         while (prim) {
@@ -739,7 +739,7 @@ INCLUDE_ASM("asm/saturn/richter/f_nonmat", f60AB7B4, func_060AB7B4);
 
 #define E_NONE 0
 // func_060AB980
-static Entity* RicGetFreeEntity(s16 start, s16 end) {
+Entity* RicGetFreeEntity(s16 start, s16 end) {
     Entity* entity = &g_Entities[start];
     s16 i;
 
@@ -752,7 +752,7 @@ static Entity* RicGetFreeEntity(s16 start, s16 end) {
 }
 
 // func_060AB9C0
-static Entity* RicGetFreeEntityReverse(s16 start, s16 end) {
+Entity* RicGetFreeEntityReverse(s16 start, s16 end) {
     Entity* entity = &g_Entities[end - 1];
     s16 i;
     for (i = end - 1; i >= start; i--, entity--) {
@@ -823,9 +823,9 @@ typedef struct {
     u16 uv1;
 } RicUvPair;
 
-extern u16 D_060C2F40;
+extern u16 g_RichterSpritePackage3AllocationIndex;
 extern u8 D_060BF1A4[];
-extern RicUvPair D_0605AEC0[];
+extern RicUvPair DAT_0605aec0[];
 
 s32 func_8015FDB0(RicPrimitive* prim, s16 posX, s16 posY) {
     s16 offset;
@@ -850,7 +850,8 @@ s32 func_8015FDB0(RicPrimitive* prim, s16 posX, s16 posY) {
     prim->x1 = posX + xOffset;
     prim->y1 = posY + offset;
 
-    uvAnim = &D_0605AEC0[D_060C2F40 + D_060BF1A4[frame]];
+    uvAnim = &DAT_0605aec0[g_RichterSpritePackage3AllocationIndex +
+                           D_060BF1A4[frame]];
     prim->uv0 = uvAnim->uv0;
     prim->uv1 = uvAnim->uv1;
 
@@ -1027,9 +1028,9 @@ INCLUDE_ASM("asm/saturn/richter/f_nonmat", f60ADFD4, func_060ADFD4);
 // RicEntityMariaPowers
 INCLUDE_ASM("asm/saturn/richter/f_nonmat", f60AE1B4, func_060AE1B4);
 
-s32 func_0600FFB8();
+s32 DestroyEntity();
 
-void func_060AE538(void) { func_0600FFB8(); }
+void func_060AE538(void) { DestroyEntity(); }
 
 // RicEntityMaria
 INCLUDE_ASM("asm/saturn/richter/f_nonmat", f60AE550, func_060AE550);
@@ -1077,7 +1078,7 @@ INCLUDE_ASM_NO_ALIGN("asm/saturn/richter/f_nonmat", f60B052A, func_060B052A);
 
 // ===== ???
 
-void RicEntityDummy(void) { func_0600FFB8(); }
+void RicEntityDummy(void) { DestroyEntity(); }
 
 void func_060B0604() {}
 
@@ -1129,7 +1130,6 @@ const u16 pad_60B151E = 0; // file split!
 
 // RicEntitySubwpnReboundStone
 INCLUDE_ASM("asm/saturn/richter/f_nonmat", f60B1520, func_060B1520);
-INCLUDE_ASM_NO_ALIGN("asm/saturn/richter/data", d60B23B6, d_060B23B6);
 INCLUDE_ASM("asm/saturn/richter/f_nonmat", f60B240C, func_060B240C);
 
 // RicEntitySubwpnAgunea
@@ -1337,8 +1337,7 @@ const u16 pad_60B9666 = 0x0009; // nop
 // RicEntitySubwpnHolyWaterBreakGlass
 INCLUDE_ASM("asm/saturn/richter/f_nonmat", f60B9668, func_060B9668);
 
-// bad split, part of previous function
-INCLUDE_ASM("asm/saturn/richter/f_nonmat", f60B9A2C, func_060B9A2C);
+INCLUDE_ASM("asm/saturn/richter/f_nonmat", f60B9978, func_060B9978);
 
 // RicEntityCrashHydroStorm
 INCLUDE_ASM("asm/saturn/richter/f_nonmat", f60B9A50, func_060B9A50);
@@ -1421,12 +1420,12 @@ INCLUDE_ASM("asm/saturn/richter/f_nonmat", f60BA788, func_060BA788);
 
 void func_060BB330();
 
-extern s32 DAT_060c4118;
-extern s32 DAT_060c411c;
+extern u32 g_RichterCastleMapState;
+extern u8 g_RichterCastleMapBitmap[240][160];
 
 void func_060BACA4(void) {
-    memset(&DAT_060c4118, 0, 4);
-    memcpy(0x002B2000, &DAT_060c411c, 0x9600);
+    memset(&g_RichterCastleMapState, 0, 4);
+    memcpy(0x002B2000, g_RichterCastleMapBitmap, 0x9600);
 
     func_060BB330();
 }
@@ -1445,12 +1444,12 @@ typedef struct {
     u16 colors1[4];
 } RicGouraudTable;
 
-extern s32 d_060476A0;
-extern s32 d_060476A4;
-extern s32 d_060cd748;
-extern s32 d_060cd74c;
-extern RicGouraudTable* DAT_0606471C;
-extern s32 d_0605c6e4;
+extern s32 DAT_060476a0;
+extern s32 DAT_060476a4;
+extern s32 g_RichterSavedMapVramBase;
+extern s32 g_RichterSavedMapPlaneConfig;
+extern RicGouraudTable* SpGourTbl;
+extern s32 DAT_0605c6e4;
 s32* func_060784A8(void);
 
 void func_060BB90C(void) {
@@ -1460,41 +1459,41 @@ void func_060BB90C(void) {
 
     ptr = func_060784A8();
     func_060BBDE0(ptr);
-    d_060cd748 = d_060476A0;
-    d_060cd74c = d_060476A4;
+    g_RichterSavedMapVramBase = DAT_060476a0;
+    g_RichterSavedMapPlaneConfig = DAT_060476a4;
     if (g_PlayableCharacter == 0) {
-        d_060476A0 = 0x252000;
-        d_060476A4 = 1;
+        DAT_060476a0 = 0x252000;
+        DAT_060476a4 = 1;
     }
-    colors0 = DAT_0606471C->colors0;
+    colors0 = SpGourTbl->colors0;
     colors0[0] = colors0[1] = 0xB18C;
     colors0[2] = colors0[3] = 0xD294;
-    colors1 = DAT_0606471C->colors1;
+    colors1 = SpGourTbl->colors1;
     colors1[0] = colors1[1] = colors1[2] = colors1[3] = 0x9084;
-    d_0605c6e4 = 1;
+    DAT_0605c6e4 = 1;
 }
 
 INCLUDE_ASM("asm/saturn/richter/f_nonmat", f60BB9BC, func_060BB9BC);
 
-s32 d_06086390;
-s32 d_060476A0;
-s32 d_060476A4;
-extern s32 d_060cd748;
-extern s32 d_060cd74c;
+s32 DAT_06086390;
+s32 DAT_060476a0;
+s32 DAT_060476a4;
+extern s32 g_RichterSavedMapVramBase;
+extern s32 g_RichterSavedMapPlaneConfig;
 void func_060BB9BC(s32*);
 
 void func_060BBA88(void) {
     s32* iVar2;
     iVar2 = func_060784A8();
     func_060BB9BC(iVar2);
-    d_060476A0 = d_060cd748;
-    d_060476A4 = d_060cd74c;
+    DAT_060476a0 = g_RichterSavedMapVramBase;
+    DAT_060476a4 = g_RichterSavedMapPlaneConfig;
 }
 
-s32 d_06086390;
+s32 DAT_06086390;
 void func_060BBAC8(void) {
     s32* iVar2;
-    d_06086390 = 0;
+    DAT_06086390 = 0;
     iVar2 = func_060784A8();
     iVar2[0x4500] = 0xffffffff;
 }
@@ -1505,14 +1504,14 @@ INCLUDE_ASM("asm/saturn/richter/f_nonmat", f60BBCCC, func_060BBCCC);
 
 void func_060BBD88(void) {
     int* iVar2;
-    d_06086390 = 4;
+    DAT_06086390 = 4;
     iVar2 = func_060784A8();
     iVar2[0x4500] = 0xffffffff;
 }
 
 void func_060BBDB4(void) {
     int* iVar2;
-    d_06086390 = 5;
+    DAT_06086390 = 5;
     iVar2 = func_060784A8();
     iVar2[0x4500] = 0xffffffff;
 }
@@ -1523,7 +1522,7 @@ INCLUDE_ASM("asm/saturn/richter/f_nonmat", f60BC048, func_060BC048);
 INCLUDE_ASM("asm/saturn/richter/f_nonmat", f60BC108, func_060BC108);
 INCLUDE_ASM("asm/saturn/richter/f_nonmat", f60BC228, func_060BC228);
 INCLUDE_ASM("asm/saturn/richter/f_nonmat", f60BC4E4, func_060BC4E4);
-extern s16 PTR_DAT_060cd7f0[];
+extern s16 g_RichterMapRevealRowIndices[];
 
 void func_060BC7A8(u32 arg0) {
     s32 first;
@@ -1540,7 +1539,7 @@ void func_060BC7A8(u32 arg0) {
         offset = 0;
     }
 
-    first = PTR_DAT_060cd7f0[arg0];
+    first = g_RichterMapRevealRowIndices[arg0];
     for (current = first; current < first + 4; current++) {
         s32 tile = current << 6;
 
@@ -1559,16 +1558,10 @@ void func_060BC7A8(u32 arg0) {
     }
 }
 INCLUDE_ASM("asm/saturn/richter/f_nonmat", f60BC834, func_060BC834);
-typedef struct {
-    u16 unk0;
-    u16 unk2;
-    u32 unk4;
-    u32 unk8;
-} Unk0605cd70;
 
 extern Unk0605cd70 DAT_0605cd70;
 extern u8 DAT_06057f68;
-extern u32 d_06085534;
+extern u32 D_06085534;
 s32 func_060732E4(u16 arg0);
 void func_060BC834(void);
 
@@ -1583,8 +1576,8 @@ void func_060BCA10(void) {
         DAT_0605cd70.unk8++;
     }
 after:
-    if ((DAT_06057f68 == 0) && ((g_pads[0].previous & 0x100) != 0)) {
-        d_06085534 = 6;
+    if ((DAT_06057f68 == 0) && (g_pads[0].previous & 0x100)) {
+        D_06085534 = 6;
         DAT_06057f68 = 4;
     }
     func_060BC834();
@@ -1601,4 +1594,4 @@ INCLUDE_ASM("asm/saturn/richter/f_nonmat", f60BD768, func_060BD768);
 INCLUDE_ASM("asm/saturn/richter/f_nonmat", f60BDADC, func_060BDADC);
 INCLUDE_ASM("asm/saturn/richter/f_nonmat", f60BDFD4, func_060BDFD4);
 INCLUDE_ASM("asm/saturn/richter/f_nonmat", f60BE110, func_060BE110);
-INCLUDE_ASM("asm/saturn/richter/data", d60BED58, d_060BED58);
+INCLUDE_ASM("asm/saturn/richter/f_nonmat", f60BE198, func_060BE198);

@@ -3,34 +3,44 @@
 #include "../pfn_entity_update.h"
 #include <cutscene.h>
 
-extern Dialogue g_Dialogue;
+extern u8 cutscene_data[];
+
+// bss
+STATIC_PAD_BSS(0xC00);
+s32 g_SkipCutscene;
+Dialogue g_Dialogue;
+STATIC_PAD_BSS(0x68);
+static u32 g_CutsceneFlags;
+s32 D_us_801BC514;
+static s32 g_IsCutsceneDone;
+
+static u8 D_us_80180D38[] = {0x00, 0x40, 0x00, 0x00};
+static u8 D_us_80180D3C[] = {0x00, 0x00, 0x00, 0x00};
+static u16 D_us_80180D40[] = {0x0210, 0x0218, 0x0220};
+static u16 D_us_80180D48[] = {0x0000, 0x0020};
+static u16 D_us_80180D4C[] = {0x01A1, 0x01A1, 0x01A1, 0x01A1};
+static s16 D_us_80180D54[] = {
+    0x0008, 0x0013, 0x0011, 0x0031, 0x004F, 0x0026, 0x0036, 0x001D, 0x001B,
+    0x0033, 0x002C, 0x0021, 0x0019, 0x000A, 0x0033, 0x001F, 0x0048, 0x002F,
+    0x0013, 0x0019, 0x004D, 0x004B, 0x0017, 0x001D, 0x0012, 0x0002, 0x001B,
+    0x002A, 0x0050, 0x0045, 0x0032, 0x000D, 0x002A, 0x004D, 0x0006, 0x0027,
+    0x0007, 0x0048, 0x002F, 0x001B, 0x0036, 0x0022, 0x0039, 0x0014, 0x0039,
+    0x001D, 0x000A, 0x0035, 0x0010, 0x001B, 0x003D, 0x0017, 0x002E, 0x000B,
+    0x0049, 0x0042, 0x003D, 0x002A, 0x0001, 0x000C, 0x001B, 0x0034, 0x0041,
+    0x0035, 0x0008, 0x000E, 0x004D, 0x0011, 0x0034, 0x0041, 0x0029, 0x0048,
+};
+static const char* actor_names[] = {_S("Alucard"), _S("Maria"), _S("Richter")};
 
 #include "../cutscene_unk1.h"
 #include "../set_cutscene_script.h"
 #include "../cutscene_unk3.h"
 #include "../cutscene_unk4.h"
 #include "../cutscene_actor_name.h"
-#include "../set_cutscene_end.h"
+#include "../set_cutscene_events.h"
 #define CUTSCENE_TILEMAP_SCROLL
-#include "../cutscene_run.h"
+#include "../cutscene_events.h"
 #include "../cutscene_skip.h"
 #include "../cutscene_scale_avatar.h"
-
-INCLUDE_RODATA("st/top/nonmatchings/cutscene", D_us_801A898C);
-
-INCLUDE_RODATA("st/top/nonmatchings/cutscene", D_us_801A8998);
-
-INCLUDE_RODATA("st/top/nonmatchings/cutscene", D_us_801A89A0);
-
-extern u8 OVL_EXPORT(cutscene_data)[];
-extern bool g_IsCutsceneDone;
-extern u32 g_CutsceneFlags;
-extern u8 D_us_80180D38[];
-extern u8 D_us_80180D3C[];
-extern u16 D_us_80180D40[];
-extern u16 D_us_80180D48[];
-extern u16 D_us_80180D4C[];
-extern s16 D_us_80180D54[];
 
 void EntityCutscene(Entity* self) {
     RECT rect;
@@ -53,8 +63,8 @@ void EntityCutscene(Entity* self) {
             }
         }
 
-        if (self->step && g_Dialogue.unk3C) {
-            CutsceneRun();
+        if (self->step && g_Dialogue.hasEvents) {
+            RunCutsceneEvents();
         }
     }
 
@@ -65,7 +75,7 @@ void EntityCutscene(Entity* self) {
             DestroyEntity(self);
             return;
         }
-        if (SetCutsceneScript(OVL_EXPORT(cutscene_data))) {
+        if (SetCutsceneScript(cutscene_data)) {
             g_CutsceneHasControl = true;
             g_CutsceneFlags = 0;
             g_IsCutsceneDone = 0;
@@ -236,7 +246,7 @@ void EntityCutscene(Entity* self) {
                 }
                 *g_Dialogue.scriptCur--;
                 return;
-            case CSOP_SET_END:
+            case CSOP_SET_EVENTS:
                 ptr = (u_long)*g_Dialogue.scriptCur++;
                 ptr <<= 4;
                 ptr |= (u_long)*g_Dialogue.scriptCur++;
@@ -244,7 +254,7 @@ void EntityCutscene(Entity* self) {
                 ptr |= (u_long)*g_Dialogue.scriptCur++;
                 ptr <<= 4;
                 ptr |= (u_long)*g_Dialogue.scriptCur++;
-                SetCutsceneEnd((u8*)ptr);
+                SetCutsceneEvents((u8*)ptr);
                 continue;
             case CSOP_SCRIPT_UNKNOWN_13:
                 continue;
@@ -289,8 +299,8 @@ void EntityCutscene(Entity* self) {
             case CSOP_SET_FLAG:
                 g_CutsceneFlags |= 1 << *g_Dialogue.scriptCur++;
                 continue;
-            case CSOP_SCRIPT_UNKNOWN_18:
-                g_Dialogue.unk3C = 0;
+            case CSOP_STOP_EVENTS:
+                g_Dialogue.hasEvents = 0;
                 continue;
             case CSOP_LOAD_PORTRAIT:
                 if (g_SkipCutscene) {

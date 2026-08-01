@@ -959,7 +959,7 @@ void DrawRichterHudSubweapon(void) {
     }
     if (D_8003C744 == 2 || D_8003C744 == 3) {
         if (g_PlayerHud.unk1C != 0) {
-            g_PlayerHud.unk1C -= 1;
+            g_PlayerHud.unk1C--;
         }
         if (g_PlayerHud.unk20 <
             ((g_PlayerHud.unk0C * 100) / g_PlayerHud.unk10)) {
@@ -1189,6 +1189,7 @@ bool StatusPause(s32 arg0) {
     return true;
 }
 
+// original name: status_disp_init
 void DrawHud(void) {
     Primitive* prim;
     s32 i;

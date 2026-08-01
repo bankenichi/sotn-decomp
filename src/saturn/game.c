@@ -11,7 +11,7 @@ bool func_800F27F4(s32 arg0) {
         if (g_unkGraphicsStruct.D_800973FC != 0 || D_8006BB00 != 0) {
             return false;
         }
-        if (D_8003C708.flags & (0x40 | 0x20)) {
+        if (D_8003C708.flags & (FLAG_UNK_40 | FLAG_UNK_20)) {
             return false;
         }
         D_801375C8 = 1;
@@ -19,16 +19,17 @@ bool func_800F27F4(s32 arg0) {
     }
     D_801375C8 = 8;
 }
+
 void func_800F2860(void) {
     switch (D_801375C8) {
     case 0:
         break;
     case 1:
-        PlaySfx(0xF0000080);
+        PlaySfx(SET_UNK_80);
         D_801375C8++;
         break;
     case 2:
-        if (func_80131F68() == 0) {
+        if (func_80131F68_1() == 0) {
             D_801375C8++;
         }
         break;
@@ -37,12 +38,12 @@ void func_800F2860(void) {
         D_801375C8++;
         break;
     case 4:
-        if (func_80131F68() != 0) {
+        if (func_80131F68_1() != 0) {
             D_801375C8++;
         }
         break;
     case 5:
-        if (func_80131F68() == 0) {
+        if (func_80131F68_1() == 0) {
             D_801375C8++;
         }
         break;
@@ -51,19 +52,19 @@ void func_800F2860(void) {
         D_801375C8 = 0;
         break;
     case 7:
-        if (func_80131F68() == 0) {
+        if (func_80131F68_1() == 0) {
             D_801375C8--;
         }
         break;
     case 8:
-        PlaySfx(0xF0000080);
+        PlaySfx(SET_UNK_80);
         D_801375C8--;
         break;
     }
 }
 
 // RunMainEngine
-INCLUDE_ASM("asm/saturn/game/f_match", f6070A60, RunMainEngine);
+INCLUDE_ASM("asm/saturn/game/f_nonmat", f6070A60, RunMainEngine);
 INCLUDE_ASM("asm/saturn/game/f_nonmat", f6071C3C, func_06071C3C);
 
 extern s32 DAT_0605c120;
@@ -72,7 +73,7 @@ extern s32 D_80097C98;
 extern s32 DAT_0605c668;
 extern s32 DAT_0605cd54;
 extern s32 g_PlayerX;
-extern s16 DAT_0605cd70;
+extern Unk0605cd70 DAT_0605cd70;
 extern s32 DAT_0605ceb0;
 extern s32 DAT_0605d7dc;
 extern s32 DAT_060860bc;
@@ -83,7 +84,7 @@ extern RoomLoadDefHolder D_801375BC;
 extern s32 D_8013759C;
 extern s32 D_801375A4;
 
-void FUN_060666a4(s32);
+void InitRoomEntities(s32);
 void SetDefaultSCLPriority(s32);
 void FUN_0606d358(s32);
 void func_0600ff08(void);
@@ -96,7 +97,7 @@ void InitRoom(void) {
     Entity* ent;
     Primitive* prim;
 
-    if (DAT_0605d750.unk4 < 0x50) {
+    if (g_CurrentRoom.unk4 < 0x50) {
         D_8003C708.flags = 0;
     }
     DAT_0605c668 = 1;
@@ -108,11 +109,11 @@ void InitRoom(void) {
     Scl_w_reg.wincontrl[0] = 0x8383;
     SclProcess = 1;
     func_0600ff08();
-    if (DAT_0605d750.unk4 < 0x50) {
+    if (g_CurrentRoom.unk4 < 0x50) {
         D_801375BC.def =
-            (RoomLoadDef*)FUN_0606d804(DAT_0605d750.stageID & 0xDF);
+            (RoomLoadDef*)func_0606D804(g_CurrentRoom.stageID & 0xDF);
         D_801375BC.def =
-            (RoomLoadDef*)((u8*)D_801375BC.def + DAT_0605d750.unk4 * 6 + 4);
+            (RoomLoadDef*)((u8*)D_801375BC.def + g_CurrentRoom.unk4 * 6 + 4);
     }
     D_8013759C = PLAYER.posX.val;
     D_801375A0 = PLAYER.posY.val;
@@ -121,14 +122,14 @@ void InitRoom(void) {
     DAT_060860bc = 0;
     DAT_060860c0 = 0;
     FUN_0606d358(1);
-    uVar9 = DAT_0605d750.stageID & 0xDF;
+    uVar9 = g_CurrentRoom.stageID & 0xDF;
     if ((uVar9 == 6 || uVar9 == 11 || uVar9 == 9 || uVar9 == 3) &&
-        DAT_0605d750.unkA != DAT_0605d750.unk8) {
-        DAT_0605d750.unkA = DAT_0605d750.unk8;
+        g_CurrentRoom.unkA != g_CurrentRoom.unk8) {
+        g_CurrentRoom.unkA = g_CurrentRoom.unk8;
     } else {
         DAT_0605d7dc = DAT_0605c120;
     }
-    func_06009510(DAT_0605d750.unk4);
+    func_06009510(g_CurrentRoom.unk4);
     PLAYER.posX.i.hi = PLAYER.posX.i.hi % 0x140;
     PLAYER.posY.i.hi = PLAYER.posY.i.hi % 0x100;
 
@@ -145,8 +146,8 @@ void InitRoom(void) {
         ((D_801375BC.def - 1)->objGfxId - g_Tilemap.left + 1) * 0x140;
     g_Tilemap.height =
         ((D_801375BC.def - 1)->objLayoutId - g_Tilemap.top + 1) * 0x100;
-    g_Tilemap.scrollX.i.hi = (DAT_0605d750.unkC - g_Tilemap.left) * 0x140;
-    g_Tilemap.scrollY.i.hi = (DAT_0605d750.unk10 - g_Tilemap.top) * 0x100;
+    g_Tilemap.scrollX.i.hi = (g_CurrentRoom.unkC - g_Tilemap.left) * 0x140;
+    g_Tilemap.scrollY.i.hi = (g_CurrentRoom.unk10 - g_Tilemap.top) * 0x100;
     g_PlayerX = PLAYER.posX.i.hi + g_Tilemap.scrollX.i.hi;
     g_PlayerY = PLAYER.posY.i.hi + g_Tilemap.scrollY.i.hi;
     func_800F0CD8(0);
@@ -196,7 +197,7 @@ void InitRoom(void) {
             }
         }
     }
-    if (DAT_0605d750.stageID != 0x2B) {
+    if (g_CurrentRoom.stageID != 0x2B) {
         for (i = 0; i < 8; i++) {
             g_unkGraphicsStruct.D_80097428[i] = 0;
         }
@@ -223,31 +224,31 @@ void InitRoom(void) {
     SetDefaultSCLPriority(0);
     func_800F0CD8(0);
     func_800F0CD8(0);
-    FUN_060666a4(DAT_0605d750.unk4);
+    InitRoomEntities(g_CurrentRoom.unk4);
     FUN_0606c160();
     FUN_0606c160();
-    DAT_0605cd70++;
-    if ((DAT_0605d750.unk6 == 0x50) || (DAT_0605d750.unk6 == 0x60)) {
+    DAT_0605cd70.unk0++;
+    if ((g_CurrentRoom.unk6 == 0x50) || (g_CurrentRoom.unk6 == 0x60)) {
         if (g_unkGraphicsStruct.D_800973FC == 0) {
-            PlaySfx(FUN_060727dc(
-                g_PlayableCharacter, DAT_0605d750.stageID, DAT_0605d750.unk4));
+            PlaySfx(FUN_060727dc(g_PlayableCharacter, g_CurrentRoom.stageID,
+                                 g_CurrentRoom.unk4));
         } else {
             currentMusicId = FUN_060727dc(
-                g_PlayableCharacter, DAT_0605d750.stageID, DAT_0605d750.unk4);
+                g_PlayableCharacter, g_CurrentRoom.stageID, g_CurrentRoom.unk4);
             DAT_0605cd54 = 1;
         }
     }
-    if ((DAT_0605d750.unk4 == 0x50) || (DAT_0605d750.unk4 == 0x60)) {
-        if (func_06012dfc() != 0) {
-            PlaySfx(0xF000000A);
+    if ((g_CurrentRoom.unk4 == 0x50) || (g_CurrentRoom.unk4 == 0x60)) {
+        if (func_80131F68_2() != 0) {
+            PlaySfx(SET_STOP_MUSIC);
         }
         if ((g_unkGraphicsStruct.D_800973FC != 0) && (D_8006BB00 != 0)) {
-            if (DAT_0605d750.unk4 == 0x50) {
-                PlaySfx(0xF000000A);
+            if (g_CurrentRoom.unk4 == 0x50) {
+                PlaySfx(SET_STOP_MUSIC);
                 DAT_0605cd54 = 1;
             }
         } else {
-            PlaySfx(0xF0000080);
+            PlaySfx(SET_UNK_80);
         }
     }
 }
@@ -258,8 +259,8 @@ extern u8* DAT_060645b8;
 void SetDefaultSCLPriority(s32 arg0) {
     u8* ptr;
 
-    if (DAT_0605d750.unk4 < 0x20) {
-        ptr = &DAT_060645b8[DAT_0605d750.unk4 * 12];
+    if (g_CurrentRoom.unk4 < 0x20) {
+        ptr = &DAT_060645b8[g_CurrentRoom.unk4 * 12];
         SCL_SetPriority(0x4, ptr[0]);
         SCL_SetPriority(0x8, ptr[1]);
         SCL_SetPriority(0x10, ptr[2]);
@@ -291,7 +292,7 @@ void SetDefaultSCLPriority(s32 arg0) {
 
 INCLUDE_ASM("asm/saturn/game/f_nonmat", f60727DC, func_060727DC);
 INCLUDE_ASM("asm/saturn/game/f_nonmat", f607284C, func_0607284C);
-INCLUDE_ASM("asm/saturn/game/data", d60728B4, d_060728B4);
+INCLUDE_ASM("asm/saturn/game/f_nonmat", f60728B4, func_060728B4);
 
 // _INIT_GAME_OVER
 INCLUDE_ASM("asm/saturn/game/f_nonmat", f6072BCC, func_06072BCC);
@@ -299,8 +300,208 @@ INCLUDE_ASM("asm/saturn/game/f_nonmat", f6072BCC, func_06072BCC);
 // _GAMEOVER_FADEIN
 INCLUDE_ASM("asm/saturn/game/f_nonmat", f6072C04, func_06072C04);
 
-// _SUB_DISP
-INCLUDE_ASM("asm/saturn/game/f_nonmat", f6072C94, func_06072C94);
+extern u8 DAT_06057f68;
+extern u16 DAT_0605becc;
+extern s16 DAT_0605c110;
+extern s32 DAT_0605c664;
+extern s32 DAT_0605c6e4;
+extern s32 DAT_0605d7f0;
+extern s32 D_06085534;
+extern s32 g_StatusWindowColorRed;
+extern s32 g_StatusWindowColorGreen;
+extern s32 g_StatusWindowColorBlue;
+extern s32 prevMusicId;
+extern s32 DAT_06086258;
+extern s32 DAT_06086270;
+extern s32 DAT_06086288;
+extern s32 DAT_0608629c;
+
+void func_06073280(void);
+void UpdateCapePalette(void);
+void func_06005208(s32);
+void func_06008d04(s32, s32);
+void CheckWeaponCombo(void);
+void make_all(void);
+
+// original name: SUB_DISP
+void SubDisp(void) {
+    switch (DAT_06057f68) {
+    case 1:
+        if (DAT_0605cd70.unk0 == 0x14) {
+            func_06008d04(1, 0x28);
+        } else {
+            func_06008d04(1, 0xF);
+        }
+        DAT_06057f68++;
+        break;
+    case 2:
+        if (DAT_0605becc == 0) {
+            DAT_06057f68++;
+        }
+        break;
+    case 4:
+        if (DAT_0605cd70.unk0 == 0x17) {
+            func_06008d04(0, 0x28);
+        } else {
+            func_06008d04(0, 0xF);
+        }
+        DAT_06057f68++;
+        break;
+    case 5:
+        if (DAT_0605becc == 0) {
+            DAT_06057f68++;
+        }
+        break;
+    }
+    if ((g_PlayableCharacter == 0) && (DAT_0605becc == 0) &&
+        (DAT_0605cd70.unk0 > 3) && (DAT_0605d7f0 == 0)) {
+        if ((g_pads[0].previous & 0x800) && (DAT_06086270 == 0) &&
+            (DAT_0605cd70.unk0 < 0x14)) {
+            if (CheckIfAllButtonsAreAssigned()) {
+                D_06085534 = 0x70;
+                DAT_06057f68 = 4;
+                DAT_06086270 = 1;
+            } else {
+                goto LAB_06072d9e;
+            }
+        }
+        if ((DAT_06086270 == 1) && (DAT_06057f68 == 6)) {
+            DAT_06086270 = 2;
+            DAT_0605cd70.unk8 = 0;
+            DAT_06057f68 = 0;
+            func_06073280();
+            DAT_0605cd70.unk0 = 0x70;
+            DAT_0605d7f0 = 1;
+        }
+    }
+LAB_06072d9e:
+    switch (DAT_0605cd70.unk0) {
+    case 0:
+        DAT_06086270 = 0;
+    case 1:
+    case 2:
+        prevMusicId = currentMusicId;
+        currentMusicId = 0;
+        DAT_0605cd70.unk0 += 3;
+    case 3:
+        func_06064628(g_PlayableCharacter);
+        if (g_PlayableCharacter == 0) {
+            g_StatusWindowColorRed = g_Settings.windowColors[0];
+            g_StatusWindowColorGreen = g_Settings.windowColors[1];
+            g_StatusWindowColorBlue = g_Settings.windowColors[2];
+        } else {
+            DAT_06086258 = 0;
+        }
+        break;
+    case 6:
+        func_0606464C();
+        break;
+    case 7:
+        func_06064590();
+        break;
+    case 8:
+        func_06064630();
+        break;
+    case 9:
+        func_060645C0();
+        break;
+    case 10:
+        func_06064618();
+        break;
+    case 11:
+        func_060645A0();
+        break;
+    case 20:
+        if (DAT_06057f68 == 0) {
+            func_06064594();
+            DAT_06057f68 = 1;
+        } else {
+            func_060645B4();
+            if (DAT_06057f68 == 3) {
+                DAT_0605cd70.unk0++;
+                DAT_06057f68 = 0;
+            }
+        }
+        break;
+    case 21:
+        func_060645B4();
+        if (DAT_0605cd70.unk0 == 0x16) {
+            D_06085534 = 0x70;
+            DAT_0605d7f0 = 1;
+            DAT_06057f68 = 4;
+            if (g_PlayableCharacter != 0) {
+                DAT_06086258 = 1;
+            }
+        } else if (DAT_0605cd70.unk0 == 0x17) {
+            if (g_PlayableCharacter == 0) {
+                D_06085534 = 6;
+                DAT_06057f68 = 4;
+                DAT_0605cd70.unk8 = 0;
+            } else {
+                D_06085534 = 0x70;
+                DAT_0605d7f0 = 1;
+                DAT_06057f68 = 4;
+                DAT_06086258 = 2;
+            }
+        }
+        break;
+    case 22:
+        if (DAT_06057f68 == 6) {
+            DAT_06057f68 = 0;
+            DAT_0605cd70.unk0 = D_06085534;
+            func_06073280();
+        } else {
+            func_060645B4();
+        }
+        break;
+    case 23:
+        if (DAT_06057f68 == 6) {
+            DAT_0605cd70.unk0 = D_06085534;
+            DAT_0605cd70.unk8 = 0;
+            if (g_PlayableCharacter != 0) {
+                func_06073280();
+            }
+        } else {
+            func_060645B4();
+        }
+        break;
+    case 0x70:
+        if (g_PlayableCharacter == 0) {
+            CheckWeaponCombo();
+            make_all();
+            DAT_0605c680.unk4 = DAT_06086288;
+            DAT_0605c680.unkC = DAT_0608629c;
+        }
+        func_06005328();
+        DAT_0605cd70.unk0++;
+        break;
+    case 0x71:
+        currentMusicId = prevMusicId;
+        if ((g_PlayableCharacter == 0) && func_060743B8(0)) {
+            break;
+        }
+        DAT_0605cd70.unk0++;
+        DAT_0605d7f0 = 1;
+        break;
+    case 0x72:
+        if ((g_PlayableCharacter == 0) && func_060743B8(1)) {
+            break;
+        }
+        func_06005208(1);
+        if (g_PlayableCharacter == 0) {
+            UpdateCapePalette();
+            PlaySfx(SET_UNPAUSE_SFX_SCRIPTS);
+            PlaySfx(SET_KEY_ON_20_21);
+            PlaySfx(SET_KEY_ON_22_23);
+        }
+        DAT_0605c6e4 = 0;
+        DAT_0605c110 = 0;
+        DAT_06086270 = 0;
+        DAT_06057f68 = 0;
+        DAT_0605c664 = 0;
+        break;
+    }
+}
 
 extern s16 g_ButtonMask[];
 
@@ -344,8 +545,7 @@ bool CheckIfAllButtonsAreAssigned(void) {
 
 void func_0600971C(void);
 extern s16 DAT_0605d772;
-extern s16 DAT_06065470;
-void UpdateCapePalette(void);
+extern u16 DAT_06065470;
 extern s16 DAT_060862a4;
 
 void func_06073280(void) {
@@ -359,7 +559,6 @@ void func_06073280(void) {
     func_0600971C();
 }
 
-extern s8 DAT_06057f68;
 extern s16 DAT_06086220[];
 
 void func_06074278(s32);
@@ -563,8 +762,42 @@ INCLUDE_ASM("asm/saturn/game/f_nonmat", f6073770, func_06073770);
 INCLUDE_ASM("asm/saturn/game/f_nonmat", f60737A0, func_060737A0);
 INCLUDE_ASM("asm/saturn/game/f_nonmat", f6073E58, func_06073E58);
 
-// _PSX_sort_item
-INCLUDE_ASM("asm/saturn/game/f_nonmat", f6073EEC, func_06073EEC);
+extern s32 g_EquipOrderType;
+
+// original name: PSX_sort_item
+void func_800FBAC4(void) {
+    s32 i, j;
+    s32* ptr;
+
+    for (i = g_EquipOrderType; i > 0; i--) {
+        j = g_Settings.equipOrderTypes[i];
+        g_Settings.equipOrderTypes[i] = g_Settings.equipOrderTypes[i - 1];
+        g_Settings.equipOrderTypes[i - 1] = j;
+    }
+    g_EquipOrderType = 0;
+    ptr = D_801375D8;
+    *ptr++ = 0;
+    for (i = 0; i < 0xB; i++) {
+        s32 importantcategory = g_Settings.equipOrderTypes[i];
+        for (j = 0; j < 0xB0; j++) {
+            s32 order = g_Status.equipHandOrder[j];
+            if (g_Status.equipHandCount[order] != 0 && order != 0 &&
+                g_EquipDefs[order].itemCategory == importantcategory) {
+                *ptr++ = order;
+            }
+        }
+    }
+    for (j = 0; j < 0xB0; j++) {
+        s32 order = g_Status.equipHandOrder[j];
+        if (g_Status.equipHandCount[order] == 0) {
+            *ptr++ = order;
+        }
+    }
+    ptr = D_801375D8;
+    for (i = 0; i < 0xB0; i++) {
+        g_Status.equipHandOrder[i] = *ptr++;
+    }
+}
 
 // original name: PSX_equip_id_init
 void func_800FAF44(bool isAccessory) {
@@ -600,16 +833,222 @@ INCLUDE_ASM("asm/saturn/game/f_nonmat", f60744F8, func_060744F8);
 // _SS_MOJI_SET
 INCLUDE_ASM("asm/saturn/game/f_nonmat", f60745A0, func_060745A0);
 INCLUDE_ASM("asm/saturn/game/f_nonmat", f6074698, func_06074698);
-INCLUDE_ASM("asm/saturn/game/f_nonmat", f6074700, func_06074700);
-INCLUDE_ASM("asm/saturn/game/f_nonmat", f6074724, func_06074724);
-INCLUDE_ASM("asm/saturn/game/f_nonmat", f6074964, func_06074964);
-INCLUDE_ASM("asm/saturn/game/f_nonmat", f60749F8, func_060749F8);
 
-extern u16 g_JosephsCloakColors[4];
-u16* func_06074A98(void) { return g_JosephsCloakColors; }
+// func_06074700
+void ClearVdp2CharRamA1(void) {
+    u16 i;
+    u32* char_ram;
 
-INCLUDE_ASM("asm/saturn/game/f_nonmat", f6074AA8, func_06074AA8);
-INCLUDE_ASM("asm/saturn/game/f_nonmat", f6074BF4, func_06074BF4);
+    char_ram = (u32*)SCL_VDP2_VRAM_A1;
+    for (i = 0; i < 0x800; i++) {
+        *char_ram++ = 0;
+    }
+}
+
+extern u32 g_FontGlyphDataSizes[];
+
+// func_06074724
+u32* GetStageTextGlyphData(s32 arg0, u16 arg1) {
+    switch (arg1) {
+    case 0x41:
+        if (arg0 == 0) {
+            return &g_FontGlyphDataSizes[0];
+        } else {
+            return &g_FontGlyphDataSizes[5];
+        }
+    case 0x12:
+        if (arg0 == 0) {
+            return &g_FontGlyphDataSizes[10];
+        } else {
+            return &g_FontGlyphDataSizes[34];
+        }
+    case 0x1F:
+        if (arg0 == 0) {
+            return &g_FontGlyphDataSizes[152];
+        } else {
+            return &g_FontGlyphDataSizes[158];
+        }
+    case 0x18:
+        if (arg0 == 0) {
+            return &g_FontGlyphDataSizes[58];
+        } else {
+            return &g_FontGlyphDataSizes[71];
+        }
+    case 0xB:
+        if (arg0 == 0) {
+            return &g_FontGlyphDataSizes[84];
+        } else {
+            return &g_FontGlyphDataSizes[91];
+        }
+    case 0x40:
+        if (arg0 == 0) {
+            return &g_FontGlyphDataSizes[164];
+        } else {
+            return &g_FontGlyphDataSizes[170];
+        }
+    case 0x9:
+        if (arg0 == 0) {
+            return &g_FontGlyphDataSizes[176];
+        } else {
+            return &g_FontGlyphDataSizes[178];
+        }
+    case 0x28:
+        if (arg0 == 0) {
+            return &g_FontGlyphDataSizes[98];
+        } else {
+            return &g_FontGlyphDataSizes[110];
+        }
+    case 0x38:
+        if (arg0 == 0) {
+            return &g_FontGlyphDataSizes[122];
+        } else {
+            return &g_FontGlyphDataSizes[137];
+        }
+    case 0xC:
+        if (arg0 == 0) {
+            return &g_FontGlyphDataSizes[180];
+        } else {
+            return &g_FontGlyphDataSizes[185];
+        }
+    case 0x6:
+        if (arg0 == 0) {
+            return &g_FontGlyphDataSizes[190];
+        } else {
+            return &g_FontGlyphDataSizes[195];
+        }
+    case 0x19:
+        if (arg0 == 0) {
+            return &g_FontGlyphDataSizes[200];
+        } else {
+            return &g_FontGlyphDataSizes[207];
+        }
+    case 0x1C:
+        if (arg0 == 0) {
+            return &g_FontGlyphDataSizes[214];
+        } else {
+            return &g_FontGlyphDataSizes[219];
+        }
+    case 0x8:
+        if (arg0 == 0) {
+            return &g_FontGlyphDataSizes[224];
+        } else {
+            return &g_FontGlyphDataSizes[238];
+        }
+    case 0x3C:
+        if (arg0 == 0) {
+            return &g_FontGlyphDataSizes[252];
+        } else {
+            return &g_FontGlyphDataSizes[255];
+        }
+    case 0x17:
+        if (arg0 == 0) {
+            return &g_FontGlyphDataSizes[258];
+        } else {
+            return &g_FontGlyphDataSizes[263];
+        }
+    }
+    return NULL;
+}
+
+// func_06074964
+u32* GetEventTextGlyphData(s32 arg0, s32 arg1) {
+    switch (arg1) {
+    case 0:
+        if (arg0 == 0) {
+            return &g_FontGlyphDataSizes[268];
+        } else {
+            return &g_FontGlyphDataSizes[269];
+        }
+    case 1:
+        if (arg0 == 0) {
+            return &g_FontGlyphDataSizes[270];
+        } else {
+            return &g_FontGlyphDataSizes[278];
+        }
+    case 2:
+        if (arg0 == 0) {
+            return &g_FontGlyphDataSizes[286];
+        } else {
+            return &g_FontGlyphDataSizes[303];
+        }
+    case 3:
+        return NULL;
+    case 4:
+        if (arg0 == 0) {
+            return &g_FontGlyphDataSizes[320];
+        } else {
+            return &g_FontGlyphDataSizes[337];
+        }
+    case 5:
+        return NULL;
+    }
+    return NULL;
+}
+
+extern u16 g_EquippedCapePalette[4];
+extern u16 D_800A37F4[][4];
+extern s32 g_CapePaletteDefs[];
+
+void UpdateCapePalette(void) {
+    s32 clut;
+    s32 i;
+
+    if (g_PlayableCharacter == 0) {
+        i = 0;
+        while (1) {
+            if (g_Status.equipment[5] == g_CapePaletteDefs[i]) {
+                break;
+            }
+
+            if (g_CapePaletteDefs[i] == -1) {
+                break;
+            }
+
+            i += 2;
+        }
+        clut = g_CapePaletteDefs[i + 1];
+        if ((g_Status.equipment[5] == 0x32) &&
+            g_Settings.isCloakLiningReversed) {
+            clut++;
+        }
+        for (i = 0; i < 4; i++) {
+            g_EquippedCapePalette[i] = D_800A37F4[clut][i];
+        }
+        func_060645A4();
+    }
+}
+
+u16* func_06074A98(void) { return D_800A37F4[8]; }
+
+void ApplyJosephsCloakPalette(void) {
+    u16 g_JosephsCloakColors[4];
+    u16* ptr;
+    s32 i;
+
+    g_JosephsCloakColors[0] = RGB16_COLOR(
+        g_Settings.cloakColors[3] * 3 / 4, g_Settings.cloakColors[4] * 3 / 4,
+        g_Settings.cloakColors[5] * 3 / 4);
+    g_JosephsCloakColors[1] =
+        RGB16_COLOR(g_Settings.cloakColors[3], g_Settings.cloakColors[4],
+                    g_Settings.cloakColors[5]);
+    g_JosephsCloakColors[2] = RGB16_COLOR(
+        g_Settings.cloakColors[0] * 3 / 4, g_Settings.cloakColors[1] * 3 / 4,
+        g_Settings.cloakColors[2] * 3 / 4);
+    g_JosephsCloakColors[3] =
+        RGB16_COLOR(g_Settings.cloakColors[0], g_Settings.cloakColors[1],
+                    g_Settings.cloakColors[2]);
+
+    ptr = func_06074A98();
+    for (i = 0; i < 4; i++) {
+        *ptr++ = g_JosephsCloakColors[i];
+    }
+}
+
+void func_06074BF4(void) {
+    if (g_CurrentRoom.stageID != STAGE_ST0 && g_PlayableCharacter == 0) {
+        UpdateCapePalette();
+    }
+}
 
 void func_06074C28(void) {
     g_Status.equipment[0] = 0xA6;

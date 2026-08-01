@@ -5,26 +5,24 @@
 
 // Alchemy Laboratory
 
-INCLUDE_ASM("asm/saturn/stage_02/data", d60DC000, d_060DC000);
-
 // EntityBreakable (candles)
 INCLUDE_ASM("asm/saturn/stage_02/f_nonmat", f60DC040, func_060DC040);
 
 // SAT: func_060DC460
 // bust with red eyes that can have a candle on it
 void EntityRedEyeBust(Entity* self) {
-    struct Unk0600B344* result;
+    SpriteObject* result;
     switch (self->step) {
     case 0:
-        func_0607B264(self, 3);
-        result =
-            func_0600B344(entityRedEyeBustData.unk8, entityRedEyeBustData.unk10,
-                          entityRedEyeBustData.unk0, 1);
+        TekiInit(self, 3);
+        result = CreateSpriteObject(
+            (u16)entityRedEyeBustData.allocationIndex,
+            entityRedEyeBustData.flags, entityRedEyeBustData.images, 1);
         self->unk0 = result;
-        func_0600AFA8(result, entityRedEyeBustData2.unk28);
+        func_0600AFA8(result, entityRedEyeBustData2[7]);
         result->zPriority = 0x70;
-        result->unk14 = *(u32*)(&self->posX);
-        result->unk18 = *(u32*)(&self->posY);
+        result->posX = *(u32*)(&self->posX);
+        result->posY = *(u32*)(&self->posY);
         self->step++;
         break;
     case 1:
@@ -66,10 +64,12 @@ INCLUDE_ASM("asm/saturn/stage_02/f_nonmat", f60DDB80, func_060DDB80);
 void EntityTableWithGlobe(Entity* self) {
     switch (self->step) {
     case 0:
-        func_0607B264(self, 5);
+        TekiInit(self, 5);
         self->step++;
-        self->unk0 = func_0600B344(
-            D_060ED26C.unk8, D_060ED26C.unk10, D_060ED26C.unk0, 7);
+        self->unk0 = CreateSpriteObject(
+            g_Stage02TableWithGlobeResource.allocationIndex,
+            g_Stage02TableWithGlobeResource.flags,
+            g_Stage02TableWithGlobeResource.images, 7);
         self->unk0->zPriority = 0x6A;
         self->hitboxWidth = 10;
         self->hitboxHeight = 12;
@@ -77,18 +77,20 @@ void EntityTableWithGlobe(Entity* self) {
         self->hitboxOffY = -0xA;
         self->hitboxState = 2;
     case 1:
-        AnimateEntity(self, D_80180EF8, D_80180EF0);
+        AnimateEntityWithSpriteData(self, g_Stage02TableWithGlobeIdleAnim,
+                                    g_Stage02TableWithGlobeFrames);
         if (self->hitFlags != 0) {
             PlaySfxPositional(0x61D); // sotn-lint-ignore
             self->hitboxState = 0;
             CreateEntityFromEntity(E_HEART_DROP, self, &self[1]);
-            self[1].params = D_80180F10[self->params];
+            self[1].params = g_Stage02TableWithGlobeDropParams[self->params];
             SetStep(2);
         }
         break;
 
     case 2:
-        AnimateEntity(self, dat_060ed174, D_80180EF0);
+        AnimateEntityWithSpriteData(self, g_Stage02TableWithGlobeBreakAnim,
+                                    g_Stage02TableWithGlobeFrames);
         break;
     }
     func_06079BB4(self);
@@ -170,10 +172,13 @@ INCLUDE_ASM("asm/saturn/stage_02/f_nonmat", f60E2898, func_060E2898);
 INCLUDE_ASM("asm/saturn/stage_02/f_nonmat", f60E29A4, func_060E29A4);
 
 // EntityHeartDrop
-INCLUDE_ASM("asm/saturn/stage_02/data", d60E2A80, d_060E2A80);
+INCLUDE_ASM("asm/saturn/stage_02/f_nonmat", f60E2A80, func_060E2A80);
 
-INCLUDE_ASM("asm/saturn/stage_02/data", d60E32DC, d_060E32DC);
-INCLUDE_ASM("asm/saturn/stage_02/data", d60E47A4, d_060E47A4);
+INCLUDE_ASM("asm/saturn/stage_02/f_nonmat", f60E32DC, func_060E32DC);
+INCLUDE_ASM("asm/saturn/stage_02/f_nonmat", f60E37C8, func_060E37C8);
+INCLUDE_ASM("asm/saturn/stage_02/f_nonmat", f60E3FBC, func_060E3FBC);
+INCLUDE_ASM("asm/saturn/stage_02/f_nonmat", f60E42FC, func_060E42FC);
+INCLUDE_ASM("asm/saturn/stage_02/f_nonmat", f60E43F4, func_060E43F4);
 INCLUDE_ASM("asm/saturn/stage_02/f_nonmat", f60E4908, func_060E4908);
 
 // SAT func_060E4F78
@@ -221,12 +226,10 @@ INCLUDE_ASM("asm/saturn/stage_02/f_nonmat", f60E7508, func_060E7508);
 INCLUDE_ASM("asm/saturn/stage_02/f_nonmat", f60E81D4, func_060E81D4);
 INCLUDE_ASM("asm/saturn/stage_02/f_nonmat", f60E82EC, func_060E82EC);
 
-s32 arr_0605C140[];
-
 // not seeing an obvious PSX equivalent
 void func_060e8330(void) {
-    arr_0605C140[0xEF] = 0x1000;
-    arr_0605C140[0xF1] = 1;
+    g_Player.padSim = PAD_UP;
+    g_Player.demo_timer = 1;
 }
 
 // not clear if this is Entity or not
@@ -277,7 +280,7 @@ INCLUDE_ASM("asm/saturn/stage_02/f_nonmat", f60E9220, func_060E9220);
 
 void func_060E9270(Entity* self) {
     func_06079BB4(self);
-    func_0600B004(self->unk0, DAT_060f237c[self->animCurFrame]);
+    func_0600B004(self->unk0, g_Stage02Entity38Frames[self->animCurFrame]);
 }
 
 // dupe of func_060e97c4
@@ -313,7 +316,7 @@ void func_060e97c4(u16** param_1) {
 
 void func_060E97F0(Entity* self) {
     func_06079BB4(self);
-    func_0600B004(self->unk0, DAT_060f2878[self->animCurFrame]);
+    func_0600B004(self->unk0, g_Stage02BoneScimitarFrames[self->animCurFrame]);
 }
 
 // EntityBoneScimitar
@@ -341,12 +344,12 @@ INCLUDE_ASM("asm/saturn/stage_02/f_nonmat", f60EA264, func_060EA264);
 // EntityAxeKnightThrowingAxe
 // SAT: func_060EAC54
 void EntityAxeKnightRotateAxe(Entity* self) {
-    self->unk0->unk0 |= 0x40;
+    self->unk0->flags |= FLAG_UNK_40;
 
     if (self->params != 0) {
-        self->unk0->unk8 += 0x80;
+        self->unk0->rotate += 0x80;
     } else {
-        self->unk0->unk8 -= 0x80;
+        self->unk0->rotate -= 0x80;
     }
     if (self->params != 0) {
         self->rotate += 0x80;
@@ -378,12 +381,11 @@ INCLUDE_ASM("asm/saturn/stage_02/f_nonmat", f60EC1F0, func_060EC1F0);
 
 void func_060EC240(Entity* self) {
     func_06079BB4(self);
-    func_0600B004(self->unk0, DAT_060f4e6c[self->animCurFrame]);
+    func_0600B004(self->unk0, g_Stage02SpittleBoneFrames[self->animCurFrame]);
 }
 
 // EntitySpittleBone
 INCLUDE_ASM("asm/saturn/stage_02/f_nonmat", f60EC278, func_060EC278);
 
 INCLUDE_ASM("asm/saturn/stage_02/f_nonmat", f60EC730, func_060EC730);
-INCLUDE_ASM("asm/saturn/stage_02/data", d60ECA94, d_060ECA94);
-INCLUDE_ASM("asm/saturn/stage_02/data", d60ECC50, d_060ECC50);
+INCLUDE_ASM("asm/saturn/stage_02/f_nonmat", f60ECA94, func_060ECA94);

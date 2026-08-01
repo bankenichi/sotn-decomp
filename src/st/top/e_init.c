@@ -45,6 +45,12 @@ void EntityAxeKnightThrowingAxe(Entity*);
 void func_us_801CBA30(Entity*);
 void InitializeUnkEntity(Entity*);
 
+#ifdef VERSION_PSP
+void func_pspeu_09249898(Entity*);
+void func_pspeu_092496C8(Entity*);
+void func_pspeu_092497B0(Entity*);
+#endif
+
 PfnEntityUpdate EntityUpdates[] = {
     EntityBreakable,
     EntityExplosion,
@@ -89,6 +95,11 @@ PfnEntityUpdate EntityUpdates[] = {
     EntityAxeKnightThrowingAxe,
     func_us_801CBA30,
     InitializeUnkEntity,
+#ifdef VERSION_PSP
+    func_pspeu_09249898,
+    func_pspeu_092496C8,
+    func_pspeu_092497B0
+#endif
 };
 
 EInit g_EInitBreakable = {ANIMSET_DRA(3), 0, 0, 0x0, 0};
@@ -97,5 +108,5 @@ EInit g_EInitBreakable = {ANIMSET_DRA(3), 0, 0, 0x0, 0};
 
 EInit g_EInitTOPCommon = {ANIMSET_OVL(1), 0, 0, 0, 5};
 EInit g_EInitFleaRider = {ANIMSET_OVL(3), 0, 0x4B, 0x206, 0x30};
-EInit g_EInitAxeKnight = {ANIMSET_OVL(7), 1, 0x50, 0x0240, 6};
+EInit g_EInitAxeKnight = {ANIMSET_OVL(7), 1, 0x50, 0x240, 6};
 EInit g_EInitAxeKnightAxe = {ANIMSET_OVL(7), 0x2F, 0x50, 0x240, 7};

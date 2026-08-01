@@ -2,7 +2,6 @@
 #include "zero.h"
 #include "inc_asm.h"
 #include "sattypes.h"
-#include "lib/scl.h"
 #include "lib/sys.h"
 
 #define _SPR2_
@@ -11,13 +10,13 @@
 // func_06004080
 void entrypoint(void) {
     func_06030df0();
-    Scl_s_reg.tvmode &= 0x7EFF;
+    Scl_s_reg.tvmode &= ~0x8100;
     SclProcess = 1;
     func_060044D0();
     DAT_0605cea2 = 0;
     DAT_0605c658 = 1;
     do {
-        func_060040D8();
+        func_060040d8();
     } while (true);
 }
 
@@ -30,9 +29,9 @@ void func_0600652C();
 void func_06007d54();
 void func_06007e14();
 void func_06008264();
-void func_06008298();
+void TransferAllBgLayers();
 void func_06008a70();
-void func_06008d04();
+void func_06008d04(s32, s32);
 void func_06009838();
 void func_0600d8bc();
 void MoviePRGClear();
@@ -42,7 +41,6 @@ void func_06012fb4();
 void SPR_WaitDrawEnd();
 void SCL_Vdp2Init();
 void SCL_DisplayFrame();
-void func_06032e68();
 extern s32 DAT_06057f34;
 extern u16 DAT_0605cea0;
 extern u16 DAT_0605cea2;
@@ -66,7 +64,7 @@ void func_060040d8(void) {
             Scl_s_reg.tvmode |= 0x8000;
             SclProcess = 1;
         }
-        func_060645e0();
+        func_060645E0();
         break;
     case 2:
         if (DAT_0605cea0 == 0) {
@@ -119,9 +117,9 @@ void func_060040d8(void) {
         break;
     case 0x20:
         func_06007e14();
-        Scl_s_reg.dispenbl &= 0xFFC0;
+        Scl_s_reg.dispenbl &= ~0x003F;
         SclProcess = 1;
-        Scl_s_reg.tvmode &= 0x7EFF;
+        Scl_s_reg.tvmode &= ~0x8100;
         SclProcess = 1;
         InitializePads();
         SPR_WaitDrawEnd();
@@ -136,7 +134,7 @@ void func_060040d8(void) {
         if ((DAT_06057f34 == 2) && (DAT_0605d7f8 == 0)) {
             SYS_EXECDMP();
         }
-        Scl_s_reg.tvmode &= 0x7EFF;
+        Scl_s_reg.tvmode &= ~0x8100;
         SclProcess = 1;
         SCL_DisplayFrame();
         SCL_Vdp2Init();
@@ -154,7 +152,7 @@ void func_060040d8(void) {
         if (DAT_0605cea2 == 6) {
             SYS_EXECDMP();
         } else {
-            PlaySfx(0xF000000B);
+            PlaySfx(SET_UNK_0B);
             while (func_06013320() == 0) {
                 func_06010400();
                 SCL_DisplayFrame();
@@ -175,8 +173,8 @@ void func_060040d8(void) {
     SPR_WaitDrawEnd();
     func_06008264();
     SCL_DisplayFrame();
-    func_06008298();
-    func_06032e68();
+    TransferAllBgLayers();
+    ((void (*)(void))rand)();
 }
 
 INCLUDE_ASM("asm/saturn/zero/f_nonmat", f60044D0, func_060044D0);
@@ -334,10 +332,10 @@ char* WEAPON0_PRG;
 char* WEAPON0_CHR;
 char* WEAPON1_PRG;
 char* WEAPON1_CHR;
-s32 d_060481c0;
+extern s32 g_FileLoadEnabled;
 
 void func_06007824(int param_1, int param_2) {
-    if ((d_060481c0 == 0) || (0x3f < param_2)) {
+    if ((g_FileLoadEnabled == 0) || (0x3f < param_2)) {
         func_0601AE5C(param_1, param_2);
     } else {
         prg_info.unka = param_2 * 6;
@@ -373,7 +371,8 @@ INCLUDE_ASM("asm/saturn/zero/f_nonmat", f6007BE0, func_06007BE0);
 // _SprSetGourTbl
 INCLUDE_ASM("asm/saturn/zero/f_nonmat", f6007CA0, func_06007CA0);
 
-u16 func_06007CE0(u16 param_1) { return param_1 * 0x10 + 0x400; }
+// func_06007CE0
+u16 LocalLookupTblNoToVram(u16 arg0) { return arg0 * 0x10 + 0x400; }
 
 void SPR_2ClrAllChar(void);
 
@@ -385,7 +384,8 @@ s32 d_06038dbc;
 s32 d_0605BEC4;
 s32 d_060576AC;
 
-void func_06007CF8() {
+// func_06007CF8
+void ResetSpriteVram() {
     SPR_2ClrAllChar();
     d_0605BECA = 0;
     d_0605AEA8 = 0;
@@ -398,30 +398,30 @@ void func_06007CF8() {
 
 INCLUDE_ASM("asm/saturn/zero/f_nonmat", f6007D54, func_06007D54);
 
-void func_06022A48();
+void SPR_2CloseCommand();
 
 s32 d_0605AEAC;
 s32 d_06038c5c;
 s32 d_06038c5c;
 s32 d_0605BEBE;
 u16 d_0605AEA0[4];
-void _func_06007E14(void) {
+void func_06007e14(void) {
     SprSpCmd cmd;
 
     if (d_06038c5c) {
         d_06038c5c--;
-        cmd.control = 0x1004;
-        cmd.drawMode = 0xC0; // sotn-lint-ignore
-        cmd.color = 0x8000;
+        cmd.control = JUMP_ASSIGN | FUNC_TEXTURE;
+        cmd.drawMode = ECDSPD_DISABLE;
+        cmd.color = RGB16_COLOR(0, 0, 0);
         cmd.ax = cmd.dx = 0;
         cmd.bx = cmd.cx = d_0605BEBE;
         cmd.ay = cmd.by = 0;
         cmd.cy = cmd.dy = d_0605AEA0[1] - 1;
-        SPR_2Cmd(0x1ff, &cmd);
+        SPR_2Cmd(0x1FF, &cmd);
         d_0605AEAC += 0x20;
     }
 
-    func_06022A48();
+    SPR_2CloseCommand();
 }
 void SPR_SetEraseData(
     Uint16 eraseData, Uint16 leftX, Uint16 topY, Uint16 rightX, Uint16 botY);
@@ -433,7 +433,7 @@ void FUN_06007eb8(s16 param_1) {
         param_1, d_0605AEA0[0], d_0605AEA0[1], d_0605AEA0[2], d_0605AEA0[3]);
 }
 
-void func_06008134();
+void SetVdp2BackgroundColor();
 
 void FUN_06007f04(void) {
     SCL_Vdp2Init();
@@ -442,7 +442,7 @@ void FUN_06007f04(void) {
     SclPriBuffDirty.SclColOffset = 1;
     SclColOffset.ColorOffsetEnable = 0x6f;
     SCL_SetColOffset(0, 0x6f, 0xFF01, 0xFF01, 0xFF01);
-    func_06008134();
+    SetVdp2BackgroundColor();
 }
 
 // _SET_VDP2_VRAM
@@ -476,15 +476,15 @@ void func_06007F6C(void) {
 INCLUDE_ASM("asm/saturn/zero/f_nonmat", f6008048, func_06008048);
 INCLUDE_ASM("asm/saturn/zero/f_nonmat", f60080EC, func_060080EC);
 
-// func_06008134
+// SetVdp2BackgroundColor
 void SetVdp2BackgroundColor(void) {
     s16 local_c[2];
     local_c[0] = 0;
-    SCL_SetBack(0x25E7FE20, 1, local_c);
+    SCL_SetBack(SCL_VDP2_VRAM + 0x7FE20, 1, local_c);
 }
 
 INCLUDE_ASM("asm/saturn/zero/f_nonmat", f600815C, func_0600815C);
-INCLUDE_ASM("asm/saturn/zero/f_nonmat", f60081C8, func_060081C8);
+INCLUDE_ASM("asm/saturn/zero/f_nonmat", f600819C, func_0600819C);
 
 // func_0600824C
 void InitScuDma(void) {
@@ -495,10 +495,11 @@ void InitScuDma(void) {
 // _VDP1_TRANS
 INCLUDE_ASM("asm/saturn/zero/f_nonmat", f6008264, func_06008264);
 
-void func_06008298(void) {
-    int i;
+// func_06008298
+void TransferAllBgLayers(void) {
+    s32 i;
     for (i = 0; i < 8; i++) {
-        func_06008588(i);
+        TransferBgLayer(i);
     }
 }
 
@@ -530,9 +531,11 @@ void func_06008464(void) {
 INCLUDE_ASM("asm/saturn/zero/f_nonmat", f6008488, func_06008488);
 INCLUDE_ASM("asm/saturn/zero/f_nonmat", f6008524, func_06008524);
 
+extern Unk0605cd70 DAT_0605cd70;
+
 // Handles transfer of background tile graphics
 // func_06008588
-void func_06008588(int param_1) {
+void TransferBgLayer(int param_1) {
     s32 cnt;
     struct Unk0605d6c0* puVar5;
     struct Unk0605CD90* puVar6;
@@ -542,35 +545,36 @@ void func_06008588(int param_1) {
     if (puVar5->tileFlags == 0) {
         return;
     }
-    if ((puVar5->tileFlags & 1) != 0) {
-        cnt = func_0600F96C(puVar6->unkc, &DAT_060485e0, puVar6->unk18);
-        DmaScroll(&DAT_060485e0, puVar6->dst0, cnt);
+    if (puVar5->tileFlags & 1) {
+        cnt = func_0600F96C(puVar6->unkc, (s32)SYS_buf_060485E0, puVar6->unk18);
+        DmaScroll((s32*)SYS_buf_060485E0, puVar6->dst0, cnt);
     }
-    if ((puVar5->tileFlags & 2) != 0) {
-        cnt = func_0600F96C(puVar6->unk10, &DAT_060485e0, puVar6->unk1c);
-        DmaScroll(&DAT_060485e0, puVar6->dst4, cnt);
+    if (puVar5->tileFlags & 2) {
+        cnt =
+            func_0600F96C(puVar6->unk10, (s32)SYS_buf_060485E0, puVar6->unk1c);
+        DmaScroll((s32*)SYS_buf_060485E0, puVar6->dst4, cnt);
     }
-    if ((puVar5->tileFlags & 4) != 0) {
-        if (DAT_060086d4 == 4) {
-            func_060089F0(puVar6);
+    if (puVar5->tileFlags & 4) {
+        if (DAT_0605cd70.unk2 == 4) {
+            BuildSubDispTilemap(puVar6);
         } else {
             func_0600871C(puVar6, &DAT_0605c680, param_1);
         }
     }
-    if ((puVar5->tileFlags & 8) != 0) {
+    if (puVar5->tileFlags & 8) {
         DmaScroll(puVar5->src, puVar5->dest, puVar5->cnt);
     }
-    if ((puVar5->tileFlags & 0x10) != 0) {
+    if (puVar5->tileFlags & 0x10) {
         DmaScroll(puVar5->src, puVar5->dest, puVar5->cnt);
     }
-    if ((puVar5->tileFlags & 0x20) != 0) {
+    if (puVar5->tileFlags & 0x20) {
         DmaScroll(puVar5->src, puVar5->dest, puVar5->cnt);
     }
-    if ((puVar5->tileFlags & 0x40) != 0) {
+    if (puVar5->tileFlags & 0x40) {
         cnt = func_0600F96C(puVar6->unkc, DMA_SRC_ADDR, puVar6->unk18);
         DmaScroll(DMA_SRC_ADDR, puVar6->dst0, cnt);
     }
-    if ((puVar5->tileFlags & 0x80) != 0) {
+    if (puVar5->tileFlags & 0x80) {
         cnt = func_0600F96C(puVar6->unk10, DMA_SRC_ADDR, puVar6->unk1c);
         DmaScroll(DMA_SRC_ADDR, puVar6->dst4, cnt);
     }
@@ -588,7 +592,7 @@ void DmaScroll(s32* src, s32* dest, u32 cnt) {
 
     if (cnt != 0) {
         // sega DMA lib
-        DMA_CpuMemCopy(dest, src, cnt >> 1); // not sure which of 1-5
+        DMA_CpuMemCopy2(dest, src, cnt >> 1);
         do {
             result = DMA_CpuResult();
         } while (result == 2);
@@ -597,7 +601,8 @@ void DmaScroll(s32* src, s32* dest, u32 cnt) {
 
 INCLUDE_ASM("asm/saturn/zero/f_nonmat", f600871C, func_0600871C);
 
-void func_060089F0(struct Unk0605CD90* param_1) {
+// func_060089F0
+void BuildSubDispTilemap(struct Unk0605CD90* param_1) {
     u16 sVar2;
     s16* psVar5;
     s16* psVar7;
@@ -630,7 +635,7 @@ INCLUDE_ASM("asm/saturn/zero/f_nonmat", f6008C2C, func_06008C2C);
 INCLUDE_ASM_NO_ALIGN("asm/saturn/zero/f_nonmat", f6008E3A, func_06008E3A);
 INCLUDE_ASM_NO_ALIGN("asm/saturn/zero/f_nonmat", f6008FBE, func_06008FBE);
 INCLUDE_ASM("asm/saturn/zero/f_nonmat", f6008FF0, func_06008FF0);
-INCLUDE_ASM("asm/saturn/zero/f_nonmat", f6009038, func_06009038);
+INCLUDE_ASM("asm/saturn/zero/f_nonmat", f6009010, func_06009010);
 INCLUDE_ASM("asm/saturn/zero/f_nonmat", f6009058, func_06009058);
 
 // _GAME_SCROLL_SET
@@ -670,10 +675,12 @@ void func_0600A31C(void) { DAT_0605D910[3] = 1; }
 INCLUDE_ASM("asm/saturn/zero/f_nonmat", f600A330, func_0600A330);
 INCLUDE_ASM("asm/saturn/zero/f_nonmat", f600A350, func_0600A350);
 INCLUDE_ASM("asm/saturn/zero/f_nonmat", f600A490, func_0600A490);
+// MapBytesThroughLutPair
 INCLUDE_ASM("asm/saturn/zero/f_nonmat", f600A5FC, func_0600A5FC);
 
 u8 d_060578A0[];
-void func_0600A62C(u8* param_1, u8* param_2, int param_3) {
+// func_0600A62C
+void MapBytesThroughLut(u8* param_1, u8* param_2, int param_3) {
     for (; param_3 > 0; param_3--) {
         *param_2++ = d_060578A0[*param_1++];
     }
@@ -722,14 +729,86 @@ void func_0600B234(void) {
 
 // _ClearOdma
 INCLUDE_ASM("asm/saturn/zero/f_nonmat", f600B254, func_0600B254);
-INCLUDE_ASM("asm/saturn/zero/f_nonmat", f600B344, func_0600B344);
+
+extern SpriteObject g_SpriteObjectPool[SPRITE_OBJECT_MAX]; /* 0x0608AFF8 */
+extern SpritePart g_SpritePartPool[SPRITE_PART_MAX];       /* 0x0608D7F8 */
+
+extern SpriteObject* g_SpriteObjectFreeList; /* 0x06057798 */
+extern SpritePart* g_SpritePartFreeList;     /* 0x0605779C */
+extern SpriteObject* g_SpriteListHead;       /* 0x06057790 */
+extern SpriteObject* g_SpriteListTail;       /* 0x06057794 */
+extern s32 g_SpriteListCount;                /* 0x06038DB0 */
+extern s32 g_SpriteObjectsInUse;             /* 0x06038DB4 */
+extern s32 g_SpritePartsInUse;               /* 0x06038DB8 */
+
+SpriteObject* func_0600B1A8(void);
+
+static inline SpritePart* AllocSpriteParts(s32 maxParts) {
+    SpritePart* head;
+    SpritePart* node;
+
+    if (g_SpritePartsInUse + maxParts > SPRITE_PART_MAX) {
+        return NULL;
+    }
+
+    head = node = g_SpritePartFreeList;
+    g_SpritePartsInUse += maxParts;
+    for (; maxParts > 1; maxParts--) {
+        node->attributes = 0;
+        *(int*)&node->rotate = 0x00004040;
+        node = node->next;
+    }
+    g_SpritePartFreeList = node->next;
+    node->attributes = 0;
+    *(int*)&node->rotate = 0x00004040;
+    node->next = NULL;
+    return head;
+}
+
+// func_0600B344
+SpriteObject* CreateSpriteObject(
+    u16 charBase, u16 clutBase, SaturnSpriteImage* images, s32 maxParts) {
+    SpriteObject* obj;
+    SpritePart* head;
+
+    obj = func_0600B1A8();
+    if (obj == NULL) {
+        return NULL;
+    }
+
+    head = AllocSpriteParts(maxParts);
+    if (head == NULL) {
+        obj->next = g_SpriteObjectFreeList;
+        g_SpriteObjectFreeList = obj;
+        g_SpriteObjectsInUse--;
+        return NULL;
+    }
+
+    obj->charBase = charBase;
+    obj->clutBase = clutBase;
+    obj->images = images;
+    obj->parts = head;
+    obj->next = NULL;
+
+    if (g_SpriteListTail == NULL) {
+        g_SpriteListTail = obj;
+        g_SpriteListHead = obj;
+    } else {
+        g_SpriteListTail->next = obj;
+        g_SpriteListTail = obj;
+    }
+    g_SpriteListCount++;
+    return obj;
+}
+
 INCLUDE_ASM("asm/saturn/zero/f_nonmat", f600B428, func_0600B428);
 INCLUDE_ASM("asm/saturn/zero/f_nonmat", f600B4C4, func_0600B4C4);
 INCLUDE_ASM("asm/saturn/zero/f_nonmat", f600B954, func_0600B954);
 INCLUDE_ASM("asm/saturn/zero/f_nonmat", f600BA24, func_0600BA24);
 INCLUDE_ASM("asm/saturn/zero/f_nonmat", f600BCE0, func_0600BCE0);
 
-int func_0600BD4C(u8* param_1) { return DAT_0606471C + param_1[2] * 2; }
+// func_0600BD4C
+int GetSpriteObjectGourTbl(u8* param_1) { return SpGourTbl + param_1[2] * 2; }
 
 // _Odma
 INCLUDE_ASM("asm/saturn/zero/f_nonmat", f600BD68, func_0600BD68);
@@ -800,7 +879,6 @@ INCLUDE_ASM("asm/saturn/zero/f_nonmat", f600CC5C, func_0600CC5C);
 INCLUDE_ASM("asm/saturn/zero/f_nonmat", f600CD70, func_0600CD70);
 INCLUDE_ASM("asm/saturn/zero/f_nonmat", f600CE1C, func_0600CE1C);
 INCLUDE_ASM("asm/saturn/zero/f_nonmat", f600CED0, func_0600CED0);
-INCLUDE_ASM("asm/saturn/zero/f_nonmat", f600CFE0, func_0600CFE0);
 INCLUDE_ASM("asm/saturn/zero/f_nonmat", f600D028, func_0600D028);
 INCLUDE_ASM("asm/saturn/zero/f_nonmat", f600D0DC, func_0600D0DC);
 INCLUDE_ASM("asm/saturn/zero/f_nonmat", f600D1A0, func_0600D1A0);
@@ -1018,7 +1096,126 @@ long ratan2(long dx, long dy) {
     return ret;
 }
 
-INCLUDE_ASM("asm/saturn/zero/data", d600EFBC, d_0600EFBC);
+const s16 rsin_tbl[1024] = {
+    0x0000, 0x0006, 0x000C, 0x0012, 0x0019, 0x001F, 0x0025, 0x002B, 0x0032,
+    0x0038, 0x003E, 0x0045, 0x004B, 0x0051, 0x0057, 0x005E, 0x0064, 0x006A,
+    0x0071, 0x0077, 0x007D, 0x0083, 0x008A, 0x0090, 0x0096, 0x009D, 0x00A3,
+    0x00A9, 0x00AF, 0x00B6, 0x00BC, 0x00C2, 0x00C8, 0x00CF, 0x00D5, 0x00DB,
+    0x00E2, 0x00E8, 0x00EE, 0x00F4, 0x00FB, 0x0101, 0x0107, 0x010D, 0x0114,
+    0x011A, 0x0120, 0x0127, 0x012D, 0x0133, 0x0139, 0x0140, 0x0146, 0x014C,
+    0x0152, 0x0159, 0x015F, 0x0165, 0x016B, 0x0172, 0x0178, 0x017E, 0x0184,
+    0x018B, 0x0191, 0x0197, 0x019D, 0x01A4, 0x01AA, 0x01B0, 0x01B6, 0x01BD,
+    0x01C3, 0x01C9, 0x01CF, 0x01D6, 0x01DC, 0x01E2, 0x01E8, 0x01EF, 0x01F5,
+    0x01FB, 0x0201, 0x0208, 0x020E, 0x0214, 0x021A, 0x0221, 0x0227, 0x022D,
+    0x0233, 0x0239, 0x0240, 0x0246, 0x024C, 0x0252, 0x0259, 0x025F, 0x0265,
+    0x026B, 0x0271, 0x0278, 0x027E, 0x0284, 0x028A, 0x0290, 0x0297, 0x029D,
+    0x02A3, 0x02A9, 0x02AF, 0x02B6, 0x02BC, 0x02C2, 0x02C8, 0x02CE, 0x02D5,
+    0x02DB, 0x02E1, 0x02E7, 0x02ED, 0x02F3, 0x02FA, 0x0300, 0x0306, 0x030C,
+    0x0312, 0x0318, 0x031F, 0x0325, 0x032B, 0x0331, 0x0337, 0x033D, 0x0344,
+    0x034A, 0x0350, 0x0356, 0x035C, 0x0362, 0x0368, 0x036F, 0x0375, 0x037B,
+    0x0381, 0x0387, 0x038D, 0x0393, 0x0399, 0x03A0, 0x03A6, 0x03AC, 0x03B2,
+    0x03B8, 0x03BE, 0x03C4, 0x03CA, 0x03D0, 0x03D7, 0x03DD, 0x03E3, 0x03E9,
+    0x03EF, 0x03F5, 0x03FB, 0x0401, 0x0407, 0x040D, 0x0413, 0x041A, 0x0420,
+    0x0426, 0x042C, 0x0432, 0x0438, 0x043E, 0x0444, 0x044A, 0x0450, 0x0456,
+    0x045C, 0x0462, 0x0468, 0x046E, 0x0474, 0x047A, 0x0480, 0x0486, 0x048C,
+    0x0492, 0x0498, 0x049E, 0x04A5, 0x04AB, 0x04B1, 0x04B7, 0x04BD, 0x04C3,
+    0x04C9, 0x04CF, 0x04D5, 0x04DB, 0x04E0, 0x04E6, 0x04EC, 0x04F2, 0x04F8,
+    0x04FE, 0x0504, 0x050A, 0x0510, 0x0516, 0x051C, 0x0522, 0x0528, 0x052E,
+    0x0534, 0x053A, 0x0540, 0x0546, 0x054C, 0x0552, 0x0558, 0x055D, 0x0563,
+    0x0569, 0x056F, 0x0575, 0x057B, 0x0581, 0x0587, 0x058D, 0x0593, 0x0599,
+    0x059E, 0x05A4, 0x05AA, 0x05B0, 0x05B6, 0x05BC, 0x05C2, 0x05C7, 0x05CD,
+    0x05D3, 0x05D9, 0x05DF, 0x05E5, 0x05EB, 0x05F0, 0x05F6, 0x05FC, 0x0602,
+    0x0608, 0x060E, 0x0613, 0x0619, 0x061F, 0x0625, 0x062B, 0x0630, 0x0636,
+    0x063C, 0x0642, 0x0648, 0x064D, 0x0653, 0x0659, 0x065F, 0x0664, 0x066A,
+    0x0670, 0x0676, 0x067B, 0x0681, 0x0687, 0x068D, 0x0692, 0x0698, 0x069E,
+    0x06A3, 0x06A9, 0x06AF, 0x06B5, 0x06BA, 0x06C0, 0x06C6, 0x06CB, 0x06D1,
+    0x06D7, 0x06DC, 0x06E2, 0x06E8, 0x06ED, 0x06F3, 0x06F9, 0x06FE, 0x0704,
+    0x070A, 0x070F, 0x0715, 0x071B, 0x0720, 0x0726, 0x072B, 0x0731, 0x0737,
+    0x073C, 0x0742, 0x0748, 0x074D, 0x0753, 0x0758, 0x075E, 0x0763, 0x0769,
+    0x076F, 0x0774, 0x077A, 0x077F, 0x0785, 0x078A, 0x0790, 0x0795, 0x079B,
+    0x07A0, 0x07A6, 0x07AC, 0x07B1, 0x07B7, 0x07BC, 0x07C2, 0x07C7, 0x07CD,
+    0x07D2, 0x07D7, 0x07DD, 0x07E2, 0x07E8, 0x07ED, 0x07F3, 0x07F8, 0x07FE,
+    0x0803, 0x0809, 0x080E, 0x0813, 0x0819, 0x081E, 0x0824, 0x0829, 0x082E,
+    0x0834, 0x0839, 0x083F, 0x0844, 0x0849, 0x084F, 0x0854, 0x085A, 0x085F,
+    0x0864, 0x086A, 0x086F, 0x0874, 0x087A, 0x087F, 0x0884, 0x088A, 0x088F,
+    0x0894, 0x0899, 0x089F, 0x08A4, 0x08A9, 0x08AF, 0x08B4, 0x08B9, 0x08BE,
+    0x08C4, 0x08C9, 0x08CE, 0x08D3, 0x08D9, 0x08DE, 0x08E3, 0x08E8, 0x08EE,
+    0x08F3, 0x08F8, 0x08FD, 0x0902, 0x0908, 0x090D, 0x0912, 0x0917, 0x091C,
+    0x0921, 0x0927, 0x092C, 0x0931, 0x0936, 0x093B, 0x0940, 0x0945, 0x094B,
+    0x0950, 0x0955, 0x095A, 0x095F, 0x0964, 0x0969, 0x096E, 0x0973, 0x0978,
+    0x097D, 0x0982, 0x0987, 0x098D, 0x0992, 0x0997, 0x099C, 0x09A1, 0x09A6,
+    0x09AB, 0x09B0, 0x09B5, 0x09BA, 0x09BF, 0x09C4, 0x09C9, 0x09CE, 0x09D3,
+    0x09D7, 0x09DC, 0x09E1, 0x09E6, 0x09EB, 0x09F0, 0x09F5, 0x09FA, 0x09FF,
+    0x0A04, 0x0A09, 0x0A0E, 0x0A12, 0x0A17, 0x0A1C, 0x0A21, 0x0A26, 0x0A2B,
+    0x0A30, 0x0A35, 0x0A39, 0x0A3E, 0x0A43, 0x0A48, 0x0A4D, 0x0A51, 0x0A56,
+    0x0A5B, 0x0A60, 0x0A65, 0x0A69, 0x0A6E, 0x0A73, 0x0A78, 0x0A7C, 0x0A81,
+    0x0A86, 0x0A8B, 0x0A8F, 0x0A94, 0x0A99, 0x0A9D, 0x0AA2, 0x0AA7, 0x0AAC,
+    0x0AB0, 0x0AB5, 0x0ABA, 0x0ABE, 0x0AC3, 0x0AC8, 0x0ACC, 0x0AD1, 0x0AD5,
+    0x0ADA, 0x0ADF, 0x0AE3, 0x0AE8, 0x0AEC, 0x0AF1, 0x0AF6, 0x0AFA, 0x0AFF,
+    0x0B03, 0x0B08, 0x0B0C, 0x0B11, 0x0B15, 0x0B1A, 0x0B1F, 0x0B23, 0x0B28,
+    0x0B2C, 0x0B31, 0x0B35, 0x0B3A, 0x0B3E, 0x0B42, 0x0B47, 0x0B4B, 0x0B50,
+    0x0B54, 0x0B59, 0x0B5D, 0x0B62, 0x0B66, 0x0B6A, 0x0B6F, 0x0B73, 0x0B78,
+    0x0B7C, 0x0B80, 0x0B85, 0x0B89, 0x0B8D, 0x0B92, 0x0B96, 0x0B9A, 0x0B9F,
+    0x0BA3, 0x0BA7, 0x0BAC, 0x0BB0, 0x0BB4, 0x0BB8, 0x0BBD, 0x0BC1, 0x0BC5,
+    0x0BCA, 0x0BCE, 0x0BD2, 0x0BD6, 0x0BDA, 0x0BDF, 0x0BE3, 0x0BE7, 0x0BEB,
+    0x0BEF, 0x0BF4, 0x0BF8, 0x0BFC, 0x0C00, 0x0C04, 0x0C08, 0x0C0D, 0x0C11,
+    0x0C15, 0x0C19, 0x0C1D, 0x0C21, 0x0C25, 0x0C29, 0x0C2D, 0x0C31, 0x0C36,
+    0x0C3A, 0x0C3E, 0x0C42, 0x0C46, 0x0C4A, 0x0C4E, 0x0C52, 0x0C56, 0x0C5A,
+    0x0C5E, 0x0C62, 0x0C66, 0x0C6A, 0x0C6E, 0x0C72, 0x0C76, 0x0C79, 0x0C7D,
+    0x0C81, 0x0C85, 0x0C89, 0x0C8D, 0x0C91, 0x0C95, 0x0C99, 0x0C9D, 0x0CA0,
+    0x0CA4, 0x0CA8, 0x0CAC, 0x0CB0, 0x0CB4, 0x0CB7, 0x0CBB, 0x0CBF, 0x0CC3,
+    0x0CC7, 0x0CCA, 0x0CCE, 0x0CD2, 0x0CD6, 0x0CD9, 0x0CDD, 0x0CE1, 0x0CE5,
+    0x0CE8, 0x0CEC, 0x0CF0, 0x0CF3, 0x0CF7, 0x0CFB, 0x0CFE, 0x0D02, 0x0D06,
+    0x0D09, 0x0D0D, 0x0D11, 0x0D14, 0x0D18, 0x0D1C, 0x0D1F, 0x0D23, 0x0D26,
+    0x0D2A, 0x0D2D, 0x0D31, 0x0D35, 0x0D38, 0x0D3C, 0x0D3F, 0x0D43, 0x0D46,
+    0x0D4A, 0x0D4D, 0x0D51, 0x0D54, 0x0D58, 0x0D5B, 0x0D5F, 0x0D62, 0x0D65,
+    0x0D69, 0x0D6C, 0x0D70, 0x0D73, 0x0D77, 0x0D7A, 0x0D7D, 0x0D81, 0x0D84,
+    0x0D87, 0x0D8B, 0x0D8E, 0x0D91, 0x0D95, 0x0D98, 0x0D9B, 0x0D9F, 0x0DA2,
+    0x0DA5, 0x0DA9, 0x0DAC, 0x0DAF, 0x0DB2, 0x0DB6, 0x0DB9, 0x0DBC, 0x0DBF,
+    0x0DC2, 0x0DC6, 0x0DC9, 0x0DCC, 0x0DCF, 0x0DD2, 0x0DD5, 0x0DD9, 0x0DDC,
+    0x0DDF, 0x0DE2, 0x0DE5, 0x0DE8, 0x0DEB, 0x0DEE, 0x0DF2, 0x0DF5, 0x0DF8,
+    0x0DFB, 0x0DFE, 0x0E01, 0x0E04, 0x0E07, 0x0E0A, 0x0E0D, 0x0E10, 0x0E13,
+    0x0E16, 0x0E19, 0x0E1C, 0x0E1F, 0x0E22, 0x0E25, 0x0E28, 0x0E2B, 0x0E2D,
+    0x0E30, 0x0E33, 0x0E36, 0x0E39, 0x0E3C, 0x0E3F, 0x0E42, 0x0E44, 0x0E47,
+    0x0E4A, 0x0E4D, 0x0E50, 0x0E53, 0x0E55, 0x0E58, 0x0E5B, 0x0E5E, 0x0E60,
+    0x0E63, 0x0E66, 0x0E69, 0x0E6B, 0x0E6E, 0x0E71, 0x0E74, 0x0E76, 0x0E79,
+    0x0E7C, 0x0E7E, 0x0E81, 0x0E84, 0x0E86, 0x0E89, 0x0E8B, 0x0E8E, 0x0E91,
+    0x0E93, 0x0E96, 0x0E98, 0x0E9B, 0x0E9E, 0x0EA0, 0x0EA3, 0x0EA5, 0x0EA8,
+    0x0EAA, 0x0EAD, 0x0EAF, 0x0EB2, 0x0EB4, 0x0EB7, 0x0EB9, 0x0EBC, 0x0EBE,
+    0x0EC0, 0x0EC3, 0x0EC5, 0x0EC8, 0x0ECA, 0x0ECD, 0x0ECF, 0x0ED1, 0x0ED4,
+    0x0ED6, 0x0ED8, 0x0EDB, 0x0EDD, 0x0EDF, 0x0EE2, 0x0EE4, 0x0EE6, 0x0EE8,
+    0x0EEB, 0x0EED, 0x0EEF, 0x0EF2, 0x0EF4, 0x0EF6, 0x0EF8, 0x0EFA, 0x0EFD,
+    0x0EFF, 0x0F01, 0x0F03, 0x0F05, 0x0F08, 0x0F0A, 0x0F0C, 0x0F0E, 0x0F10,
+    0x0F12, 0x0F14, 0x0F16, 0x0F18, 0x0F1B, 0x0F1D, 0x0F1F, 0x0F21, 0x0F23,
+    0x0F25, 0x0F27, 0x0F29, 0x0F2B, 0x0F2D, 0x0F2F, 0x0F31, 0x0F33, 0x0F35,
+    0x0F37, 0x0F39, 0x0F3B, 0x0F3C, 0x0F3E, 0x0F40, 0x0F42, 0x0F44, 0x0F46,
+    0x0F48, 0x0F4A, 0x0F4B, 0x0F4D, 0x0F4F, 0x0F51, 0x0F53, 0x0F55, 0x0F56,
+    0x0F58, 0x0F5A, 0x0F5C, 0x0F5D, 0x0F5F, 0x0F61, 0x0F63, 0x0F64, 0x0F66,
+    0x0F68, 0x0F69, 0x0F6B, 0x0F6D, 0x0F6E, 0x0F70, 0x0F72, 0x0F73, 0x0F75,
+    0x0F77, 0x0F78, 0x0F7A, 0x0F7B, 0x0F7D, 0x0F7F, 0x0F80, 0x0F82, 0x0F83,
+    0x0F85, 0x0F86, 0x0F88, 0x0F89, 0x0F8B, 0x0F8C, 0x0F8E, 0x0F8F, 0x0F91,
+    0x0F92, 0x0F94, 0x0F95, 0x0F96, 0x0F98, 0x0F99, 0x0F9B, 0x0F9C, 0x0F9D,
+    0x0F9F, 0x0FA0, 0x0FA1, 0x0FA3, 0x0FA4, 0x0FA5, 0x0FA7, 0x0FA8, 0x0FA9,
+    0x0FAB, 0x0FAC, 0x0FAD, 0x0FAE, 0x0FB0, 0x0FB1, 0x0FB2, 0x0FB3, 0x0FB4,
+    0x0FB6, 0x0FB7, 0x0FB8, 0x0FB9, 0x0FBA, 0x0FBB, 0x0FBD, 0x0FBE, 0x0FBF,
+    0x0FC0, 0x0FC1, 0x0FC2, 0x0FC3, 0x0FC4, 0x0FC5, 0x0FC6, 0x0FC7, 0x0FC8,
+    0x0FC9, 0x0FCA, 0x0FCB, 0x0FCC, 0x0FCD, 0x0FCE, 0x0FCF, 0x0FD0, 0x0FD1,
+    0x0FD2, 0x0FD3, 0x0FD4, 0x0FD5, 0x0FD6, 0x0FD7, 0x0FD8, 0x0FD9, 0x0FD9,
+    0x0FDA, 0x0FDB, 0x0FDC, 0x0FDD, 0x0FDE, 0x0FDE, 0x0FDF, 0x0FE0, 0x0FE1,
+    0x0FE1, 0x0FE2, 0x0FE3, 0x0FE4, 0x0FE4, 0x0FE5, 0x0FE6, 0x0FE7, 0x0FE7,
+    0x0FE8, 0x0FE9, 0x0FE9, 0x0FEA, 0x0FEB, 0x0FEB, 0x0FEC, 0x0FEC, 0x0FED,
+    0x0FEE, 0x0FEE, 0x0FEF, 0x0FEF, 0x0FF0, 0x0FF0, 0x0FF1, 0x0FF1, 0x0FF2,
+    0x0FF2, 0x0FF3, 0x0FF3, 0x0FF4, 0x0FF4, 0x0FF5, 0x0FF5, 0x0FF6, 0x0FF6,
+    0x0FF7, 0x0FF7, 0x0FF7, 0x0FF8, 0x0FF8, 0x0FF9, 0x0FF9, 0x0FF9, 0x0FFA,
+    0x0FFA, 0x0FFA, 0x0FFB, 0x0FFB, 0x0FFB, 0x0FFB, 0x0FFC, 0x0FFC, 0x0FFC,
+    0x0FFC, 0x0FFD, 0x0FFD, 0x0FFD, 0x0FFD, 0x0FFE, 0x0FFE, 0x0FFE, 0x0FFE,
+    0x0FFE, 0x0FFE, 0x0FFF, 0x0FFF, 0x0FFF, 0x0FFF, 0x0FFF, 0x0FFF, 0x0FFF,
+    0x0FFF, 0x0FFF, 0x0FFF, 0x0FFF, 0x0FFF, 0x0FFF, 0x0FFF,
+};
+
+INCLUDE_ASM("asm/saturn/zero/f_nonmat", f600F7BC, func_0600F7BC);
+INCLUDE_ASM("asm/saturn/zero/f_nonmat", f600F81C, func_0600F81C);
+INCLUDE_ASM("asm/saturn/zero/f_nonmat", f600F87C, func_0600F87C);
 INCLUDE_ASM("asm/saturn/zero/f_nonmat", f600F914, func_0600F914);
 
 INCLUDE_ASM("asm/saturn/zero/f_nonmat", f600F96C, func_0600F96C);
@@ -1069,10 +1266,10 @@ void func_06010008(void) {
     temp.mapover = 0;
     temp.flip = 0;
     temp.patnamecontrl = 0x66;
-    temp.plate_addr[0] = VDP2_25E58000;
-    temp.plate_addr[1] = VDP2_25E58000;
-    temp.plate_addr[2] = VDP2_25E58000;
-    temp.plate_addr[3] = VDP2_25E58000;
+    temp.plate_addr[0] = VDP2_DEBUG_TILEMAP_OFFSET;
+    temp.plate_addr[1] = VDP2_DEBUG_TILEMAP_OFFSET;
+    temp.plate_addr[2] = VDP2_DEBUG_TILEMAP_OFFSET;
+    temp.plate_addr[3] = VDP2_DEBUG_TILEMAP_OFFSET;
     SCL_SetConfig(SCL_NBG0, &temp);
     puVar2 = &DAT_0605d6c0;
     puVar2->unk30 = 0x10;
@@ -1105,13 +1302,14 @@ INCLUDE_ASM("asm/saturn/zero/f_nonmat", f6010400, func_06010400);
 // _pause_seq
 INCLUDE_ASM("asm/saturn/zero/f_nonmat", f60110C0, func_060110C0);
 
-void func_06011264(void) {
+// func_06011264
+void SignalSlaveSh2(void) {
     // set input capture flag on sub-sh2
     *((u16*)SH2_REG_M_FRT_IC) = 0xffff;
     return;
 }
 
-INCLUDE_ASM("asm/saturn/zero/data", d6011278, d_06011278);
+INCLUDE_ASM("asm/saturn/zero/f_nonmat", f6011278, func_06011278);
 INCLUDE_ASM("asm/saturn/zero/f_nonmat", f6011A6C, func_06011A6C);
 
 extern s32 DAT_06064230;
@@ -1149,270 +1347,10 @@ INCLUDE_ASM("asm/saturn/zero/f_nonmat", f6011C28, func_06011C28);
 INCLUDE_ASM("asm/saturn/zero/f_nonmat", f6011CE4, func_06011CE4);
 INCLUDE_ASM("asm/saturn/zero/f_nonmat", f6011EE0, func_06011EE0);
 
-void func_06011F40(s32 param) { SND_StopPcm2(); }
+// func_06011F40
+void StopPcm(s32 param) { SND_StopPcm2(); }
 
 INCLUDE_ASM("asm/saturn/zero/f_nonmat", f6011F58, func_06011F58);
 
 // _KeyOffBGM2
 INCLUDE_ASM("asm/saturn/zero/f_nonmat", f6011FC8, func_06011FC8);
-
-void func_06012030(void) {
-    func_06011F40(7);
-    D_8013B61C = 0;
-}
-
-// _KeyOffVox
-INCLUDE_ASM("asm/saturn/zero/f_nonmat", f6012054, func_06012054);
-INCLUDE_ASM("asm/saturn/zero/f_nonmat", f60120A0, func_060120A0);
-INCLUDE_ASM("asm/saturn/zero/f_nonmat", f60120D8, func_060120D8);
-INCLUDE_ASM("asm/saturn/zero/f_nonmat", f6012108, func_06012108);
-INCLUDE_ASM("asm/saturn/zero/f_nonmat", f6012154, func_06012154);
-
-// _BgmFadeOut
-INCLUDE_ASM("asm/saturn/zero/f_nonmat", f6012190, func_06012190);
-INCLUDE_ASM("asm/saturn/zero/f_nonmat", f60121F0, func_060121F0);
-
-// _VoxFadeOutStop
-INCLUDE_ASM("asm/saturn/zero/f_nonmat", f6012260, func_06012260);
-INCLUDE_ASM("asm/saturn/zero/f_nonmat", f6012290, func_06012290);
-INCLUDE_ASM("asm/saturn/zero/f_nonmat", f60122C0, func_060122C0);
-
-// _BgmPauseFadeIn
-INCLUDE_ASM("asm/saturn/zero/f_nonmat", f6012358, func_06012358);
-INCLUDE_ASM("asm/saturn/zero/f_nonmat", f60123D4, func_060123D4);
-INCLUDE_ASM("asm/saturn/zero/f_nonmat", f6012428, func_06012428);
-INCLUDE_ASM("asm/saturn/zero/f_nonmat", f6012474, func_06012474);
-
-// _BgmPauseOff
-INCLUDE_ASM("asm/saturn/zero/f_nonmat", f6012554, func_06012554);
-INCLUDE_ASM("asm/saturn/zero/f_nonmat", f60125EC, func_060125EC);
-
-// _BgmPauseKeyOff
-INCLUDE_ASM("asm/saturn/zero/f_nonmat", f6012620, func_06012620);
-
-void func_0601269C(void) {
-    if (DAT_06064354 == 1) {
-        DAT_06064354 = 0;
-    }
-}
-
-void func_060126B8(void) {
-    if (DAT_060644AC == 1) {
-        DAT_060644AC = 0;
-    }
-}
-
-INCLUDE_ASM("asm/saturn/zero/f_nonmat", f60126D4, func_060126D4);
-INCLUDE_ASM("asm/saturn/zero/f_nonmat", f60127F0, func_060127F0);
-INCLUDE_ASM("asm/saturn/zero/f_nonmat", f6012908, func_06012908);
-INCLUDE_ASM("asm/saturn/zero/f_nonmat", f6012954, func_06012954);
-INCLUDE_ASM("asm/saturn/zero/f_nonmat", f601298C, func_0601298C);
-INCLUDE_ASM("asm/saturn/zero/f_nonmat", f60129BC, func_060129BC);
-INCLUDE_ASM("asm/saturn/zero/f_nonmat", f6012C4C, func_06012C4C);
-INCLUDE_ASM("asm/saturn/zero/f_nonmat", f6012CAC, func_06012CAC);
-INCLUDE_ASM("asm/saturn/zero/f_nonmat", f6012D30, func_06012D30);
-INCLUDE_ASM("asm/saturn/zero/f_nonmat", f6012D88, func_06012D88);
-
-// original name : xa_play_ck
-bool func_80131F68(void) {
-    bool ret;
-
-    if (D_8013B61C == 9 || (D_8013B61C == 0 && g_PlayingXaBgmId == 0)) {
-        ret = 0;
-    } else {
-        ret = 1;
-    }
-    return ret;
-}
-
-// original name : vox_play_ck
-bool func_06012DFC(void) {
-    if (g_PlayingXaBgmId != 0) {
-        return 1;
-    }
-    return 0;
-}
-
-extern s32 DAT_06064250;
-extern u8 DAT_06064414;
-extern u8 DAT_0606423a;
-
-// SAT: 0x06012E18
-bool CdSoundCommandQueueEmpty(void) {
-    bool ret;
-
-    if (DAT_06064250 != 0 || DAT_06064414 != DAT_0606423a) {
-        ret = 0;
-    } else {
-        ret = 1;
-    }
-    return ret;
-}
-
-// _sd_xapause_chk
-INCLUDE_ASM("asm/saturn/zero/f_nonmat", f6012E4C, func_06012E4C);
-INCLUDE_ASM("asm/saturn/zero/f_nonmat", f6012F30, func_06012F30);
-
-// _sd_xa_wait2
-INCLUDE_ASM("asm/saturn/zero/f_nonmat", f6012F7C, func_06012F7C);
-INCLUDE_ASM("asm/saturn/zero/f_nonmat", f6012FB4, func_06012FB4);
-
-// _sd_alloff_chk
-bool func_06013320(void) {
-    if (DAT_060644C0 == 2) {
-        return 1;
-    }
-    return 0;
-}
-
-// _sd_reset2
-INCLUDE_ASM("asm/saturn/zero/f_nonmat", f601333C, func_0601333C);
-
-void MuteCd(void) {
-    g_MuteCd = 1;
-    DAT_060644dc = 2;
-}
-
-void UnMuteCd(void) {
-    g_MuteCd = 0;
-    DAT_060644dc = 2;
-}
-
-// _conve
-INCLUDE_ASM("asm/saturn/zero/f_nonmat", f60133CC, func_060133CC);
-
-// _convertDVI_STE
-INCLUDE_ASM("asm/saturn/zero/f_nonmat", f6013538, func_06013538);
-INCLUDE_ASM("asm/saturn/zero/f_nonmat", f6014424, func_06014424);
-INCLUDE_ASM("asm/saturn/zero/f_nonmat", f601449C, func_0601449C);
-INCLUDE_ASM("asm/saturn/zero/f_nonmat", f6014504, func_06014504);
-INCLUDE_ASM("asm/saturn/zero/f_nonmat", f601454C, func_0601454C);
-INCLUDE_ASM("asm/saturn/zero/f_nonmat", f60145B0, func_060145B0);
-INCLUDE_ASM("asm/saturn/zero/f_nonmat", f60145F8, func_060145F8);
-INCLUDE_ASM("asm/saturn/zero/f_nonmat", f601465C, func_0601465C);
-INCLUDE_ASM("asm/saturn/zero/f_nonmat", f60146A4, func_060146A4);
-INCLUDE_ASM("asm/saturn/zero/f_nonmat", f6014724, func_06014724);
-INCLUDE_ASM("asm/saturn/zero/f_nonmat", f601476C, func_0601476C);
-
-// _RestartBgmStream
-INCLUDE_ASM("asm/saturn/zero/f_nonmat", f6014B80, func_06014B80);
-INCLUDE_ASM("asm/saturn/zero/f_nonmat", f6014C20, func_06014C20);
-
-// _OpenVoxFile
-INCLUDE_ASM("asm/saturn/zero/f_nonmat", f6014C54, func_06014C54);
-INCLUDE_ASM("asm/saturn/zero/f_nonmat", f6014CB8, func_06014CB8);
-INCLUDE_ASM("asm/saturn/zero/f_nonmat", f6014D44, func_06014D44);
-INCLUDE_ASM("asm/saturn/zero/f_nonmat", f6014F3C, func_06014F3C);
-
-// _BgmCdLoadWithLoop
-INCLUDE_ASM("asm/saturn/zero/f_nonmat", f6015140, func_06015140);
-
-// _VoxCdLoad
-INCLUDE_ASM("asm/saturn/zero/f_nonmat", f60155CC, func_060155CC);
-INCLUDE_ASM("asm/saturn/zero/f_nonmat", f6015C70, func_06015C70);
-INCLUDE_ASM("asm/saturn/zero/f_nonmat", f60164BC, func_060164BC);
-INCLUDE_ASM("asm/saturn/zero/f_nonmat", f6016614, func_06016614);
-INCLUDE_ASM("asm/saturn/zero/f_nonmat", f60166A8, func_060166A8);
-
-void code2name(u32 code, u8* name);
-s32 func_06017F5C(u8*);
-
-// _PcmOpen
-void func_06016B44(s32 code) {
-    u8 name[0x10];
-    code2name(code, name);
-    func_06017F5C(name);
-}
-
-int func_0601B8B4(int param_1, int param_2);
-int func_0601B75C(int param_1, int param_2, int param_3);
-
-// _PcmLseek
-void _func_06016B6C(u32 param_1, int param_2) {
-    int iVar1 = func_0601B8B4(param_1, param_2 + 1);
-    func_0601B75C(param_1, iVar1 - 1, 0);
-}
-
-void func_06016B9C(s32 param_1, s32 param_2, s32 param_3) {
-    func_06017FA4(param_2, param_3, param_1);
-}
-
-void func_06016BBC(s32 param_1, s32 param_2, s32 param_3) {
-    func_06017FA4(param_2, param_3, param_1);
-}
-
-s32 d_060623B0[];
-
-void func_0601B724();
-
-// _PcmClose
-void func_06016BDC(s32 param_0, int param_1) {
-    func_0601B724();
-    d_060623B0[param_1] = 0;
-}
-
-INCLUDE_ASM("asm/saturn/zero/f_nonmat", f6016C08, func_06016C08);
-INCLUDE_ASM("asm/saturn/zero/f_nonmat", f6016C60, func_06016C60);
-INCLUDE_ASM("asm/saturn/zero/f_nonmat", f6016D84, func_06016D84);
-INCLUDE_ASM("asm/saturn/zero/f_nonmat", f6016E84, func_06016E84);
-
-// ZOE apparently has a later version of this same library
-// https://github.com/Joy-Division/old-zoe/blob/51af2e237d75aa27bc1e4803f08bdf48902fa90c/module/sound/sd_file.c#L545
-
-// func_06016EE4
-void code2name(u32 code, u8* name) {
-    if (code >= 0xE0000000 && code < 0xE0010000) {
-        name[0] = 'S';
-        name[1] = 'D';
-    }
-    if (code >= 0xF0000000 && code < 0xF0010000) {
-        name[0] = 'S';
-        name[1] = 'D';
-    }
-    if (code >= 0xFE000000 && code < 0xFE010000) {
-        name[0] = 'W';
-        name[1] = 'V';
-    }
-
-    name[2] = num2char((code >> 4) & 0xF);
-    name[3] = num2char(code & 0xF);
-
-    name[4] = '.';
-    name[5] = 'P';
-    name[6] = 'C';
-    name[7] = 'M';
-    name[8] = '\0';
-}
-
-// func_06016F9C
-char num2char(u32 num) {
-    num &= 0x0F;
-
-    if (num < 10) {
-        num += 0x30;
-    } else {
-        num += 0x37;
-    }
-    return num;
-}
-
-INCLUDE_ASM("asm/saturn/zero/f_nonmat", f6016FB8, func_06016FB8);
-
-// _StartvoxvdStream
-INCLUDE_ASM("asm/saturn/zero/f_nonmat", f601701C, func_0601701C);
-INCLUDE_ASM("asm/saturn/zero/f_nonmat", f60174D8, func_060174D8);
-
-// _voxvdSpuTransOnmemNoloop
-INCLUDE_ASM("asm/saturn/zero/f_nonmat", f6017508, func_06017508);
-INCLUDE_ASM("asm/saturn/zero/f_nonmat", f6017988, func_06017988);
-
-// _RestartvoxvdStream
-INCLUDE_ASM("asm/saturn/zero/f_nonmat", f6017F28, func_06017F28);
-INCLUDE_ASM("asm/saturn/zero/f_nonmat", f6017F5C, func_06017F5C);
-
-// _dat_read
-INCLUDE_ASM("asm/saturn/zero/f_nonmat", f6017FA4, func_06017FA4);
-INCLUDE_ASM("asm/saturn/zero/f_nonmat", f6017FF4, func_06017FF4);
-INCLUDE_ASM("asm/saturn/zero/f_nonmat", f6018034, func_06018034);
-INCLUDE_ASM("asm/saturn/zero/f_nonmat", f60180E0, func_060180E0);
-INCLUDE_ASM("asm/saturn/zero/f_nonmat", f6018260, func_06018260);

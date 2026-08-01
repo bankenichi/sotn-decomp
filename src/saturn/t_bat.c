@@ -1,45 +1,20 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #include "inc_asm.h"
 #include "sattypes.h"
+#include "t_bat/batanim.h"
+#include "t_bat/batbss.h"
+#include "t_bat/batevent.h"
+#include "t_bat/batstat.h"
+#include <saturn_sprite.h>
 
 void PlaySfx(s32 sfxId);
 
-typedef struct {
-    s32 delayFrames;
-    s32 angleStep;
-    s32 additionalBatCount;
-    s32 minimumEnemyHp;
-    s32 makeBadAttacks;
-} BatAbilityValues;
-
-extern struct SpriteParts* g_ServantSpriteParts[];        // 0x060D19FC
-extern s32 DAT_060d1a88;                                  // 0x060D1A88
-extern Unk060ED26C DAT_060d1b70;                          // 0x060D1B70
-extern AnimationFrame g_DefaultBatAnimationFrame[];       // 0x060D1B84
-extern AnimationFrame g_BatFarFromTargetAnimationFrame[]; // 0x060D1BF0
-extern AnimationFrame g_BatCloseToTargetAnimationFrame[]; // 0x060D1C28
-extern AnimationFrame g_BatHighVelocityAnimationFrame[];  // 0x060D1CC8
-extern AnimationFrame* g_BatAnimationFrames[];            // 0x060D1CD0
-extern s16 g_BatSpriteData[4][10];                        // 0x060D1CE4
-extern BatAbilityValues g_BatAbilityStats[];              // 0x060D1D34
-extern s32 s_IsServantDestroyed;                          // 0x060D1DFC
-extern u32 s_LastTargetedEntityIndex;                     // 0x060D1E00
-extern ServantEvent g_Events[];                           // 0x060D1E04
-extern s32 g_PlaySfxStep;                                 // 0x060D2734
-extern s16 g_EntityRanges[];                              // 0x060D2738
-extern ServantEvent* g_EventQueue;                        // 0x060D2740
-extern u32 g_CurrentServant;                              // 0x060D2744
-extern s32 g_CurrentRoomX;                                // 0x060D2748
-extern s32 g_CurrentRoomY;                                // 0x060D274C
-extern s16 DAT_060d2750;                                  // 0x060D2750
-extern s16 DAT_060d2752;                                  // 0x060D2752
-extern FamiliarStats s_BatStats;                          // 0x060D2830
-extern Point16 s_BatPathingPoints[4][0x10];               // 0x060D2840
+extern SaturnSpriteImage g_BatTextureSlices[25];
+extern SaturnSpriteResource g_BatTextureResource;
+extern struct SpriteParts* g_ServantSpriteParts[]; // 0x060D19FC
 extern s32 g_CutsceneHasControl;
 
-INCLUDE_ASM("asm/saturn/t_bat/data", d60CF000, d_060CF000);
-
-static inline void SetEntityAnimation(Entity* entity, AnimationFrame* anim) {
+static void SetEntityAnimation(Entity* entity, AnimationFrame* anim) {
     if (entity->anim != anim) {
         entity->anim = anim;
         entity->pose = 0;
@@ -142,9 +117,9 @@ s32 CheckEntityValid(Entity* entity) {
     return 1;
 }
 
-static inline void unused_1560(Entity* self) {}
+static void unused_1560(Entity* self) {}
 
-static inline void CreateBlueTrailEntity(Entity* parent) {
+static void CreateBlueTrailEntity(Entity* parent) {
     Entity* entity;
     s32 i;
 
@@ -179,8 +154,9 @@ void CreateAdditionalBats(s32 amount, s32 entityId) {
             entity->step = 0;
         } else {
             DestroyEntity(entity);
-            entity->unk0 = func_0600B344(
-                DAT_060d1b70.unk8, DAT_060d1b70.unk10, &DAT_060d1a88, 1);
+            entity->unk0 = CreateSpriteObject(
+                g_BatTextureResource.allocationIndex,
+                g_BatTextureResource.flags, g_BatTextureSlices, 1);
             if (entity->unk0 == NULL) {
                 DestroyEntity(entity);
                 return;
@@ -200,8 +176,69 @@ void CreateAdditionalBats(s32 amount, s32 entityId) {
     }
 }
 
-void UpdatePrimitives(Entity* entity, s32 frameIndex);
-INCLUDE_ASM("asm/saturn/t_bat/f_nonmat", f60CF410, func_060CF410);
+static u16 LookupTblNoToVram(u16 arg0) {
+    if (arg0 & 0x4000) {
+        return LocalLookupTblNoToVram(arg0 & 0xFFF);
+    } else {
+        return SPR_2LookupTblNoToVram(arg0 & 0xFFF);
+    }
+}
+
+extern u16 DAT_0605aec0[][2];
+extern SaturnSpriteResource g_SaturnSharedSpriteBank0Resource;
+
+void UpdatePrimitives(Entity* self, s32 frameIndex) {
+    Primitive* prim;
+    s32 x, y;
+    u16* ptr;
+    SaturnSpriteImage* image;
+    s32 index;
+
+    prim = &g_PrimBuf[self->primIndex];
+    if (frameIndex == 0) {
+        prim->drawMode = DRAW_HIDE;
+        return;
+    }
+    index = frameIndex - 1;
+    if (self->facingLeft) {
+        x = self->posX.i.hi + 2;
+    } else {
+        x = self->posX.i.hi - 16;
+    }
+    y = self->posY.i.hi - 16;
+
+    switch (frameIndex) {
+    case 1:
+        image = &g_BatTextureResource.images[22];
+        prim->unk8 = DAT_0605aec0[g_BatTextureResource.allocationIndex][0] +
+                     image->characterOffsetUnits;
+        prim->unkA =
+            (image->storedWidth >> 2) << 8 | (image->storedHeight) << 1;
+        prim->unk6 = LookupTblNoToVram(g_BatTextureResource.flags + 3);
+        break;
+    case 2:
+        image = &g_BatTextureResource.images[23];
+        prim->unk8 = DAT_0605aec0[g_BatTextureResource.allocationIndex][0] +
+                     image->characterOffsetUnits;
+        prim->unkA =
+            (image->storedWidth >> 2) << 8 | (image->storedHeight) << 1;
+        prim->unk6 = LookupTblNoToVram(g_BatTextureResource.flags + 3);
+        break;
+    default:
+        ptr =
+            DAT_0605aec0[g_SaturnSharedSpriteBank0Resource.allocationIndex + 7];
+        prim->unk8 = ptr[0];
+        prim->unkA = ptr[1];
+        prim->unk6 =
+            LookupTblNoToVram(g_SaturnSharedSpriteBank0Resource.flags + 1);
+        break;
+    }
+
+    prim->x0 = x - g_BatSpriteData[index].x;
+    prim->y0 = y - g_BatSpriteData[index].y;
+    prim->priority = self->zPriority + 1;
+    prim->drawMode = DRAW_UNK_100 | DRAW_UNK02;
+}
 
 // SAT: func_060CF5F4
 void UpdatePrimWhenAlucardIsBat(Entity* entity) {
@@ -221,8 +258,8 @@ void UpdatePrimWhenAlucardIsBat(Entity* entity) {
     y -= entity->ext.bat.frameCounter / 2;
 
     prim = &g_PrimBuf[entity->primIndex];
-    prim->x0 = x - g_BatSpriteData[frame][0];
-    prim->y0 = y - g_BatSpriteData[frame][1];
+    prim->x0 = x - g_BatSpriteData[frame].x;
+    prim->y0 = y - g_BatSpriteData[frame].y;
 }
 
 // SAT: func_060CF6B4
@@ -234,8 +271,9 @@ void SwitchModeInitialize(Entity* self) {
         self->ext.bat.doUpdateCloseAnimation = false;
         switch (self->entityId) {
         case 0xD1:
-            self->unk0 = func_0600B344(
-                DAT_060d1b70.unk8, DAT_060d1b70.unk10, &DAT_060d1a88, 1);
+            self->unk0 = CreateSpriteObject(
+                g_BatTextureResource.allocationIndex,
+                g_BatTextureResource.flags, g_BatTextureSlices, 1);
             if (self->unk0 == NULL) {
                 DestroyEntity(self);
                 return;
@@ -251,10 +289,10 @@ void SwitchModeInitialize(Entity* self) {
             self->flags = FLAG_POS_CAMERA_LOCKED | FLAG_KEEP_ALIVE_OFFCAMERA |
                           FLAG_HAS_PRIMS | FLAG_UNK_20000;
             SetEntityAnimation(self, g_DefaultBatAnimationFrame);
-            self->ext.bat.randomMovementAngle = rand() & 0xFFF;
+            self->ext.bat.randomMovementAngle = MTH_GetRand() & 0xFFF;
             self->ext.bat.targetAngle = 0;
             self->ext.bat.randomMovementScaler = 12;
-            self->ext.bat.frameCounter = rand() & 0xFFF;
+            self->ext.bat.frameCounter = MTH_GetRand() & 0xFFF;
             self->ext.bat.angleStep = 0x20;
             self->step++;
             break;
@@ -299,7 +337,7 @@ void SwitchModeInitialize(Entity* self) {
                         PLAYER.posY.i.hi + self->ext.bat.cameraY;
                 }
                 self->posX.i.hi = PLAYER.facingLeft ? 0x180 : -0x80;
-                self->posY.i.hi = rand() & 0xFF;
+                self->posY.i.hi = MTH_GetRand() & 0xFF;
             }
             self->ext.bat.hasShotFireball = false;
             self->step++;
@@ -312,7 +350,7 @@ void SwitchModeInitialize(Entity* self) {
             self->flags = FLAG_POS_CAMERA_LOCKED | FLAG_KEEP_ALIVE_OFFCAMERA |
                           FLAG_HAS_PRIMS | FLAG_UNK_20000;
             SetEntityAnimation(self, g_DefaultBatAnimationFrame);
-            self->ext.bat.frameCounter = rand() & 0xFFF;
+            self->ext.bat.frameCounter = MTH_GetRand() & 0xFFF;
             self->step++;
             break;
         case 0xD2:
@@ -677,9 +715,10 @@ void UpdateBatAttackMode(Entity* self) {
                    !(g_Player.status & PLAYER_STATUS_SUBWPN)) {
             self->ext.bat.hasShotFireball = false;
         }
-        DAT_060d2750 = self->ext.bat.follow->posX.i.hi - self->posX.i.hi;
-        DAT_060d2752 = self->ext.bat.follow->posY.i.hi - self->posY.i.hi;
-        distance = DAT_060d2750 * DAT_060d2750 + DAT_060d2752 * DAT_060d2752;
+        g_BatFollowDeltaX = self->ext.bat.follow->posX.i.hi - self->posX.i.hi;
+        g_BatFollowDeltaY = self->ext.bat.follow->posY.i.hi - self->posY.i.hi;
+        distance = g_BatFollowDeltaX * g_BatFollowDeltaX +
+                   g_BatFollowDeltaY * g_BatFollowDeltaY;
         if (IsMovementAllowed(0) || distance > 0x18 * 0x18) {
             for (i = 0; i < 15; i++) {
                 s_BatPathingPoints[self->ext.bat.batIndex][i].x =
@@ -715,7 +754,8 @@ void UpdateBatAttackMode(Entity* self) {
             self->step++;
             s_BatPathingPoints[self->ext.bat.batIndex][0].x =
                 PLAYER.facingLeft ? -0x80 : 0x180;
-            s_BatPathingPoints[self->ext.bat.batIndex][0].y = rand() & 0xFF;
+            s_BatPathingPoints[self->ext.bat.batIndex][0].y =
+                MTH_GetRand() & 0xFF;
             SetEntityAnimation(self, g_DefaultBatAnimationFrame);
         }
         break;
@@ -919,7 +959,7 @@ void ProcessSfxState(Entity* entity) {
             return;
         }
         if (CdSoundCommandQueueEmpty()) {
-            PlaySfx(0xF0000010);
+            PlaySfx(SET_UNK_10);
             func_06010400();
             entity->step++;
         }
@@ -934,12 +974,12 @@ void ProcessSfxState(Entity* entity) {
         entity->step++;
         break;
     case 3:
-        if (func_80131F68()) {
+        if (func_80131F68_2()) {
             entity->step++;
         }
         break;
     case 4:
-        if (!func_80131F68()) {
+        if (!func_80131F68_2()) {
             entity->step++;
         }
         break;
@@ -950,7 +990,7 @@ void ProcessSfxState(Entity* entity) {
             return;
         }
         if (CdSoundCommandQueueEmpty()) {
-            PlaySfx(0xF0000011);
+            PlaySfx(SET_XA_PLAYBACK);
             entity->step++;
         }
         break;
@@ -962,7 +1002,7 @@ void ProcessSfxState(Entity* entity) {
         }
         break;
     case 7:
-        PlaySfx(0xF0000080);
+        PlaySfx(SET_UNK_80);
         entity->step = 4;
         break;
     case 8:
@@ -1002,11 +1042,11 @@ void ProcessEvent(Entity* self, bool resetEvent) {
             }
 
             if (evt->roomX < 0) {
-                if (!(DAT_0605d750.stageID & STAGE_INVERTEDCASTLE_FLAG)) {
+                if (!(g_CurrentRoom.stageID & STAGE_INVERTEDCASTLE_FLAG)) {
                     continue;
                 }
             } else {
-                if (DAT_0605d750.stageID & STAGE_INVERTEDCASTLE_FLAG) {
+                if (g_CurrentRoom.stageID & STAGE_INVERTEDCASTLE_FLAG) {
                     continue;
                 }
             }
@@ -1151,7 +1191,7 @@ s32 CheckAllEntitiesValid(void) {
 
 // SAT: func_060D1808
 s32 ServantUnk0(void) {
-    if (DAT_0605d750.stageID >= 0x20 && DAT_0605d750.stageID < 0x35) {
+    if (g_CurrentRoom.stageID >= 0x20 && g_CurrentRoom.stageID < 0x35) {
         if (D_8003C708.flags == 0x22) {
             return 1;
         }
@@ -1170,5 +1210,3 @@ s32 ServantUnk0(void) {
         return 2;
     }
 }
-
-INCLUDE_ASM("asm/saturn/t_bat/data", d60D1858, d_060D1858);

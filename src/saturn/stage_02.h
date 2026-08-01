@@ -3,6 +3,7 @@
 #define STAGE_02_H
 
 #include "sattypes.h"
+#include <saturn_sprite.h>
 
 typedef struct UnkStruct_060e8350 {
     /* 0x00 */ s32 unk0;
@@ -12,11 +13,6 @@ typedef struct UnkStruct_060e8350 {
     /* 0x1E */ s16 unk1E;
     /* 0x20 */ struct UnkStruct_060e8350* unk20;
 } UnkStruct_060e8350; // size = 0x24
-
-typedef struct {
-    u8 pad[0x1c];
-    u32 unk28;
-} Unk2;
 
 typedef enum {
     E_NONE,
@@ -45,10 +41,11 @@ typedef enum {
     E_GAIBON = 0x43,
     E_GAIBON_SMALL_FIREBALL = 0x45,
     E_GAIBON_BIG_FIREBALL = 0x46,
-} EntityIDs;
+} EntityID;
 
 s16 Random(void);
-s32 AnimateEntity(Entity* entity, const u8 frames[], const u8 frames2[]);
+s32 AnimateEntityWithSpriteData(
+    Entity* entity, const u8 frames[], const s16* spriteFrames[]);
 Entity* AllocEntity(Entity*, Entity*);
 void InitializeEntity(u16 arg0[]);
 void PlaySfxPositional(s32 sfxId);
@@ -56,23 +53,23 @@ void CreateEntityFromEntity(u16 entityId, Entity* source, Entity* entity);
 void SetStep(u8 step);
 void DestroyEntity(Entity* entity);
 
-void func_0600AFA8(Unk0600B344*, u32);
-void func_0600B004(Unk0600B344*, s32);
-void func_0607B264(Entity*, s32);
-Unk0600B344* func_0600B344(s32, s32, s32, s32);
+void func_0600AFA8(SpriteObject*, SaturnSpriteFrameHeader*);
+void func_0600B004(SpriteObject*, s16*);
+void TekiInit(Entity*, s32);
+SpriteObject* CreateSpriteObject(
+    u16 charBase, u16 clutBase, SaturnSpriteImage* images, s32 maxParts);
 void func_06079BB4(Entity*);
-void func_0607B264(Entity*, s32);
 
-extern Unk060ED26C entityRedEyeBustData;
-extern Unk2 entityRedEyeBustData2;
-extern Unk060ED26C D_060ED26C;
-extern u8 dat_060ed174[];
+extern SaturnSpriteFrameHeader* entityRedEyeBustData2[22];
+extern SaturnSpriteResource entityRedEyeBustData;
+extern SaturnSpriteResource g_Stage02TableWithGlobeResource;
+extern u8 g_Stage02TableWithGlobeBreakAnim[];
 extern u16 D_80180CC4[];
-extern const u8 D_80180EF0[];
-extern u16 D_80180F10[];
-extern const u8 D_80180EF8[];
-extern s32 DAT_060f4e6c[];
-extern s32 DAT_060f237c[];
-extern s32 DAT_060f2878[];
+extern SaturnSpriteFrameHeader* g_Stage02TableWithGlobeFrames[19];
+extern u16 g_Stage02TableWithGlobeDropParams[];
+extern u8 g_Stage02TableWithGlobeIdleAnim[];
+extern s16* g_Stage02SpittleBoneFrames[];
+extern s16* g_Stage02Entity38Frames[];
+extern s16* g_Stage02BoneScimitarFrames[];
 
 #endif
