@@ -124,6 +124,14 @@ REGISTRY = {
     "permuter_import": lambda c_file, asm_file: [
         PYTHON, "tools/decomp-permuter/import.py",
         _inrepo(c_file), _inrepo(asm_file)],
+    # queue seeding. MUST go through the connector rather than a sandbox shell:
+    # SOTN_QUEUE defaults to ~/sotn-work/queue.jsonl, so a different HOME
+    # resolves to a DIFFERENT queue file. The sandbox's copy reported 33 matched
+    # while the real one had 134, and seeding the wrong file would have forked
+    # the harness's state silently. init is additive and skips existing ids.
+    "queue_init": lambda from_file="automation/seed.us.txt": [
+        PYTHON, "automation/scheduler.py", "init",
+        "--from", _inrepo(from_file)],
     # queue visibility (read-only): lets the orchestrator poll in one call
     "queue_stats": lambda: [PYTHON, "automation/scheduler.py", "stats"],
     "queue_list":  lambda status="": ([PYTHON, "automation/scheduler.py", "list"]
