@@ -13,12 +13,11 @@ INCLUDE_ASM("boss/bo6/nonmatchings/us_39144", func_us_801B94CC);
 INCLUDE_ASM("boss/bo6/nonmatchings/us_39144", func_us_801B96F4);
 
 extern u16 RIC_step;
-extern u16 D_80076306;
 
-// Richter (BO6): set state machine step and clear related flag
+// Richter (BO6): set state machine step and clear the sub-step counter.
 void BO6_RicSetStep(s32 step) {
     RIC_step = step;
-    D_80076306 = 0;
+    RIC.step_s = 0;
 }
 
 // Richter (BO6): set animation and clear pose state
@@ -103,17 +102,13 @@ INCLUDE_ASM("boss/bo6/nonmatchings/us_39144", BO6_RicSetInvincibilityFrames);
 
 INCLUDE_ASM("boss/bo6/nonmatchings/us_39144", BO6_DisableAfterImage);
 
-extern s8 D_80076410;
-extern s8 D_80076411;
-extern s8 D_80076412;
-extern s8 D_80076413;
-
-// Richter (BO6): clear animation control fields (likely afterimage/special effect data)
+// Richter (BO6): reset the afterimage effect state.
+// Same idiom as src/boss/bo4/unk_45354.c and src/boss/rbo5/unk_44954.c.
 void func_us_801B9C14(void) {
-    D_80076413 = 0;
-    D_80076412 = 0;
-    D_80076411 = 0;
-    D_80076410 = 0;
+    g_Entities[STAGE_ENTITY_START + E_AFTERIMAGE_1].ext.afterImage.timer = 0;
+    g_Entities[STAGE_ENTITY_START + E_AFTERIMAGE_1].ext.afterImage.index = 0;
+    g_Entities[STAGE_ENTITY_START + E_AFTERIMAGE_1].ext.afterImage.resetFlag = 0;
+    g_Entities[STAGE_ENTITY_START + E_AFTERIMAGE_1].ext.afterImage.disableFlag = 0;
 }
 
 void BO6_RicSetStep(s32);
