@@ -45,12 +45,12 @@ INCLUDE_ASM("st/rcen/nonmatchings/e_shaft", func_us_8019C610);
 
 INCLUDE_ASM("st/rcen/nonmatchings/e_shaft", func_us_8019C7B8);
 
-extern u32 RCEN_PrizeDrops;
+extern u32 PrizeDrops;
 extern EInit D_us_80180594;
 
 // Initializes shaft prize-drop entity if its drop flag is unset, otherwise destroys it
 void func_us_8019CDA0(Entity* self) {
-    if (!(RCEN_PrizeDrops & 4)) {
+    if (!(PrizeDrops & 4)) {
         if (self->step == 0) {
             InitializeEntity(D_us_80180594);
             return;
