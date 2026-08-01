@@ -136,10 +136,25 @@ REGISTRY = {
     "queue_stats": lambda: [PYTHON, "automation/scheduler.py", "stats"],
     "queue_list":  lambda status="": ([PYTHON, "automation/scheduler.py", "list"]
                                       + (["--status", _status(status)] if status else [])),
-    # scoped git (no general shell): status, stage-all, and commit only
+    # scoped git (no general shell): status, stage-all, commit, push
     "git_status":  lambda: ["git", "status", "--short"],
     "git_add_all": lambda: ["git", "add", "-A"],
     "git_commit":  lambda message: ["git", "commit", "-m", _msg(message)],
+    # Push takes NO ARGUMENTS, and that is the safety property. There is no
+    # remote to choose, no refspec to craft and no flag to pass, so there is
+    # nothing to validate and nothing to get wrong. It always means "publish the
+    # current branch to our fork".
+    #
+    # Why that matters here: this repo has TWO remotes, and `upstream` is
+    # Xeeynamo/sotn-decomp with a push URL configured. A parameterised push
+    # action would put "which remote" in the hands of the caller, one typo away
+    # from pushing 104 local commits at the project we forked from. `origin` is
+    # hard-coded, and the upstream push URL is separately disabled in the repo
+    # config (git remote set-url --push upstream DISABLED) as a second layer.
+    #
+    # No --force, no --delete, no --mirror, no --all, no `src:dst` refspec: none
+    # of them are reachable, because none of them are expressible.
+    "git_push":    lambda: ["git", "push", "origin", "HEAD"],
 }
 
 

@@ -87,7 +87,23 @@ hard-allowlisted set of repo actions. There is no general shell. Three groups:
   argv lists (never `shell=True`) with validated args (version enum,
   `^[A-Za-z0-9_]+$` symbols/overlays, in-repo path checks).
 - Scoped git: `git_status`, `git_add_all`, `git_commit` (message 1-200 chars,
-  single line). Lets the harness commit a matched function on its branch.
+  single line), `git_push`. Lets the harness commit AND publish a matched
+  function without a general shell.
+
+  `git_push` deliberately takes **no arguments**. It is exactly
+  `git push origin HEAD`, always. There is no remote to choose, no refspec to
+  craft and no flag to pass, so there is nothing to validate and nothing to get
+  wrong. That matters because this repo has two remotes and `upstream` is the
+  project we forked from: a parameterised push would put "which remote" in the
+  caller's hands, one typo away from pushing at Xeeynamo/sotn-decomp. As a
+  second layer the upstream push URL is disabled in the repo config
+  (`git remote set-url --push upstream DISABLED_use_origin`), so even a manual
+  attempt fails loudly rather than silently succeeding.
+
+  Push runs in WSL because that is where the git credentials are. The Cowork
+  sandbox has none: `git push` there fails with "could not read Username for
+  'https://github.com'", which is why committing without pushing had been
+  accumulating (104 commits at the time this was added).
 - Scoped filesystem: `read_file`, `write_file`, `list_dir`, `search_repo`. These
   let Claude read and edit the WSL2 tree THROUGH the connector when Cowork is not
   connected directly to the WSL2 clone. In-repo only, `.git` blocked, size
