@@ -1337,7 +1337,122 @@ def _hoist_classify(line: str):
     return ("stmt", None)
 
 
+_INDEX_CACHE: dict | None = None
 _EXT_INDEX_CACHE: dict | None = None
+
+
+def _load_index() -> dict:
+    """automation/index.us.json, built by codebase_index.py. Cached."""
+    global _INDEX_CACHE
+    if _INDEX_CACHE is None:
+        try:
+            p = os.path.join(WIN_REPO, "automation", "index.us.json")
+            with open(p, encoding="utf-8") as f:
+                _INDEX_CACHE = json.load(f)
+        except (OSError, ValueError):
+            _INDEX_CACHE = {}
+    return _INDEX_CACHE
+
+
+def resolve_raw_symbols(asm: str, limit: int = 10) -> str:
+    """Resolve `D_800xxxxx` addresses the asm touches into real field names.
+
+    THE fix for the single biggest quality defect. Upstream rejected our code
+    for declaring `extern u16 D_80076306;` when that address is really
+    `g_Entities[64].step_s`. The model has no way to know that from the asm
+    alone, so it invents an extern. The index knows, so tell it up front.
+
+    Arithmetic: g_Entities base + index*sizeof(Entity) + field offset, verified
+    against the reviewer's own example.
+    """
+    idx = _load_index()
+    if not idx:
+        return ""
+    syms = idx.get("symbols", {}).get("name_to_addr", {})
+    ent = idx.get("entity", {}).get("fields", {})
+    addr_to_name = idx.get("symbols", {}).get("addr_to_name", {})
+    try:
+        base = int(syms.get("g_Entities", "0x0"), 16)
+    except ValueError:
+        base = 0
+    size = 0xBC
+    seen, out = set(), []
+    for m in re.finditer(r"\bD_(?:us_)?([0-9A-Fa-f]{8})\b", asm or ""):
+        raw = m.group(0)
+        if raw in seen:
+            continue
+        seen.add(raw)
+        try:
+            addr = int(m.group(1), 16)
+        except ValueError:
+            continue
+        named = addr_to_name.get(f"0x{addr:08X}")
+        if named and named != raw:
+            out.append(f"{raw} IS the named symbol `{named}` - use that name.")
+            continue
+        if base and base <= addr < base + size * 256:
+            off = addr - base
+            i, f = divmod(off, size)
+            fld = ent.get(f"0x{f:X}") or ent.get(f"0x{f:02X}")
+            if fld:
+                out.append(f"{raw} IS g_Entities[{i}].{fld['name']} "
+                           f"({fld['type']}) - use that, do NOT declare an extern.")
+            elif f >= 0x7C:
+                out.append(f"{raw} IS g_Entities[{i}].ext + 0x{f - 0x7C:02X} "
+                           f"- use the named ext variant field at that offset, "
+                           f"do NOT declare an extern.")
+        if len(out) >= limit:
+            break
+    if not out:
+        return ""
+    return ("\n=== RAW ADDRESSES ALREADY HAVE MEANINGS ===\n"
+            "Declaring a new extern for these is rejected in review.\n"
+            + "\n".join(out) + "\n")
+
+
+def precedent_for(function: str, src_rel: str, limit: int = 2) -> str:
+    """Show existing functions that solve a similar problem.
+
+    This is the single biggest quality lever, and it is what separated a strong
+    model from a weak one in testing: given the same task, the model that went
+    looking for precedent found that sibling boss overlays already expressed the
+    exact idiom (`g_Entities[STAGE_ENTITY_START + E_AFTERIMAGE_1]
+    .ext.afterImage.*`) and conformed to it; the model that did not invented a
+    wall of raw casts, which upstream rejects.
+
+    Finding precedent is mechanical, so a cheap model should not have to be
+    clever enough to think of it. Match on the function's name stem and its
+    overlay's sibling directories.
+    """
+    idx = _load_index()
+    funcs = idx.get("functions", {})
+    if not funcs:
+        return ""
+    stem = re.sub(r"^(func_us_|func_|BO\d_|Entity)", "", function or "")
+    stem = re.sub(r"[0-9A-Fa-f]{6,}$", "", stem)
+    if len(stem) < 4:
+        return ""
+    scored = []
+    for name, meta in funcs.items():
+        if name == function:
+            continue
+        f = meta.get("file", "")
+        if src_rel and f == src_rel:
+            continue                      # same file is not "precedent"
+        s = 0
+        if stem.lower() in name.lower():
+            s += len(stem)
+        if s:
+            scored.append((s, -meta.get("lines", 999), name, meta))
+    if not scored:
+        return ""
+    scored.sort(reverse=True)
+    out = ["\n=== EXISTING CODE THAT SOLVES A SIMILAR PROBLEM ===",
+           "Follow these conventions. Reuse their idioms, names and helpers "
+           "rather than inventing your own."]
+    for _, _, name, meta in scored[:limit]:
+        out.append(f"- {name}  ({meta.get('file')})   {meta.get('signature','')}")
+    return "\n".join(out) + "\n"
 
 
 def ext_variants_for(function: str, blob: str, limit: int = 4) -> str:
@@ -1471,6 +1586,12 @@ def build_prompt(rec: dict, ctx: dict, feedback: str = "") -> str:
         ev = ext_variants_for(rec.get("function", ""), blob)
         if ev:
             entity_sec += ev
+    # Index-derived context, independent of whether this is an entity function:
+    #   - raw D_ addresses resolved to their real meanings (kills the biggest
+    #     review-rejection class: invented externs)
+    #   - existing functions to imitate (kills the "invented a new style" class)
+    entity_sec += resolve_raw_symbols(ctx.get("asm", ""))
+    entity_sec += precedent_for(rec.get("function", ""), ctx.get("src_rel", ""))
     return (
         f"Function: {rec['function']}   (overlay {rec['overlay']}, build {rec['build']})\n"
         f"{fb}{dsec}{entity_sec}"
