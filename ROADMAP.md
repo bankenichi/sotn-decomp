@@ -19,6 +19,7 @@ impossible twice.
 | Queue | 134 matched, 34 escalated, 27 deferred, 243 todo |
 | Index sees | 370 unmatched US functions, data symbols excluded |
 | Our private impls in rno0 | 9 found, 2 resolved, 7 blocked on splat config |
+| Manual review | all 142 defined functions read, 2026-08-01; 6 defects fixed |
 
 The queue and the index disagree (304 vs 370) because upstream's merge added 32
 unmatched functions in RCHI and RDAI that the queue has never seen. Reconciling
@@ -109,7 +110,21 @@ damage the tree rather than merely fail.
 **Done when:** `shim_viable` reports VIABLE for the five, each is shimmed one at
 a time, and 81/81 holds after each.
 
-## P4 — Close the two remaining quality classes
+## P4 — Wire the review checks into the worker
+
+`automation/review_checks.py` currently informs a human. It should gate the
+worker the same way `quality_gate()` does, so a generated function cannot be
+accepted while it names the wrong union variant or narrows a symbol's linkage
+below what the assembly requires. The linkage check in particular belongs
+*before* the build, since it predicts a link error the build would otherwise
+surface minutes later.
+
+Two classes were reviewed and deliberately left manual, with the measurement
+recorded in `MATCHING-LESSONS.md` section 20: "same as X except Y" comments
+that understate real differences, and descriptive parameter names replaced by
+`argN`. Both need a reader.
+
+## P5 — Close the two remaining quality classes
 
 The audit's headline findings were re-derived against upstream and mostly did
 not survive; see `ORCHESTRATOR.md` §7.10. What genuinely remains:
@@ -124,7 +139,7 @@ not survive; see `ORCHESTRATOR.md` §7.10. What genuinely remains:
 Neither is urgent. Both are cheap and both are the kind of thing upstream reads
 first, so they are worth doing before any wider harvest.
 
-## P5 — Harness: make the four blockers unskippable
+## P6 — Harness: make the four blockers unskippable
 
 `shim_viable` currently informs a human. It should gate the worker: a record
 whose target is a shared-implementation file should not reach a model at all

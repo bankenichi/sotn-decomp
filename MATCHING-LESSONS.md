@@ -1015,3 +1015,83 @@ blocked a file over storage that is never emitted.
 The general rule: a checker is code and earns the same scepticism as the code it
 checks. When it reports something surprising, print what it actually matched
 before believing it. Both of these were found that way in one command.
+
+## 17. A byte-identical match can still name the wrong thing
+
+`BO6_RicEntitySubwpnCross` contained `self->ext.holywater.timer = 50;` in a
+Cross Boomerang state machine whose other twenty `ext` accesses all said
+`crossBoomerang`. `ET_HolyWater.timer` and `ET_CrossBoomerang.timer` are both
+`s16` at ext+0x00, so the two spellings compile to the same instruction. Every
+byte-comparing check passed it, forever, by construction.
+
+The tell was not in the bytes but in the surrounding text: one access disagreed
+with twenty. `check_ext_variant_outlier` in `automation/review_checks.py` looks
+for exactly that shape, and only fires when one variant holds at least 80% of a
+function's accesses and another appears exactly once.
+
+The general principle: **the checks that compare against the binary can only
+find defects the binary knows about.** A union member name, a parameter name, a
+comment, and a `static` qualifier are all invisible to the oracle. Those need a
+different kind of check, or a reader.
+
+## 18. Identify an entity by its slot, not by its neighbours
+
+`func_us_801C8590` used `ext.ILLEGAL.u16[0]` as a frame counter. 57 named ext
+variants begin with a timer at that offset, so name affinity was hopeless, and
+the first guess reached for `ext.vibhutiCrash` purely because
+`BO6_RicEntityCrashVibhuti` sat next to it in the file.
+
+Adjacency in a source file means nothing. Adjacency in the DISPATCH TABLE means
+everything, because the table is the game's own index. BO6's `D_us_8018158C`
+reads `AguneaCircle, AguneaLightning, THIS, HitByDark, HitByHoly`, and RIC's
+equivalent table reads `AguneaCircle, AguneaLightning,
+CrashReboundStoneParticles, HitByDark, HitByHoly`. One positional match against
+a table both versions share, and the answer is certain rather than plausible.
+
+Procedure, when an entity function's type is unknown:
+
+1. `grep` the overlay's `data/*.s` for the function name; it will be a `.word`
+   in a pointer table.
+2. Find the same table in the version this overlay was derived from (BO6 mirrors
+   RIC, rno0 mirrors no0, and so on).
+3. Read off the counterpart at the same index. Its `ext` variant is yours.
+
+## 19. `static` is a linker question, and the C sources do not answer it
+
+Five reviewers were asked to flag functions that dropped `static` relative to
+their shared header. One flagged `StepTowards`, reasoning that nothing in the
+overlay referenced it. Nothing in the *C* did. `src/st/rno0/unk_4F968.c` still
+holds `INCLUDE_ASM` stubs that `jal StepTowards` across the translation-unit
+boundary. Adding `static` broke the link immediately.
+
+A `grep` over `src/**/*.c` is structurally blind to this: the callers are
+assembly. Before narrowing any symbol's linkage, resolve it the way the linker
+will, which is what `check_linkage_vs_asm` does: scan the overlay's `.s` files
+for `jal <name>` and `.word <name>`, map each hit back to the `.c` that
+`INCLUDE_ASM`s it, and require every owner to be the defining file.
+
+This generalises past `static`. Any reasoning of the form "nothing uses this"
+is only as good as the corpus searched, and in a decomp mid-flight that corpus
+is half C and half assembly.
+
+## 20. Decide what NOT to automate, and record the measurement
+
+Four candidate checks were written and run this session before being deleted,
+each because it was measured rather than imagined:
+
+| candidate | hits | real | why deleted |
+|---|---|---|---|
+| m2c register names (`temp_s0`) | 78 | 0 | upstream uses `var_s1` in 62 of its own files |
+| noise comments | 6 | 1 | `// unused` and `// Empty stub` are content |
+| bitmask name affinity | n/a | n/a | picked `DRAW_COLORS` over `ENTITY_ROTATE`, and flagged a local |
+| "same as X except Y" comment diffing | n/a | n/a | needs a reader to judge what "except" covers |
+
+A check that is mostly wrong is worse than no check, because it teaches people
+to skip the output, and then the true positives go with it. The cost of finding
+this out is one run, so run it before shipping it.
+
+The corollary is the rule now enforced in `quality_audit.py`: **a finding whose
+exact line exists verbatim upstream is not our finding.** That single rule
+retired an entire category of argument, because most false positives here turn
+out to be upstream's own conventions measured against a standard upstream never
+adopted.
