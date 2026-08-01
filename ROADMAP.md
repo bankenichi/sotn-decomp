@@ -20,7 +20,7 @@ impossible twice.
 | Index sees | 370 unmatched US functions, data symbols excluded |
 | Our private impls in rno0 | 9 found, 2 resolved, 7 blocked on splat config |
 | Manual review | all 142 defined functions read, 2026-08-01; 15 defects fixed |
-| Provenance | 124 functions authored; 83 (67%) are copies of upstream, 74 of them shimmable |
+| Provenance | 124 authored; 79 (64%) are copies, 74 shimmable, 4 should become shared headers |
 
 The queue and the index disagree (304 vs 370) because upstream's merge added 32
 unmatched functions in RCHI and RDAI that the queue has never seen. Reconciling
@@ -51,7 +51,17 @@ These are cheap, and skipping them is how a good tree quietly becomes a bad one.
 3. **Consult `shim_viable()` before hand-writing any shared-implementation
    file.** It is free and it has already been right six times out of six.
 
-## P1 — Reseed the queue against the post-merge set
+## P1 — Reseed the queue against the post-merge set  *(staged, needs a connector restart)*
+
+`automation/seed.us.txt` is written and a `queue_init` action is added to the
+connector. It cannot be called until the connector is restarted, because the
+reseed MUST run in WSL: `SOTN_QUEUE` defaults to `~/sotn-work/queue.jsonl`, so
+a different `HOME` resolves to a different file. The sandbox copy reports 33
+matched where the real one has 134, and seeding the wrong one would fork the
+harness state while appearing to succeed.
+
+After restart: `queue_init` (additive, skips existing ids), then `queue_stats`
+should total 370 rather than 438-minus-matched.
 
 **Why first:** the fleet is currently working from a list that predates the
 merge, so it cannot see RCHI or RDAI at all, and 66 functions are invisible to
