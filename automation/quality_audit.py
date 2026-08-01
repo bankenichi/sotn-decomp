@@ -426,9 +426,15 @@ def main() -> int:
     for p in scope:
         for name, body in extract_functions(p).items():
             added[name] = (p, body)
-    all_c = [p for p in (REPO / "src").rglob("*.c")
-             if "_psp" not in str(p) and "saturn" not in str(p)]
-    findings += find_duplicates(added, all_c)
+    # MUST include .h. src/st/ deduplicates by putting the shared implementation
+    # in src/st/<name>.h and reducing each stage's .c to a 4-line
+    # `#include "../st_common.h"` shim (25 stages do this). Globbing only .c
+    # made every one of those shared bodies invisible, so this reported 5
+    # duplicates when the real figure was ~75: the single largest defect in the
+    # fork, missed because the corpus excluded the files that hold the originals.
+    corpus = [p for p in (REPO / "src").rglob("*.[ch]")
+              if "_psp" not in str(p) and "saturn" not in str(p)]
+    findings += find_duplicates(added, corpus)
 
     by_kind: dict[str, list[dict]] = defaultdict(list)
     for f in findings:

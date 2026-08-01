@@ -811,6 +811,54 @@ insufficient, so the harness got very good at producing byte-identical code a
 maintainer will not merge. When choosing what to measure, ask what the ACCEPTING
 party checks, not what is easiest to check.
 
+## 10k. Ask "does this already exist?" BEFORE decompiling anything
+
+An independent expert audit (blind: given no prior findings) reached a verdict
+neither the maintainer's review nor our own audit had reached:
+
+**75 of 132 added function bodies (57%) were byte-identical, modulo comments and
+whitespace, to code already in this repository.**
+
+`src/st/` deduplicates by design. One implementation lives in `src/st/<name>.h`
+and each stage's `.c` is a shim:
+
+```c
+// src/st/rcen/st_common.c -- the ENTIRE file
+#include "rcen.h"
+#include "../st_common.h"
+```
+
+25 stages do this. We wrote **707 lines** into `src/st/rno0/st_common.c` and
+**429** into `create_entity.c`, re-deriving what a one-line include provides.
+The copies carry the evidence: dead `#if defined(STAGE_IS_NO2)` branches in an
+RNO0-only file, an upstream "BUG: Array out of bounds" analysis comment
+reproduced verbatim, and upstream's doc comments replaced with terser
+paraphrases. A maintainer reads that as their own work laundered back at them.
+
+Worse, the near-copies were REGRESSIONS: `TERMINAL_VELOCITY`/`GRAVITY` replaced
+by `0x5FFFF`/`0x4000`, `DRAW_HIDE`/`PRIM_GT4` replaced by `8`/`4`, `static`
+dropped (creating new globals), m2c masks reintroduced.
+
+**Our own audit tool could not see any of it.** `find_duplicates` built its
+corpus from `(REPO/"src").rglob("*.c")` — `.c` only. Every shared implementation
+is a `.h`. So it reported 5 duplicates against a true 76. One glob character
+hid the largest defect in the project.
+
+Three lessons, in order of value:
+
+1. **The first question in any decomp is "does this already exist?", not "can I
+   match this?"** The harness now runs `shared_implementation()` before
+   generating and refuses re-implementation outright. Checking is nearly free;
+   the omission cost ~57% of the output.
+2. **A checker's CORPUS is as important as its rules.** The duplicate rule was
+   correct and well-tested; it was simply pointed at the wrong file set, and a
+   rule that cannot see the evidence reports clean. When a check reports far
+   fewer hits than expected, suspect its inputs before trusting the result.
+3. **Blind review finds what primed review cannot.** The auditor was given no
+   list of suspected defects. Handed one, it would likely have confirmed the
+   four classes we already knew and never questioned the corpus. Independence is
+   what produced the finding, so do not brief the reviewer on the answer.
+
 ## 11. Probe the environment; never assert it from documentation
 
 On 2026-07-21 the orchestrator told the operator a cli fleet could not run under

@@ -1376,6 +1376,48 @@ def resolve_raw_symbols(asm: str, limit: int = 10) -> str:
 
 # MIPS load/store -> the C type that access width implies. Used to type a
 # symbol that the linker knows about but no C file declares.
+def shared_implementation(function: str, src_rel: str) -> str:
+    """Does a SHARED implementation of this function already exist?
+
+    THE most expensive gap found in review. src/st/ deduplicates by putting one
+    implementation in src/st/<name>.h and reducing each stage's .c to a shim:
+
+        // src/st/rcen/st_common.c   -- the entire file
+        #include "rcen.h"
+        #include "../st_common.h"
+
+    25 stages do exactly that. The harness had no concept of it, so it treated
+    every INCLUDE_ASM as an isolated target and regenerated 707 lines into
+    src/st/rno0/st_common.c that already existed one directory up. Roughly 57%
+    of this fork's output was re-implementation of the tree's own code, which is
+    the first thing a maintainer checks and the worst thing to get wrong.
+
+    Returns a warning for the prompt, and is deliberately loud: the correct
+    action is usually to include the shared header, not to decompile at all.
+    """
+    if not src_rel or "/st/" not in src_rel.replace("\\", "/"):
+        return ""
+    base = os.path.basename(src_rel)              # e.g. st_common.c
+    stem = os.path.splitext(base)[0]
+    shared = os.path.join(WIN_REPO, "src", "st", stem + ".h")
+    if not os.path.exists(shared):
+        return ""
+    try:
+        with open(shared, encoding="utf-8", errors="ignore") as f:
+            text = f.read()
+    except OSError:
+        return ""
+    if not re.search(rf"\b{re.escape(function)}\s*\(", text):
+        return ""
+    return ("\n=== STOP: A SHARED IMPLEMENTATION ALREADY EXISTS ===\n"
+            f"`{function}` is already implemented in src/st/{stem}.h, which "
+            f"other stages use via a one-line `#include \"../{stem}.h\"` shim.\n"
+            "Do NOT re-implement it. Re-implementing tree code is the single "
+            "most common reason a decomp PR is rejected. If this stage needs a "
+            "variant, the project's idiom is a `#if STAGE == ...` guard INSIDE "
+            "the shared header, not a private copy.\n")
+
+
 _ASM_WIDTH_TYPE = {
     "lb": "s8", "lbu": "u8", "sb": "u8",
     "lh": "s16", "lhu": "u16", "sh": "u16",
@@ -1633,6 +1675,10 @@ def build_prompt(rec: dict, ctx: dict, feedback: str = "") -> str:
     #   - raw D_ addresses resolved to their real meanings (kills the biggest
     #     review-rejection class: invented externs)
     #   - existing functions to imitate (kills the "invented a new style" class)
+    # Shared-implementation warning goes FIRST: if it fires, nothing else in
+    # the prompt matters, because the right answer is not to generate at all.
+    entity_sec = (shared_implementation(rec.get("function", ""),
+                                        ctx.get("src_rel", "")) + entity_sec)
     entity_sec += resolve_raw_symbols(ctx.get("asm", ""))
     entity_sec += undeclared_symbols(ctx.get("asm", ""), decls)
     entity_sec += precedent_for(rec.get("function", ""), ctx.get("src_rel", ""))
