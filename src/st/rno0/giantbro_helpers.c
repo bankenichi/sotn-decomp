@@ -218,8 +218,10 @@ void func_801CE228() {
 }
 
 // Polar Knight parts placement: iterates through a sentinel-terminated list
-// of sub-entity indices and calls polarPlacePart for any entity whose ext
-// initialization byte (offset 0x2C) is still zero.
+// of sub-entity indices and calls polarPlacePart for any part that has not
+// already been placed this frame. unkA8 is the "placed" flag polarPlacePart
+// sets on its way out; see the shared ../giantbro_helpers.h, which reaches the
+// same byte as self->ext.GH_Props.unkA8 (ext base 0x7C + 0x2C = 0xA8).
 void polarPlacePartsList(s16* partsList) {
     s16* iter = partsList;
     s16 index;
@@ -229,7 +231,7 @@ void polarPlacePartsList(s16* partsList) {
         index = *iter;
         entity = &g_CurrentEntity[index];
         iter++;
-        if (entity->ext.ILLEGAL.u8[0x2C] == 0) {
+        if (entity->ext.GH_Props.unkA8 == 0) {
             polarPlacePart(entity);
         }
     }
