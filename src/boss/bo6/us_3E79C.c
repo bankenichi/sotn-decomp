@@ -743,33 +743,35 @@ void OVL_EXPORT(RicEntityCrashAxe)(Entity* self) {
 
 INCLUDE_ASM("boss/bo6/nonmatchings/us_3E79C", BO6_RicEntitySubwpnKnife);
 
+// Reflect the stone's angle about the incoming angle, then bump the two
+// bounce counters once. ext sits at 0x7C, so the fields the original touches
+// are stoneAngle (+0x7C), unk80 (+0x80) and unk82 (+0x82).
 void BO6_ReboundStoneBounce1(s32 arg0) {
-    g_CurrentEntity->ext.ILLEGAL.u16[0] = ((s32)(arg0 << 16) >> 15) - g_CurrentEntity->ext.ILLEGAL.u16[0];
-    if ((s16)g_CurrentEntity->ext.ILLEGAL.u16[3] == 0) {
-        g_CurrentEntity->ext.ILLEGAL.u16[2] += 1;
-        g_CurrentEntity->ext.ILLEGAL.u16[3] += 1;
+    g_CurrentEntity->ext.reboundStone.stoneAngle =
+        ((s32)(arg0 << 16) >> 15) -
+        g_CurrentEntity->ext.reboundStone.stoneAngle;
+    if (g_CurrentEntity->ext.reboundStone.unk82 == 0) {
+        g_CurrentEntity->ext.reboundStone.unk80 += 1;
+        g_CurrentEntity->ext.reboundStone.unk82 += 1;
     }
 }
 
-// Like BO6_ReboundStoneBounce1, but only updates state while the bounce
-// counter (u16[3]) is still zero, i.e. before the stone has started bouncing.
-// BO6_ReboundStoneBounce2: handles rebound stone bounce behavior.
-// If the signed counter at offset 0x82 is zero, updates a signed offset
-// and increments two counters at offsets 0x80 and 0x82.
+// Like BO6_ReboundStoneBounce1, but returns early instead of guarding the
+// increments, so the angle is only updated while unk82 is still zero, i.e.
+// before the stone has started bouncing.
 void BO6_ReboundStoneBounce2(s32 arg0) {
     Entity* entity = g_CurrentEntity;
 
-    // branch if non-zero (bnez) -> skip block when counter != 0
-    if (entity->ext.ILLEGAL.s16[3] != 0)
+    // branch if non-zero (bnez) -> skip everything when the counter is set
+    if (entity->ext.reboundStone.unk82 != 0)
         return;
 
-    // ((s16)arg0 * 2) - entity->ext.ILLEGAL.u16[0];
-    // sll 16 / sra 15 implements signed 16-bit multiply by 2
-    entity->ext.ILLEGAL.u16[0] =
-        ((s32)(arg0 << 16) >> 15) - entity->ext.ILLEGAL.u16[0];
+    // sll 16 / sra 15 implements a signed 16-bit multiply by 2
+    entity->ext.reboundStone.stoneAngle =
+        ((s32)(arg0 << 16) >> 15) - entity->ext.reboundStone.stoneAngle;
 
-    entity->ext.ILLEGAL.u16[2]++;
-    entity->ext.ILLEGAL.u16[3]++;
+    entity->ext.reboundStone.unk80++;
+    entity->ext.reboundStone.unk82++;
 }
 
 INCLUDE_ASM("boss/bo6/nonmatchings/us_3E79C", BO6_RicEntitySubwpnReboundStone);
@@ -870,7 +872,15 @@ void func_us_801C8590(Entity *arg0)
         return;
 
     case 1:
-        /* Increment the timer stored in ext.ILLEGAL.u16[0] (offset 0x7C) */
+        /* DELIBERATELY still ext.ILLEGAL. This is the first field of ext
+           (+0x7C) used as a frame counter, and 57 named ext variants begin
+           with a timer there, so naming one would be a guess rather than a
+           reading. The entity type is not recoverable from this file: nothing
+           in src/ calls this function, it is dispatched from entity data. The
+           (s16) cast is consistent with an s16 timer, and the neighbouring
+           BO6_RicEntityCrashVibhuti makes ext.vibhutiCrash the likeliest
+           candidate, but likeliest is not established. Resolve it by finding
+           the factory that spawns this entity, then use the named variant. */
         arg0->ext.ILLEGAL.u16[0]++;
         /* If the timer has reached 4 or more, destroy the entity */
         if ((s16)arg0->ext.ILLEGAL.u16[0] >= 4) {

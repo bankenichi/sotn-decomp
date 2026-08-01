@@ -37,17 +37,46 @@ from collections import defaultdict
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
-UPSTREAM_DEFAULT = "2472557"      # last upstream commit before this fork's work
+
+# Track upstream, not a frozen hash. Pinned to 2472557 this diffed against a
+# two-week-old baseline, so everything upstream had done since counted as ours
+# and the audit scope was wrong in both directions.
+UPSTREAM_DEFAULT = "upstream/master"
+
+INDEX = REPO / "automation" / "index.us.json"
+
+
+def _index() -> dict:
+    """The codebase index, which is built FROM UPSTREAM, not the working tree.
+
+    Ground truth must not come from the tree being audited. Reading
+    config/symbols.us*.txt directly happens to be safe today only because we
+    have not edited config/; the index is safe by construction, and it is the
+    same guarantee described in MATCHING-LESSONS.md section 12.
+    """
+    try:
+        return json.loads(INDEX.read_text())
+    except (OSError, ValueError):
+        return {}
 
 
 # --------------------------------------------------------------------------
-# ground truth loaded from the repo
+# ground truth loaded from the index
 # --------------------------------------------------------------------------
 
-def load_symbol_addresses() -> dict[str, int]:
-    """name -> address, from config/symbols.us*.txt."""
+def load_symbol_addresses(idx: dict | None = None) -> dict[str, int]:
+    """name -> address, from the index's upstream-derived symbol table."""
+    idx = idx if idx is not None else _index()
+    raw = idx.get("symbols", {}).get("name_to_addr", {})
     out: dict[str, int] = {}
-    for p in (REPO / "config").glob("symbols.us*.txt"):
+    for k, v in raw.items():
+        try:
+            out[k] = int(v, 16) if isinstance(v, str) else int(v)
+        except (TypeError, ValueError):
+            continue
+    if out:
+        return out
+    for p in (REPO / "config").glob("symbols.us*.txt"):   # fallback
         try:
             for line in p.read_text(errors="ignore").splitlines():
                 m = re.match(r"^\s*([A-Za-z_]\w*)\s*=\s*(0x[0-9A-Fa-f]+)", line)
@@ -160,7 +189,6 @@ def scoped_constant(var: str, bit: int, groups: list[dict]) -> str | None:
     fallback, and it is wrong often enough to matter: it picked DRAW_COLORS for
     `RIC_drawFlags` because "draw" matched, where the answer is ENTITY_ROTATE.
     """
-    var_l = var.lower()
     tail = re.split(r"[\.\->]", var)[-1]           # RIC_drawFlags -> RIC_drawFlags
     fe = _field_enum_map()
     for field, enum_name in fe.items():
@@ -170,23 +198,22 @@ def scoped_constant(var: str, bit: int, groups: list[dict]) -> str | None:
                     hit = g["by_val"].get(bit)
                     if hit:
                         return hit
-    best = None
-    for g in groups:
-        name = g["by_val"].get(bit)
-        if not name:
-            continue
-        # Affinity: does any constant prefix appear in the variable name, or
-        # does the variable look like the thing the group flags (drawFlags ->
-        # a group whose members start with ENTITY_ and mention DRAW/ENTITY).
-        score = 0
-        for pref in g["prefixes"]:
-            if pref.lower() in var_l:
-                score += 2
-        if any(tok in name.lower() for tok in re.findall(r"[a-z]+", var_l)):
-            score += 1
-        if score and (best is None or score > best[0]):
-            best = (score, name)
-    return best[1] if best else None
+    # NO name-affinity fallback. It was wrong both ways and never right:
+    #
+    #   false negative-ish: it picked DRAW_COLORS for RIC_drawFlags because
+    #   "draw" matched, where the struct comment says ENTITY_ROTATE.
+    #
+    #   false positive: `flag |= 0x80` in AnimateEntity is a LOCAL return-value
+    #   bitmask, and affinity matched the token "flag" to an entity flags enum
+    #   and proposed FLAG_UNK_80. Upstream's own AnimateEntity
+    #   (src/saturn/game_2b.c) writes the bare 0x80 literal, so the suggestion
+    #   was to make our code less like upstream's.
+    #
+    # If the struct does not declare its enum in a `// refer to enum X`
+    # comment, we do not know the family, and saying nothing is correct.
+    # Guessing a plausible constant is worse than a magic number, because the
+    # magic number is at least honestly unexplained.
+    return None
 
 
 # --------------------------------------------------------------------------
@@ -195,21 +222,42 @@ def scoped_constant(var: str, bit: int, groups: list[dict]) -> str | None:
 
 def resolve_fake_symbol(name: str, syms: dict[str, int],
                         layout: dict[int, tuple[str, str]],
-                        ent_size: int) -> str | None:
-    """If `D_800xxxxx` lands inside g_Entities, say what it really is.
+                        ent_size: int,
+                        addr_to_name: dict[str, str] | None = None) -> str | None:
+    """Say what `D_800xxxxx` really is, or None if the address has no meaning.
 
-    This is the check that caught the upstream complaint: D_80076306 is
-    g_Entities[64].step_s, so declaring a new extern for it hides real
-    structure. Arithmetic verified against the maintainer's example.
+    The criterion is NOT "does the name look invented". `extern s32 D_us_801CF3C8;`
+    is upstream's OWN convention: upstream decompiled func_us_801B5A14 using
+    exactly that form. Flagging the shape would flag upstream.
+
+    The criterion is whether the address ALREADY HAS A MEANING, which it can
+    have in two independent ways. Checking only one of them is how this was got
+    wrong in both directions on 2026-08-01:
+
+      1. the symbol table already names it, so a new extern is a second name
+         for a thing that has one; or
+      2. it lands inside a known object whose layout is known. D_80076306 has
+         NO symbol-table name and is still g_Entities[64].step_s. Testing only
+         (1) declared it clean; it is not.
+
+    D_us_801CF3C8 satisfies neither -- outside g_Entities, unnamed -- which is
+    exactly why upstream's use of it is fine and ours is not.
     """
     m = re.match(r"^D_(?:us_)?([0-9A-Fa-f]{8})$", name)
     if not m:
         return None
     addr = int(m.group(1), 16)
+
+    # (1) already named in the symbol table
+    if addr_to_name:
+        real = addr_to_name.get(f"0x{addr:08X}")
+        if real and real != name:
+            return f"the named symbol {real}"
+
+    # (2) structurally inside g_Entities, whose layout we know
     base = syms.get("g_Entities")
     if not base:
         return None
-    # Only the g_Entities array itself: 256 entries is the engine's table.
     if not (base <= addr < base + ent_size * 256):
         return None
     off = addr - base
@@ -222,7 +270,8 @@ def resolve_fake_symbol(name: str, syms: dict[str, int],
 
 
 def check_file(path: Path, syms, layout, ent_size, ext_variants, bits,
-               only_lines: set[int] | None = None) -> list[dict]:
+               only_lines: set[int] | None = None,
+               addr_to_name: dict | None = None) -> list[dict]:
     """Return a list of findings for one source file."""
     findings: list[dict] = []
     try:
@@ -247,7 +296,8 @@ def check_file(path: Path, syms, layout, ent_size, ext_variants, bits,
 
         # 1. invented externs that alias a real entity field
         for m in re.finditer(r"\bD_(?:us_)?[0-9A-Fa-f]{8}\b", line):
-            real = resolve_fake_symbol(m.group(0), syms, layout, ent_size)
+            real = resolve_fake_symbol(m.group(0), syms, layout, ent_size,
+                                       addr_to_name)
             if real:
                 add("fake_symbol", f"{m.group(0)} is {real}",
                     f"use {real} instead of declaring {m.group(0)}")
@@ -388,7 +438,9 @@ def main() -> int:
     ap.add_argument("--limit", type=int, default=40)
     a = ap.parse_args()
 
-    syms = load_symbol_addresses()
+    idx = _index()
+    addr_to_name = idx.get('symbols', {}).get('addr_to_name', {})
+    syms = load_symbol_addresses(idx)
     layout, ent_size = load_entity_layout()
     ext_variants = load_ext_variants()
     bits = load_flag_groups()
@@ -402,13 +454,15 @@ def main() -> int:
     findings: list[dict] = []
     if a.file:
         p = REPO / a.file
-        findings += check_file(p, syms, layout, ent_size, ext_variants, bits)
+        findings += check_file(p, syms, layout, ent_size, ext_variants, bits,
+                               addr_to_name=addr_to_name)
         scope = [p]
     elif a.all:
         scope = [p for p in (REPO / "src").rglob("*.c")
                  if "_psp" not in str(p) and "saturn" not in str(p)]
         for p in scope:
-            findings += check_file(p, syms, layout, ent_size, ext_variants, bits)
+            findings += check_file(p, syms, layout, ent_size, ext_variants, bits,
+                                   addr_to_name=addr_to_name)
     else:
         changed = changed_lines_since(a.since)
         scope = []
@@ -418,7 +472,8 @@ def main() -> int:
                 continue
             scope.append(p)
             findings += check_file(p, syms, layout, ent_size, ext_variants,
-                                   bits, only_lines=lines)
+                                   bits, only_lines=lines,
+                                   addr_to_name=addr_to_name)
         print(f"scope: {len(scope)} files changed since {a.since}", file=sys.stderr)
 
     # duplicates: compare functions in scope against the whole tree

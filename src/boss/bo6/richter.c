@@ -39,18 +39,17 @@ extern void DecelerateX(s32);
 extern s32 BO6_RicCheckFacing(void);
 extern void BO6_RicSetStand(s32);
 extern void BO6_RicSetSpeedX(s32);
-extern u16 D_80076306;
 
 /* Ric's walking step in BOSS/BO6: when no directional input is held,
- * decelerate and either stand still or resume walk speed if facing
- * an open direction (D_80076306 == 0). */
+ * decelerate and either stand still or resume walk speed while the
+ * sub-step counter is still zero. */
 void BO6_RicStepWalk(void) {
     /* 0x305C is the directional-pad bitmask checked for any held input */
     if (BO6_RicCheckInput(0x305C) == 0) {
         DecelerateX(0x2000);
         if (BO6_RicCheckFacing() == 0) {
             BO6_RicSetStand(0);
-        } else if (D_80076306 == 0) {
+        } else if (RIC.step_s == 0) {
             BO6_RicSetSpeedX(0x14000);
         }
     }
@@ -69,21 +68,22 @@ extern s16 RIC_poseTimer;
 extern s16 RIC_pose;
 
 void BO6_RicResetPose(void) {
-    RIC_drawFlags &= 0xFB;
+    RIC_drawFlags &= ~ENTITY_ROTATE;
     RIC_poseTimer = 0;
     RIC_pose = 0;
     g_Ric.unk44 = 0;
     g_Ric.unk46 = 0;
 }
 
-extern u16 D_8007630A;
-
-// Richter (BO6): update facing-left flag based on position relative to the player
+// Richter (BO6): record which side the player is on. The original reuses
+// Richter's entityRoomIndex as this flag rather than the entity's own
+// facingLeft (which lives at +0x14, RIC_facingLeft); the address here is
+// RIC + 0x32, which the Entity layout names entityRoomIndex.
 void func_us_801B77D8(void) {
     if (RIC.posX.i.hi - PLAYER.posX.i.hi <= 0) {
-        D_8007630A = 0;
+        RIC.entityRoomIndex = 0;
     } else {
-        D_8007630A = 1;  // player is to Richter's left -> face left
+        RIC.entityRoomIndex = 1;  // player is to Richter's left
     }
 }
 

@@ -84,16 +84,18 @@ void BO6_RicSetSpeedX(s32 speed) {
     g_CurrentEntity->velocityX = signedSpeed;
 }
 
-extern u16 D_8007630A;
 extern s32 RIC_velocityX;
 
-// Richter (BO6): set global RIC_velocityX with facing direction applied
+// Richter (BO6): set RIC_velocityX with the facing direction applied. The side
+// flag is Richter's entityRoomIndex (RIC + 0x32), which func_us_801B77D8 in
+// richter.c sets from the player's position; the original reuses that field
+// rather than the entity's own facingLeft at +0x14.
 void func_us_801B9ACC(s32 speed) {
     s32 signedSpeed;
 
     signedSpeed = speed;
-    if (D_8007630A == 1) {  // facing left flag
-        signedSpeed = -signedSpeed;  // negate if facing left
+    if (RIC.entityRoomIndex == 1) {
+        signedSpeed = -signedSpeed;  // negate when the player is to the left
     }
     RIC_velocityX = signedSpeed;
 }
