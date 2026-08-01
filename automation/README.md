@@ -293,3 +293,77 @@ actions with validated arguments, not a general shell, and ships in dry-run mode
 by default. Use it instead of any open-shell bridge. If a genuine need for a new
 action appears, add it to the `REGISTRY` in `commands_client.py` with an explicit
 validator rather than widening it into a passthrough.
+
+## 6. The codebase index (`codebase_index.py`)
+
+Added 2026-07-31. Both the quality audit and the model prompt need the same
+facts about this codebase, and every time either one was allowed to **guess**
+those facts we shipped a defect. The index harvests them once so everything else
+can reference rather than infer.
+
+```bash
+python3 automation/codebase_index.py --no-shingles     # writes index.us.json
+python3 automation/codebase_index.py --query step      # look something up
+python3 automation/codebase_index.py --resolve 0x80076306
+python3 automation/codebase_index.py --similar <function>
+python3 automation/codebase_index.py --ref <git-ref>   # index a different ref
+```
+
+### It reads a git ref, never the working tree
+
+This is the single most important property, and it is not stylistic. Built from
+the working tree, the index ingested our own `extern u16 D_80076306;` and
+reported that invented symbol as legitimately declared, suppressing the warning
+whose only job was to flag it. `functions` also feeds the "precedent" block in
+the model prompt, so a model could be shown our own unreviewed output as the
+example to copy.
+
+`UPSTREAM_REF` defaults to `upstream/master`, overridable with `--ref` or
+`SOTN_INDEX_REF`. **After merging upstream, re-point it at `upstream/master`,
+never at our `HEAD`** — HEAD contains upstream's work plus ours, which restores
+the exact circularity the constant exists to prevent.
+
+Two deliberate exceptions, both non-circular: `unmatched` reads `asm/`, which is
+extractor output from the original binary, and `shared_impls.our_copies` is an
+explicit upstream-versus-working-tree diff where the difference *is* the finding.
+The written `provenance` block records which ref produced the file.
+
+### Sections
+
+| section | answers |
+|---|---|
+| `symbols` | name <-> address, both directions |
+| `structs` | struct name -> fields, for replacing raw casts |
+| `entity` | offset -> field/type for the Entity header |
+| `ext_variants` | variant -> offsets, the fix for `ext.ILLEGAL` |
+| `constants` | value -> named constants, plus `groups` and `field_enum` |
+| `functions` | upstream's implementations, used as precedent |
+| `declared_globals` | what already has a declaration, and where |
+| `shared_impls` | the `src/st` shim architecture, and who deviates |
+| `bss_segments` | per-overlay `.bss`/`.data`/`.rodata` segmentation |
+| `unmatched` | what is still `INCLUDE_ASM`, i.e. the real remaining work |
+
+### `shim_viable(stage, stem, idx)`
+
+Answers "can this private copy become a shim" before spending a build. Four
+blockers, each observed in a real failure; see `MATCHING-LESSONS.md` §14 for the
+evidence behind each:
+
+1. nothing shims it, so there is no shared implementation to defer to
+2. the stage's translation unit needs functions the shared header lacks
+3. uninitialised statics with no `.bss, <stem>` splat segment
+4. initialised data with no `.data, <stem>` splat segment
+
+Validated against six known outcomes: BLOCKED for `giantbro_helpers`,
+`st_common` and `e_particles`, all three of which had already failed a real
+build, and VIABLE for `popup` and `prim_helpers`, both since confirmed at 81/81.
+
+It predicts; it does not prove. **The build is still the oracle.**
+
+### Performance note
+
+All source reads go through one `git cat-file --batch`. One `git show` per file
+is roughly 2200 subprocess spawns and takes minutes on a mounted filesystem;
+batched it is about a second. The prefetch filter deliberately matches the
+builders' own filters rather than pulling every `.c`/`.h`/`.txt`/`.yaml`, so its
+cost does not grow when upstream adds a platform we do not index.

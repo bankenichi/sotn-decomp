@@ -475,3 +475,79 @@ agent at a time, or make the unsafe path structurally impossible. This is also w
 Evidence-backed heuristics that have produced verified matches. Prime Tier 0-3
 agents with sections 1 to 3 of that document; those three checks accounted for
 every match obtained on 2026-07-19.
+
+### 7.10 State of the fork as of 2026-08-01
+
+**Oracle: 81/81.** It was 77/77 until upstream was merged; upstream imported the
+RCHI and RDAI overlays, so `config/check.us.sha` now lists 81 artifacts. A build
+that reports 77/77 is stale, not healthy.
+
+**Upstream is now a configured remote.** `git remote` has `upstream`
+(Xeeynamo/sotn-decomp) alongside `origin` (our fork). 77 upstream commits were
+merged on 2026-08-01, cleanly, with only three overlapping files. Two were
+trivial; the third is covered in `MATCHING-LESSONS.md` section 15.
+
+**We are not shipping a PR.** Upstream was offered the fork to take what it
+wants. Nothing here should be scoped, framed or prioritised as PR preparation.
+
+#### The index is now the first thing to consult, not the code
+
+`automation/codebase_index.py` writes `automation/index.us.json` from
+`upstream/master`, never from the working tree, for the reason in
+`MATCHING-LESSONS.md` section 12. Sections: `symbols`, `structs`, `entity`,
+`ext_variants`, `constants`, `functions`, `declared_globals`, `shared_impls`,
+`bss_segments`, `unmatched`, plus a `provenance` block recording the ref.
+
+Two questions it answers directly, and both used to cost a full build cycle:
+
+- `shim_viable(stage, stem, idx)` -> can this private copy become a shim, and if
+  not, which of the four blockers applies. Validated against six known outcomes.
+- `shared_impls[stem]["our_copies"]` -> which private implementations are ours
+  as opposed to upstream's own. Getting this wrong in either direction has
+  already produced both a false all-clear and a 55-file false alarm.
+
+Rebuild it after every upstream merge, and re-point `UPSTREAM_REF`.
+
+#### The rno0 duplicate work is placement, not decompilation
+
+Nine private implementations were ours, all in rno0. Two are resolved:
+`popup.c` (198 lines -> 2) and `prim_helpers.c` (197 -> 4), the latter also
+recovering `UnkPrimHelper`, which had still been `INCLUDE_ASM`.
+
+The other seven are blocked, and no C change will unblock any of them:
+
+| file | blocker |
+|---|---|
+| `st_common`, `create_entity`, `giantbro_helpers` | no `.bss, <stem>` splat segment |
+| `e_collect`, `e_particles` | no `.data, <stem>` splat segment |
+| `e_blade`, `e_gurkha` | no stage shims them; there is no shared impl |
+
+Root cause for the first five: rno0's splat config keeps `.data` (unnamed blobs
+at 0x2C and 0xE20) and `.bss` (one blob at 0x53EB8) undifferentiated, while
+every stage that shims successfully has them segmented per file. Addresses
+recovered from the binary so far: `create_entity` bss at 0x53EB8 (16 bytes),
+`giantbro_helpers` bss at 0x54AC8 (124 bytes), overlay bss ending at 0x54B8C.
+
+Treat this as a splat-configuration workstream, not a matching one. It is also
+the riskiest thing outstanding, because splat changes drive re-extraction and
+can overwrite sources. Back up and dry-run before touching those files.
+
+#### Corrections to earlier findings
+
+Two things previously recorded as defects are not:
+
+- The "76 duplicate functions" figure counted upstream's own architecture. The
+  real number attributable to us was 9 files.
+- The "8 fake symbols in richter.c" finding does not survive upstream's own
+  convention; see `MATCHING-LESSONS.md` section 15. One genuine instance of that
+  defect class did exist, in `src/st/rcen/e_shaft.c`, and it broke the build.
+
+Both were found by re-deriving the claim from upstream rather than from our own
+tree, which is the same lesson as section 12 arriving from a different direction.
+
+#### 7.2 is out of date
+
+The permuter has been run since that section was written. The sequencing advice
+in it still holds and is the important part: the permuter searches for a
+byte-exact variant of an already-compiling function, so it cannot fix a wrong
+parameter type or a missing shared implementation. Neither is a search problem.

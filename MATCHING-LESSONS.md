@@ -886,3 +886,132 @@ the question. Prefer a tool that reports what is true over a document that
 asserts it. Doc rows describing the environment should point at the probe rather
 than restate its result, which is why that row now reads "never assume; run
 `opencode_preflight`".
+
+## 12. Never derive the reference data from the work it is meant to check
+
+`automation/codebase_index.py` originally read the working tree. That is a
+circular dependency, and it was not theoretical:
+
+- `src/boss/bo6/us_39144.c` declares `extern u16 D_80076306;`. Built from the
+  working tree, the index's `declared_globals` listed that symbol as
+  legitimately declared, so the check whose entire job is to flag invented
+  symbols **suppressed its own warning**.
+- `functions` feeds the "precedent" block in the model prompt. Built from the
+  working tree, a model could be handed our own unreviewed output as the
+  example to imitate, which launders a one-off mistake into a house convention.
+
+The index now reads a git ref (`UPSTREAM_REF`, tracking `upstream/master`) via a
+single `git cat-file --batch`. Two deliberate exceptions, both non-circular:
+`unmatched` comes from `asm/`, which is extractor output from the original
+binary, and `shared_impls.our_copies` is an explicit upstream-versus-working-tree
+diff, where the difference IS the finding.
+
+After merging upstream, re-point `UPSTREAM_REF` at `upstream/master`, never at
+our `HEAD`. HEAD contains upstream's work plus ours, so indexing it restores the
+exact circularity the constant exists to prevent.
+
+## 13. "Is this a duplicate?" needs three states, not two
+
+The first duplicate scan asked whether a file existed and concluded that rno0
+had added nothing. It had added 708 lines. Upstream ships
+`src/st/rno0/st_common.c` too, but upstream's is a 71-line `INCLUDE_ASM` stub
+and ours is a full private implementation. Classifying on **presence** hid the
+`stub -> private_impl` transition, which is the actual defect.
+
+Three states are needed: `shim` (includes `../<stem>.h`), `stub` (more
+`INCLUDE_ASM` than function bodies), `private_impl` (the reverse). Judge on the
+transition from upstream's state, not on presence.
+
+This also corrected the headline number. An audit reported "76 of 132 functions
+are duplicates". Measured against upstream properly: **55 private
+implementations are upstream's own** (rno3/water_effects 894 lines, mad/collision
+568, nz1/e_breakable 323) and are not defects at all. Ours was 9 files, all in
+rno0. A checker that flags upstream's own architecture files 17 false positives.
+
+## 14. A shim is blocked by placement far more often than by code
+
+Four independent blockers, every one observed in a real build. Ask all four
+before touching the C:
+
+1. **Nothing shims it.** `shimmed_by == []` means there is no shared
+   implementation to defer to. `e_blade` and `e_gurkha` are in this class, and
+   converting them would be actively wrong, not merely unhelpful.
+2. **The stage needs functions the shared header lacks.** rno0's giantbro
+   translation unit defines 22 functions against the shared header's 15, so it
+   can never be a *pure* shim. It can still be a shim plus the extras, which is
+   how the file should be structured.
+3. **Uninitialised statics with no `.bss, <stem>` splat segment.** This is the
+   one that looks like a code bug and is not. Shimming rno0/giantbro_helpers
+   linked cleanly and every single instruction was correct; 50 regions differed
+   and all 50 were relocations, with the overlay exactly 124 bytes too large
+   (5 static s32 plus `STATIC_PAD_BSS(104)`). np3 shims the same file
+   successfully because its config says `- [0x53378, .bss, giantbro_helpers]`,
+   and the shared statics are named `D_801D3378` for exactly that reason. rno0
+   has one undifferentiated `- [0x53EB8, bss]`, so the storage landed at
+   0x801D3EB8 instead of rno0's real 0x801D4AC8 and shifted every later address.
+   No amount of rewriting the C could ever have fixed it.
+4. **Initialised data with no `.data, <stem>` splat segment.** rno0/e_particles
+   passed blockers 1 to 3 and still failed: the shared header emits
+   `g_ESoulStealOrbAngles`, rno0 keeps `.data` in an unnamed blob at 0xE20 that
+   emits it too, so both land in the overlay. rno0's values differ from the
+   shared ones besides (0x0597 repeated against 0x0820, 0x0840), making it a
+   content difference and not only a placement one.
+
+`shim_viable()` in `codebase_index.py` answers all four before a build. It
+predicts; it does not prove. The build is still the oracle.
+
+### 14a. When the diff is all relocations, stop reading the C
+
+If a failing overlay's differences are dominated by address halves shifted by a
+constant, and the artifact's size is off by that same constant, the fault is
+section placement. Compute it directly: diff `build/us/<OVL>.BIN` against
+`disks/us/ST/<OVL>/<OVL>.BIN`, group the differing bytes into runs, and map each
+run through `build/us/<ovl>.map`. If every run is a `%hi`/`%lo` pair differing by
+one fixed delta, no C change will help.
+
+## 15. `extern <type> D_<addr>;` is upstream's own convention
+
+An audit flagged 8 "fake symbols" in `src/boss/bo6/richter.c`. Upstream then
+decompiled `func_us_801B5A14` independently and used **exactly the two externs we
+had used**, `D_us_801CF3C8` and `D_us_801CF3CC`.
+
+The criterion is not "does the name look invented". It is **does that address
+already have a name in the symbol table**. Checked against
+`config/symbols.us*.txt`, none of richter.c's seven externs name an
+already-named address, so none of them are defects. Naming an address that is
+already named is the real error, and it is a much narrower thing.
+
+The genuine instance of the real defect was elsewhere and cost a broken build:
+`extern u32 RCEN_PrizeDrops;` in `src/st/rcen/e_shaft.c`. Upstream canonicalised
+the symbol by dropping the per-overlay prefix, and our prefixed name stopped
+resolving. The extracted asm was authoritative and settled both the name and the
+type at once:
+
+```
+lui   $v0, %hi(PrizeDrops)
+lw    $v0, %lo(PrizeDrops)($v0)
+andi  $v0, $v0, 0x4
+```
+
+It names `PrizeDrops`, and `lw` is a 32-bit load. **Read the asm before renaming
+or retyping anything.** It answers both questions without a build.
+
+## 16. A character class matches newlines, and a regex audit is still code
+
+Two defects in `shim_viable`, both of which produced confidently wrong verdicts:
+
+- `^\s*static\b[^;=]*;$` was meant to find uninitialised statics. `[^;=]`
+  matches newlines, so it ran from a function's opening line to the first `;`
+  in its **body**. `static void PrizeDropFall2(u16 arg0) {` was read as storage,
+  inventing five phantom bss objects in a header that has none. Fix: `[^;=()\n]`.
+- Initialised statics were counted as bss. `static u16 tbl[] = {1,2};` is
+  `.data`. Conflating them called `e_collect` bss-blocked when it reaches `.bss`
+  not at all.
+
+Also honour version guards. `e_particles.h`'s only static sits inside
+`#if defined(VERSION_HD)` and does not exist for the US build, so counting it
+blocked a file over storage that is never emitted.
+
+The general rule: a checker is code and earns the same scepticism as the code it
+checks. When it reports something surprising, print what it actually matched
+before believing it. Both of these were found that way in one command.
