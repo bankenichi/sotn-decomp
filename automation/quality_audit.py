@@ -302,6 +302,14 @@ def check_file(path: Path, syms, layout, ent_size, ext_variants, bits,
                 add("fake_symbol", f"{m.group(0)} is {real}",
                     f"use {real} instead of declaring {m.group(0)}")
 
+        # A line that is only a comment cannot contain a defect, just a mention
+        # of one. Without this, the comment explaining WHY a site is
+        # deliberately left as ext.ILLEGAL was itself reported as an
+        # ext.ILLEGAL finding, so documenting a decision raised the count.
+        stripped = line.strip()
+        if stripped.startswith(("//", "/*", "*")):
+            continue
+
         # 2. ext.ILLEGAL where named variants exist
         if "ext.ILLEGAL" in line:
             add("illegal_ext", "generic ext.ILLEGAL accessor",
@@ -330,10 +338,47 @@ def check_file(path: Path, syms, layout, ent_size, ext_variants, bits,
                         add("magic_bitmask", f"{lit} is bit 0x{cand:X} = {named}",
                             f"write `{want}`")
 
-        # 4. raw pointer-cast field access instead of a struct
-        if re.search(r"\*\(\s*[su]\d+\s*\*\s*\)\s*\(\s*\(?\s*(?:u8|char)\s*\*", line):
+        # 4. raw pointer-cast field access instead of a struct.
+        #
+        # The original pattern demanded an INLINE (u8*)/(char*) cast inside the
+        # parentheses, so it reported zero findings across the whole fork while
+        # func_us_801BB370 sat in the tree doing nothing but this. Two holes:
+        #   `(unsigned char*)entity + 0xB0`  -- spelling not covered by u8|char
+        #   `*(u16*)(entry + 4)`             -- no inline cast at all, and this
+        #                                       is the commoner shape
+        # Match the actual defect instead: dereferencing a cast pointer at a
+        # numeric offset. That is field access with the struct filed off.
+        # Both shapes are checked against fixtures in the test at the bottom of
+        # this file; a first attempt at this pattern still missed 2 of its own
+        # 3 must-fire cases, so do not edit it without re-running those.
+        if re.search(
+                r"\(\s*(?:(?:un)?signed\s+char|u8|s8|char)\s*\*\s*\)"
+                r"[^;]*[+\-]\s*(?:0x)?[0-9A-Fa-f]"
+                r"|\*\s*\(\s*[su]\d+\s*\*\s*\)\s*\([^)]*[+\-]\s*(?:0x)?[0-9A-Fa-f]",
+                line):
             add("raw_cast", "pointer arithmetic instead of a struct field",
                 "declare/typedef the real struct and use named members")
+
+        # NOTE: there is deliberately no "m2c artifact name" check.
+        # `temp_s0`, `var_s1` and friends are the decompiler's register names,
+        # and flagging them looked obviously right: 78 hits. Then upstream was
+        # checked, and upstream uses them everywhere -- var_s1 alone appears in
+        # 62 upstream files, temp_s0 in 30. It is this project's accepted
+        # convention for a value whose meaning is not yet known. Flagging it
+        # would have been the same error as counting upstream's 55 private
+        # implementations as our duplicates: measuring our code against a
+        # standard upstream does not hold itself to.
+
+        # There is deliberately no automated "noise comment" check either.
+        # One was written and run: of its 6 hits, 1 was real. "// unused" tells
+        # a reader something the code cannot ("this is never called"), and
+        # "// Empty stub" distinguishes "empty in the original" from "not
+        # decompiled yet" -- both are content, not noise. Only
+        # "/* Advance to next state */" above `step++` was genuinely a
+        # restatement. A 1-in-6 check trains people to ignore the tool, and
+        # this session has already shown twice what a confident wrong checker
+        # costs. Whether a comment earns its place needs a reader, not a regex;
+        # it belongs in the review pass, not here.
 
     return findings
 
@@ -404,6 +449,43 @@ def find_duplicates(added_fns: dict[str, tuple[Path, str]],
 
 
 # --------------------------------------------------------------------------
+
+def inherited_from_upstream(findings: list[dict], ref: str) -> set[str]:
+    """Which flagged lines exist VERBATIM in upstream's own source.
+
+    A line we copied out of a shared header is upstream's code and upstream's
+    convention, whatever our checks think of it. Reporting it as our defect is
+    the single most repeated mistake in this project's history: it produced the
+    "76 duplicates" figure that was mostly upstream's own architecture, and it
+    nearly produced 78 findings against a naming style upstream uses in 62 of
+    its own files.
+
+    So the rule is mechanical rather than per-check: if upstream wrote the exact
+    line, it is not our finding. Cheap, because only the distinct flagged lines
+    are queried, and one `git grep` handles all of them at once.
+    """
+    uniq = sorted({f["code"].strip() for f in findings
+                   if len(f.get("code", "").strip()) > 12})
+    if not uniq:
+        return set()
+    hit: set[str] = set()
+    CHUNK = 40                      # keep the argv comfortably short
+    for i in range(0, len(uniq), CHUNK):
+        args = ["git", "grep", "-F", "-h", "--no-color"]
+        for lit in uniq[i:i + CHUNK]:
+            args += ["-e", lit]
+        args += [ref, "--", "src/"]
+        try:
+            out = subprocess.run(args, cwd=REPO, capture_output=True,
+                                 text=True, errors="replace", timeout=180).stdout
+        except (subprocess.SubprocessError, OSError):
+            continue
+        found = {l.strip() for l in out.splitlines()}
+        for lit in uniq[i:i + CHUNK]:
+            if lit in found:
+                hit.add(lit)
+    return hit
+
 
 def changed_lines_since(commit: str) -> dict[str, set[int]]:
     """file -> set of line numbers added since `commit`."""
@@ -490,6 +572,18 @@ def main() -> int:
     corpus = [p for p in (REPO / "src").rglob("*.[ch]")
               if "_psp" not in str(p) and "saturn" not in str(p)]
     findings += find_duplicates(added, corpus)
+
+    # Drop anything upstream wrote verbatim; it is their convention, not our
+    # defect. Duplicates are exempt: for those, existing upstream IS the point.
+    inherited = inherited_from_upstream(
+        [f for f in findings if f["kind"] != "duplicate"], a.since)
+    if inherited:
+        before = len(findings)
+        findings = [f for f in findings
+                    if f["kind"] == "duplicate"
+                    or f["code"].strip() not in inherited]
+        print(f"suppressed {before - len(findings)} finding(s) whose exact line "
+              f"exists in {a.since}", file=sys.stderr)
 
     by_kind: dict[str, list[dict]] = defaultdict(list)
     for f in findings:

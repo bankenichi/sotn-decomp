@@ -210,31 +210,31 @@ INCLUDE_ASM("boss/bo6/nonmatchings/us_39144", BO6_RicGetFreeEntityReverse);
 
 INCLUDE_ASM("boss/bo6/nonmatchings/us_39144", func_us_801BB314);
 
-// Loads attack/defense/hitbox attributes for this entity from the subweapon definition table,
-// indexed by entity's subweapon type (at offset 0xB0).
-// If the player has a certain timer active, the base attack value is doubled (signed multiply).
-extern unsigned char subweapons_def[];
+extern SubweaponDef subweapons_def[];
 
+// Load a subweapon entity's combat attributes from the subweapon table, indexed
+// by the entity's own subweaponId. Every offset the original uses lines up with
+// SubweaponDef (size 0x14, which is the stride the index is multiplied by), so
+// there is nothing here that needs a raw cast.
+//
+// While Richter's invincibility timer is running the base attack is doubled.
+// The original reads `attack` as SIGNED on that path and UNSIGNED on the other,
+// which is why the two branches are not written as one expression.
 void func_us_801BB370(Entity* entity) {
-    // Compute pointer into subweapons_def array: offset = (s16)entity->ext.u[0x34] * 20
-    // 0xB0 = 0x7C (ext start) + 0x34, stored as signed halfword.
-    unsigned char* entry = subweapons_def + (*(s16*)((unsigned char*)entity + 0xB0) * 20);
+    SubweaponDef* subwpn = &subweapons_def[entity->ext.subweapon.subweaponId];
 
-    // If the player's timer at index 13 (offset 0x34A in g_Ric) is non‑zero, the attack
-    // value is taken as a signed halfword and multiplied by 2.
-    // Otherwise it's taken as an unsigned halfword (directly stored).
-    if (*(s16*)((unsigned char*)&g_Ric + 0x34A) != 0) {
-        entity->attack = *(s16*)(entry + 0) * 2;
+    if (g_Ric.timers[ALU_T_INVINCIBLE] != 0) {
+        entity->attack = subwpn->attack * 2;
     } else {
-        entity->attack = *(u16*)(entry + 0);
+        entity->attack = (u16)subwpn->attack;
     }
 
-    entity->attackElement = *(u16*)(entry + 4);
-    entity->hitboxState = *(u16*)(entry + 12);
-    entity->nFramesInvincibility = *(entry + 7);
-    entity->stunFrames = *(u16*)(entry + 8);
-    entity->hitEffect = *(u16*)(entry + 14);
-    entity->entityRoomIndex = *(u16*)(entry + 18);
+    entity->attackElement = subwpn->attackElement;
+    entity->hitboxState = subwpn->hitboxState;
+    entity->nFramesInvincibility = subwpn->nFramesInvincibility;
+    entity->stunFrames = subwpn->stunFrames;
+    entity->hitEffect = subwpn->hitEffect;
+    entity->entityRoomIndex = subwpn->entityRoomIndex;
 }
 
 INCLUDE_ASM("boss/bo6/nonmatchings/us_39144", BO6_RicCheckSubweapon);
