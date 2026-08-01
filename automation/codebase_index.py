@@ -486,6 +486,82 @@ def build_shared_impls() -> dict:
     return out
 
 
+def build_bss_segments(version: str = "us") -> dict:
+    """Per-overlay .bss segmentation from the splat configs.
+
+    This is the precondition for shimming, and skipping it cost a full build
+    cycle. A shared header that declares static storage (giantbro_helpers.h has
+    5 static s32 plus STATIC_PAD_BSS(104) = 124 bytes) can only be shimmed by a
+    stage whose splat config gives that file its OWN .bss segment, because the
+    segment is what pins the storage to its original address.
+
+      np3   - [0x53378, .bss, giantbro_helpers]   <- named slot; and indeed the
+              - [0x533F4, .bss, st_update]           shared statics are called
+                                                     D_801D3378, 0x533F4-0x53378
+                                                     = 0x7C = the same 124.
+      rno0  - [0x53EB8, bss]                      <- ONE undifferentiated blob
+
+    Shimming rno0 therefore emitted giantbro's 124 bytes at the head of that
+    blob (VA 0x801D3EB8) instead of rno0's real 0x801D4AC8, shifting every
+    later bss address by 124. The build linked cleanly and every instruction
+    was correct; 50 regions differed and all 50 were relocations. Code was
+    never the problem, so no amount of rewriting the C would have fixed it.
+
+    Records, per overlay: whether bss is segmented at all, and the named
+    segments. `shim_viable(stage, stem)` answers the question directly.
+    """
+    out: dict[str, dict] = {}
+    for path in _ref_files(UPSTREAM_REF):
+        m = re.fullmatch(rf"config/splat\.{version}\.(\w+)\.yaml", path)
+        if not m:
+            continue
+        text = read_source(path)
+        named, blob = {}, []
+        for lm in re.finditer(
+                r"^\s*-\s*\[\s*(0x[0-9A-Fa-f]+)\s*,\s*\.?bss\s*(?:,\s*([\w/]+)\s*)?\]",
+                text, re.M):
+            addr, name = lm.group(1), lm.group(2)
+            if name:
+                named[name] = addr
+            else:
+                blob.append(addr)
+        if not named and not blob:
+            continue
+        out[m.group(1)] = {
+            "segmented": bool(named),
+            "named_segments": named,
+            "unnamed_blobs": blob,
+        }
+    return out
+
+
+def shim_viable(stage: str, stem: str, idx: dict) -> tuple[bool, str]:
+    """Can `stage` replace its private src/st/<stage>/<stem>.c with a shim?
+
+    Three independent blockers, each one observed in practice:
+      1. the shared header declares static storage and the stage has no .bss
+         segment for that file  (rno0/giantbro_helpers: 124-byte shift)
+      2. the stage's translation unit defines functions the shared header does
+         not  (rno0/giantbro_helpers again: 22 functions vs the shared 15)
+      3. nothing shims it, so there is no shared implementation to defer to
+         (e_blade, e_gurkha: shimmed_by == [])
+    """
+    si = idx.get("shared_impls", {}).get(stem)
+    if not si:
+        return False, f"no shared implementation named {stem}"
+    if not si["shimmed_by"]:
+        return False, f"{stem} is shimmed by no stage; there is no shared impl to use"
+    hdr = read_source(si["header"])
+    static_bytes = bool(re.search(r"^\s*static\b|STATIC_PAD_BSS", hdr, re.M))
+    seg = idx.get("bss_segments", {}).get(f"st{stage}") or \
+        idx.get("bss_segments", {}).get(stage) or {}
+    if static_bytes and not seg.get("named_segments", {}).get(stem):
+        return False, (f"{stem} declares static storage but {stage} has no "
+                       f"'.bss, {stem}' splat segment to pin it; shimming will "
+                       f"shift every later bss address")
+    return True, "no known blocker"
+
+
 def build_unmatched(version: str = "us") -> dict:
     """What is still an INCLUDE_ASM stub, i.e. the real remaining work.
 
@@ -619,8 +695,11 @@ def main() -> int:
     else:
         print(f"indexing from {UPSTREAM_REF} (upstream, not working tree)...",
               file=sys.stderr)
+        # .yaml included deliberately: build_bss_segments reads ~90 splat
+        # configs, and one `git show` each is slower than the entire rest of
+        # the index put together on a mounted filesystem.
         prefetch([f for f in _ref_files(UPSTREAM_REF)
-                  if f.endswith((".h", ".c", ".txt"))])
+                  if f.endswith((".h", ".c", ".txt", ".yaml"))])
         structs = build_structs()
         idx = {
             "provenance": {
@@ -641,6 +720,7 @@ def main() -> int:
             "functions": build_functions(),
             "declared_globals": build_declared_globals(),
             "shared_impls": build_shared_impls(),
+            "bss_segments": build_bss_segments(),
             "unmatched": build_unmatched(),
         }
         s = idx["symbols"]["name_to_addr"]
@@ -651,8 +731,17 @@ def main() -> int:
               f"functions={len(idx['functions'])} "
               f"declared_globals={len(idx['declared_globals'])} "
               f"shared_impls={len(idx['shared_impls'])} "
+              f"bss_segments={len(idx['bss_segments'])} "
               f"unmatched={len(idx['unmatched'])}",
               file=sys.stderr)
+        # Report shim viability for every private copy we introduced, so the
+        # rno0/giantbro_helpers class of failure is answered from the index
+        # rather than from a build.
+        for stem, v in sorted(idx["shared_impls"].items()):
+            for c in v["our_copies"]:
+                ok, why = shim_viable(c["stage"], stem, idx)
+                print(f"  shim {c['stage']}/{stem}: "
+                      f"{'VIABLE' if ok else 'BLOCKED'} - {why}", file=sys.stderr)
         to_write = idx
         if a.no_shingles:
             to_write = json.loads(json.dumps(idx))

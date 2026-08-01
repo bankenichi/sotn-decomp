@@ -75275,7 +75275,7 @@
    "our_copies": [
     {
      "stage": "rno0",
-     "lines": 241,
+     "lines": 243,
      "include_asm": 8,
      "bodies": 14,
      "was": "stub",
@@ -75605,6 +75605,499 @@
     }
    ],
    "our_copies": []
+  }
+ },
+ "bss_segments": {
+  "bobo0": {
+   "segmented": true,
+   "named_segments": {
+    "create_entity": "0x4D8F4",
+    "st_update": "0x4E570",
+    "2B9EC": "0x4E5B0"
+   },
+   "unnamed_blobs": [
+    "0x4D6E4",
+    "0x4D904"
+   ]
+  },
+  "bobo4": {
+   "segmented": true,
+   "named_segments": {
+    "doors": "0x53104",
+    "create_entity": "0x53110",
+    "doppleganger": "0x53D24",
+    "unk_46E7C": "0x53D30",
+    "bss": "0x54118",
+    "st_update": "0x54DF8"
+   },
+   "unnamed_blobs": [
+    "0x53120"
+   ]
+  },
+  "bobo6": {
+   "segmented": true,
+   "named_segments": {
+    "create_entity": "0x4E7B8",
+    "ritcher": "0x4FCC8",
+    "us_39144": "0x507FC",
+    "e_collect": "0x516A8"
+   },
+   "unnamed_blobs": [
+    "0x4E758",
+    "0x4E7C8"
+   ]
+  },
+  "bomar": {
+   "segmented": true,
+   "named_segments": {
+    "unk": "0x1A200",
+    "create_entity": "0x1A260",
+    "cutscene": "0x1AE70",
+    "e_collect": "0x1AF30"
+   },
+   "unnamed_blobs": [
+    "0x1A270"
+   ]
+  },
+  "borbo0": {
+   "segmented": true,
+   "named_segments": {
+    "create_entity": "0x26824",
+    "st_update": "0x2749C"
+   },
+   "unnamed_blobs": [
+    "0x26834"
+   ]
+  },
+  "borbo3": {
+   "segmented": true,
+   "named_segments": {
+    "create_entity": "0x1F978",
+    "e_collect": "0x205F0"
+   },
+   "unnamed_blobs": [
+    "0x1F988"
+   ]
+  },
+  "borbo5": {
+   "segmented": true,
+   "named_segments": {
+    "doors": "0x526D4",
+    "create_entity": "0x526E0",
+    "doppleganger": "0x532F4",
+    "unk_4648C": "0x534D8",
+    "e_collect": "0x543C8"
+   },
+   "unnamed_blobs": [
+    "0x526F0"
+   ]
+  },
+  "dra": {
+   "segmented": true,
+   "named_segments": {
+    "42398": "0x962AC",
+    "game_handlers": "0x9640C",
+    "47BB8": "0x9644C",
+    "pads": "0x97460",
+    "save_mgr": "0x97470",
+    "4AEA4": "0x97478",
+    "demo": "0x97590",
+    "5087C": "0x97598",
+    "menu": "0x975CC",
+    "5D5BC": "0x97960",
+    "5F60C": "0x9796C",
+    "624DC": "0x9799C",
+    "62DEC": "0x979B8",
+    "66590": "0x97EF8",
+    "cd": "0x97F58",
+    "bss": "0x97FB4"
+   },
+   "unnamed_blobs": []
+  },
+  "main": {
+   "segmented": true,
+   "named_segments": {
+    "main": "0x241F8",
+    "psxsdk/libgpu/font": "0x24218",
+    "psxsdk/libgpu/sys": "0x28620",
+    "psxsdk/libetc/pad": "0x29A5C",
+    "psxsdk/libcd/bios": "0x29A60",
+    "psxsdk/libcd/iso9660": "0x29A84",
+    "psxsdk/libcd/c_004": "0x2BE84",
+    "psxsdk/libcd/c_011": "0x2BE8C",
+    "psxsdk/libsnd/vmanager": "0x2BE90"
+   },
+   "unnamed_blobs": [
+    "0x241E4",
+    "0x2C5D0"
+   ]
+  },
+  "ric": {
+   "segmented": true,
+   "named_segments": {
+    "pl_steps": "0x37B64",
+    "pl_collision": "0x37F80",
+    "pl_blueprints": "0x37F84",
+    "pl_whip": "0x38080",
+    "pl_subweapon_cross": "0x38088",
+    "pl_subweapons": "0x3988C",
+    "2F8E8": "0x39890",
+    "319C4": "0x39894",
+    "bss": "0x398E0"
+   },
+   "unnamed_blobs": []
+  },
+  "stare": {
+   "segmented": true,
+   "named_segments": {
+    "create_entity": "0x554C4",
+    "554D4": "0x554D4",
+    "e_collect": "0x5613C"
+   },
+   "unnamed_blobs": []
+  },
+  "stcat": {
+   "segmented": true,
+   "named_segments": {
+    "create_entity": "0x57884",
+    "e_lava": "0x58494",
+    "giantbro_helpers": "0x58504",
+    "e_collect": "0x58580"
+   },
+   "unnamed_blobs": [
+    "0x57894"
+   ]
+  },
+  "stcen": {
+   "segmented": true,
+   "named_segments": {
+    "header": "0x1C704",
+    "create_entity": "0x1C764",
+    "cutscene": "0x1D374",
+    "e_collect": "0x1D42C"
+   },
+   "unnamed_blobs": [
+    "0x1C774"
+   ]
+  },
+  "stchi": {
+   "segmented": true,
+   "named_segments": {
+    "ut_create_entity": "0x2E770",
+    "en_collect": "0x2F3E8"
+   },
+   "unnamed_blobs": [
+    "0x2E780"
+   ]
+  },
+  "stdai": {
+   "segmented": true,
+   "named_segments": {
+    "unused_5A69C": "0x5A69C",
+    "create_entity": "0x5A6FC",
+    "unused_5A70C": "0x5A70C",
+    "e_cutscene_dialogue": "0x5B30C",
+    "e_collect": "0x5B3C4"
+   },
+   "unnamed_blobs": []
+  },
+  "stdre": {
+   "segmented": true,
+   "named_segments": {
+    "create_entity": "0x23264",
+    "unused": "0x232CA",
+    "e_cutscene_dialogue": "0x23ECC",
+    "e_collect": "0x23FB6"
+   },
+   "unnamed_blobs": []
+  },
+  "stlib": {
+   "segmented": true,
+   "named_segments": {
+    "e_shop": "0x5415C",
+    "create_entity": "0x545C4",
+    "cutscene": "0x551D4",
+    "e_collect": "0x5528C"
+   },
+   "unnamed_blobs": [
+    "0x545D4"
+   ]
+  },
+  "stmad": {
+   "segmented": true,
+   "named_segments": {
+    "create_entity": "0x197D8",
+    "bss": "0x197ED",
+    "e_collect": "0x19E54"
+   },
+   "unnamed_blobs": []
+  },
+  "stno0": {
+   "segmented": true,
+   "named_segments": {
+    "create_entity": "0x5E8CC",
+    "clock_room": "0x5F548",
+    "e_collect": "0x5F54C"
+   },
+   "unnamed_blobs": [
+    "0x5E8DC"
+   ]
+  },
+  "stno1": {
+   "segmented": true,
+   "named_segments": {
+    "unk_36490": "0x56328",
+    "unk_381E8": "0x5637C",
+    "unk_40E98": "0x56380",
+    "create_entity": "0x56384",
+    "e_collect": "0x57024"
+   },
+   "unnamed_blobs": [
+    "0x56394"
+   ]
+  },
+  "stno2": {
+   "segmented": true,
+   "named_segments": {
+    "create_entity": "0x4F0F0",
+    "giantbro_helpers": "0x4FD00",
+    "e_collect": "0x4FD7C"
+   },
+   "unnamed_blobs": [
+    "0x4F100"
+   ]
+  },
+  "stno3": {
+   "segmented": true,
+   "named_segments": {
+    "create_entity": "0x570B0",
+    "cutscene": "0x57120",
+    "e_collect": "0x57DD8"
+   },
+   "unnamed_blobs": []
+  },
+  "stno4": {
+   "segmented": true,
+   "named_segments": {
+    "create_entity": "0x5EB70",
+    "cutscene": "0x5F780",
+    "e_collect": "0x5F81C"
+   },
+   "unnamed_blobs": [
+    "0x5EB10",
+    "0x5EB80"
+   ]
+  },
+  "stnp3": {
+   "segmented": true,
+   "named_segments": {
+    "create_entity": "0x52768",
+    "bss": "0x5277D",
+    "giantbro_helpers": "0x53378",
+    "st_update": "0x533F4"
+   },
+   "unnamed_blobs": []
+  },
+  "stnz0": {
+   "segmented": true,
+   "named_segments": {
+    "create_entity": "0x4AA14",
+    "bss": "0x4AA24",
+    "e_collect": "0x4B740"
+   },
+   "unnamed_blobs": []
+  },
+  "stnz1": {
+   "segmented": true,
+   "named_segments": {
+    "e_gear_puzzle": "0x41680",
+    "create_entity": "0x41688",
+    "st_update": "0x42300"
+   },
+   "unnamed_blobs": [
+    "0x41698"
+   ]
+  },
+  "strare": {
+   "segmented": true,
+   "named_segments": {
+    "create_entity": "0x386D8",
+    "st_update": "0x39350"
+   },
+   "unnamed_blobs": [
+    "0x386E8"
+   ]
+  },
+  "strcat": {
+   "segmented": true,
+   "named_segments": {
+    "e_lava": "0x43184",
+    "create_entity": "0x431F4",
+    "43204": "0x43204",
+    "st_update": "0x43E6C"
+   },
+   "unnamed_blobs": []
+  },
+  "strcen": {
+   "segmented": true,
+   "named_segments": {
+    "create_entity": "0x2C6CC",
+    "cutscene": "0x2C6DC",
+    "st_update": "0x2D394"
+   },
+   "unnamed_blobs": [
+    "0x2C66C"
+   ]
+  },
+  "strno0": {
+   "segmented": false,
+   "named_segments": {},
+   "unnamed_blobs": [
+    "0x53EB8"
+   ]
+  },
+  "strno3": {
+   "segmented": true,
+   "named_segments": {
+    "create_entity": "0x49874",
+    "e_collect": "0x4A4EC"
+   },
+   "unnamed_blobs": [
+    "0x49884"
+   ]
+  },
+  "strnz0": {
+   "segmented": true,
+   "named_segments": {
+    "create_entity": "0x43EF0",
+    "st_update": "0x44B68"
+   },
+   "unnamed_blobs": [
+    "0x43F00"
+   ]
+  },
+  "strtop": {
+   "segmented": true,
+   "named_segments": {
+    "create_entity": "0x30460",
+    "20B48": "0x310D8",
+    "e_collect": "0x310DC"
+   },
+   "unnamed_blobs": [
+    "0x30470"
+   ]
+  },
+  "strwrp": {
+   "segmented": true,
+   "named_segments": {
+    "rwrp/create_entity": "0x15A20",
+    "rwrp/bss": "0x15A36",
+    "rwrp/e_collect": "0x166A8"
+   },
+   "unnamed_blobs": []
+  },
+  "stsel": {
+   "segmented": true,
+   "named_segments": {
+    "2C048": "0x3AF08",
+    "318CC": "0x3AFD0",
+    "32D6C": "0x3AFDC",
+    "3410C": "0x3B010",
+    "cutscene": "0x3B0F8",
+    "save_mgr": "0x3C2F8",
+    "stream": "0x3C300",
+    "bss": "0x3C350"
+   },
+   "unnamed_blobs": []
+  },
+  "stst0": {
+   "segmented": true,
+   "named_segments": {
+    "3EB04": "0x3EB04",
+    "2DAC8": "0x3EB64",
+    "prologue_scroll": "0x3EDFC",
+    "3EE10": "0x3EE10",
+    "3101C_psx": "0x3EE90",
+    "40090": "0x40090",
+    "create_entity": "0x400A0",
+    "bss": "0x400B6",
+    "3D8F0": "0x406B0",
+    "e_bg_vortex": "0x41BC8",
+    "cutscene": "0x424C8",
+    "2C564": "0x42578",
+    "2A218": "0x4257C",
+    "st_update": "0x42584"
+   },
+   "unnamed_blobs": []
+  },
+  "sttop": {
+   "segmented": true,
+   "named_segments": {
+    "create_entity": "0x3B850",
+    "e_collect": "0x3C51C"
+   },
+   "unnamed_blobs": [
+    "0x3B7F0",
+    "0x3B860"
+   ]
+  },
+  "stwrp": {
+   "segmented": true,
+   "named_segments": {
+    "create_entity": "0x13AB0",
+    "bss": "0x13AC0",
+    "e_collect": "0x14728"
+   },
+   "unnamed_blobs": []
+  },
+  "tt_000": {
+   "segmented": true,
+   "named_segments": {
+    "bat": "0x48D8"
+   },
+   "unnamed_blobs": []
+  },
+  "tt_001": {
+   "segmented": true,
+   "named_segments": {
+    "ghost": "0x35B0"
+   },
+   "unnamed_blobs": []
+  },
+  "tt_002": {
+   "segmented": true,
+   "named_segments": {
+    "faerie": "0x92D0"
+   },
+   "unnamed_blobs": []
+  },
+  "tt_003": {
+   "segmented": true,
+   "named_segments": {
+    "demon": "0x83C4"
+   },
+   "unnamed_blobs": []
+  },
+  "tt_004": {
+   "segmented": true,
+   "named_segments": {
+    "sword": "0x82B0"
+   },
+   "unnamed_blobs": []
+  },
+  "weapon": {
+   "segmented": true,
+   "named_segments": {
+    "w_012": "0x59B28",
+    "w_018": "0x831B4",
+    "w_037": "0x108BE4",
+    "w_041": "0x124200",
+    "w_042": "0x12B5EC",
+    "w_045": "0x1403B8",
+    "w_051": "0x16B0E0",
+    "w_052": "0x172B84"
+   },
+   "unnamed_blobs": []
   }
  },
  "unmatched": {
