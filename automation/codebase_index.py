@@ -49,7 +49,19 @@ def _c_sources() -> list[Path]:
 
 
 def _headers() -> list[Path]:
-    return list((REPO / "include").rglob("*.h"))
+    """All headers, including PER-OVERLAY ones under src/.
+
+    src/ headers are not optional: `extern PlayerState g_Ric;` lives in
+    src/boss/bo6/bo6.h, not include/. Scanning only include/ made g_Ric look
+    undeclared, and a checker built on that would have emitted
+    `extern u16 g_Ric;` (type guessed from a halfword access), conflicting with
+    the real struct declaration. A wrong declaration is worse than a missing
+    one, so the index must see every header the compiler sees.
+    """
+    out = list((REPO / "include").rglob("*.h"))
+    out += [p for p in (REPO / "src").rglob("*.h")
+            if "_psp" not in str(p) and "saturn" not in str(p)]
+    return out
 
 
 # ---------------------------------------------------------------- symbols
@@ -288,6 +300,42 @@ def extract_functions(path: Path) -> dict[str, dict]:
     return out
 
 
+def build_declared_globals() -> dict:
+    """Every symbol that ALREADY has a C declaration, name -> where.
+
+    Needed to answer "does this symbol need declaring?" without re-grepping the
+    tree per function. Without it, a checker that only compares against the
+    per-function DECLARATIONS list reports `g_CurrentEntity` as undeclared,
+    because that list is capped and locally scoped, which would tell the model
+    to redeclare things the headers already provide.
+    """
+    out: dict[str, str] = {}
+    # Three shapes, and all three occur in this tree:
+    #   extern Entity g_Entities[];          -> plain object
+    #   extern void Foo(s32);                -> function
+    #   extern void (*g_api_PlaySfx)(s32);   -> FUNCTION POINTER
+    # Missing the third made 56 uses of g_api_PlaySfx look undeclared, which
+    # would have told the model to redeclare a symbol the headers already have.
+    pat = re.compile(
+        r"^\s*extern\s+[^;()]*?\b([A-Za-z_]\w*)\s*(?:\[[^\]]*\])?\s*;")
+    fnpat = re.compile(
+        r"^\s*extern\s+[^;]*?\b([A-Za-z_]\w*)\s*\([^;]*\)\s*;")
+    fnptr = re.compile(
+        r"^\s*extern\s+[^;]*?\(\s*\*+\s*([A-Za-z_]\w*)\s*\)\s*\(")
+    for p in _headers() + _c_sources():
+        try:
+            text = p.read_text(errors="ignore")
+        except OSError:
+            continue
+        for line in text.splitlines():
+            if "extern" not in line:
+                continue
+            m = fnptr.match(line) or fnpat.match(line) or pat.match(line)
+            if m:
+                out.setdefault(m.group(1), str(p.relative_to(REPO)))
+    return out
+
+
 def build_functions() -> dict:
     out: dict[str, dict] = {}
     for p in _c_sources():
@@ -349,13 +397,16 @@ def main() -> int:
             "ext_variants": build_ext_variants(structs),
             "constants": build_constants(),
             "functions": build_functions(),
+            "declared_globals": build_declared_globals(),
         }
         s = idx["symbols"]["name_to_addr"]
         print(f"  symbols={len(s)} structs={len(idx['structs'])} "
               f"entity_fields={len(idx['entity']['fields'])} "
               f"ext_variants={len(idx['ext_variants'])} "
               f"constants={len(idx['constants']['by_value'])} "
-              f"functions={len(idx['functions'])}", file=sys.stderr)
+              f"functions={len(idx['functions'])} "
+              f"declared_globals={len(idx['declared_globals'])}",
+              file=sys.stderr)
         to_write = idx
         if a.no_shingles:
             to_write = json.loads(json.dumps(idx))

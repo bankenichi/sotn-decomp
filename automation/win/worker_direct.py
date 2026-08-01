@@ -1374,6 +1374,85 @@ def resolve_raw_symbols(asm: str, limit: int = 10) -> str:
             + "\n".join(out) + "\n")
 
 
+# MIPS load/store -> the C type that access width implies. Used to type a
+# symbol that the linker knows about but no C file declares.
+_ASM_WIDTH_TYPE = {
+    "lb": "s8", "lbu": "u8", "sb": "u8",
+    "lh": "s16", "lhu": "u16", "sh": "u16",
+    "lw": "s32", "sw": "s32",
+}
+
+
+def undeclared_symbols(asm: str, have_decls: list[str], limit: int = 8) -> str:
+    """Blessed linker symbols the asm uses that NOTHING in C declares.
+
+    Closes a real gap. `PLAYER_posX_i_hi` is a genuine project symbol
+    (config/symbols.us.txt: 0x800733DA) but appears in no C file, so
+    lookup_declarations() greps for `extern ... NAME;`, finds nothing, and stays
+    silent. The model then uses the name it sees in the asm and never declares
+    it: `PLAYER_posX_i_hi undeclared (first use this function)`.
+
+    The type is NOT guessed. It is derived from how the asm actually touches the
+    address (`lh` -> s16, `lbu` -> u8, `sw` -> s32), which is the same evidence a
+    human would use. Where the asm disagrees with itself, the widest access wins
+    and the note says so, because a too-narrow type silently truncates.
+    """
+    idx = _load_index()
+    known = idx.get("symbols", {}).get("name_to_addr", {})
+    if not known or not asm:
+        return ""
+    # Tree-wide declarations, so we never tell the model to redeclare something
+    # the headers already provide (g_CurrentEntity, g_api_*, ...). The
+    # per-function DECLARATIONS list is capped and locally scoped, so checking
+    # only against it over-reports by ~4x.
+    already = idx.get("declared_globals", {})
+    declared = " ".join(have_decls or [])
+    # symbol -> set of instructions that touch it
+    touched: dict[str, set] = {}
+    for m in re.finditer(
+            r"\b(lb|lbu|lh|lhu|lw|sb|sh|sw)\b[^\n]*?%(?:hi|lo)\(\s*([A-Za-z_]\w*)",
+            asm):
+        touched.setdefault(m.group(2), set()).add(m.group(1))
+    # also catch %hi/%lo without a load on the same line (common: lui then lw)
+    for m in re.finditer(r"%(?:hi|lo)\(\s*([A-Za-z_]\w*)", asm):
+        touched.setdefault(m.group(1), set())
+
+    out = []
+    for sym, ops in touched.items():
+        if sym not in known:
+            continue                      # not a blessed symbol; skip
+        if sym in already:
+            continue                      # the tree already declares it
+        if re.search(rf"\b{re.escape(sym)}\b", declared):
+            continue                      # already covered by DECLARATIONS
+        if sym.startswith("D_"):
+            continue                      # handled by resolve_raw_symbols
+        types = {_ASM_WIDTH_TYPE[o] for o in ops if o in _ASM_WIDTH_TYPE}
+        if not types:
+            continue                      # no width evidence; say nothing
+        # SAFETY: if the asm reaches the symbol at more than one offset it is a
+        # struct or array, not a scalar, and a width-derived scalar type would
+        # be actively wrong (`extern u16 g_Ric;` for a PlayerState). Emitting
+        # nothing is always recoverable; emitting a wrong type is not.
+        offsets = set(re.findall(
+            rf"%lo\(\s*{re.escape(sym)}\s*(?:\+\s*(0x[0-9A-Fa-f]+|\d+))?\s*\)",
+            asm))
+        if len([o for o in offsets if o]) > 0 or len(offsets) > 1:
+            continue
+        order = ["s8", "u8", "s16", "u16", "s32"]
+        widest = sorted(types, key=lambda t: order.index(t))[-1]
+        note = "" if len(types) == 1 else f"  (asm uses {'/'.join(sorted(types))})"
+        out.append(f"extern {widest} {sym};   /* {known[sym]} */{note}")
+        if len(out) >= limit:
+            break
+    if not out:
+        return ""
+    return ("\n=== SYMBOLS YOU MUST DECLARE (real, but undeclared in C) ===\n"
+            "These are genuine project symbols with no existing declaration. "
+            "Copy these lines above your function; type is from the asm access "
+            "width.\n" + "\n".join(out) + "\n")
+
+
 def precedent_for(function: str, src_rel: str, limit: int = 2) -> str:
     """Show existing functions that solve a similar problem.
 
@@ -1555,6 +1634,7 @@ def build_prompt(rec: dict, ctx: dict, feedback: str = "") -> str:
     #     review-rejection class: invented externs)
     #   - existing functions to imitate (kills the "invented a new style" class)
     entity_sec += resolve_raw_symbols(ctx.get("asm", ""))
+    entity_sec += undeclared_symbols(ctx.get("asm", ""), decls)
     entity_sec += precedent_for(rec.get("function", ""), ctx.get("src_rel", ""))
     return (
         f"Function: {rec['function']}   (overlay {rec['overlay']}, build {rec['build']})\n"
