@@ -74125,7 +74125,7 @@
    "our_copies": [
     {
      "stage": "rno0",
-     "lines": 937,
+     "lines": 942,
      "include_asm": 1,
      "bodies": 15,
      "was": "stub",
@@ -74282,7 +74282,7 @@
    "our_copies": [
     {
      "stage": "rno0",
-     "lines": 81,
+     "lines": 83,
      "include_asm": 2,
      "bodies": 2,
      "was": "stub",
@@ -75863,7 +75863,7 @@
    "our_copies": [
     {
      "stage": "rno0",
-     "lines": 708,
+     "lines": 714,
      "include_asm": 0,
      "bodies": 34,
      "was": "stub",
@@ -79440,145 +79440,9 @@
    "overlay": "BOSS/BO6",
    "asm": "asm/us/boss/bo6/nonmatchings/us_3E79C/func_us_801C9DE8.s"
   },
-  "a0123456789abcd_0": {
-   "overlay": "MAIN",
-   "asm": "asm/us/main/nonmatchings/psxsdk/libc/sprintf/a0123456789abcd_0.s"
-  },
-  "a0123456789abcd_1": {
-   "overlay": "MAIN",
-   "asm": "asm/us/main/nonmatchings/psxsdk/libc/sprintf/a0123456789abcd_1.s"
-  },
-  "aAcknowledge": {
-   "overlay": "MAIN",
-   "asm": "asm/us/main/nonmatchings/psxsdk/libcd/bios/aAcknowledge.s"
-  },
-  "aCdlbackword": {
-   "overlay": "MAIN",
-   "asm": "asm/us/main/nonmatchings/psxsdk/libcd/bios/aCdlbackword.s"
-  },
-  "aCdldemute": {
-   "overlay": "MAIN",
-   "asm": "asm/us/main/nonmatchings/psxsdk/libcd/bios/aCdldemute.s"
-  },
-  "aCdlforward": {
-   "overlay": "MAIN",
-   "asm": "asm/us/main/nonmatchings/psxsdk/libcd/bios/aCdlforward.s"
-  },
-  "aCdlgetlocl": {
-   "overlay": "MAIN",
-   "asm": "asm/us/main/nonmatchings/psxsdk/libcd/bios/aCdlgetlocl.s"
-  },
-  "aCdlgetlocp": {
-   "overlay": "MAIN",
-   "asm": "asm/us/main/nonmatchings/psxsdk/libcd/bios/aCdlgetlocp.s"
-  },
-  "aCdlgettd": {
-   "overlay": "MAIN",
-   "asm": "asm/us/main/nonmatchings/psxsdk/libcd/bios/aCdlgettd.s"
-  },
-  "aCdlgettn": {
-   "overlay": "MAIN",
-   "asm": "asm/us/main/nonmatchings/psxsdk/libcd/bios/aCdlgettn.s"
-  },
-  "aCdlmute": {
-   "overlay": "MAIN",
-   "asm": "asm/us/main/nonmatchings/psxsdk/libcd/bios/aCdlmute.s"
-  },
-  "aCdlnop": {
-   "overlay": "MAIN",
-   "asm": "asm/us/main/nonmatchings/psxsdk/libcd/bios/aCdlnop.s"
-  },
-  "aCdlpause": {
-   "overlay": "MAIN",
-   "asm": "asm/us/main/nonmatchings/psxsdk/libcd/bios/aCdlpause.s"
-  },
-  "aCdlplay": {
-   "overlay": "MAIN",
-   "asm": "asm/us/main/nonmatchings/psxsdk/libcd/bios/aCdlplay.s"
-  },
-  "aCdlreadn": {
-   "overlay": "MAIN",
-   "asm": "asm/us/main/nonmatchings/psxsdk/libcd/bios/aCdlreadn.s"
-  },
-  "aCdlreads": {
-   "overlay": "MAIN",
-   "asm": "asm/us/main/nonmatchings/psxsdk/libcd/bios/aCdlreads.s"
-  },
-  "aCdlreset": {
-   "overlay": "MAIN",
-   "asm": "asm/us/main/nonmatchings/psxsdk/libcd/bios/aCdlreset.s"
-  },
-  "aCdlseekl": {
-   "overlay": "MAIN",
-   "asm": "asm/us/main/nonmatchings/psxsdk/libcd/bios/aCdlseekl.s"
-  },
-  "aCdlseekp": {
-   "overlay": "MAIN",
-   "asm": "asm/us/main/nonmatchings/psxsdk/libcd/bios/aCdlseekp.s"
-  },
-  "aCdlsetloc": {
-   "overlay": "MAIN",
-   "asm": "asm/us/main/nonmatchings/psxsdk/libcd/bios/aCdlsetloc.s"
-  },
-  "aCdlstandby": {
-   "overlay": "MAIN",
-   "asm": "asm/us/main/nonmatchings/psxsdk/libcd/bios/aCdlstandby.s"
-  },
-  "aCdlstop": {
-   "overlay": "MAIN",
-   "asm": "asm/us/main/nonmatchings/psxsdk/libcd/bios/aCdlstop.s"
-  },
-  "aCdlsync": {
-   "overlay": "MAIN",
-   "asm": "asm/us/main/nonmatchings/psxsdk/libcd/bios/aCdlsync.s"
-  },
-  "aCdTimeout": {
-   "overlay": "MAIN",
-   "asm": "asm/us/main/nonmatchings/psxsdk/libcd/bios/aCdTimeout.s"
-  },
-  "aComplete": {
-   "overlay": "MAIN",
-   "asm": "asm/us/main/nonmatchings/psxsdk/libcd/bios/aComplete.s"
-  },
-  "aDataend": {
-   "overlay": "MAIN",
-   "asm": "asm/us/main/nonmatchings/psxsdk/libcd/bios/aDataend.s"
-  },
-  "aDataready": {
-   "overlay": "MAIN",
-   "asm": "asm/us/main/nonmatchings/psxsdk/libcd/bios/aDataready.s"
-  },
-  "aDiskerror_0": {
-   "overlay": "MAIN",
-   "asm": "asm/us/main/nonmatchings/psxsdk/libcd/bios/aDiskerror_0.s"
-  },
-  "aIdBiosCV177199": {
-   "overlay": "MAIN",
-   "asm": "asm/us/main/nonmatchings/psxsdk/libcd/bios/aIdBiosCV177199.s"
-  },
-  "aNointr": {
-   "overlay": "MAIN",
-   "asm": "asm/us/main/nonmatchings/psxsdk/libcd/bios/aNointr.s"
-  },
   "dma_execute": {
    "overlay": "MAIN",
    "asm": "asm/us/main/nonmatchings/psxsdk/libcd/c_011/dma_execute.s"
-  },
-  "aNone": {
-   "overlay": "MAIN",
-   "asm": "asm/us/main/nonmatchings/psxsdk/libcd/sys/aNone.s"
-  },
-  "aIdIntrCV173199": {
-   "overlay": "MAIN",
-   "asm": "asm/us/main/nonmatchings/psxsdk/libetc/intr/aIdIntrCV173199.s"
-  },
-  "a0123456789abcd": {
-   "overlay": "MAIN",
-   "asm": "asm/us/main/nonmatchings/psxsdk/libgpu/font/a0123456789abcd.s"
-  },
-  "aIdSysCV1831995": {
-   "overlay": "MAIN",
-   "asm": "asm/us/main/nonmatchings/psxsdk/libgpu/sys/aIdSysCV1831995.s"
   },
   "_SsContDataEntry": {
    "overlay": "MAIN",

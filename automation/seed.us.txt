@@ -1,10 +1,12 @@
 # Seed for automation/scheduler.py init --from automation/seed.us.txt
-# Generated from automation/index.us.json `unmatched`, which is derived
-# from asm/us/**/nonmatchings/*.s -- extractor output from the original
-# binary, so it is not contaminated by our own matches. D_*/jtbl_* data
-# symbols are already excluded there.
-# `init` is additive and skips ids already present, so re-running is safe.
-# 370 functions as of upstream/master f6bfa379.
+# Generated from automation/index.us.json `unmatched`, derived from
+# asm/us/**/nonmatchings/*.s (extractor output from the original binary,
+# so not contaminated by our own matches).
+# Entries are classified as CODE by content, not by name: a .s holding only
+# .asciz/.word directives is data. Name filtering alone let 34 rodata string
+# labels (aCdlnop, aComplete, a0123456789abcd) into the queue as decomp targets.
+# `init` is additive and skips existing ids, so re-running is safe.
+# 336 functions as of upstream/master f6bfa379.
 us:BOSS/BO0:EntityOlroxAfterImage
 us:BOSS/BO0:func_us_801AB9EC
 us:BOSS/BO0:func_us_801ABFE0
@@ -170,40 +172,6 @@ us:BOSS/BO6:func_us_801C0FE8
 us:BOSS/BO6:func_us_801C488C
 us:BOSS/BO6:func_us_801C9DE8
 us:MAIN:_SsContDataEntry
-us:MAIN:a0123456789abcd
-us:MAIN:a0123456789abcd_0
-us:MAIN:a0123456789abcd_1
-us:MAIN:aAcknowledge
-us:MAIN:aCdTimeout
-us:MAIN:aCdlbackword
-us:MAIN:aCdldemute
-us:MAIN:aCdlforward
-us:MAIN:aCdlgetlocl
-us:MAIN:aCdlgetlocp
-us:MAIN:aCdlgettd
-us:MAIN:aCdlgettn
-us:MAIN:aCdlmute
-us:MAIN:aCdlnop
-us:MAIN:aCdlpause
-us:MAIN:aCdlplay
-us:MAIN:aCdlreadn
-us:MAIN:aCdlreads
-us:MAIN:aCdlreset
-us:MAIN:aCdlseekl
-us:MAIN:aCdlseekp
-us:MAIN:aCdlsetloc
-us:MAIN:aCdlstandby
-us:MAIN:aCdlstop
-us:MAIN:aCdlsync
-us:MAIN:aComplete
-us:MAIN:aDataend
-us:MAIN:aDataready
-us:MAIN:aDiskerror_0
-us:MAIN:aIdBiosCV177199
-us:MAIN:aIdIntrCV173199
-us:MAIN:aIdSysCV1831995
-us:MAIN:aNointr
-us:MAIN:aNone
 us:MAIN:dma_execute
 us:ST/MAD:func_8018D8C8
 us:ST/MAD:func_8018DC28

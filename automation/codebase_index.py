@@ -678,12 +678,30 @@ def build_unmatched(version: str = "us") -> dict:
     base = REPO / "asm" / version
     if not base.is_dir():
         return out
+    # Classify by CONTENT, not by name. The name filter below catches D_* and
+    # jtbl_*, and misses everything else: 34 rodata string labels
+    # (aCdlnop, aComplete, a0123456789abcd ...) sailed straight into the queue
+    # as "functions to decompile". They are `.asciz` constants and there is
+    # nothing to decompile.
+    #
+    # In this disassembly format a CODE line reads
+    #     /* E54 8001... 3C028007 */  lui  $v0, 0x8007
+    # and a DATA line reads
+    #     /* E54 80010654 */ .asciz "CdlNop"
+    # so a mnemonic is a letter right after the comment, while a directive is a
+    # dot. Validated against three known data files and three known code files.
+    is_code = re.compile(r"\*/\s+[a-z]")
     for p in base.rglob("*.s"):
         parts = p.relative_to(base).parts
         if "nonmatchings" not in parts:
             continue
         if p.stem.startswith(("D_", "jtbl_")):
             continue                      # data, not a function
+        try:
+            if not is_code.search(p.read_text(errors="ignore")):
+                continue                  # rodata/data label, not a function
+        except OSError:
+            continue
         i = parts.index("nonmatchings")
         out[p.stem] = {
             "overlay": "/".join(parts[:i]).upper(),
