@@ -228,6 +228,36 @@ def git_commit(message: str, timeout: int = 120) -> dict:
     return cc.run("git_commit", timeout=timeout, message=message)
 
 
+@mcp.tool()
+def git_push(timeout: int = 300) -> dict:
+    """`git push origin HEAD` in the WSL2 repo. Publishes the current branch.
+
+    Takes no remote, refspec or flag, and that is deliberate rather than a
+    limitation: there is no input, so there is nothing to validate and nothing
+    to get wrong. This repo has two remotes and `upstream` is the project we
+    forked from, so a caller-chosen remote would be one typo away from pushing
+    at it. `origin` is hard-coded here and upstream's push URL is separately
+    disabled in the repo config.
+
+    Runs in WSL because that is where the git credentials live; the Cowork
+    sandbox has none and fails with "could not read Username"."""
+    return cc.run("git_push", timeout=timeout)
+
+
+@mcp.tool()
+def queue_init(from_file: str = "automation/seed.us.txt", timeout: int = 120) -> dict:
+    """`scheduler.py init --from <file>`: add queue records for new functions.
+
+    Additive; ids already present are skipped, so re-running is safe.
+
+    MUST run here rather than in a sandbox shell. SOTN_QUEUE defaults to
+    ~/sotn-work/queue.jsonl, so a different HOME resolves to a DIFFERENT queue
+    file: the Cowork sandbox's copy reports 33 matched where this one has 134.
+    Seeding the wrong file would fork the harness state while appearing to
+    succeed."""
+    return cc.run("queue_init", timeout=timeout, from_file=from_file)
+
+
 # ---- scoped in-repo filesystem (edit the WSL2 tree through the connector) ----
 
 @mcp.tool()
@@ -257,5 +287,31 @@ def search_repo(query: str, path: str = ".", max_results: int = 200) -> dict:
     return cc.fs_search(query, path=path, max_results=max_results)
 
 
+def _assert_registry_is_exposed() -> None:
+    """Every allowlisted action must also be a callable tool.
+
+    These are TWO surfaces and it is easy to update one and not the other.
+    `list_allowed` reads commands_client.REGISTRY, but Claude can only call what
+    is decorated `@mcp.tool()` here. Adding git_push and queue_init to the
+    registry alone made `list_allowed` report 18 commands while both remained
+    uncallable -- the connector looked correctly updated and was not, which
+    cost a restart to discover.
+
+    Warn rather than exit: a missing wrapper makes one action unreachable, and
+    refusing to start would take the other seventeen down with it.
+    """
+    import re as _re
+    try:
+        src = Path(__file__).read_text(encoding="utf-8")
+    except OSError:
+        return
+    exposed = {m.group(1) for m in _re.finditer(r"@mcp\.tool\(\)\s*\ndef (\w+)", src)}
+    missing = sorted(set(cc.REGISTRY) - exposed)
+    if missing:
+        print(f"WARNING: allowlisted but NOT exposed as tools, so uncallable: "
+              f"{missing}. Add an @mcp.tool() wrapper for each.", file=sys.stderr)
+
+
 if __name__ == "__main__":
+    _assert_registry_is_exposed()
     mcp.run()  # stdio transport, as expected by Claude Desktop
