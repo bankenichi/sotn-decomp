@@ -124,20 +124,23 @@ recorded in `MATCHING-LESSONS.md` section 20: "same as X except Y" comments
 that understate real differences, and descriptive parameter names replaced by
 `argN`. Both need a reader.
 
-## P5 — Close the two remaining quality classes
+## P5 — (closed 2026-08-01) The named quality classes are clear
 
-The audit's headline findings were re-derived against upstream and mostly did
-not survive; see `ORCHESTRATOR.md` §7.10. What genuinely remains:
+Both items that stood here are done, and the method each used is worth keeping
+because it generalises:
 
-- **`ext.ILLEGAL` accessors.** Each one is a named field the index can resolve.
-  `polarPlacePartsList` was fixed this way: the shared header proved
-  `ext.ILLEGAL.u8[0x2C]` is `ext.GH_Props.unkA8`, since ext sits at 0x7C. Work
-  the rest the same way, from `ext_variants`, never by guessing.
-- **Raw casts in `func_us_801BB370`**, which uses `unsigned char*` and manual
-  offset arithmetic where `SubweaponDef` exists. Reconstruct from `structs`.
+- **`ext.ILLEGAL` is gone from the tree.** Resolve these from evidence, never
+  affinity. `polarPlacePartsList` fell to the shared header (ext is at 0x7C, so
+  `ILLEGAL.u8[0x2C]` is `GH_Props.unkA8`). `func_us_801C8590` fell to the
+  dispatch table: its slot in BO6's `D_us_8018158C` matches
+  `RicEntityCrashReboundStoneParticles` in RIC's table, which uses
+  `ext.subweapon.timer`. See `MATCHING-LESSONS.md` §18 for the procedure.
+- **`func_us_801BB370` no longer casts.** `SubweaponDef` covered every offset it
+  was using, and its size 0x14 was the stride the index was multiplied by. The
+  two loose addresses resolved to `ext.subweapon.subweaponId` and
+  `timers[ALU_T_INVINCIBLE]`.
 
-Neither is urgent. Both are cheap and both are the kind of thing upstream reads
-first, so they are worth doing before any wider harvest.
+Remaining audit output is 67 duplicates, all blocked on P3, and nothing else.
 
 ## P6 — Harness: make the four blockers unskippable
 
