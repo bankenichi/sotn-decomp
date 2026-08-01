@@ -19,7 +19,8 @@ impossible twice.
 | Queue | 134 matched, 34 escalated, 27 deferred, 243 todo |
 | Index sees | 370 unmatched US functions, data symbols excluded |
 | Our private impls in rno0 | 9 found, 2 resolved, 7 blocked on splat config |
-| Manual review | all 142 defined functions read, 2026-08-01; 6 defects fixed |
+| Manual review | all 142 defined functions read, 2026-08-01; 15 defects fixed |
+| Provenance | 124 functions authored; 83 (67%) are copies of upstream, 74 of them shimmable |
 
 The queue and the index disagree (304 vs 370) because upstream's merge added 32
 unmatched functions in RCHI and RDAI that the queue has never seen. Reconciling
@@ -110,9 +111,41 @@ damage the tree rather than merely fail.
 **Done when:** `shim_viable` reports VIABLE for the five, each is shimmed one at
 a time, and 81/81 holds after each.
 
+## P3b — The 9 copies that shimming will NOT fix
+
+**Why separate from P3:** `provenance_check.py` grades every function we
+authored against upstream. 83 of 124 are copies, which substantiates upstream's
+"just copies of functions we already have" exactly. But 74 of those come from a
+shared `src/st/*.h` and vanish the moment P3 lands. Nine do not:
+
+| ours | copied from |
+|---|---|
+| `us_39144.c:BO6_RicSetAnimation` | `boss/dop_anim.h:func_8010DA2C` |
+| `us_39144.c:func_us_801B9C14` | `boss/bo4/unk_45354.c:EnableAfterImage` |
+| `us_3E79C.c:RicEntitySubwpnCross` | `ric/pl_subweapon_cross.c` (0.809) |
+| `e_clock_room.c:UpdateBirdcages` | `st/no0/clock_room.c` |
+| `e_clock_room.c:UpdateClockHands` | `st/no0/clock_room.c` |
+| `giantbro_helpers.c:func_801CE1E8` | `st/no2/4966C.c` |
+| `giantbro_helpers.c:func_801CE228` | `st/no2/4966C.c` |
+| `st_common.c:DestroyEntity` | `destroy_entity.h` |
+| `st_common.c:SetSubStep` | `boss/dop_anim.h:func_8010DA2C` |
+
+For each, the question is which of three it is, and the answer differs per row:
+
+1. the body genuinely recurs per overlay and a private copy is correct
+   (upstream ships 55 of these itself, so this is a real category);
+2. it should become a shared header the way `destroy_entity.h` and
+   `dop_anim.h` already are, which is the strongest outcome and the one
+   upstream would most want;
+3. it is a copy that was never checked against this overlay's own asm and may
+   be wrong in a way the byte match cannot show, since two overlays' versions
+   can differ in constants while sharing a shape.
+
+Do not batch these. Each needs its own asm comparison.
+
 ## P4 — Wire the review checks into the worker
 
-`automation/review_checks.py` currently informs a human. It should gate the
+`automation/review_checks.py` (9 checks) and `automation/provenance_check.py` currently inform a human. It should gate the
 worker the same way `quality_gate()` does, so a generated function cannot be
 accepted while it names the wrong union variant or narrows a symbol's linkage
 below what the assembly requires. The linkage check in particular belongs
