@@ -1,7 +1,7 @@
 {
  "provenance": {
-  "ref": "24725571bf79c0aa6831e622e0fc915aafa844c6",
-  "ref_name": "2472557",
+  "ref": "f6bfa3791565b92c05a9ddd0473bdffa9213046a",
+  "ref_name": "upstream/master",
   "note": "Built from the upstream ref, NOT the working tree. Our own matches may be wrong and the fixes are checked against this index, so it must not be derived from the thing being fixed. Exceptions, both binary-derived or explicitly diffed: unmatched (from asm/, extractor output) and shared_impls.our_copies."
  },
  "symbols": {
@@ -16,11 +16,8 @@
    "ApplyRotMatrix": "0x80017964",
    "AverageSZ3": "0x80018220",
    "AverageSZ4": "0x80018230",
-   "BO0_BackgroundBlockInit": "0x80180748",
    "BO0_Overlay": "0x80180000",
-   "BO0_PrizeDrops": "0x80181444",
    "BO6_AguneaShuffleParams": "0x801CA530",
-   "BO6_BackgroundBlockInit": "0x801804E8",
    "BO6_CheckBladeDashInput": "0x801B4FA4",
    "BO6_CheckHighJumpInput": "0x801B502C",
    "BO6_DebugInputWait": "0x801C30A8",
@@ -30,7 +27,6 @@
    "BO6_GetAguneaLightningAngle": "0x801CA37C",
    "BO6_Overlay": "0x80180000",
    "BO6_PrimDecreaseBrightness": "0x801C7398",
-   "BO6_PrizeDrops": "0x80180610",
    "BO6_ReboundStoneBounce1": "0x801C65DC",
    "BO6_ReboundStoneBounce2": "0x801C6620",
    "BO6_RicCheckFacing": "0x801B99EC",
@@ -109,6 +105,7 @@
    "BO6_RicStepStandInAir": "0x801B8540",
    "BO6_RicStepThrowDaggers": "0x801B86EC",
    "BO6_RicStepWalk": "0x801B6E3C",
+   "BackgroundBlockInit": "0x80180748",
    "BlinkItem": "0x801BCACC",
    "BlitChar": "0x801BD158",
    "BottomCornerText": "0x801C6120",
@@ -167,7 +164,7 @@
    "ChangeClearPAD": "0x80015228",
    "ChangeClearRCnt": "0x800154EC",
    "CheckCallback": "0x80015650",
-   "CheckColliderOffsets": "0x801BE55C",
+   "CheckColliderOffsets": "0x801BB864",
    "CheckFieldCollision": "0x801BB698",
    "ClearImage": "0x80012A90",
    "ClearOTag": "0x80012C90",
@@ -192,7 +189,6 @@
    "CreateEntityFromLayout": "0x801B8F14",
    "CreateEntityWhenInHorizontalRange": "0x801B90F0",
    "CreateEntityWhenInVerticalRange": "0x801B8FD8",
-   "CutsceneRun": "0x801A7900",
    "CutsceneSkip": "0x801A7BDC",
    "CutsceneUnk1": "0x801A7420",
    "CutsceneUnk4": "0x801A7698",
@@ -216,11 +212,24 @@
    "D_8018B02C": "0x8018B02C",
    "D_8018B2EC": "0x8018B2EC",
    "D_8018B30C": "0x8018B30C",
+   "D_80195710": "0x80195710",
+   "D_80195750": "0x80195750",
+   "D_80195870": "0x80195870",
+   "D_801959B0": "0x801959B0",
+   "D_80195BB0": "0x80195BB0",
+   "D_80195DB0": "0x80195DB0",
+   "D_80195FD0": "0x80195FD0",
+   "D_80196030": "0x80196030",
+   "D_80196190": "0x80196190",
+   "D_80196210": "0x80196210",
+   "D_80196290": "0x80196290",
+   "D_801962B0": "0x801962B0",
+   "D_801963B0": "0x801963B0",
+   "D_80196410": "0x80196410",
    "D_8019A4F4": "0x8019A4F4",
    "D_8019ACC4": "0x8019ACC4",
    "D_8019DDA8": "0x8019DDA8",
    "D_801B0934": "0x801C0D3C",
-   "D_us_80180CC8": "0x80180CC8",
    "D_us_801B2D0C": "0x801B2D0C",
    "DecDCTin": "0x801BA5CC",
    "DecDCTout": "0x801BA648",
@@ -249,6 +258,7 @@
    "EntityArmorLord": "0x801C3EBC",
    "EntityArmorLordFireWave": "0x801C2A78",
    "EntityBackgroundBlock": "0x801A99FC",
+   "EntityBat": "0x8019A8DC",
    "EntityBigRedFireball": "0x801C44FC",
    "EntityBirdcageDoor": "0x801C18C4",
    "EntityBlade": "0x801CD02C",
@@ -258,12 +268,17 @@
    "EntityBloodSplatter": "0x801C82E0",
    "EntityBloodyZombie": "0x801C899C",
    "EntityBreakable": "0x801A9C80",
+   "EntityBreakableDebris": "0x8019962C",
+   "EntityBreakableWall": "0x8019A2FC",
+   "EntityBreakableWallDebris": "0x8019A048",
    "EntityChair": "0x801BBD84",
    "EntityClockHands": "0x801C17B0",
    "EntityClockRoomController": "0x801C0E1C",
    "EntityCorpseweed": "0x801C6D6C",
    "EntityCorpseweedProjectile": "0x801C7A9C",
    "EntityDamageDisplay": "0x801BD628",
+   "EntityDemonSwitch": "0x80199B1C",
+   "EntityDemonSwitchWall": "0x80199C00",
    "EntityDummy": "0x801C0300",
    "EntityEnemyBlood": "0x801CC5E8",
    "EntityEquipItemDrop": "0x801C1928",
@@ -272,6 +287,8 @@
    "EntityExplosionVariants": "0x801C3720",
    "EntityExplosionVariantsSpawner": "0x801C3508",
    "EntityFloorTrap": "0x801C6450",
+   "EntityGaibon": "0x801A6BD0",
+   "EntityGaibonLeg": "0x801A7D20",
    "EntityGreyPuff": "0x801C3810",
    "EntityGreyPuffSpawner": "0x801BE88C",
    "EntityGurkha": "0x801CBC2C",
@@ -284,6 +301,7 @@
    "EntityJackOBones": "0x801C81A4",
    "EntityJackOBonesDeathParts": "0x801C86B4",
    "EntityJackOBonesJack": "0x801C87B0",
+   "EntityLargeGaibonProjectile": "0x801A7EF4",
    "EntityLifeUpSpawn": "0x801CB9A0",
    "EntityLockCamera": "0x801A9AC4",
    "EntityMarionette": "0x801C73F4",
@@ -311,6 +329,10 @@
    "EntitySkelerang": "0x801C64F8",
    "EntitySkelerangBoomerang": "0x801C6C80",
    "EntitySkelerangUnknown": "0x801C6EF4",
+   "EntitySlogra": "0x801A5C7C",
+   "EntitySlograSpear": "0x801A6900",
+   "EntitySlograSpearProjectile": "0x801A6AAC",
+   "EntitySmallGaibonProjectile": "0x801A7DE4",
    "EntitySoulStealOrb": "0x801CC254",
    "EntitySpikes": "0x801AB778",
    "EntitySpikesDamage": "0x801AB970",
@@ -345,7 +367,7 @@
    "GPU_STATUS": "0x8002C280",
    "GPU_cw": "0x80015168",
    "GPU_printf": "0x8002C264",
-   "GetAngleBetweenEntities": "0x801BB29C",
+   "GetAngleBetweenEntities": "0x801B85A4",
    "GetAngleBetweenEntitiesShifted": "0x801BFEB0",
    "GetAnglePointToEntity": "0x801BB2D4",
    "GetAnglePointToEntityShifted": "0x801BB140",
@@ -383,9 +405,7 @@
    "IsEndPrim": "0x80011EFC",
    "KeyOnCheck": "0x80025474",
    "Krom2RawAdd": "0x80015218",
-   "LIB_PrizeDrops": "0x80181A90",
    "LimitAngleChange": "0x801BB31C",
-   "LionLampAnim": "0x80180CF0",
    "Load": "0x80015148",
    "LoadClut": "0x80011218",
    "LoadImage": "0x80012B24",
@@ -400,7 +420,6 @@
    "MulMatrix0": "0x8001741C",
    "MulRotMatrix": "0x8001760C",
    "MulRotMatrix0": "0x80017528",
-   "NO4_PrizeDrops": "0x80181928",
    "NextPrim": "0x80011EE0",
    "NormalClip": "0x8001830C",
    "NormalClipS": "0x80018320",
@@ -449,20 +468,16 @@
    "PadStop": "0x800152B8",
    "PlaySfxPositional": "0x801C55AC",
    "PopMatrix": "0x80017B58",
-   "PreventEntityFromRespawning": "0x801BA824",
+   "PreventEntityFromRespawning": "0x801B7B2C",
    "PrimDecreaseBrightness": "0x801D3E54",
    "PrimResetNext": "0x801D3CF4",
    "PrimToggleVisibility": "0x801D3C6C",
    "PrizeDropFall": "0x801BBBEC",
    "PrizeDropFall2": "0x801BBC70",
+   "PrizeDrops": "0x80181444",
    "PushMatrix": "0x80017AB8",
    "PutDispEnv": "0x80012FE4",
    "PutDrawEnv": "0x80012E8C",
-   "RARE_BackgroundBlockInit": "0x80180824",
-   "RBO0_BackgroundBlockInit": "0x80180570",
-   "RBO3_PrizeDrops": "0x801805F0",
-   "RCEN_BackgroundBlockInit": "0x801805BC",
-   "RCEN_PrizeDrops": "0x8018068C",
    "RCEN_cutscene_script": "0x801817AC",
    "RIC_anim": "0x80076324",
    "RIC_animCurFrame": "0x8007632E",
@@ -499,7 +514,7 @@
    "ReadColorMatrix": "0x80017C88",
    "ReadLightMatrix": "0x80017C40",
    "ReadRotMatrix": "0x80017BF8",
-   "ReplaceBreakableWithItemDrop": "0x801BBB34",
+   "ReplaceBreakableWithItemDrop": "0x8019F404",
    "ResetCallback": "0x800154FC",
    "ResetEntryInt": "0x80015C2C",
    "ResetGraph": "0x80012434",
@@ -521,6 +536,7 @@
    "RotTransPers": "0x8001824C",
    "RotTransPers3": "0x8001827C",
    "RotTransPers4": "0x8001833C",
+   "RunCutsceneEvents": "0x801A7900",
    "SQRT": "0x8002DBE0",
    "ScaleCutsceneAvatar": "0x801A7CBC",
    "ScaleMatrix": "0x80017D0C",
@@ -533,7 +549,7 @@
    "SetBackColor": "0x80017FFC",
    "SetBlockFill": "0x80012148",
    "SetColorMatrix": "0x80017E9C",
-   "SetCutsceneEnd": "0x801A78D4",
+   "SetCutsceneEvents": "0x801A78D4",
    "SetCutsceneScript": "0x801A7474",
    "SetDQA": "0x80017FE4",
    "SetDQB": "0x80017FF0",
@@ -601,6 +617,7 @@
    "SetVertexTri": "0x80017F1C",
    "SetVideoMode": "0x8001603C",
    "Snd_SetPlayMode": "0x80020B94",
+   "SpearGuardCheckCollision": "0x801BF6B4",
    "SpuClearReverbWorkArea": "0x80029CE0",
    "SpuFree": "0x80028FF4",
    "SpuGetAllKeysStatus": "0x8002B458",
@@ -729,17 +746,17 @@
    "StSetStream": "0x8001C4C8",
    "StUnSetRing": "0x8001C380",
    "StageNamePopupDissolver": "0x801C499C",
+   "StainedGlassBlendPalette": "0x801B2578",
+   "StainedGlassRecurse": "0x801B27A4",
    "StartCARD": "0x80016A3C",
    "StartRCnt": "0x80016BB4",
-   "StepTowards": "0x801CF5E0",
+   "StepTowards": "0x801C0BD8",
    "StopCallback": "0x800155F0",
    "StopPAD": "0x800152D8",
    "StopRCnt": "0x80016BE8",
    "StoreImage": "0x80012B88",
    "StreamDiskIsReady": "0x801B9744",
    "StreamNextVlc": "0x801B988C",
-   "TOP_Overlay": "0x80180000",
-   "TOP_cutscene_data": "0x80182C08",
    "TermPrim": "0x80011FB4",
    "TestEvent": "0x8002AD5C",
    "TransMatrix": "0x80017CDC",
@@ -762,6 +779,7 @@
    "UpdateAnimation": "0x801D3A70",
    "UpdateBirdcages": "0x801C0D8C",
    "UpdateClockHands": "0x801C0DD4",
+   "UpdateFallingPebble": "0x80199A30",
    "UpdateRoomPosition": "0x801BE6A0",
    "UpdateStageEntities": "0x801BC408",
    "UpdateStatueTiles": "0x801C1B34",
@@ -1041,31 +1059,44 @@
    "aWaitWrdyHL": "0x80010D0C",
    "actor_names": "0x801806BC",
    "anim_cross_boomerang": "0x80182970",
+   "anim_imp": "0x80181A38",
+   "anim_imp_smoke": "0x80181A50",
+   "anim_sets": "0x80180AAC",
+   "animations": "0x80180A58",
    "blend_modes": "0x801805E0",
    "bo6_tiledef_0": "0x801A39A0",
    "bo6_tilemap_0": "0x8019F7A0",
    "callback": "0x8001B1B8",
+   "candelabra_debris_offsets_y": "0x80180AF8",
    "cb_read": "0x8001BC84",
    "cd_read": "0x8001BBC4",
    "cd_read_retry": "0x8001BEA8",
    "checkRECT": "0x80012978",
    "close": "0x800151C8",
+   "cloudUVals": "0x80181BD8",
+   "cloudVectorFour": "0x80181C28",
+   "cloudVectorOne": "0x80181C10",
+   "cloudVectorThree": "0x80181C20",
+   "cloudVectorTwo": "0x80181C18",
    "clut": "0x80037E1C",
    "cluts": "0x801800F4",
    "ctlbuf": "0x80037ED0",
    "ctulhu_shockwave_uvs": "0x801C11B0",
    "currentMusicId": "0x80097910",
    "cutscene_data_ferryman_right": "0x801853B7",
+   "data": "0x80181CF0",
    "data_ready_callback": "0x8001C3D8",
    "def_cbread": "0x800193EC",
    "def_cbready": "0x800193C4",
    "def_cbsync": "0x8001939C",
    "dma_execute": "0x8001D0D4",
+   "empty": "0x80181D08",
    "entityLayoutHorizontal": "0x80180320",
    "entityLayoutVertical": "0x801803F4",
    "erase": "0x80015208",
    "exit": "0x80016064",
    "explosionVariantSizes": "0x80181BA0",
+   "explosion_types": "0x80180A8C",
    "file": "0x80039284",
    "firstfile": "0x800151E8",
    "format": "0x800151D8",
@@ -1085,7 +1116,7 @@
    "func_801CDA14": "0x801C9CE8",
    "func_801CDA6C": "0x801C9D40",
    "func_801CDAC8": "0x801C9D9C",
-   "func_801CDC80": "0x801C9F54",
+   "func_801CDC80": "0x801BF7B0",
    "func_801CDD00": "0x801C9FD4",
    "func_801CDD80": "0x801CA054",
    "func_801CDE10": "0x801CA0E4",
@@ -1153,6 +1184,8 @@
    "g_Dialogue": "0x801D1114",
    "g_Dop": "0x801D3FF0",
    "g_DopAnimationFrames": "0x801840B0",
+   "g_EInitArcher": "0x80180878",
+   "g_EInitBat": "0x80180684",
    "g_EInitBlade": "0x80180BA0",
    "g_EInitBloodyZombie": "0x801806C0",
    "g_EInitBreakable": "0x801805F4",
@@ -1160,10 +1193,14 @@
    "g_EInitCorpseweed": "0x80180B10",
    "g_EInitDamageNum": "0x80180654",
    "g_EInitEnvironment": "0x80180678",
+   "g_EInitGaibon": "0x80180618",
    "g_EInitGorgon": "0x80180BD0",
    "g_EInitGuardian": "0x80180AC8",
    "g_EInitGurkha": "0x80180B88",
    "g_EInitHammer": "0x80180B70",
+   "g_EInitImp": "0x801808F0",
+   "g_EInitImpDeathParticle": "0x80180914",
+   "g_EInitImpSmoke": "0x801808FC",
    "g_EInitInteractable": "0x80180624",
    "g_EInitJackOBones": "0x80180B34",
    "g_EInitLockCamera": "0x8018063C",
@@ -1178,11 +1215,17 @@
    "g_EInitOwlKnightSword": "0x801806A8",
    "g_EInitParticle": "0x8018060C",
    "g_EInitPrisoner": "0x80180684",
+   "g_EInitRdaiUnk1F": "0x8018086C",
+   "g_EInitRdaiUnk33": "0x80180908",
    "g_EInitShaft": "0x80180564",
+   "g_EInitShield": "0x801808C0",
    "g_EInitSkelerang": "0x80180660",
    "g_EInitSkelerangBoomerang": "0x8018066C",
    "g_EInitSlinger": "0x801806A6",
+   "g_EInitSlogra": "0x801805F4",
    "g_EInitSpawner": "0x80180618",
+   "g_EInitSpear": "0x801808B4",
+   "g_EInitSpectralSwordRDAI": "0x8018089C",
    "g_EInitStoneSkull": "0x80180B28",
    "g_EInitThornweed": "0x80180AF8",
    "g_EInitUnkId13": "0x80180630",
@@ -1230,6 +1273,7 @@
    "g_GpuUsage_sp": "0x80097948",
    "g_GpuUsage_sp16": "0x80097940",
    "g_GpuUsage_tile": "0x80097944",
+   "g_ImpDeathParticleAnim": "0x80181AB4",
    "g_InterruptMask": "0x8002D348",
    "g_IsCutsceneDone": "0x801D1698",
    "g_IsUsingCd": "0x8006C3B0",
@@ -1263,6 +1307,12 @@
    "g_PrimBuf_0_priority": "0x80087012",
    "g_PrimBuf_0_r0": "0x80086FF0",
    "g_PrimBuf_0_r1": "0x80086FFC",
+   "g_Rbo3DoorFlag": "0x80180D58",
+   "g_RdaiArcherOffsets": "0x80181904",
+   "g_RdaiUnk33Anim2": "0x80181A6C",
+   "g_RdaiUnk33Anim3": "0x80181A80",
+   "g_RdaiUnk33Anim4": "0x80181A90",
+   "g_RdaiUnk33Anim5": "0x80181AA4",
    "g_RedDoorTiles": "0x8018075C",
    "g_Ric": "0x801D12C8",
    "g_RoomCount": "0x8003C760",
@@ -1276,6 +1326,7 @@
    "g_SpriteSheet": "0x80184434",
    "g_StageId": "0x800974A0",
    "g_StageOverlay": "0x80180000",
+   "g_StainedGlassRecurseIndices": "0x80180B0C",
    "g_Status": "0x80097964",
    "g_StreamEndFrame": "0x801BD034",
    "g_StreamEnv": "0x801D6A4C",
@@ -1394,6 +1445,9 @@
    "get_tw": "0x80013B24",
    "getintr": "0x80019B98",
    "gfxBanks": "0x801802D0",
+   "gfx_stage_name_jp_sm": "0x80183418",
+   "hitbox_heights": "0x80180A80",
+   "hitbox_offsets_y": "0x80180AE0",
    "init_ring_status": "0x8001C60C",
    "jpt_80011B20": "0x80010074",
    "jpt_800163F4": "0x80010494",
@@ -1426,6 +1480,7 @@
    "note2pitch2": "0x80023290",
    "open": "0x80015188",
    "pad_buf": "0x8003925C",
+   "palettes": "0x80180A98",
    "patch_gte": "0x8001922C",
    "polarPlacePart": "0x801C9B10",
    "polarPlacePartsList": "0x801CA52C",
@@ -1478,13 +1533,14 @@
    "trapIntr": "0x80015770",
    "trapIntrDMA": "0x80015DE4",
    "trapIntrVSync": "0x80015CC4",
+   "unk_5A": "0x80180AC0",
    "v_wait": "0x80015450",
    "vmNoiseOn": "0x80022B6C",
    "vmNoiseOn2": "0x8002303C",
    "write": "0x800151B8"
   },
   "addr_to_name": {
-   "0x80180000": "TOP_Overlay",
+   "0x80180000": "g_StageOverlay",
    "0x8018002C": "spriteBanks",
    "0x801800F4": "cluts",
    "0x80180118": "rooms_layers",
@@ -1492,10 +1548,10 @@
    "0x80180320": "entityLayoutHorizontal",
    "0x801803F4": "entityLayoutVertical",
    "0x801804C8": "EntityUpdates",
-   "0x801805F4": "g_EInitBreakable",
+   "0x801805F4": "g_EInitSlogra",
    "0x80180600": "g_EInitObtainable",
    "0x8018060C": "g_EInitParticle",
-   "0x80180618": "g_EInitSpawner",
+   "0x80180618": "g_EInitGaibon",
    "0x80180624": "g_EInitInteractable",
    "0x80180630": "g_EInitUnkId13",
    "0x8018063C": "g_EInitLockCamera",
@@ -1504,7 +1560,7 @@
    "0x80180660": "g_EInitSkelerang",
    "0x8018066C": "g_EInitSkelerangBoomerang",
    "0x80180678": "g_EInitEnvironment",
-   "0x80180684": "g_EInitPrisoner",
+   "0x80180684": "g_EInitBat",
    "0x80180690": "g_EInitMarionette",
    "0x8018069C": "g_EInitOwlKnight",
    "0x801806A6": "g_EInitSlinger",
@@ -1512,9 +1568,9 @@
    "0x801806B4": "g_EInitOwl",
    "0x801806C0": "g_EInitBloodyZombie",
    "0x801806CC": "g_EInitOlroxAfterImage",
-   "0x80180748": "BO0_BackgroundBlockInit",
+   "0x80180748": "BackgroundBlockInit",
    "0x8018075C": "g_RedDoorTiles",
-   "0x80181444": "BO0_PrizeDrops",
+   "0x80181444": "PrizeDrops",
    "0x80182614": "rooms",
    "0x801A1D74": "sprites_bo0_8",
    "0x801A99FC": "EntityBackgroundBlock",
@@ -1623,8 +1679,6 @@
    "0x8007632A": "RIC_poseTimer",
    "0x8007632C": "RIC_animSet",
    "0x8007632E": "RIC_animCurFrame",
-   "0x801804E8": "BO6_BackgroundBlockInit",
-   "0x80180610": "BO6_PrizeDrops",
    "0x801806BC": "actor_names",
    "0x801812CC": "subweapons_def",
    "0x80181F44": "ric_anim_stand",
@@ -1639,8 +1693,8 @@
    "0x801A7474": "SetCutsceneScript",
    "0x801A7698": "CutsceneUnk4",
    "0x801A7750": "DrawCutsceneActorName",
-   "0x801A78D4": "SetCutsceneEnd",
-   "0x801A7900": "CutsceneRun",
+   "0x801A78D4": "SetCutsceneEvents",
+   "0x801A7900": "RunCutsceneEvents",
    "0x801A7BDC": "CutsceneSkip",
    "0x801A7CBC": "ScaleCutsceneAvatar",
    "0x801B4FA4": "BO6_CheckBladeDashInput",
@@ -1739,7 +1793,6 @@
    "0x801D11C4": "g_CutsceneFlags",
    "0x801D12C8": "g_Ric",
    "0x801D1698": "g_IsCutsceneDone",
-   "0x80180570": "RBO0_BackgroundBlockInit",
    "0x8018B02C": "D_8018B02C",
    "0x8018B2EC": "g_Streams",
    "0x8018B30C": "D_8018B30C",
@@ -1748,7 +1801,6 @@
    "0x801805C8": "g_eBreakableExplosionTypes",
    "0x801805D0": "g_eBreakableanimSets",
    "0x801805E0": "blend_modes",
-   "0x801805F0": "RBO3_PrizeDrops",
    "0x80181BA0": "explosionVariantSizes",
    "0x80181834": "D_800AD57C",
    "0x801840B0": "g_DopAnimationFrames",
@@ -1763,19 +1815,28 @@
    "0x8013C200": "g_imgUnk8013C200",
    "0x8013C270": "g_imgUnk8013C270",
    "0x80032E68": "libcd_CDRegister0",
-   "0x80181A90": "LIB_PrizeDrops",
+   "0x80195710": "D_80195710",
+   "0x80195750": "D_80195750",
+   "0x80195870": "D_80195870",
+   "0x801959B0": "D_801959B0",
+   "0x80195BB0": "D_80195BB0",
+   "0x80195DB0": "D_80195DB0",
+   "0x80195FD0": "D_80195FD0",
+   "0x80196030": "D_80196030",
+   "0x80196190": "D_80196190",
+   "0x80196210": "D_80196210",
+   "0x80196290": "D_80196290",
+   "0x801962B0": "D_801962B0",
+   "0x801963B0": "D_801963B0",
+   "0x80196410": "D_80196410",
    "0x801C11B0": "ctulhu_shockwave_uvs",
    "0x801A86BC": "sprites_3",
    "0x80180EE4": "g_WaterSounds",
    "0x80180EE8": "g_WaterXTbl",
-   "0x80181928": "NO4_PrizeDrops",
    "0x801853B7": "cutscene_data_ferryman_right",
    "0x801C0D3C": "D_801B0934",
-   "0x80180824": "RARE_BackgroundBlockInit",
    "0x801A4D58": "sprites_rare_4",
    "0x80180564": "g_EInitShaft",
-   "0x801805BC": "RCEN_BackgroundBlockInit",
-   "0x8018068C": "RCEN_PrizeDrops",
    "0x801817AC": "RCEN_cutscene_script",
    "0x8019F0D8": "func_8018F8EC",
    "0x8019FC80": "func_us_801B4148_from_bo0",
@@ -1783,13 +1844,68 @@
    "0x8019FE00": "func_801904B8",
    "0x801A0380": "EntityUnkId1B",
    "0x801A3BC0": "GetDistanceToPlayerY",
+   "0x8019962C": "EntityBreakableDebris",
+   "0x80199A30": "UpdateFallingPebble",
+   "0x80199B1C": "EntityDemonSwitch",
+   "0x80199C00": "EntityDemonSwitchWall",
+   "0x8019A048": "EntityBreakableWallDebris",
+   "0x8019A2FC": "EntityBreakableWall",
+   "0x8019A8DC": "EntityBat",
+   "0x8019F404": "ReplaceBreakableWithItemDrop",
+   "0x801A5C7C": "EntitySlogra",
+   "0x801A6900": "EntitySlograSpear",
+   "0x801A6AAC": "EntitySlograSpearProjectile",
+   "0x801A6BD0": "EntityGaibon",
+   "0x801A7D20": "EntityGaibonLeg",
+   "0x801A7DE4": "EntitySmallGaibonProjectile",
+   "0x801A7EF4": "EntityLargeGaibonProjectile",
+   "0x8018086C": "g_EInitRdaiUnk1F",
+   "0x80180878": "g_EInitArcher",
+   "0x8018089C": "g_EInitSpectralSwordRDAI",
+   "0x801808B4": "g_EInitSpear",
+   "0x801808C0": "g_EInitShield",
+   "0x801808F0": "g_EInitImp",
+   "0x801808FC": "g_EInitImpSmoke",
+   "0x80180908": "g_EInitRdaiUnk33",
+   "0x80180914": "g_EInitImpDeathParticle",
+   "0x80180A58": "animations",
+   "0x80180A80": "hitbox_heights",
+   "0x80180A8C": "explosion_types",
+   "0x80180A98": "RNO0_EInitDamageNum",
+   "0x80180AAC": "anim_sets",
+   "0x80180AC0": "unk_5A",
+   "0x80180AE0": "hitbox_offsets_y",
+   "0x80180AF8": "g_EInitThornweed",
+   "0x80180B0C": "g_StainedGlassRecurseIndices",
+   "0x80180D58": "g_Rbo3DoorFlag",
+   "0x80181904": "g_RdaiArcherOffsets",
+   "0x80181A38": "anim_imp",
+   "0x80181A50": "anim_imp_smoke",
+   "0x80181A6C": "g_RdaiUnk33Anim2",
+   "0x80181A80": "g_RdaiUnk33Anim3",
+   "0x80181A90": "g_RdaiUnk33Anim4",
+   "0x80181AA4": "g_RdaiUnk33Anim5",
+   "0x80181AB4": "g_ImpDeathParticleAnim",
+   "0x80181BD8": "cloudUVals",
+   "0x80181C10": "cloudVectorOne",
+   "0x80181C18": "cloudVectorTwo",
+   "0x80181C20": "cloudVectorThree",
+   "0x80181C28": "cloudVectorFour",
+   "0x80181CF0": "data",
+   "0x80181D08": "empty",
+   "0x801B2578": "StainedGlassBlendPalette",
+   "0x801B27A4": "StainedGlassRecurse",
+   "0x801B7B2C": "PreventEntityFromRespawning",
+   "0x801B85A4": "GetAngleBetweenEntities",
+   "0x801BB864": "CheckColliderOffsets",
+   "0x801BF6B4": "SpearGuardCheckCollision",
+   "0x801BF7B0": "func_801CDC80",
+   "0x801C0BD8": "StepTowards",
    "0x80180A50": "RNO0_EInitParticle",
    "0x80180A5C": "RNO0_EInitSpawner",
    "0x80180A68": "RNO0_EInitInteractable",
-   "0x80180A98": "RNO0_EInitDamageNum",
    "0x80180AB0": "RNO0_EInitCommon",
    "0x80180AC8": "g_EInitGuardian",
-   "0x80180AF8": "g_EInitThornweed",
    "0x80180B10": "g_EInitCorpseweed",
    "0x80180B28": "g_EInitStoneSkull",
    "0x80180B34": "g_EInitJackOBones",
@@ -1820,7 +1936,6 @@
    "0x801B9560": "CreateEntitiesAbove",
    "0x801B965C": "CreateEntitiesBelow",
    "0x801BA7A8": "DestroyEntitiesFromIndex",
-   "0x801BA824": "PreventEntityFromRespawning",
    "0x801BA924": "UnkAnimFunc",
    "0x801BAB20": "FallEntity",
    "0x801BB00C": "GetSineScaled",
@@ -1828,13 +1943,11 @@
    "0x801BB140": "GetAnglePointToEntityShifted",
    "0x801BB1E0": "UnkEntityFunc0",
    "0x801BB26C": "Ratan2",
-   "0x801BB29C": "GetAngleBetweenEntities",
    "0x801BB2D4": "GetAnglePointToEntity",
    "0x801BB31C": "LimitAngleChange",
    "0x801BB3B8": "EntityExplosionSpawn",
    "0x801BB570": "UnkCollisionFunc",
    "0x801BB698": "CheckFieldCollision",
-   "0x801BBB34": "ReplaceBreakableWithItemDrop",
    "0x801BBBEC": "PrizeDropFall",
    "0x801BBC70": "PrizeDropFall2",
    "0x801BBDCC": "CollectHeart",
@@ -1845,7 +1958,6 @@
    "0x801BC134": "CollectDummy",
    "0x801BCACC": "BlinkItem",
    "0x801BD158": "BlitChar",
-   "0x801BE55C": "CheckColliderOffsets",
    "0x801BE88C": "EntityGreyPuffSpawner",
    "0x801BEB58": "EntityOlroxDrool",
    "0x801BED88": "UnkCollisionFunc5",
@@ -1900,7 +2012,6 @@
    "0x801C9CE8": "func_801CDA14",
    "0x801C9D40": "func_801CDA6C",
    "0x801C9D9C": "func_801CDAC8",
-   "0x801C9F54": "func_801CDC80",
    "0x801C9FD4": "func_801CDD00",
    "0x801CA054": "func_801CDD80",
    "0x801CA0E4": "func_801CDE10",
@@ -1934,7 +2045,6 @@
    "0x801CEA6C": "func_801C7884",
    "0x801CEB40": "func_801CD78C_801CEB40",
    "0x801CEBF0": "func_us_801D2424_from_are",
-   "0x801CF5E0": "StepTowards",
    "0x801D24C8": "EntityMedusaHeadSpawner",
    "0x801D2694": "EntityMedusaHeadYellow",
    "0x801D26B8": "EntityMedusaHeadBlue",
@@ -1959,9 +2069,7 @@
    "0x801BD044": "g_StreamRewindSwitch",
    "0x801BD048": "g_StreamImageBuffer",
    "0x801D6A4C": "g_StreamEnv",
-   "0x80180CC8": "D_us_80180CC8",
-   "0x80180CF0": "LionLampAnim",
-   "0x80182C08": "TOP_cutscene_data",
+   "0x80183418": "gfx_stage_name_jp_sm",
    "0x80010040": "aDraBin1",
    "0x8001004C": "aFMapBin1",
    "0x8001005C": "a0123456789abcd",
@@ -3052,7 +3160,7 @@
    {
     "offset": "0x3C",
     "type": "u16",
-    "name": "unk3C",
+    "name": "hasEvents",
     "array": ""
    },
    {
@@ -3064,7 +3172,7 @@
    {
     "offset": "0x40",
     "type": "u8*",
-    "name": "scriptEnd",
+    "name": "eventCur",
     "array": ""
    }
   ],
@@ -3162,7 +3270,7 @@
    {
     "offset": "0x3C",
     "type": "u16",
-    "name": "unk3C",
+    "name": "hasEvents",
     "array": ""
    }
   ],
@@ -8927,8 +9035,14 @@
    },
    {
     "offset": null,
+    "type": "s32",
+    "name": "_align_subweaponId",
+    "array": "[3]"
+   },
+   {
+    "offset": null,
     "type": "s16",
-    "name": "unkB0",
+    "name": "subweaponId",
     "array": ""
    },
    {
@@ -32270,6 +32384,26 @@
     "array": ""
    }
   ],
+  "CutsceneSymbolRange": [
+   {
+    "offset": null,
+    "type": "const void*",
+    "name": "pcAddr",
+    "array": ""
+   },
+   {
+    "offset": null,
+    "type": "unsigned",
+    "name": "psxAddr",
+    "array": ""
+   },
+   {
+    "offset": null,
+    "type": "unsigned",
+    "name": "size",
+    "array": ""
+   }
+  ],
   "BatAbilityValues": [
    {
     "offset": null,
@@ -33495,10 +33629,6 @@
   },
   "unkAC": {
    "type": "s32",
-   "fields": []
-  },
-  "unkB0": {
-   "type": "s16",
    "fields": []
   },
   "unkB4": {
@@ -38034,7 +38164,12 @@
     },
     {
      "offset": null,
-     "name": "unkB0",
+     "name": "_align_subweaponId",
+     "ctype": "s32"
+    },
+    {
+     "offset": null,
+     "name": "subweaponId",
      "ctype": "s16"
     },
     {
@@ -46702,6 +46837,7 @@
     "HURT_DEATH",
     "FIRE",
     "DEATH",
+    "IMP_IDLE",
     "ATTACK_REEVALUATE_MOVE",
     "ATTACK_CURSE_CHARGE",
     "ATTACK_TRIBOLT_SPAWN_PROJECTILE",
@@ -47375,8 +47511,7 @@
    "0x1B": [
     "STAGE_BO3",
     "KEY_RIGHTBRACE",
-    "REG_KEYNAME_SIZE",
-    "E_DRACULA_UNK1B"
+    "REG_KEYNAME_SIZE"
    ],
    "0x1C": [
     "STAGE_BO2",
@@ -47732,7 +47867,8 @@
    "0x30": [
     "MAX_POLY_GT3_COUNT",
     "KEY_B",
-    "MENU_STEP_SPELL_INIT"
+    "MENU_STEP_SPELL_INIT",
+    "TILE_SHIFT"
    ],
    "0x280": [
     "MAXSPRT16"
@@ -47760,6 +47896,12 @@
    "0x800A0000": [
     "DRA_PRG_PTR"
    ],
+   "0x80170000": [
+    "FAMILIAR_PTR"
+   ],
+   "0x8017A000": [
+    "WEAPON0_PTR"
+   ],
    "0x801EA000": [
     "SAVE_DATA_PTR"
    ],
@@ -47768,12 +47910,6 @@
    ],
    "0x8013C020": [
     "SPRITESHEET_PTR"
-   ],
-   "0x80170000": [
-    "FAMILIAR_PTR"
-   ],
-   "0x8017A000": [
-    "WEAPON0_PTR"
    ],
    "0x8017D000": [
     "WEAPON1_PTR"
@@ -48859,8 +48995,7 @@
    "0x28": [
     "PSP_DEBUG_KB_MAXLEN",
     "KEY_APOSTROPHE",
-    "R_VAL",
-    "E_SECRET_BUTTON"
+    "R_VAL"
    ],
    "0xFF000000": [
     "PSP_DEBUG_KB_BACK_COLOUR"
@@ -48942,8 +49077,7 @@
    ],
    "0x26": [
     "KEY_L",
-    "TILE_WIDTH",
-    "E_ID_26"
+    "TILE_WIDTH"
    ],
    "0x27": [
     "KEY_SEMICOLON",
@@ -48957,8 +49091,7 @@
     "KEY_LEFTSHIFT"
    ],
    "0x2B": [
-    "KEY_BACKSLASH",
-    "E_DRACULA_UNK2B"
+    "KEY_BACKSLASH"
    ],
    "0x2C": [
     "KEY_Z"
@@ -50882,12 +51015,14 @@
    "LIFE_VESSEL_INCREASE": "0x5",
    "WEAPON_0_START": "0xE0",
    "WEAPON_1_START": "0xF0",
+   "DEMO_KEY_LEN": "0x3",
+   "DEMO_MAX_LEN": "0x2000",
    "DRA_PRG_PTR": "0x800A0000",
+   "FAMILIAR_PTR": "0x80170000",
+   "WEAPON0_PTR": "0x8017A000",
    "SAVE_DATA_PTR": "0x801EA000",
    "RIC_PRG_PTR": "0x8013C000",
    "SPRITESHEET_PTR": "0x8013C020",
-   "FAMILIAR_PTR": "0x80170000",
-   "WEAPON0_PTR": "0x8017A000",
    "WEAPON1_PTR": "0x8017D000",
    "STAGE_PRG_PTR": "0x80180000",
    "CASTLE_MAP_PTR": "0x801E0000",
@@ -50900,8 +51035,6 @@
    "CROSS": "0xE9",
    "SQUARE": "0xEA",
    "TRIANGLE": "0xEB",
-   "DEMO_KEY_LEN": "0x3",
-   "DEMO_MAX_LEN": "0x2000",
    "ICON_SLOT_NUM": "0x20",
    "SPU_VOICE_NUM": "0x18",
    "STAGE_INVERTEDCASTLE_MASK": "0x1F",
@@ -52683,9 +52816,11 @@
    "HAMMER_DYING": "0x18",
    "END_ATTACK": "0xFFF",
    "HALT_ATTACK": "0x7FFF",
+   "IMP_IDLE": "0x2",
    "LEFT_TILESTART": "0x1F1",
    "RIGHT_TILESTART": "0x1FD",
    "JEWELROOM_TILESTART": "0x420",
+   "TILE_SHIFT": "0x30",
    "MERMAN_SWIMMING": "0x3",
    "MERMAN2_SWIMMING": "0x3",
    "D_80199DE8": "0x40",
@@ -52838,10 +52973,6 @@
    "DISP_W": "0x200",
    "NUM_MENU_OPTIONS": "0x5",
    "NUM_CUTSCENE_PRIM": "0x7",
-   "E_DRACULA_UNK1B": "0x1B",
-   "E_ID_26": "0x26",
-   "E_SECRET_BUTTON": "0x28",
-   "E_DRACULA_UNK2B": "0x2B",
    "TABLE_SIZE": "0x100",
    "E_STAIR_SWITCH": "0x17",
    "E_FLEA_RIDER": "0x21",
@@ -54095,12 +54226,11 @@
     "EXPLOSION_UNK_17": "0x11",
     "EXPLOSION_UNK_19": "0x13"
    },
-   "EntityIDs": {
-    "E_EXPLOSION_VARIANTS": "0x14",
-    "E_DRACULA_UNK1B": "0x1B",
-    "E_ID_26": "0x26",
-    "E_SECRET_BUTTON": "0x28",
-    "E_DRACULA_UNK2B": "0x2B"
+   "EntityID": {
+    "E_STAIR_SWITCH": "0x17",
+    "E_FLEA_RIDER": "0x21",
+    "E_CUTSCENE": "0x23",
+    "E_BREAKABLE_DEBRIS": "0x27"
    },
    "Palettes": {
     "PAL_BREAKABLE": "0x238",
@@ -54205,6 +54335,9 @@
     "HAMMER_STEP_12": "0xC",
     "HAMMER_DYING": "0x18"
    },
+   "ImpSteps": {
+    "IMP_IDLE": "0x2"
+   },
    "MermanSteps": {
     "MERMAN_SWIMMING": "0x3"
    },
@@ -54296,12 +54429,6 @@
    },
    "MenuGfx": {
     "GFX_UNK_0": "0x0"
-   },
-   "Entities": {
-    "E_STAIR_SWITCH": "0x17",
-    "E_FLEA_RIDER": "0x21",
-    "E_CUTSCENE": "0x23",
-    "E_BREAKABLE_DEBRIS": "0x27"
    }
   },
   "field_enum": {
@@ -54854,6 +54981,12 @@
    "lines": 8,
    "hash": "204f86e45aea"
   },
+  "func_us_801B5A14": {
+   "file": "src/boss/bo6/richter.c",
+   "signature": "void func_us_801B5A14(s32 arg0)",
+   "lines": 4,
+   "hash": "cb503250ba19"
+  },
   "func_us_801B913C": {
    "file": "src/boss/bo6/unused.c",
    "signature": "void func_us_801B913C(void)",
@@ -54948,7 +55081,7 @@
    "file": "src/boss/mar/cutscene.c",
    "signature": "void EntityCutscene(Entity* self)",
    "lines": 529,
-   "hash": "8dc8d7881fc1",
+   "hash": "37c96eb3642d",
    "also_in": [
     "src/st/cen/cutscene.c",
     "src/st/lib/cutscene.c",
@@ -54988,7 +55121,7 @@
    "file": "src/boss/rbo0/e_boss_torch.c",
    "signature": "void EntityBossTorch(Entity* self)",
    "lines": 26,
-   "hash": "1c327cb76a51"
+   "hash": "ecfd14035f87"
   },
   "EntityCoffin": {
    "file": "src/boss/rbo0/e_coffin.c",
@@ -55140,11 +55273,10 @@
   "EntityClouds": {
    "file": "src/boss/rbo3/e_clouds.c",
    "signature": "void EntityClouds(Entity* self)",
-   "lines": 183,
-   "hash": "390e644d0ad3",
+   "lines": 180,
+   "hash": "1e0623f8d353",
    "also_in": [
-    "src/st/nz1/e_clouds.c",
-    "src/st/st0/3AB08.c"
+    "src/st/nz1/e_clouds.c"
    ]
   },
   "func_us_80191438": {
@@ -55157,7 +55289,7 @@
    "file": "src/boss/rbo3/rbo3.c",
    "signature": "void EntityMedusa(Entity* self)",
    "lines": 228,
-   "hash": "6aaa4f85e73a"
+   "hash": "3b85b292fe42"
   },
   "func_us_80192020": {
    "file": "src/boss/rbo3/rbo3.c",
@@ -56425,7 +56557,7 @@
    "file": "src/dra/5F60C.c",
    "signature": "void DrawRichterHudSubweapon(void)",
    "lines": 278,
-   "hash": "539b21f0c2d8"
+   "hash": "863aca9b08c3"
   },
   "StatusPause": {
    "file": "src/dra/5F60C.c",
@@ -57555,7 +57687,7 @@
    "file": "src/dra/84B88.c",
    "signature": "void func_80129864(Entity* self)",
    "lines": 243,
-   "hash": "34a2d7971798"
+   "hash": "04e05f0370cb"
   },
   "EntitySummonSpirit": {
    "file": "src/dra/84B88.c",
@@ -57590,8 +57722,8 @@
   "EntityBatEcho": {
    "file": "src/dra/8BEF8.c",
    "signature": "void EntityBatEcho(Entity* self)",
-   "lines": 175,
-   "hash": "28faa70ed992"
+   "lines": 172,
+   "hash": "2495bcd76cd5"
   },
   "func_8012C600": {
    "file": "src/dra/8C600.c",
@@ -57843,7 +57975,7 @@
    "file": "src/dra/alu_anim.c",
    "signature": "u32 UpdateAnim(s8* frameProps, AnimationFrame** anims)",
    "lines": 54,
-   "hash": "5f5256bc0db6"
+   "hash": "8469152e8b78"
   },
   "func_801073C0": {
    "file": "src/dra/cd.c",
@@ -57960,13 +58092,13 @@
    "file": "src/dra/demo.c",
    "signature": "void DemoGameInit(s32 arg0)",
    "lines": 191,
-   "hash": "b7304b0e525e"
+   "hash": "5b7b81dcaf96"
   },
   "DemoOpenFile": {
    "file": "src/dra/demo.c",
    "signature": "void DemoOpenFile(s32 arg0)",
-   "lines": 26,
-   "hash": "0f8aa1e68c9f"
+   "lines": 33,
+   "hash": "e8886a49a64a"
   },
   "DemoSaveFile": {
    "file": "src/dra/demo.c",
@@ -57983,8 +58115,8 @@
   "DemoUpdate": {
    "file": "src/dra/demo.c",
    "signature": "void DemoUpdate(void)",
-   "lines": 73,
-   "hash": "11134d6cd82e"
+   "lines": 70,
+   "hash": "9e5665585c4f"
   },
   "SetGameState": {
    "file": "src/dra/game_handlers.c",
@@ -58240,7 +58372,7 @@
   "DrawRelicsMenu": {
    "file": "src/dra/menu.c",
    "signature": "void DrawRelicsMenu(MenuContext* ctx)",
-   "lines": 3620,
+   "lines": 3621,
    "hash": "0ba1c747b451"
   },
   "MenuDrawAlucardPortrait": {
@@ -62674,11 +62806,29 @@
    "hash": "1a0d879edcfe",
    "also_in": [
     "src/pc/stages/stage_cen.c",
+    "src/pc/stages/stage_dai.c",
+    "src/pc/stages/stage_dre.c",
+    "src/pc/stages/stage_mad.c",
+    "src/pc/stages/stage_no2.c",
+    "src/pc/stages/stage_no3.c",
     "src/pc/stages/stage_nz0.c",
+    "src/pc/stages/stage_rwrp.c",
     "src/pc/stages/stage_sel.c",
     "src/pc/stages/stage_st0.c",
     "src/pc/stages/stage_wrp.c"
    ]
+  },
+  "CutscenePcAlloc": {
+   "file": "src/pc/cutscene_pc.c",
+   "signature": "void CutscenePcAlloc(const CutsceneSymbolRange* symbols, int count)",
+   "lines": 22,
+   "hash": "36a7987bca6b"
+  },
+  "CutsceneAddrToPc": {
+   "file": "src/pc/cutscene_pc.c",
+   "signature": "u8* CutsceneAddrToPc(u32 psxAddr)",
+   "lines": 11,
+   "hash": "b72792f56222"
   },
   "_FileAsStringCb": {
    "file": "src/pc/io.c",
@@ -62731,8 +62881,8 @@
   "printHelp": {
    "file": "src/pc/main.c",
    "signature": "static void printHelp(void)",
-   "lines": 16,
-   "hash": "7cce276df0e8"
+   "lines": 18,
+   "hash": "4dffff129dd2"
   },
   "printAllowedParams": {
    "file": "src/pc/main.c",
@@ -62743,8 +62893,8 @@
   "parseArgs": {
    "file": "src/pc/main.c",
    "signature": "static bool parseArgs(\n    struct InitGameParams* outParams, int argc, char* argv[])",
-   "lines": 61,
-   "hash": "3146e7b15bb8"
+   "lines": 68,
+   "hash": "e9bd14d0ee43"
   },
   "Main": {
    "file": "src/pc/main.c",
@@ -62956,11 +63106,23 @@
    "lines": 15,
    "hash": "ac6c6abd17cb"
   },
+  "ReplayEnded": {
+   "file": "src/pc/replay.c",
+   "signature": "static void ReplayEnded(void)",
+   "lines": 8,
+   "hash": "8d01f62e9db6"
+  },
   "ReplayFrame": {
    "file": "src/pc/replay.c",
    "signature": "static void ReplayFrame(void)",
-   "lines": 10,
-   "hash": "f64c67b2c0b0"
+   "lines": 7,
+   "hash": "2a394d139037"
+  },
+  "DemoFrame": {
+   "file": "src/pc/replay.c",
+   "signature": "static void DemoFrame(void)",
+   "lines": 12,
+   "hash": "08d7d66f7960"
   },
   "StartReplay": {
    "file": "src/pc/replay.c",
@@ -62983,20 +63145,20 @@
   "Replay_Init": {
    "file": "src/pc/replay.c",
    "signature": "void Replay_Init(const struct InitGameParams* params)",
-   "lines": 8,
-   "hash": "9dcaced00a07"
+   "lines": 15,
+   "hash": "c2087c3591e8"
   },
   "Replay_Reset": {
    "file": "src/pc/replay.c",
    "signature": "void Replay_Reset(void)",
-   "lines": 25,
-   "hash": "88fc1f669147"
+   "lines": 29,
+   "hash": "46282eae1184"
   },
   "Replay_OnFrame": {
    "file": "src/pc/replay.c",
    "signature": "void Replay_OnFrame(void)",
-   "lines": 7,
-   "hash": "b5780e793a0c"
+   "lines": 9,
+   "hash": "3dbedc4cd9c5"
   },
   "Replay_DidDrift": {
    "file": "src/pc/replay.c",
@@ -63144,13 +63306,25 @@
    "file": "src/pc/stages/overlay.c",
    "signature": "bool LoadStageOverlay(const char* name, Overlay* o)",
    "lines": 17,
-   "hash": "ae6204223f07"
+   "hash": "bfade5cf717f"
   },
   "LoadServantOverlay": {
    "file": "src/pc/stages/overlay.c",
    "signature": "bool LoadServantOverlay(const char* name, ServantDesc* o)",
    "lines": 17,
-   "hash": "5f6bd21e58e4"
+   "hash": "96d57ffbb7bd"
+  },
+  "InitCutscenePc": {
+   "file": "src/pc/stages/stage_cen.c",
+   "signature": "static void InitCutscenePc(void)",
+   "lines": 7,
+   "hash": "4084204093e2",
+   "also_in": [
+    "src/pc/stages/stage_dre.c",
+    "src/pc/stages/stage_no3.c",
+    "src/pc/stages/stage_nz0.c",
+    "src/pc/stages/stage_st0.c"
+   ]
   },
   "LoadRoomTileDef": {
    "file": "src/pc/stages/stage_loader.c",
@@ -63217,6 +63391,12 @@
    "signature": "void LoadReset()",
    "lines": 5,
    "hash": "15be790fafea"
+  },
+  "func_8018E1D4": {
+   "file": "src/pc/stages/stage_mad.c",
+   "signature": "void func_8018E1D4(void)",
+   "lines": 1,
+   "hash": "bf21a9e8fbc5"
   },
   "func_801B9C80": {
    "file": "src/pc/stages/stage_sel.c",
@@ -63624,7 +63804,7 @@
    "file": "src/ric/pl_blueprints.c",
    "signature": "void RicEntityPlayerBlinkWhite(Entity* self)",
    "lines": 356,
-   "hash": "b38cc149a127"
+   "hash": "9880be091f3f"
   },
   "func_801641A0": {
    "file": "src/ric/pl_blueprints.c",
@@ -63732,13 +63912,13 @@
    "file": "src/ric/pl_main.c",
    "signature": "void RicInit(s16 initParam)",
    "lines": 95,
-   "hash": "ff8873fd80f8"
+   "hash": "c1b6374e6462"
   },
   "RicMain": {
    "file": "src/ric/pl_main.c",
    "signature": "void RicMain(void)",
    "lines": 416,
-   "hash": "4401f63d1f85"
+   "hash": "2f55288c4cb4"
   },
   "RicSetDebug": {
    "file": "src/ric/pl_setstep.c",
@@ -64140,7 +64320,7 @@
    "file": "src/ric/pl_whip.c",
    "signature": "void RicEntityWhip(Entity* self)",
    "lines": 431,
-   "hash": "c38a31b0566a"
+   "hash": "7e9c099a33e5"
   },
   "RicEntityArmBrandishWhip": {
    "file": "src/ric/pl_whip.c",
@@ -65053,7 +65233,7 @@
    "file": "src/st/are/e_paranthropus.c",
    "signature": "void EntityParanthropus(Entity* self)",
    "lines": 406,
-   "hash": "10b6b499596d"
+   "hash": "1aa6c91d84b4"
   },
   "EntityParanthropusThrownBone": {
    "file": "src/st/are/e_paranthropus.c",
@@ -65136,14 +65316,14 @@
   "EntityCavernBackgroundLossoth": {
    "file": "src/st/cat/e_cavern_background.c",
    "signature": "void EntityCavernBackgroundLossoth(Entity* self)",
-   "lines": 152,
-   "hash": "41db4931d4eb"
+   "lines": 149,
+   "hash": "9d34789614d6"
   },
   "EntityCavernBackgroundDiscusLord": {
    "file": "src/st/cat/e_cavern_background.c",
    "signature": "void EntityCavernBackgroundDiscusLord(Entity* self)",
-   "lines": 154,
-   "hash": "96f4ba975fae"
+   "lines": 151,
+   "hash": "6b941e207f00"
   },
   "EntityDiscusLord": {
    "file": "src/st/cat/e_discus_lord.c",
@@ -65520,7 +65700,7 @@
     "src/st/no4/e_secrets.c",
     "src/st/nz1/e_secrets.c",
     "src/st/rtop/20B48.c",
-    "src/st/top/296F4.c"
+    "src/st/top/e_breakable_wall.c"
    ]
   },
   "EntityCerberusGateDebug": {
@@ -65715,11 +65895,11 @@
    "lines": 77,
    "hash": "ac31d50f5ee2"
   },
-  "SetCutsceneEnd": {
+  "SetCutsceneEvents": {
    "file": "src/st/dai/e_cutscene_dialogue.c",
-   "signature": "static void SetCutsceneEnd(u8* ptr)",
-   "lines": 7,
-   "hash": "db1e2ce8b9ea",
+   "signature": "static void SetCutsceneEvents(u8* ptr)",
+   "lines": 6,
+   "hash": "6a139a0defd8",
    "also_in": [
     "src/st/dre/e_cutscene_dialogue.c"
    ]
@@ -65757,24 +65937,6 @@
    "lines": 52,
    "hash": "4901e2cad460"
   },
-  "EntityBackgroundSkyLand": {
-   "file": "src/st/dai/e_room_bg_2.c",
-   "signature": "void EntityBackgroundSkyLand(Entity* self)",
-   "lines": 32,
-   "hash": "da13f97b64f9"
-  },
-  "EntityCastleWall1": {
-   "file": "src/st/dai/e_room_fg_2.c",
-   "signature": "void EntityCastleWall1(Entity* self)",
-   "lines": 44,
-   "hash": "2fe5cbb4648c"
-  },
-  "EntityCastleWall2": {
-   "file": "src/st/dai/e_room_fg_2.c",
-   "signature": "void EntityCastleWall2(Entity* self)",
-   "lines": 49,
-   "hash": "04e7c56e5abf"
-  },
   "EntityStaircase": {
    "file": "src/st/dai/e_room_fg_2.c",
    "signature": "void EntityStaircase(Entity* self)",
@@ -65801,12 +65963,6 @@
    "signature": "void EntitySpectralSwordWeapon(Entity* self)",
    "lines": 107,
    "hash": "6fba2b086d01"
-  },
-  "StainedGlassBlendPalette": {
-   "file": "src/st/dai/e_stained_glass.c",
-   "signature": "void StainedGlassBlendPalette(\n    RECT* arg0, u16 srcPalIdx, u16 destPalIdx, s32 steps, CVECTOR* color)",
-   "lines": 41,
-   "hash": "544237bbd2b3"
   },
   "StainedGlassRecurseDepth": {
    "file": "src/st/dai/e_stained_glass.c",
@@ -65854,7 +66010,10 @@
    "file": "src/st/dre/e_background_clouds.c",
    "signature": "void EntityBackgroundClouds(Entity* self)",
    "lines": 59,
-   "hash": "db83e114aa99"
+   "hash": "db83e114aa99",
+   "also_in": [
+    "src/st/st0/3AB08.c"
+   ]
   },
   "EntityCSMoveAlucard": {
    "file": "src/st/dre/e_cutscene_actors.c",
@@ -66147,7 +66306,7 @@
    "file": "src/st/lib/e_shop.c",
    "signature": "void EntityLibrarianChair(Entity* self)",
    "lines": 219,
-   "hash": "ebd310f05153"
+   "hash": "2c788893c65f"
   },
   "func_us_801B0C40": {
    "file": "src/st/lib/e_shop.c",
@@ -66453,7 +66612,7 @@
    "file": "src/st/mad/e_room_fg.c",
    "signature": "void EntityRoomForeground(Entity* entity)",
    "lines": 17,
-   "hash": "e0ef73569bfb",
+   "hash": "650e9cec47b4",
    "also_in": [
     "src/st/no3/e_room_fg.c",
     "src/st/np3/e_room_fg.c",
@@ -66726,7 +66885,7 @@
    "file": "src/st/no1/e_secrets.c",
    "signature": "void func_us_801BE880(Entity* self)",
    "lines": 100,
-   "hash": "f386b03ec6b5"
+   "hash": "8fcf4355f5e8"
   },
   "func_us_801BEB54": {
    "file": "src/st/no1/e_secrets.c",
@@ -67102,12 +67261,6 @@
    "signature": "void func_us_801B68EC(Entity* self)",
    "lines": 144,
    "hash": "3e3515984b59"
-  },
-  "func_us_801CEB08": {
-   "file": "src/st/no2/e_spectral_sword.c",
-   "signature": "void func_us_801CEB08(Entity* self)",
-   "lines": 22,
-   "hash": "122d2fa773d8"
   },
   "EntityPoltergeist": {
    "file": "src/st/no2/e_spectral_sword.c",
@@ -68167,7 +68320,7 @@
    "file": "src/st/nz1/e_secrets.c",
    "signature": "void EntityBreakableWallPartial(Entity* self)",
    "lines": 71,
-   "hash": "6f49cdc70cff"
+   "hash": "ba8362089491"
   },
   "VandalSwordDrawAlastor": {
    "file": "src/st/nz1/e_vandal_sword.c",
@@ -68226,8 +68379,8 @@
   "func_us_801B33F4": {
    "file": "src/st/rare/e_azaghal.c",
    "signature": "static void func_us_801B33F4(void)",
-   "lines": 136,
-   "hash": "5911b973af8a"
+   "lines": 133,
+   "hash": "13d34e1cd918"
   },
   "InitPositionLerp": {
    "file": "src/st/rare/e_azaghal.c",
@@ -68370,14 +68523,14 @@
   "EntityCavernBackgroundIce": {
    "file": "src/st/rcat/e_cavern_background.c",
    "signature": "void EntityCavernBackgroundIce(Entity* self)",
-   "lines": 135,
-   "hash": "ee962af1861f"
+   "lines": 132,
+   "hash": "4b2b61009c9a"
   },
   "EntityCavernBackgroundIceBridge": {
    "file": "src/st/rcat/e_cavern_background.c",
    "signature": "void EntityCavernBackgroundIceBridge(Entity* self)",
-   "lines": 137,
-   "hash": "7f53e0ea8bec"
+   "lines": 134,
+   "hash": "b6270befe01b"
   },
   "EntityFrozenHalf": {
    "file": "src/st/rcat/e_frozen_half.c",
@@ -68400,8 +68553,8 @@
   "EntityFrozenHalfBlizzard": {
    "file": "src/st/rcat/e_frozen_half.c",
    "signature": "void EntityFrozenHalfBlizzard(Entity* self)",
-   "lines": 141,
-   "hash": "6d38f9ce7b58"
+   "lines": 138,
+   "hash": "78c7929cfdc6"
   },
   "EntityFrozenHalfFallingIce": {
    "file": "src/st/rcat/e_frozen_half.c",
@@ -68715,17 +68868,11 @@
    "lines": 159,
    "hash": "875b10af5e2d"
   },
-  "EntityImp": {
-   "file": "src/st/rnz0/e_imp.c",
-   "signature": "void EntityImp(Entity* self)",
-   "lines": 375,
-   "hash": "fdaad8cf5f69"
-  },
   "EntityImpSmoke": {
    "file": "src/st/rnz0/e_imp.c",
    "signature": "void EntityImpSmoke(Entity* self)",
    "lines": 20,
-   "hash": "20dda3eea12c"
+   "hash": "afc4d40f42b2"
   },
   "InitializeMinion": {
    "file": "src/st/rnz0/e_lesser_demon.c",
@@ -68793,7 +68940,7 @@
    "lines": 21,
    "hash": "f701122069e8",
    "also_in": [
-    "src/st/top/296F4.c"
+    "src/st/top/e_secret_stairs.c"
    ]
   },
   "func_us_801A0BF4": {
@@ -68809,7 +68956,7 @@
    "hash": "a0839cc51218",
    "also_in": [
     "src/st/st0/2A8DC.c",
-    "src/st/top/296F4.c"
+    "src/st/top/e_secret_stairs.c"
    ]
   },
   "EntityTriangleElevator": {
@@ -68818,7 +68965,7 @@
    "lines": 172,
    "hash": "510bbe29104d",
    "also_in": [
-    "src/st/top/296F4.c"
+    "src/st/top/e_elevator.c"
    ]
   },
   "func_us_801A1940": {
@@ -68833,7 +68980,7 @@
    "lines": 39,
    "hash": "248fb5fc3c2e",
    "also_in": [
-    "src/st/top/296F4.c"
+    "src/st/top/e_lion_lamp.c"
    ]
   },
   "func_us_801A21F8": {
@@ -68863,8 +69010,8 @@
   "EntityRWarpRoom": {
    "file": "src/st/rwrp/warp.c",
    "signature": "void EntityRWarpRoom(Entity* self)",
-   "lines": 291,
-   "hash": "91b1affd67eb"
+   "lines": 297,
+   "hash": "f85ce341584c"
   },
   "EntityWarpSmallRocks": {
    "file": "src/st/rwrp/warp.c",
@@ -68915,7 +69062,7 @@
    "file": "src/st/sel/2C048.c",
    "signature": "bool MainMenuFadeIn(void)",
    "lines": 28,
-   "hash": "e769bee578e1"
+   "hash": "3c0df339fca5"
   },
   "func_801ACEC0": {
    "file": "src/st/sel/2C048.c",
@@ -69452,7 +69599,7 @@
    "file": "src/st/sel/cutscene.c",
    "signature": "u8 SetCutsceneScript(u8* script)",
    "lines": 54,
-   "hash": "f555789f5b38",
+   "hash": "9170de8020bd",
    "also_in": [
     "src/st/st0/cutscene.c"
    ]
@@ -69682,8 +69829,8 @@
   "EntityDracula": {
    "file": "src/st/st0/2C564.c",
    "signature": "void EntityDracula(Entity* self)",
-   "lines": 482,
-   "hash": "b32241002193"
+   "lines": 484,
+   "hash": "751b9d28a0c7"
   },
   "EntityDraculaBody": {
    "file": "src/st/st0/2C564.c",
@@ -69701,7 +69848,7 @@
    "file": "src/st/st0/2C564.c",
    "signature": "void EntityDraculaMeteorball(Entity* entity)",
    "lines": 56,
-   "hash": "65d9aa775301"
+   "hash": "0167a90707f6"
   },
   "func_801AD838": {
    "file": "src/st/st0/2C564.c",
@@ -69713,7 +69860,7 @@
    "file": "src/st/st0/2C564.c",
    "signature": "void EntityDraculaGlass(Entity* entity)",
    "lines": 56,
-   "hash": "76a6938a049a"
+   "hash": "f01d3de823cb"
   },
   "func_801ADAC8": {
    "file": "src/st/st0/2DAC8.c",
@@ -69730,8 +69877,8 @@
   "EntityDraculaFinalForm": {
    "file": "src/st/st0/2DAC8.c",
    "signature": "void EntityDraculaFinalForm(Entity* self)",
-   "lines": 541,
-   "hash": "5c31ee209d7b"
+   "lines": 551,
+   "hash": "71b5cacdb968"
   },
   "EntityDraculaMegaFireball": {
    "file": "src/st/st0/2DAC8.c",
@@ -69743,7 +69890,7 @@
    "file": "src/st/st0/2DAC8.c",
    "signature": "void EntityDraculaRainAttack(Entity* self)",
    "lines": 64,
-   "hash": "38ff823470a0"
+   "hash": "912b0be39711"
   },
   "func_801AF380": {
    "file": "src/st/st0/2DAC8.c",
@@ -69761,7 +69908,7 @@
    "file": "src/st/st0/2DAC8.c",
    "signature": "void func_801AF774(Entity* self)",
    "lines": 267,
-   "hash": "243c3560a04d"
+   "hash": "59647c4b6178"
   },
   "func_801B101C": {
    "file": "src/st/st0/3101C_psx.c",
@@ -69790,14 +69937,14 @@
   "EntityClockTower3D": {
    "file": "src/st/st0/3AB08.c",
    "signature": "void EntityClockTower3D(Entity* self)",
-   "lines": 126,
-   "hash": "d5219eed0cdd"
+   "lines": 123,
+   "hash": "09cce85090c4"
   },
   "EntityCutscenePhotograph": {
    "file": "src/st/st0/3AB08.c",
    "signature": "void EntityCutscenePhotograph(Entity* self)",
    "lines": 557,
-   "hash": "7e7dfabf9c0f"
+   "hash": "b47a59d631a6"
   },
   "EntityCutscenePhotographFire": {
    "file": "src/st/st0/3AB08.c",
@@ -69808,20 +69955,20 @@
   "func_801BC5C0": {
    "file": "src/st/st0/3C5C0.c",
    "signature": "void func_801BC5C0(Entity* self)",
-   "lines": 304,
-   "hash": "bc381d3c90e2"
+   "lines": 301,
+   "hash": "b1f5afc92a1a"
   },
-  "func_801BD8F0": {
+  "EntityDematerializeStageBg": {
    "file": "src/st/st0/3D8F0.c",
-   "signature": "void func_801BD8F0(Entity* self)",
-   "lines": 277,
-   "hash": "76aba35e2400"
+   "signature": "void EntityDematerializeStageBg(Entity* self)",
+   "lines": 266,
+   "hash": "ae8f1443572d"
   },
   "EntityBackgroundVortex": {
    "file": "src/st/st0/e_bg_vortex.c",
    "signature": "void EntityBackgroundVortex(Entity* self)",
-   "lines": 281,
-   "hash": "faef0715e64f"
+   "lines": 278,
+   "hash": "70c39cfa945b"
   },
   "InitClutIndices": {
    "file": "src/st/st0/prologue_scroll.c",
@@ -69859,29 +70006,29 @@
    "lines": 220,
    "hash": "0382870341a5"
   },
-  "func_us_801A9CB8": {
-   "file": "src/st/top/296F4.c",
-   "signature": "void func_us_801A9CB8(Entity* self)",
-   "lines": 64,
-   "hash": "e5231f6dcb3b"
-  },
   "func_us_801AABA4": {
-   "file": "src/st/top/296F4.c",
+   "file": "src/st/top/e_elevator.c",
    "signature": "void func_us_801AABA4(Entity* self)",
    "lines": 229,
-   "hash": "d3dc6a2c7b09"
-  },
-  "func_us_801AB45C": {
-   "file": "src/st/top/296F4.c",
-   "signature": "void func_us_801AB45C(Entity* self)",
-   "lines": 62,
-   "hash": "1f1830a4995a"
+   "hash": "2ce092391435"
   },
   "EntityFleaRider": {
    "file": "src/st/top/e_flea_rider.c",
    "signature": "void EntityFleaRider(Entity* self)",
    "lines": 152,
-   "hash": "73fe945cc7d9"
+   "hash": "e7fa9c4794fd"
+  },
+  "func_us_801AB45C": {
+   "file": "src/st/top/e_lion_lamp.c",
+   "signature": "void func_us_801AB45C(Entity* self)",
+   "lines": 62,
+   "hash": "20567c743c49"
+  },
+  "func_us_801A9CB8": {
+   "file": "src/st/top/e_secret_stairs.c",
+   "signature": "void func_us_801A9CB8(Entity* self)",
+   "lines": 64,
+   "hash": "e5231f6dcb3b"
   },
   "func_us_801AD11C": {
    "file": "src/st/top/post_richter_cutscene.c",
@@ -69892,14 +70039,32 @@
   "func_us_801AD320": {
    "file": "src/st/top/post_richter_cutscene.c",
    "signature": "void func_us_801AD320(Entity* self)",
-   "lines": 23,
-   "hash": "48a1852f4fc4"
+   "lines": 35,
+   "hash": "a56c6be178bf"
   },
   "func_us_801AD400": {
    "file": "src/st/top/post_richter_cutscene.c",
    "signature": "void func_us_801AD400(Entity* self)",
    "lines": 80,
-   "hash": "16eacd430b0b"
+   "hash": "77baf95c9bcb"
+  },
+  "func_pspeu_092496C8": {
+   "file": "src/st/top/post_richter_cutscene.c",
+   "signature": "void func_pspeu_092496C8(Entity* self)",
+   "lines": 22,
+   "hash": "f1b13d939a30"
+  },
+  "func_pspeu_092497B0": {
+   "file": "src/st/top/post_richter_cutscene.c",
+   "signature": "void func_pspeu_092497B0(Entity* self)",
+   "lines": 22,
+   "hash": "3abcb325f02b"
+  },
+  "func_pspeu_09249898": {
+   "file": "src/st/top/post_richter_cutscene.c",
+   "signature": "void func_pspeu_09249898(Entity* self)",
+   "lines": 58,
+   "hash": "38263c2447c2"
   },
   "EntityWarpRoom": {
    "file": "src/st/wrp/warp.c",
@@ -71036,7 +71201,7 @@
   "D_psp_08C6BC40": "include/game.h",
   "D_psp_08C6FC40": "include/game.h",
   "D_psp_08D2DC40": "include/game.h",
-  "D_psp_08D95C40": "include/game.h",
+  "g_DemoRecordingBuffer": "include/game.h",
   "D_psp_08D97C40": "include/game.h",
   "g_PlOvl": "include/game.h",
   "g_PlOvlAluBatSpritesheet": "include/game.h",
@@ -71285,6 +71450,7 @@
   "SpuSetKey": "include/psxsdk/libspu.h",
   "SpuMallocWithStartAddr": "include/psxsdk/libspu.h",
   "SpuSetIRQCallback": "include/psxsdk/libspu.h",
+  "g_Scratchpad": "include/scratchpad.h",
   "g_ServantSpriteParts": "include/servant.h",
   "g_ServantClut": "include/servant.h",
   "g_ServantDesc": "include/servant.h",
@@ -71724,10 +71890,10 @@
   "stage_placeholder": "src/pc/stages/stage_loader.h",
   "stage_title_jp": "src/pc/stages/stage_loader.h",
   "RIC_player": "src/ric/ric.h",
-  "D_801530AC": "src/ric/ric.h",
-  "D_80153AA0": "src/ric/ric.h",
-  "D_80153D24": "src/ric/ric.h",
-  "D_801541A8": "src/ric/ric.h",
+  "spritebank0": "src/ric/ric.h",
+  "spritebank1": "src/ric/ric.h",
+  "spritebank2": "src/ric/ric.h",
+  "spritebank3": "src/ric/ric.h",
   "DestroyEntity": "src/ric/ric.h",
   "RicStepBladeDash": "src/ric/ric.h",
   "RicDecelerateX": "src/ric/ric.h",
@@ -71870,9 +72036,9 @@
   "g_StoneDoorTiles": "src/st/clock_room_entities.h",
   "stone_door_pos_x": "src/st/clock_room_entities.h",
   "actor_names": "src/st/cutscene_actor_name.h",
-  "g_Dialogue": "src/st/cutscene_run.h",
-  "g_CutsceneFlags": "src/st/cutscene_run.h",
-  "EntityUpdates": "src/st/cutscene_run.h",
+  "g_Dialogue": "src/st/cutscene_events.h",
+  "g_CutsceneFlags": "src/st/cutscene_events.h",
+  "EntityUpdates": "src/st/cutscene_events.h",
   "g_SkipCutscene": "src/st/cutscene_skip.h",
   "cutsceneUnk3Unknown": "src/st/cutscene_unk3.h",
   "g_EInitArmorLord": "src/st/e_armor_lord.h",
@@ -71890,7 +72056,24 @@
   "D_us_80180AA0": "src/st/e_bone_musket.h",
   "g_EInitBoneScimitar": "src/st/e_bone_scimitar.h",
   "g_EInitScimitarParts": "src/st/e_bone_scimitar.h",
+  "animations": "src/st/e_breakable_with_debris.h",
+  "hitbox_heights": "src/st/e_breakable_with_debris.h",
+  "explosion_types": "src/st/e_breakable_with_debris.h",
+  "palettes": "src/st/e_breakable_with_debris.h",
+  "anim_sets": "src/st/e_breakable_with_debris.h",
+  "unk_5A": "src/st/e_breakable_with_debris.h",
+  "blend_modes": "src/st/e_breakable_with_debris.h",
+  "hitbox_offsets_y": "src/st/e_breakable_with_debris.h",
+  "candelabra_debris_offsets_y": "src/st/e_breakable_with_debris.h",
   "CAVERN_DOOR_EINIT": "src/st/e_cavern_door.h",
+  "PrizeDrops": "src/st/e_chair.h",
+  "cloudUVals": "src/st/e_clouds.h",
+  "cloudVectorOne": "src/st/e_clouds.h",
+  "cloudVectorTwo": "src/st/e_clouds.h",
+  "cloudVectorThree": "src/st/e_clouds.h",
+  "cloudVectorFour": "src/st/e_clouds.h",
+  "data": "src/st/e_clouds.h",
+  "empty": "src/st/e_clouds.h",
   "obtainedStr": "src/st/e_collect.h",
   "msgBoxTpage": "src/st/e_collect.h",
   "g_EInitCtulhu": "src/st/e_ctulhu.h",
@@ -71913,6 +72096,13 @@
   "g_EInitHarpyFeather": "src/st/e_harpy.h",
   "HEARTROOM_EINIT": "src/st/e_heartroom.h",
   "g_EInitHuntingGirl": "src/st/e_hunting_girl.h",
+  "g_EInitImp": "src/st/e_imp.h",
+  "anim_imp": "src/st/e_imp.h",
+  "g_Entities_224": "src/st/e_imp.h",
+  "g_EInitImpDeathParticle": "src/st/e_imp_death_particle.h",
+  "g_ImpDeathParticleAnim": "src/st/e_imp_death_particle.h",
+  "g_EInitImpSmoke": "src/st/e_imp_smoke.h",
+  "anim_imp_smoke": "src/st/e_imp_smoke.h",
   "ROCK_EINIT": "src/st/e_jewel_sword_puzzle.h",
   "g_EInitSlinger": "src/st/e_marionette.h",
   "g_EInitMarionette": "src/st/e_marionette.h",
@@ -71931,7 +72121,17 @@
   "g_EInitPlateLord": "src/st/e_plate_lord.h",
   "D_us_80180B90": "src/st/e_plate_lord.h",
   "g_EInitPrisoner": "src/st/e_prisoner.h",
+  "g_EInitArcher": "src/st/e_rdai_archer.h",
+  "g_EInitRdaiUnk1F": "src/st/e_rdai_unk1f.h",
+  "g_EInitRdaiUnk33": "src/st/e_rdai_unk33.h",
+  "g_RdaiUnk33Anim2": "src/st/e_rdai_unk33.h",
+  "g_RdaiUnk33Anim3": "src/st/e_rdai_unk33.h",
+  "g_RdaiUnk33Anim4": "src/st/e_rdai_unk33.h",
+  "g_RdaiUnk33Anim5": "src/st/e_rdai_unk33.h",
+  "g_RdaiUnk33DebugText": "src/st/e_rdai_unk33.h",
+  "g_pads_1_pressed": "src/st/e_rdai_unk33.h",
   "D_us_80181134": "src/st/e_red_door.h",
+  "BackgroundBlockInit": "src/st/e_room_bg.h",
   "sprites_salem_witch_curse": "src/st/e_salem_witch.h",
   "g_EInitSkelerang": "src/st/e_skelerang.h",
   "g_EInitSkelerangBoomerang": "src/st/e_skelerang.h",
@@ -71951,6 +72151,8 @@
   "SPIKE_SPRITES": "src/st/e_venus_weed.h",
   "g_eDamageDisplayClut": "src/st/entity_damage_display.h",
   "WEIGHTS_INIT": "src/st/entrance_weights.h",
+  "g_Rbo3DoorInit": "src/st/func_80192d64.h",
+  "g_Rbo3DoorFlag": "src/st/func_80192d64.h",
   "EntityBloodDrips": "src/st/lib/lib.h",
   "D_us_80180824": "src/st/lib/lib.h",
   "g_EInitFlyingZombie2": "src/st/lib/lib.h",
@@ -71977,17 +72179,13 @@
   "D_80180538": "src/st/mad/mad.h",
   "D_8018056C": "src/st/mad/mad.h",
   "D_801805C4": "src/st/mad/mad.h",
-  "aluric_subweapons_idx": "src/st/mad/mad.h",
-  "aluric_subweapons_id": "src/st/mad/mad.h",
   "D_80180E10": "src/st/mad/mad.h",
   "D_80180E18": "src/st/mad/mad.h",
   "D_80180EC4": "src/st/mad/mad.h",
   "D_80180FBC": "src/st/mad/mad.h",
   "D_80180FCC": "src/st/mad/mad.h",
-  "D_801810F4": "src/st/mad/mad.h",
   "g_UnkEntityAnimData": "src/st/mad/mad.h",
   "g_rooms": "src/st/mad/mad.h",
-  "blend_modes": "src/st/mad/mad.h",
   "D_80199DE8": "src/st/mad/mad.h",
   "D_us_80180AAC": "src/st/no0/no0.h",
   "D_us_80180AB8": "src/st/no0/no0.h",
@@ -72033,7 +72231,7 @@
   "g_EInitBlade": "src/st/no2/no2.h",
   "g_EInitBladeWeapon": "src/st/no2/no2.h",
   "g_EInitSpectralSword": "src/st/no2/no2.h",
-  "D_us_8018097C": "src/st/no2/no2.h",
+  "g_EInitSpectralSwordAura": "src/st/no2/no2.h",
   "g_EInitPoltergeist": "src/st/no2/no2.h",
   "g_EInitWaterObject": "src/st/no3/no3.h",
   "g_EInitWaterSplash": "src/st/no3/no3.h",
@@ -72124,6 +72322,7 @@
   "g_EInitDraculaFinalForm": "src/st/st0/st0.h",
   "g_EInitDraculaMegaFireball": "src/st/st0/st0.h",
   "g_EInitSecretStairs": "src/st/st0/st0.h",
+  "g_StainedGlassRecurseIndices": "src/st/stained_glass_recurse.h",
   "g_WaterSounds": "src/st/water_effects.h",
   "D_us_801D4DF0": "src/boss/bo4/doors.c",
   "D_us_801D4DF4": "src/boss/bo4/doors.c",
@@ -72169,6 +72368,8 @@
   "D_us_8019F3A0": "src/boss/bo6/header.c",
   "D_us_8019F1A0": "src/boss/bo6/header.c",
   "D_us_8019F5A0": "src/boss/bo6/header.c",
+  "D_us_801CF3C8": "src/boss/bo6/richter.c",
+  "D_us_801CF3CC": "src/boss/bo6/richter.c",
   "D_us_80181EDC": "src/boss/bo6/us_3E79C.c",
   "D_us_80182870": "src/boss/bo6/us_3E79C.c",
   "D_us_80180460": "src/boss/bo6/us_3E79C.c",
@@ -72196,6 +72397,7 @@
   "D_us_801805DC": "src/boss/mar/cutscene.c",
   "D_us_801805E8": "src/boss/mar/cutscene.c",
   "D_us_801805F0": "src/boss/mar/cutscene.c",
+  "cutscene_data": "src/boss/mar/cutscene.c",
   "D_us_801806AC": "src/boss/rbo0/e_boss.c",
   "D_us_801804B8": "src/boss/rbo0/e_fake_grant.c",
   "D_us_80180518": "src/boss/rbo0/e_fake_grant.c",
@@ -72224,7 +72426,6 @@
   "g_eBreakableanimSets": "src/boss/rbo3/e_breakable.c",
   "D_us_801814A0": "src/boss/rbo3/e_init.c",
   "g_EInitMedusa": "src/boss/rbo3/rbo3.c",
-  "RBO3_PrizeDrops": "src/boss/rbo3/rbo3.c",
   "D_us_801805FC": "src/boss/rbo3/rbo3.c",
   "D_us_8018060C": "src/boss/rbo3/rbo3.c",
   "D_us_80180618": "src/boss/rbo3/rbo3.c",
@@ -72465,7 +72666,18 @@
   "bat_ServantDesc": "src/pc/servants/servant_000.c",
   "ghost_ServantDesc": "src/pc/servants/servant_001.c",
   "faerie_ServantDesc": "src/pc/servants/servant_002.c",
+  "cutscene_cen_alucard": "src/pc/stages/stage_cen.c",
+  "cutscene_cen_maria": "src/pc/stages/stage_cen.c",
+  "gfx_portrait_alucard": "src/pc/stages/stage_dre.c",
+  "gfx_portrait_lisa": "src/pc/stages/stage_dre.c",
+  "gfx_portrait_succubus": "src/pc/stages/stage_dre.c",
+  "cutscene_alucard": "src/pc/stages/stage_no3.c",
+  "cutscene_death": "src/pc/stages/stage_no3.c",
+  "cutscene_nz0_maria": "src/pc/stages/stage_nz0.c",
+  "cutscene_nz0_alucard": "src/pc/stages/stage_nz0.c",
   "D_801803A8": "src/pc/stages/stage_sel.c",
+  "gfx_portrait_richter": "src/pc/stages/stage_st0.c",
+  "gfx_portrait_dracula": "src/pc/stages/stage_st0.c",
   "w_000_header": "src/pc/weapon_pc.c",
   "w_002_header": "src/pc/weapon_pc.c",
   "w_007_header": "src/pc/weapon_pc.c",
@@ -72608,7 +72820,6 @@
   "sprites_dai_3": "src/st/dai/e_corner_guard.c",
   "g_EInitBlueRaven": "src/st/dai/e_crow.c",
   "g_EInitBlackCrow": "src/st/dai/e_crow.c",
-  "gfx_portrait_alucard": "src/st/dai/e_cutscene_dialogue.c",
   "gfx_portrait_maria": "src/st/dai/e_cutscene_dialogue.c",
   "D_893EA8C": "src/st/dai/e_cutscene_dialogue.c",
   "D_893F80C": "src/st/dai/e_cutscene_dialogue.c",
@@ -72619,7 +72830,6 @@
   "D_8943B8C": "src/st/dai/e_cutscene_dialogue.c",
   "D_894490C": "src/st/dai/e_cutscene_dialogue.c",
   "D_894568C": "src/st/dai/e_cutscene_dialogue.c",
-  "g_EInitSpectralSwordAura": "src/st/dai/e_spectral_sword.c",
   "g_EInitSpectralSwordWeapon": "src/st/dai/e_spectral_sword.c",
   "g_EInitWingedGuard": "src/st/dai/e_winged_guard.c",
   "g_EInitWingedGuardParts": "src/st/dai/e_winged_guard.c",
@@ -72629,8 +72839,6 @@
   "D_pspeu_092600B0": "src/st/dre/e_cutscene_dialogue.c",
   "D_pspeu_092600A8": "src/st/dre/e_cutscene_dialogue.c",
   "D_893DD0C": "src/st/dre/e_cutscene_dialogue.c",
-  "gfx_portrait_lisa": "src/st/dre/e_cutscene_dialogue.c",
-  "gfx_portrait_succubus": "src/st/dre/e_cutscene_dialogue.c",
   "D_801816C4": "src/st/dre/e_succubus.c",
   "g_EInitSuccubus": "src/st/dre/e_succubus.c",
   "D_801804DC": "src/st/dre/e_succubus.c",
@@ -72664,9 +72872,6 @@
   "D_us_801818F4": "src/st/lib/e_shop.c",
   "D_us_80181AC8": "src/st/lib/unk_3B200.c",
   "D_91E5084": "src/st/lib/unk_3B53C.c",
-  "g_Rooms": "src/st/mad/header.c",
-  "D_8018CAA8": "src/st/mad/header.c",
-  "D_80182058": "src/st/mad/header.c",
   "D_91FC3F8": "src/st/no0/clock_room.c",
   "D_91FC400": "src/st/no0/clock_room.c",
   "D_91FC408": "src/st/no0/clock_room.c",
@@ -72681,8 +72886,6 @@
   "D_us_801D7018": "src/st/no1/unk_40E98.c",
   "D_us_801D701C": "src/st/no1/unk_40E98.c",
   "D_us_801D7020": "src/st/no1/unk_40E98.c",
-  "cutscene_alucard": "src/st/no3/cutscene.c",
-  "cutscene_death": "src/st/no3/cutscene.c",
   "cutscene_data_ferryman_left": "src/st/no4/cutscene.c",
   "cutscene_data_ferryman_right": "src/st/no4/cutscene.c",
   "D_893CF8C": "src/st/no4/cutscene.c",
@@ -72743,6 +72946,9 @@
   "post_fight_script_ptr1": "src/st/rcen/cutscene.c",
   "post_fight_script_ptr2": "src/st/rcen/cutscene.c",
   "D_pspeu_09260F58": "src/st/rcen/cutscene.c",
+  "D_pspeu_092642F8": "src/st/rchi/e_lock_camera.c",
+  "D_pspeu_09264300": "src/st/rchi/e_lock_camera.c",
+  "D_pspeu_092646B8": "src/st/rchi/e_lock_camera.c",
   "g_EInitDodoBird": "src/st/rno3/e_dodo.c",
   "g_EInitDragonRider1": "src/st/rno3/e_dragon_rider.c",
   "g_EInitDragonRider2": "src/st/rno3/e_dragon_rider.c",
@@ -72762,13 +72968,10 @@
   "g_EInitFireDemonFireball": "src/st/rnz0/e_fire_demon.c",
   "g_EInitFireDemon": "src/st/rnz0/e_fire_demon.c",
   "g_EInitFloorTrap": "src/st/rnz0/e_floor_trap.c",
-  "g_EInitImp": "src/st/rnz0/e_imp.c",
-  "g_EInitImpSmoke": "src/st/rnz0/e_imp.c",
   "g_EInitWallDebris": "src/st/rnz0/e_left_secret_room_wall.c",
   "g_EInitLesserDemonFireball": "src/st/rnz0/e_lesser_demon.c",
   "g_EInitLesserDemonDummy": "src/st/rnz0/e_lesser_demon.c",
   "D_us_80182E44": "src/st/rtop/header.c",
-  "PLAYER_posY_i_hi": "src/st/rwrp/warp.c",
   "g_EInitReverseSmallRocks": "src/st/rwrp/warp.c",
   "D_8018C404": "src/st/sel/2C048.c",
   "g_AsciiSet": "src/st/sel/2C048.c",
@@ -72818,7 +73021,6 @@
   "D_80180A40": "src/st/st0/2C564.c",
   "D_80180910": "src/st/st0/2DAC8.c",
   "g_EInitDraculaRainAttack": "src/st/st0/2DAC8.c",
-  "empty": "src/st/st0/3AB08.c",
   "D_pspeu_09279DC0": "src/st/st0/3C5C0.c",
   "v_coords": "src/st/st0/cutscene.c",
   "cutscene_script_en": "src/st/st0/cutscene.c",
@@ -72826,8 +73028,6 @@
   "cutscene_script_sp": "src/st/st0/cutscene.c",
   "cutscene_script_ge": "src/st/st0/cutscene.c",
   "cutscene_script_it": "src/st/st0/cutscene.c",
-  "gfx_portrait_richter": "src/st/st0/cutscene.c",
-  "gfx_portrait_dracula": "src/st/st0/cutscene.c",
   "D_pspeu_09253FB0": "src/st/st0/title_card.c",
   "D_pspeu_09253FF0": "src/st/st0/title_card.c",
   "D_pspeu_09254300": "src/st/st0/title_card.c",
@@ -72836,28 +73036,9 @@
   "D_pspeu_09254BD8": "src/st/st0/title_card.c",
   "D_pspeu_09254E98": "src/st/st0/title_card.c",
   "D_pspeu_09254EA4": "src/st/st0/title_card.c",
-  "g_EInitTOPCommon": "src/st/top/296F4.c",
-  "D_us_80180CAC": "src/st/top/296F4.c",
-  "D_us_80180C0C": "src/st/top/296F4.c",
-  "D_us_80180C1C": "src/st/top/296F4.c",
-  "D_us_80180C64": "src/st/top/296F4.c",
-  "D_us_80180CBC": "src/st/top/296F4.c",
-  "D_us_80180CC2": "src/st/top/296F4.c",
-  "D_us_80180CC8": "src/st/top/296F4.c",
-  "D_us_801BC514": "src/st/top/296F4.c",
-  "D_us_80180CF0": "src/st/top/296F4.c",
-  "LionLampAnim": "src/st/top/296F4.c",
-  "D_us_80180CFC": "src/st/top/296F4.c",
-  "D_us_80180D38": "src/st/top/cutscene.c",
-  "D_us_80180D3C": "src/st/top/cutscene.c",
-  "D_us_80180D40": "src/st/top/cutscene.c",
-  "D_us_80180D48": "src/st/top/cutscene.c",
-  "D_us_80180D4C": "src/st/top/cutscene.c",
-  "D_us_80180D54": "src/st/top/cutscene.c",
+  "g_EInitTOPCommon": "src/st/top/e_breakable_wall.c",
+  "D_us_801BC514": "src/st/top/e_elevator.c",
   "g_EInitFleaRider": "src/st/top/e_flea_rider.c",
-  "D_us_80180DF0": "src/st/top/post_richter_cutscene.c",
-  "D_us_80180E04": "src/st/top/post_richter_cutscene.c",
-  "D_us_80180E0C": "src/st/top/post_richter_cutscene.c",
   "g_WeaponCluts": "src/weapon/w_001.c",
   "g_HandId": "src/weapon/w_001.c",
   "D_B000_8017AF44": "src/weapon/w_001.c",
@@ -72871,30 +73052,24 @@
   "D_2E000_8017ABD4": "src/weapon/w_006.c",
   "D_2E000_8017ABF0": "src/weapon/w_006.c",
   "D_2E000_8017ABC4": "src/weapon/w_006.c",
-  "D_3C000_8017A040": "src/weapon/w_008.c",
   "D_3C000_8017A9F8": "src/weapon/w_008.c",
   "D_3C000_8017AA40": "src/weapon/w_008.c",
   "D_3C000_8017AA78": "src/weapon/w_008.c",
-  "D_43000_8017A040": "src/weapon/w_009.c",
   "D_43000_8017A9F8": "src/weapon/w_009.c",
   "D_43000_8017AA40": "src/weapon/w_009.c",
   "D_43000_8017AA78": "src/weapon/w_009.c",
-  "D_4A000_8017A040": "src/weapon/w_010.c",
   "D_4A000_8017AB20": "src/weapon/w_010.c",
   "D_4A000_8017AB68": "src/weapon/w_010.c",
   "D_4A000_8017ABBC": "src/weapon/w_010.c",
   "D_4A000_8017ABDC": "src/weapon/w_010.c",
   "D_4A000_8017CC1C": "src/weapon/w_010.c",
   "D_4A000_8017ABA0": "src/weapon/w_010.c",
-  "D_51000_8017A040": "src/weapon/w_011.c",
   "D_51000_8017AB4C": "src/weapon/w_011.c",
   "D_51000_8017AB94": "src/weapon/w_011.c",
   "D_51000_8017ABCC": "src/weapon/w_011.c",
   "D_51000_8017ABE8": "src/weapon/w_011.c",
   "D_51000_8017ABF4": "src/weapon/w_011.c",
-  "D_5F000_8017A040": "src/weapon/w_013.c",
   "D_5F000_8017A5E0": "src/weapon/w_013.c",
-  "D_6D000_8017A2B0": "src/weapon/w_015.c",
   "D_6D000_8017A6B8": "src/weapon/w_015.c",
   "D_6D000_8017A6C0": "src/weapon/w_015.c",
   "D_6D000_8017A6FC": "src/weapon/w_015.c",
@@ -72902,16 +73077,13 @@
   "D_6D000_8017A770": "src/weapon/w_015.c",
   "D_6D000_8017A78C": "src/weapon/w_015.c",
   "D_6D000_8017BFC8": "src/weapon/w_015.c",
-  "D_74000_8017A040": "src/weapon/w_016.c",
   "D_74000_8017A5B0": "src/weapon/w_016.c",
   "D_74000_8017BD74": "src/weapon/w_016.c",
   "D_7B000_8017B3F4": "src/weapon/w_017.c",
   "D_82000_8017A6A8": "src/weapon/w_018.c",
   "D_82000_8017A6E4": "src/weapon/w_018.c",
   "D_82000_8017A724": "src/weapon/w_018.c",
-  "D_89000_8017A040": "src/weapon/w_019.c",
   "D_89000_8017A52C": "src/weapon/w_019.c",
-  "D_90000_8017A040": "src/weapon/w_020.c",
   "D_90000_8017A850": "src/weapon/w_020.c",
   "D_90000_8017A864": "src/weapon/w_020.c",
   "D_90000_8017A8C8": "src/weapon/w_020.c",
@@ -72925,12 +73097,9 @@
   "D_90000_8017AADC": "src/weapon/w_020.c",
   "D_90000_8017AB44": "src/weapon/w_020.c",
   "D_90000_8017C238": "src/weapon/w_020.c",
-  "D_97000_8017A040": "src/weapon/w_021.c",
   "D_9E000_8017A760": "src/weapon/w_022.c",
   "D_9E000_8017A800": "src/weapon/w_022.c",
-  "D_9E000_8017A040": "src/weapon/w_022.c",
   "D_9E000_8017A77C": "src/weapon/w_022.c",
-  "D_A5000_8017A040": "src/weapon/w_023.c",
   "D_A5000_8017AAD8": "src/weapon/w_023.c",
   "D_A5000_8017AB20": "src/weapon/w_023.c",
   "D_A5000_8017AB70": "src/weapon/w_023.c",
@@ -72939,16 +73108,13 @@
   "D_A5000_8017AC90": "src/weapon/w_023.c",
   "D_A5000_8017ACD8": "src/weapon/w_023.c",
   "D_A5000_8017AB58": "src/weapon/w_023.c",
-  "D_AC000_8017A040": "src/weapon/w_024.c",
   "D_AC000_8017ABD8": "src/weapon/w_024.c",
   "D_AC000_8017AC20": "src/weapon/w_024.c",
   "D_AC000_8017ACF8": "src/weapon/w_024.c",
   "D_AC000_8017AD08": "src/weapon/w_024.c",
-  "D_B3000_8017A040": "src/weapon/w_025.c",
   "D_B3000_8017AA18": "src/weapon/w_025.c",
   "D_B3000_8017AA60": "src/weapon/w_025.c",
   "D_B3000_8017AA98": "src/weapon/w_025.c",
-  "D_BA000_8017A040": "src/weapon/w_026.c",
   "D_BA000_8017AA18": "src/weapon/w_026.c",
   "D_BA000_8017AA60": "src/weapon/w_026.c",
   "D_BA000_8017AA98": "src/weapon/w_026.c",
@@ -72956,13 +73122,11 @@
   "D_BA000_8017AA9C": "src/weapon/w_026.c",
   "D_BA000_8017AADC": "src/weapon/w_026.c",
   "D_BA000_8017CC3C": "src/weapon/w_026.c",
-  "D_C1000_8017A040": "src/weapon/w_027.c",
   "D_C1000_8017AC0C": "src/weapon/w_027.c",
   "D_C1000_8017AC54": "src/weapon/w_027.c",
   "D_C1000_8017AC8C": "src/weapon/w_027.c",
   "D_C1000_8017ACB4": "src/weapon/w_027.c",
   "D_C1000_8017C6EC": "src/weapon/w_027.c",
-  "D_C8000_8017A040": "src/weapon/w_028.c",
   "D_C8000_8017AA98": "src/weapon/w_028.c",
   "D_C8000_8017AAE0": "src/weapon/w_028.c",
   "D_C8000_8017AB1C": "src/weapon/w_028.c",
@@ -73021,7 +73185,6 @@
   "D_12A000_8017A740": "src/weapon/w_042.c",
   "D_12A000_8017A74C": "src/weapon/w_042.c",
   "D_131000_8017AF40": "src/weapon/w_043.c",
-  "D_131000_8017A040": "src/weapon/w_043.c",
   "D_131000_8017B014": "src/weapon/w_043.c",
   "D_138000_8017A260": "src/weapon/w_044.c",
   "D_14D000_8017A528": "src/weapon/w_047.c",
@@ -73030,7 +73193,6 @@
   "D_14D000_8017A4A8": "src/weapon/w_047.c",
   "D_14D000_8017B6A4": "src/weapon/w_047.c",
   "D_154000_8017AFC0": "src/weapon/w_048.c",
-  "D_154000_8017A040": "src/weapon/w_048.c",
   "D_154000_8017C3B4": "src/weapon/w_048.c",
   "D_154000_8017B000": "src/weapon/w_048.c",
   "D_154000_8017AFE0": "src/weapon/w_048.c",
@@ -73041,7 +73203,6 @@
   "D_15B000_8017B10C": "src/weapon/w_049.c",
   "D_15B000_8017C8CC": "src/weapon/w_049.c",
   "D_162000_8017AFC0": "src/weapon/w_050.c",
-  "D_162000_8017A040": "src/weapon/w_050.c",
   "D_162000_8017CBF8": "src/weapon/w_050.c",
   "D_162000_8017B030": "src/weapon/w_050.c",
   "D_162000_8017CBFC": "src/weapon/w_050.c",
@@ -73064,7 +73225,6 @@
   "D_18C000_8017AFB8": "src/weapon/w_056.c",
   "D_18C000_8017AFCC": "src/weapon/w_056.c",
   "D_193000_8017B06C": "src/weapon/w_057.c",
-  "D_19A000_8017A040": "src/weapon/w_058.c",
   "D_19A000_8017AB3C": "src/weapon/w_058.c",
   "D_19A000_8017AB84": "src/weapon/w_058.c",
   "D_19A000_8017BB40": "src/weapon/w_058.c"
@@ -73074,6 +73234,16 @@
    "header": "src/st/animate_entity.h",
    "functions": [
     "AnimateEntity"
+   ],
+   "static_functions": [],
+   "shimmed_by": [],
+   "upstream_copies": [],
+   "our_copies": []
+  },
+  "approach_s16": {
+   "header": "src/st/approach_s16.h",
+   "functions": [
+    "func_801CDC80"
    ],
    "static_functions": [],
    "shimmed_by": [],
@@ -73181,6 +73351,8 @@
     "rare",
     "rcat",
     "rcen",
+    "rchi",
+    "rdai",
     "rno3",
     "rnz0",
     "rtop",
@@ -73191,7 +73363,7 @@
    "upstream_copies": [
     {
      "stage": "mad",
-     "lines": 568,
+     "lines": 581,
      "include_asm": 0,
      "bodies": 1
     },
@@ -73252,6 +73424,8 @@
     "rare",
     "rcat",
     "rcen",
+    "rchi",
+    "rdai",
     "rno3",
     "rnz0",
     "rtop",
@@ -73294,13 +73468,13 @@
    "upstream_copies": [],
    "our_copies": []
   },
-  "cutscene_run": {
-   "header": "src/st/cutscene_run.h",
+  "cutscene_events": {
+   "header": "src/st/cutscene_events.h",
    "functions": [
-    "CutsceneRun"
+    "RunCutsceneEvents"
    ],
    "static_functions": [
-    "CutsceneRun"
+    "RunCutsceneEvents"
    ],
    "shimmed_by": [],
    "upstream_copies": [],
@@ -73453,6 +73627,18 @@
    "upstream_copies": [],
    "our_copies": []
   },
+  "e_background_sky_land": {
+   "header": "src/st/e_background_sky_land.h",
+   "functions": [
+    "EntityBackgroundSkyLand"
+   ],
+   "static_functions": [],
+   "shimmed_by": [
+    "rdai"
+   ],
+   "upstream_copies": [],
+   "our_copies": []
+  },
   "e_bat": {
    "header": "src/st/e_bat.h",
    "functions": [
@@ -73463,7 +73649,8 @@
     "dai",
     "no3",
     "np3",
-    "rcat"
+    "rcat",
+    "rchi_psp"
    ],
    "upstream_copies": [
     {
@@ -73693,6 +73880,12 @@
      "bodies": 0
     },
     {
+     "stage": "rdai",
+     "lines": 10,
+     "include_asm": 0,
+     "bodies": 0
+    },
+    {
      "stage": "are",
      "lines": 5,
      "include_asm": 0,
@@ -73753,6 +73946,17 @@
     "np3",
     "rno3"
    ],
+   "upstream_copies": [],
+   "our_copies": []
+  },
+  "e_castle_walls": {
+   "header": "src/st/e_castle_walls.h",
+   "functions": [
+    "EntityCastleWall1",
+    "EntityCastleWall2"
+   ],
+   "static_functions": [],
+   "shimmed_by": [],
    "upstream_copies": [],
    "our_copies": []
   },
@@ -73823,7 +74027,8 @@
    ],
    "static_functions": [],
    "shimmed_by": [
-    "dai"
+    "dai",
+    "rdai"
    ],
    "upstream_copies": [
     {
@@ -73906,6 +74111,8 @@
     "rare",
     "rcat",
     "rcen",
+    "rchi",
+    "rdai",
     "rno3",
     "rnz0",
     "rtop",
@@ -74150,6 +74357,41 @@
    "upstream_copies": [],
    "our_copies": []
   },
+  "e_imp": {
+   "header": "src/st/e_imp.h",
+   "functions": [
+    "EntityImp"
+   ],
+   "static_functions": [],
+   "shimmed_by": [
+    "rdai",
+    "rnz0"
+   ],
+   "upstream_copies": [],
+   "our_copies": []
+  },
+  "e_imp_death_particle": {
+   "header": "src/st/e_imp_death_particle.h",
+   "functions": [
+    "EntityImpDeathParticle"
+   ],
+   "static_functions": [],
+   "shimmed_by": [],
+   "upstream_copies": [],
+   "our_copies": []
+  },
+  "e_imp_smoke": {
+   "header": "src/st/e_imp_smoke.h",
+   "functions": [
+    "EntityImpSmoke"
+   ],
+   "static_functions": [],
+   "shimmed_by": [
+    "rdai_psp"
+   ],
+   "upstream_copies": [],
+   "our_copies": []
+  },
   "e_jewel_sword_puzzle": {
    "header": "src/st/e_jewel_sword_puzzle.h",
    "functions": [
@@ -74217,6 +74459,12 @@
     {
      "stage": "chi",
      "lines": 16,
+     "include_asm": 0,
+     "bodies": 0
+    },
+    {
+     "stage": "rchi",
+     "lines": 15,
      "include_asm": 0,
      "bodies": 0
     },
@@ -74294,6 +74542,12 @@
     },
     {
      "stage": "rcat",
+     "lines": 5,
+     "include_asm": 0,
+     "bodies": 0
+    },
+    {
+     "stage": "rdai",
      "lines": 5,
      "include_asm": 0,
      "bodies": 0
@@ -74442,6 +74696,8 @@
     "rare",
     "rcat",
     "rcen",
+    "rchi",
+    "rdai",
     "rno3",
     "rnz0",
     "rtop",
@@ -74512,6 +74768,8 @@
     "rare",
     "rcat",
     "rcen",
+    "rchi",
+    "rdai",
     "rno3",
     "rnz0",
     "rtop",
@@ -74613,6 +74871,36 @@
    "upstream_copies": [],
    "our_copies": []
   },
+  "e_rdai_archer": {
+   "header": "src/st/e_rdai_archer.h",
+   "functions": [
+    "func_us_801BFE6C"
+   ],
+   "static_functions": [],
+   "shimmed_by": [],
+   "upstream_copies": [],
+   "our_copies": []
+  },
+  "e_rdai_unk1f": {
+   "header": "src/st/e_rdai_unk1f.h",
+   "functions": [
+    "EntityRdaiUnk1F"
+   ],
+   "static_functions": [],
+   "shimmed_by": [],
+   "upstream_copies": [],
+   "our_copies": []
+  },
+  "e_rdai_unk33": {
+   "header": "src/st/e_rdai_unk33.h",
+   "functions": [
+    "EntityRdaiUnk33"
+   ],
+   "static_functions": [],
+   "shimmed_by": [],
+   "upstream_copies": [],
+   "our_copies": []
+  },
   "e_red_door": {
    "header": "src/st/e_red_door.h",
    "functions": [
@@ -74640,6 +74928,8 @@
     "rare",
     "rcat",
     "rcen",
+    "rchi",
+    "rdai",
     "rno3",
     "rnz0",
     "rtop",
@@ -74695,6 +74985,7 @@
     "rare",
     "rcat",
     "rcen",
+    "rchi",
     "rno3",
     "rnz0",
     "rtop",
@@ -74747,6 +75038,8 @@
     "rare",
     "rcat",
     "rcen",
+    "rchi",
+    "rdai",
     "rnz0",
     "rtop",
     "rwrp",
@@ -74775,7 +75068,7 @@
     },
     {
      "stage": "mad",
-     "lines": 21,
+     "lines": 30,
      "include_asm": 0,
      "bodies": 1
     }
@@ -74945,6 +75238,26 @@
    "upstream_copies": [],
    "our_copies": []
   },
+  "e_spear_guard_collision": {
+   "header": "src/st/e_spear_guard_collision.h",
+   "functions": [
+    "SpearGuardCheckCollision"
+   ],
+   "static_functions": [],
+   "shimmed_by": [],
+   "upstream_copies": [],
+   "our_copies": []
+  },
+  "e_spectral_sword_aura": {
+   "header": "src/st/e_spectral_sword_aura.h",
+   "functions": [
+    "EntitySpectralSwordAura"
+   ],
+   "static_functions": [],
+   "shimmed_by": [],
+   "upstream_copies": [],
+   "our_copies": []
+  },
   "e_spikes": {
    "header": "src/st/e_spikes.h",
    "functions": [
@@ -74964,7 +75277,8 @@
     "dai",
     "no2",
     "nz1",
-    "rcat"
+    "rcat",
+    "rdai"
    ],
    "upstream_copies": [],
    "our_copies": []
@@ -74991,6 +75305,16 @@
    "static_functions": [
     "StageNamePopupDissolver"
    ],
+   "shimmed_by": [],
+   "upstream_copies": [],
+   "our_copies": []
+  },
+  "e_stained_glass_blend": {
+   "header": "src/st/e_stained_glass_blend.h",
+   "functions": [
+    "StainedGlassBlendPalette"
+   ],
+   "static_functions": [],
    "shimmed_by": [],
    "upstream_copies": [],
    "our_copies": []
@@ -75234,6 +75558,28 @@
    "upstream_copies": [],
    "our_copies": []
   },
+  "func_80192d64": {
+   "header": "src/st/func_80192d64.h",
+   "functions": [
+    "EntityRbo3Door"
+   ],
+   "static_functions": [],
+   "shimmed_by": [],
+   "upstream_copies": [],
+   "our_copies": []
+  },
+  "func_us_801b240c": {
+   "header": "src/st/func_us_801b240c.h",
+   "functions": [
+    "func_us_801B240C"
+   ],
+   "static_functions": [],
+   "shimmed_by": [
+    "rdai"
+   ],
+   "upstream_copies": [],
+   "our_copies": []
+  },
   "get_lang_at": {
    "header": "src/st/get_lang_at.h",
    "functions": [
@@ -75354,24 +75700,18 @@
     "rare",
     "rcat",
     "rcen",
+    "rchi",
+    "rdai",
     "rno3",
     "rnz0",
     "rtop",
+    "rwrp",
     "st0",
     "top",
     "wrp"
    ],
    "upstream_copies": [],
-   "our_copies": [
-    {
-     "stage": "rno0",
-     "lines": 198,
-     "include_asm": 0,
-     "bodies": 1,
-     "was": "stub",
-     "upstream_lines": 5
-    }
-   ]
+   "our_copies": []
   },
   "prim_helpers": {
    "header": "src/st/prim_helpers.h",
@@ -75406,24 +75746,28 @@
     "rare",
     "rcat",
     "rcen",
+    "rchi",
+    "rdai",
     "rno3",
     "rnz0",
     "rtop",
+    "rwrp",
     "st0",
     "top",
     "wrp"
    ],
    "upstream_copies": [],
-   "our_copies": [
-    {
-     "stage": "rno0",
-     "lines": 198,
-     "include_asm": 1,
-     "bodies": 8,
-     "was": "stub",
-     "upstream_lines": 23
-    }
-   ]
+   "our_copies": []
+  },
+  "set_cutscene_events": {
+   "header": "src/st/set_cutscene_events.h",
+   "functions": [
+    "SetCutsceneEvents"
+   ],
+   "static_functions": [],
+   "shimmed_by": [],
+   "upstream_copies": [],
+   "our_copies": []
   },
   "set_cutscene_script": {
    "header": "src/st/set_cutscene_script.h",
@@ -75505,6 +75849,8 @@
     "rare",
     "rcat",
     "rcen",
+    "rchi",
+    "rdai",
     "rno3",
     "rnz0",
     "rtop",
@@ -75553,6 +75899,8 @@
     "rare",
     "rcat",
     "rcen",
+    "rchi",
+    "rdai",
     "rno3",
     "rnz0",
     "rtop",
@@ -75561,6 +75909,16 @@
     "top",
     "wrp"
    ],
+   "upstream_copies": [],
+   "our_copies": []
+  },
+  "stained_glass_recurse": {
+   "header": "src/st/stained_glass_recurse.h",
+   "functions": [
+    "StainedGlassRecurse"
+   ],
+   "static_functions": [],
+   "shimmed_by": [],
    "upstream_copies": [],
    "our_copies": []
   },
@@ -75618,7 +75976,56 @@
    "unnamed_blobs": [
     "0x4D6E4",
     "0x4D904"
-   ]
+   ],
+   "data_segmented": true,
+   "named_data": {
+    "e_lock_camera": "0x79C",
+    "e_breakable": "0x81C",
+    "no2_bg": "0x87C",
+    "e_background_house": "0x8B8",
+    "e_spikes": "0xA38",
+    "e_prisoner": "0xB44",
+    "372E8": "0x1300",
+    "3AB18": "0x1374",
+    "st_update": "0x1458",
+    "st_collision": "0x14A4",
+    "e_red_door": "0x1864",
+    "st_common": "0x187C",
+    "e_collect": "0x1A7C",
+    "e_misc": "0x1DD0",
+    "e_skelerang": "0x1E88",
+    "e_marionette": "0x1F74",
+    "e_bloody_zombie": "0x2110",
+    "e_owl_knight": "0x2208",
+    "e_life_up": "0x24B4",
+    "e_particles": "0x2508",
+    "e_room_fg": "0x2588"
+   },
+   "unnamed_data_blobs": [
+    "0x0",
+    "0xA48",
+    "0xBA8",
+    "0x13D4",
+    "0x2614"
+   ],
+   "named_rodata": {
+    "34DA4": "0x292B0",
+    "2B9EC": "0x292B8",
+    "e_prisoner": "0x292F0",
+    "2D26C": "0x29344",
+    "3AB18": "0x29678",
+    "3B014": "0x29684",
+    "e_chair": "0x2969C",
+    "e_red_door": "0x296E8",
+    "e_collect": "0x29700",
+    "e_stage_name": "0x297D4",
+    "e_skelerang": "0x29808",
+    "e_marionette": "0x29874",
+    "e_bloody_zombie": "0x298A0",
+    "e_owl_knight": "0x298C8",
+    "e_life_up": "0x299D8",
+    "prim_helpers": "0x299F4"
+   }
   },
   "bobo4": {
    "segmented": true,
@@ -75632,7 +76039,58 @@
    },
    "unnamed_blobs": [
     "0x53120"
-   ]
+   ],
+   "data_segmented": true,
+   "named_data": {
+    "header": "0x0",
+    "sprite_banks": "0x34",
+    "palette_def": "0x94",
+    "layers": "0xF0",
+    "graphics_banks": "0x118",
+    "gen/e_laydef": "0x188",
+    "e_init": "0x330",
+    "background_block_init": "0x464",
+    "e_red_door_tiles": "0x49C",
+    "e_lock_camera": "0x4BC",
+    "e_breakable": "0x53C",
+    "doors": "0x5A0",
+    "unk_365FC": "0x668",
+    "d_prize_drops": "0x690",
+    "st_update": "0x690",
+    "collision": "0x6DC",
+    "e_red_door": "0xA9C",
+    "st_common": "0xAB4",
+    "e_collect": "0xCB4",
+    "e_misc": "0xFA4",
+    "e_particles": "0x10C0",
+    "e_room_fg": "0x1140",
+    "gen/rooms": "0x11CC",
+    "doppleganger": "0x11E8",
+    "dop_anim": "0x12E4",
+    "unk_45354": "0x1318",
+    "unk_46E7C": "0x14B0",
+    "doppleganger_anim": "0x4098",
+    "e_life_up": "0x4290",
+    "gen/e_layout": "0x42E4",
+    "spritesheets": "0x435C",
+    "stage_data": "0x2BEA0"
+   },
+   "unnamed_data_blobs": [
+    "0x30A78"
+   ],
+   "named_rodata": {
+    "doors": "0x340E4",
+    "unk_365FC": "0x34188",
+    "e_red_door": "0x341A8",
+    "e_collect": "0x341C0",
+    "e_misc": "0x34248",
+    "e_stage_name": "0x34294",
+    "doppleganger": "0x342C8",
+    "unk_45354": "0x344AC",
+    "unk_46E7C": "0x344D8",
+    "prim_helpers": "0x34814",
+    "e_life_up": "0x3481C"
+   }
   },
   "bobo6": {
    "segmented": true,
@@ -75645,7 +76103,49 @@
    "unnamed_blobs": [
     "0x4E758",
     "0x4E7C8"
-   ]
+   ],
+   "data_segmented": true,
+   "named_data": {
+    "header": "0x0",
+    "gen/e_laydef": "0x180",
+    "e_init": "0x328",
+    "background_block_init": "0x4D8",
+    "e_red_door_tiles": "0x510",
+    "e_lock_camera": "0x530",
+    "e_breakable": "0x5B0",
+    "d_prize_drops": "0x610",
+    "cutscene": "0x618",
+    "st_update": "0x6C8",
+    "collision": "0x714",
+    "e_red_door": "0xAD4",
+    "st_common": "0xAEC",
+    "e_collect": "0xCEC",
+    "e_misc": "0x1040",
+    "e_particles": "0x10F8",
+    "e_room_fg": "0x1178",
+    "gen/rooms": "0x1204",
+    "richter": "0x1210",
+    "us_39144": "0x1284",
+    "e_life_up": "0x2F70",
+    "gen/e_layout": "0x2FC4",
+    "tile_data": "0x1F9A0"
+   },
+   "unnamed_data_blobs": [
+    "0x303C",
+    "0x239B0"
+   ],
+   "named_rodata": {
+    "cutscene": "0x26320",
+    "e_cutscene_actors": "0x263A4",
+    "e_red_door": "0x263D0",
+    "e_collect": "0x263E8",
+    "e_stage_name": "0x264BC",
+    "richter": "0x264F0",
+    "us_39144": "0x26C18",
+    "us_3E79C": "0x26E20",
+    "prim_helpers": "0x27044",
+    "e_life_up": "0x2704C"
+   }
   },
   "bomar": {
    "segmented": true,
@@ -75657,7 +76157,49 @@
    },
    "unnamed_blobs": [
     "0x1A270"
-   ]
+   ],
+   "data_segmented": true,
+   "named_data": {
+    "header": "0xF4",
+    "gen/e_laydef": "0x168",
+    "e_init": "0x310",
+    "background_block_init": "0x4B0",
+    "e_red_door_tiles": "0x4C8",
+    "e_lock_camera": "0x4E8",
+    "e_breakable": "0x568",
+    "cutscene": "0x680",
+    "d_prize_drops": "0x744",
+    "st_update": "0x744",
+    "collision": "0x790",
+    "e_red_door": "0xB50",
+    "st_common": "0xB68",
+    "e_collect": "0xD68",
+    "e_misc": "0x1058",
+    "e_particles": "0x1174",
+    "e_room_fg": "0x11F4",
+    "clock_room": "0x1280",
+    "gen/rooms": "0x12EC",
+    "e_life_up": "0x1308",
+    "gen/e_layout": "0x135C",
+    "cutscene_data": "0x1424",
+    "stage_data": "0x30F0",
+    "gen/sprites": "0x9710"
+   },
+   "unnamed_data_blobs": [
+    "0x5D4",
+    "0x688"
+   ],
+   "named_rodata": {
+    "cutscene": "0xA9EC",
+    "CA94": "0xAA70",
+    "e_red_door": "0xAAB0",
+    "e_collect": "0xAAC8",
+    "e_misc": "0xAB50",
+    "e_stage_name": "0xAB9C",
+    "clock_room": "0xABD0",
+    "prim_helpers": "0xABE8",
+    "e_life_up": "0xABF0"
+   }
   },
   "borbo0": {
    "segmented": true,
@@ -75667,7 +76209,62 @@
    },
    "unnamed_blobs": [
     "0x26834"
-   ]
+   ],
+   "data_segmented": true,
+   "named_data": {
+    "header": "0x0",
+    "sprite_banks": "0x2C",
+    "palette_def": "0x8C",
+    "layers": "0xBC",
+    "graphics_banks": "0xE4",
+    "layout": "0x1D0",
+    "e_init": "0x378",
+    "background_block_init": "0x560",
+    "e_red_door_tiles": "0x598",
+    "e_lock_camera": "0x5B8",
+    "e_breakable": "0x638",
+    "e_boss_torch": "0x698",
+    "e_boss": "0x6B8",
+    "e_fake_ralph": "0x958",
+    "e_fake_grant": "0xB58",
+    "e_fake_sypha": "0xC60",
+    "unk_19B94": "0xD5C",
+    "st_update": "0xE10",
+    "st_collision": "0xE5C",
+    "e_red_door": "0x121C",
+    "st_common": "0x1234",
+    "e_collect": "0x1434",
+    "e_misc": "0x1788",
+    "e_particles": "0x1840",
+    "e_room_fg": "0x18C0",
+    "gen/rooms": "0x194C",
+    "e_life_up": "0x1968",
+    "e_coffin": "0x19BC",
+    "tiledef": "0xB92C",
+    "gen/sprites": "0xFD3C"
+   },
+   "unnamed_data_blobs": [
+    "0x428",
+    "0x1BA8",
+    "0xB02C",
+    "0xB2EC",
+    "0xB30C"
+   ],
+   "named_rodata": {
+    "e_boss_torch": "0x13598",
+    "e_boss_doors": "0x135A4",
+    "e_boss": "0x135B0",
+    "e_fake_ralph": "0x135D0",
+    "e_fake_grant": "0x13624",
+    "e_fake_sypha": "0x13668",
+    "unk_19B94": "0x1368C",
+    "e_red_door": "0x136B8",
+    "e_collect": "0x136D0",
+    "e_stage_name": "0x137A4",
+    "prim_helpers": "0x137D8",
+    "e_life_up": "0x137E0",
+    "e_coffin": "0x137FC"
+   }
   },
   "borbo3": {
    "segmented": true,
@@ -75677,7 +76274,44 @@
    },
    "unnamed_blobs": [
     "0x1F988"
-   ]
+   ],
+   "data_segmented": true,
+   "named_data": {
+    "header": "0x0",
+    "e_laydef": "0x1EC",
+    "e_init": "0x390",
+    "background_block_init": "0x4C8",
+    "e_red_door_tiles": "0x4E0",
+    "e_lock_camera": "0x510",
+    "rbo3": "0x5F0",
+    "st_update": "0x730",
+    "collision": "0x77C",
+    "e_red_door": "0xB3C",
+    "st_common": "0xB54",
+    "e_collect": "0xD54",
+    "e_misc": "0x1044",
+    "e_particles": "0x1160",
+    "e_room_fg": "0x11E0",
+    "e_life_up": "0x1288",
+    "e_clouds": "0x12DC",
+    "pal_unk": "0x7350"
+   },
+   "unnamed_data_blobs": [
+    "0x590",
+    "0x126C",
+    "0x1414",
+    "0x7630"
+   ],
+   "named_rodata": {
+    "rbo3": "0x10E80",
+    "12D64": "0x10F0C",
+    "e_red_door": "0x10F3C",
+    "e_collect": "0x10F54",
+    "e_misc": "0x10FDC",
+    "e_stage_name": "0x11028",
+    "prim_helpers": "0x1105C",
+    "e_life_up": "0x11064"
+   }
   },
   "borbo5": {
    "segmented": true,
@@ -75690,7 +76324,53 @@
    },
    "unnamed_blobs": [
     "0x526F0"
-   ]
+   ],
+   "data_segmented": true,
+   "named_data": {
+    "header": "0x0",
+    "gen/e_laydef": "0x198",
+    "e_init": "0x340",
+    "background_block_init": "0x478",
+    "e_red_door_tiles": "0x4B0",
+    "e_lock_camera": "0x4D0",
+    "e_breakable": "0x550",
+    "doors": "0x5B0",
+    "unk_354F0": "0x6F4",
+    "d_prize_drops": "0x71C",
+    "st_update": "0x71C",
+    "collision": "0x768",
+    "e_red_door": "0xB28",
+    "st_common": "0xB40",
+    "e_collect": "0xD40",
+    "e_misc": "0x1030",
+    "e_particles": "0x114C",
+    "e_room_fg": "0x11CC",
+    "gen/rooms": "0x1258",
+    "doppleganger": "0x1274",
+    "dop_anim": "0x1370",
+    "unk_44954": "0x13A4",
+    "unk_4648C": "0x153C",
+    "e_life_up": "0x4328",
+    "gen/e_layout": "0x437C",
+    "stage_data": "0x2BF78"
+   },
+   "unnamed_data_blobs": [
+    "0x4434",
+    "0x30B50"
+   ],
+   "named_rodata": {
+    "doors": "0x32B70",
+    "unk_354F0": "0x32C4C",
+    "e_red_door": "0x32C6C",
+    "e_collect": "0x32C84",
+    "e_misc": "0x32D0C",
+    "e_stage_name": "0x32D58",
+    "doppleganger": "0x32D8C",
+    "unk_44954": "0x32F4C",
+    "unk_4648C": "0x32F78",
+    "prim_helpers": "0x332B4",
+    "e_life_up": "0x332BC"
+   }
   },
   "dra": {
    "segmented": true,
@@ -75712,7 +76392,82 @@
     "cd": "0x97F58",
     "bss": "0x97FB4"
    },
-   "unnamed_blobs": []
+   "unnamed_blobs": [],
+   "data_segmented": true,
+   "named_data": {
+    "dra_header": "0x0",
+    "42398": "0x144",
+    "game_handlers": "0x160",
+    "47BB8": "0x248",
+    "save_mgr": "0x510",
+    "4B758": "0x21B8",
+    "4DA70": "0x2438",
+    "demo": "0x243C",
+    "5087C": "0x245C",
+    "menu": "0x2D48",
+    "5D5BC": "0x2EC0",
+    "5F60C": "0x2EE8",
+    "624DC": "0x3134",
+    "62DEC": "0x31B0",
+    "d_37d8": "0x37D8",
+    "lba_stage": "0x3C40",
+    "config_us": "0x4A00",
+    "66590": "0xC910",
+    "cd": "0xC958",
+    "d_CD80": "0xCD80",
+    "692E8": "0xCDF8",
+    "6BF64": "0xCE68",
+    "alu_anim": "0xCF18",
+    "6E42C": "0xCF4C",
+    "70394": "0xCF6C",
+    "71830": "0xCF74",
+    "7879C": "0xCFB4",
+    "7E4BC": "0xD4CC",
+    "d_DBD4": "0xDBD4",
+    "d_E294": "0xE2A8",
+    "84B88": "0x10628",
+    "8BEF8": "0x10884",
+    "d_10798": "0x108CC",
+    "8D3E8": "0x10924",
+    "sound": "0x1107C",
+    "sound_data": "0x1D1E0",
+    "d_2217C": "0x2217C",
+    "d_24CEC": "0x24CEC",
+    "d_2F324": "0x2F324",
+    "d_2FE48": "0x2FE48",
+    "d_3B0D4": "0x3B0D4"
+   },
+   "unnamed_data_blobs": [],
+   "named_rodata": {
+    "42398": "0x3B3B4",
+    "game_handlers": "0x3B530",
+    "47BB8": "0x3B9B8",
+    "save_mgr": "0x3BEE0",
+    "4A538": "0x3C1A8",
+    "4AEA4": "0x3C1E8",
+    "4DA70": "0x3C238",
+    "collider": "0x3C290",
+    "demo": "0x3C490",
+    "5087C": "0x3C514",
+    "menu": "0x3C5D4",
+    "5D5BC": "0x3CBAC",
+    "5F60C": "0x3CBF4",
+    "624DC": "0x3CC0C",
+    "62DEC": "0x3CC70",
+    "lba_stage": "0x3CDDC",
+    "config_us": "0x3D188",
+    "cd": "0x40D38",
+    "692E8": "0x40E28",
+    "6E42C": "0x4108C",
+    "704D0": "0x41308",
+    "71830": "0x413C0",
+    "7879C": "0x41A44",
+    "7E4BC": "0x41CB4",
+    "84B88": "0x41E34",
+    "8A0A4": "0x41E90",
+    "8D3E8": "0x41F30",
+    "sound": "0x42034"
+   }
   },
   "main": {
    "segmented": true,
@@ -75730,7 +76485,71 @@
    "unnamed_blobs": [
     "0x241E4",
     "0x2C5D0"
-   ]
+   ],
+   "data_segmented": true,
+   "named_data": {
+    "psxsdk/libgpu/font": "0x1BF60",
+    "psxsdk/libgpu/sys": "0x1CA20",
+    "psxsdk/libetc/vsync": "0x1CAA8",
+    "psxsdk/libetc/intr": "0x1CAB8",
+    "psxsdk/libetc/intr_vb": "0x1DB54",
+    "psxsdk/libetc/intr_dma": "0x1DB7C",
+    "psxsdk/libetc/vmode": "0x1DBA4",
+    "psxsdk/libc/sprintf": "0x1DBA8",
+    "psxsdk/libapi/counter": "0x1DBB4",
+    "psxsdk/libgte/rsin": "0x1DBCC",
+    "psxsdk/libgte/strings": "0x1E990",
+    "psxsdk/libgte/rcossin": "0x1EA10",
+    "psxsdk/libgte/ratan": "0x22A10",
+    "psxsdk/libcd/sys": "0x23214",
+    "psxsdk/libcd/bios": "0x232A4",
+    "psxsdk/libcd/iso9660": "0x235B0",
+    "psxsdk/libcd/cdread": "0x235B8",
+    "psxsdk/libcd/c_002": "0x235E8",
+    "psxsdk/libcd/c_003": "0x235F8",
+    "psxsdk/libcd/c_004": "0x23608",
+    "psxsdk/libcd/c_005": "0x23618",
+    "psxsdk/libcd/c_007": "0x23628",
+    "psxsdk/libcd/c_008": "0x23638",
+    "psxsdk/libcd/c_009": "0x23648",
+    "psxsdk/libcd/c_010": "0x23658",
+    "psxsdk/libcd/c_011": "0x23668",
+    "psxsdk/libsnd/ssinit": "0x236C0",
+    "psxsdk/libsnd/ssstart": "0x236F0",
+    "psxsdk/libsnd/vs_vtbp": "0x23708",
+    "psxsdk/libsnd/vmanager": "0x23710",
+    "psxsdk/libspu/s_srmp": "0x23DB8",
+    "psxsdk/libspu/s_n2p": "0x24060"
+   },
+   "unnamed_data_blobs": [
+    "0x1BCE0",
+    "0x1E3D0",
+    "0x23678",
+    "0x23898"
+   ],
+   "named_rodata": {
+    "main": "0x800",
+    "psxsdk/libgpu/font": "0x85C",
+    "psxsdk/libgpu/prim": "0x8F8",
+    "psxsdk/libgpu/sys": "0x9C8",
+    "psxsdk/libetc/vsync": "0xBC4",
+    "psxsdk/libetc/intr": "0xBD4",
+    "psxsdk/libetc/intr_dma": "0xC40",
+    "psxsdk/libc/sprintf": "0xC6C",
+    "psxsdk/libcd/event": "0xD48",
+    "psxsdk/libcd/sys": "0xD60",
+    "psxsdk/libcd/bios": "0xD68",
+    "psxsdk/libcd/iso9660": "0xFB8",
+    "psxsdk/libcd/cdread": "0x11A4",
+    "psxsdk/libcd/c_011": "0x11E8",
+    "psxsdk/libsnd/seqinit": "0x1200",
+    "psxsdk/libsnd/seqread": "0x1260",
+    "psxsdk/libsnd/sstick": "0x14D4",
+    "psxsdk/libspu/spu": "0x14EC",
+    "psxsdk/libspu/s_si": "0x1534",
+    "psxsdk/libspu/s_sva": "0x1574",
+    "psxsdk/libspu/s_sca": "0x15B4"
+   }
   },
   "ric": {
    "segmented": true,
@@ -75745,16 +76564,126 @@
     "319C4": "0x39894",
     "bss": "0x398E0"
    },
-   "unnamed_blobs": []
+   "unnamed_blobs": [],
+   "data_segmented": true,
+   "named_data": {
+    "pl_header": "0x0",
+    "spritebanks": "0x170AC",
+    "d_18568": "0x18568",
+    "d_1859C": "0x1859C",
+    "pl_blueprints": "0x18F7C",
+    "pl_anims": "0x1938C",
+    "pl_whip": "0x199AC",
+    "pl_subweapon_holywater": "0x19D64",
+    "pl_subweapon_cross": "0x19DDC",
+    "pl_subweapons": "0x19E70",
+    "2F8E8": "0x19E98",
+    "319C4": "0x19EE0",
+    "pl_crash_cross": "0x19EFC"
+   },
+   "unnamed_data_blobs": [],
+   "named_rodata": {
+    "pl_main": "0x1A444",
+    "pl_debug": "0x1A5E0",
+    "pl_steps": "0x1A7C0",
+    "pl_utils": "0x1A800",
+    "pl_setstep": "0x1A80C",
+    "pl_collision": "0x1A904",
+    "pl_blueprints": "0x1AA28",
+    "pl_whip": "0x1AAA0",
+    "pl_subweapon_holywater": "0x1AABC",
+    "pl_subweapon_cross": "0x1AB24",
+    "2F8E8": "0x1AB24",
+    "319C4": "0x1AB38",
+    "pl_crash_cross": "0x1AC50"
+   }
   },
   "stare": {
    "segmented": true,
    "named_segments": {
     "create_entity": "0x554C4",
-    "554D4": "0x554D4",
+    "bss": "0x554D4",
     "e_collect": "0x5613C"
    },
-   "unnamed_blobs": []
+   "unnamed_blobs": [],
+   "data_segmented": true,
+   "named_data": {
+    "header": "0x0",
+    "sprite_banks": "0x2C",
+    "palette_def": "0x90",
+    "layers": "0x218",
+    "graphics_banks": "0x3E8",
+    "gen/e_laydef": "0x7B0",
+    "e_init": "0x958",
+    "background_block_init": "0xC84",
+    "e_red_door_tiles": "0xD04",
+    "e_lock_camera": "0xD24",
+    "e_breakable": "0xDA4",
+    "e_boss_torch": "0xEB8",
+    "e_boss_doors": "0xECC",
+    "e_elevator": "0xED0",
+    "e_secrets": "0xF2C",
+    "e_background_door_rubble": "0xF3C",
+    "e_explosion_puff_opaque": "0xF7C",
+    "d_prize_drops": "0xFE8",
+    "st_update": "0xFF8",
+    "st_collision": "0x1044",
+    "e_red_door": "0x1404",
+    "st_common": "0x141C",
+    "e_collect": "0x161C",
+    "e_misc": "0x1970",
+    "e_particles": "0x1A28",
+    "e_room_fg": "0x1AA8",
+    "e_blade_master": "0x1B34",
+    "e_blade_soldier": "0x1D28",
+    "e_bone_musket": "0x1E88",
+    "e_owl_knight": "0x1F70",
+    "e_valhalla_knight": "0x221C",
+    "e_blue_axe_knight": "0x2390",
+    "e_armor_lord": "0x254C",
+    "e_hunting_girl": "0x2700",
+    "e_paranthropus": "0x2878",
+    "e_flea_armor": "0x2B68",
+    "e_flea_man": "0x2BD4",
+    "e_bone_scimitar": "0x2C2C",
+    "e_plate_lord": "0x2D20",
+    "e_plate_lord_2": "0x2D40",
+    "e_grave_keeper": "0x2D68",
+    "e_mist_door": "0x2E1C",
+    "gen/rooms": "0x2E5C",
+    "gen/e_layout": "0x2F00",
+    "gfx_data": "0x3C10",
+    "tilemaps": "0x1A110",
+    "gen/us/sprites": "0x28540"
+   },
+   "unnamed_data_blobs": [],
+   "named_rodata": {
+    "e_breakable": "0x352B0",
+    "e_boss_torch": "0x352D4",
+    "e_boss_doors": "0x352E0",
+    "e_cavern_door": "0x352EC",
+    "e_elevator": "0x352F8",
+    "e_explosion_puff_opaque": "0x35304",
+    "e_red_door": "0x35318",
+    "e_collect": "0x35330",
+    "e_stage_name": "0x35404",
+    "e_blade_master": "0x35438",
+    "e_blade_soldier": "0x35460",
+    "e_bone_musket": "0x35494",
+    "e_owl_knight": "0x354BC",
+    "e_valhalla_knight": "0x355CC",
+    "e_blue_axe_knight": "0x355F4",
+    "e_armor_lord": "0x35678",
+    "e_hunting_girl": "0x35734",
+    "e_paranthropus": "0x3575C",
+    "e_flea_armor": "0x3578C",
+    "e_flea_man": "0x357D0",
+    "e_bone_scimitar": "0x357E4",
+    "e_plate_lord": "0x35804",
+    "e_plate_lord_2": "0x35880",
+    "e_grave_keeper": "0x358D0",
+    "prim_helpers": "0x35908"
+   }
   },
   "stcat": {
    "segmented": true,
@@ -75766,7 +76695,82 @@
    },
    "unnamed_blobs": [
     "0x57894"
-   ]
+   ],
+   "data_segmented": true,
+   "named_data": {
+    "header": "0x0",
+    "sprite_banks": "0x2C",
+    "palette_def": "0x8C",
+    "layers": "0x770",
+    "graphics_banks": "0xBC8",
+    "gen/e_laydef": "0xE24",
+    "e_init": "0xFCC",
+    "e_red_door_tiles": "0x1320",
+    "background_block_init": "0x1340",
+    "e_lock_camera": "0x1358",
+    "e_breakable": "0x13D8",
+    "e_spikes": "0x14F8",
+    "e_secrets": "0x1518",
+    "unk_3A164": "0x1620",
+    "e_coffin": "0x1684",
+    "unk_3ACF4": "0x16FC",
+    "unk_3B4CC": "0x1744",
+    "d_prize_drops": "0x174C",
+    "st_update": "0x1778",
+    "st_collision": "0x17C4",
+    "e_red_door": "0x1B84",
+    "st_common": "0x1B9C",
+    "e_misc": "0x1D9C",
+    "e_collect": "0x1E50",
+    "e_lava": "0x21A4",
+    "e_cavern_background": "0x21E4",
+    "e_bone_ark": "0x2234",
+    "e_discus_lord": "0x22D4",
+    "e_hellfire_beast": "0x23F0",
+    "e_particles": "0x24C8",
+    "e_room_fg": "0x2548",
+    "e_lossoth": "0x25D4",
+    "e_grave_keeper": "0x26BC",
+    "e_tombstone": "0x2770",
+    "e_gremlin": "0x278C",
+    "e_slime": "0x27DC",
+    "e_wereskeleton": "0x2814",
+    "en_thornweed_corpseweed": "0x2990",
+    "e_blood_skeleton": "0x2A48",
+    "gen/rooms": "0x2AF0",
+    "gen/e_layout": "0x2BE4",
+    "gfx_data": "0x3DA4",
+    "tilemaps": "0x174F8",
+    "gen/us/sprites": "0x2FA64"
+   },
+   "unnamed_data_blobs": [
+    "0x2F528"
+   ],
+   "named_rodata": {
+    "e_spike_room_light_switch": "0x366D8",
+    "e_spikes": "0x366F8",
+    "unk_3872C": "0x36708",
+    "unk_38AD0": "0x36718",
+    "e_elevator": "0x3673C",
+    "e_secrets": "0x3674C",
+    "unk_3A164": "0x367F8",
+    "e_coffin": "0x36814",
+    "e_red_door": "0x36868",
+    "e_collect": "0x36880",
+    "e_bone_ark": "0x36954",
+    "e_stage_name": "0x36A5C",
+    "e_discus_lord": "0x36A90",
+    "e_hellfire_beast": "0x36B14",
+    "giantbro_helpers": "0x36BB8",
+    "e_lossoth": "0x36C18",
+    "e_grave_keeper": "0x36C70",
+    "e_gremlin": "0x36CA8",
+    "e_slime": "0x36CB4",
+    "e_wereskeleton": "0x36D20",
+    "en_thornweed_corpseweed": "0x36DA4",
+    "e_blood_skeleton": "0x36DE0",
+    "prim_helpers": "0x36DF4"
+   }
   },
   "stcen": {
    "segmented": true,
@@ -75778,7 +76782,44 @@
    },
    "unnamed_blobs": [
     "0x1C774"
-   ]
+   ],
+   "data_segmented": true,
+   "named_data": {
+    "header": "0x134",
+    "gen/e_laydef": "0x1EC",
+    "e_init": "0x394",
+    "background_block_init": "0x47C",
+    "e_red_door_tiles": "0x4A4",
+    "e_lock_camera": "0x4D4",
+    "e_breakable": "0x554",
+    "d_prize_drops": "0x5D8",
+    "cutscene": "0x5D8",
+    "e_chamber": "0x68C",
+    "e_elevator": "0x768",
+    "st_update": "0x7C8",
+    "collision": "0x7E4",
+    "e_red_door": "0xBA4",
+    "st_common": "0xBBC",
+    "e_collect": "0xDBC",
+    "e_misc": "0x1110",
+    "e_particles": "0x11C8",
+    "e_room_fg": "0x1248",
+    "gen/rooms": "0x12D4",
+    "gen/e_layout": "0x1300",
+    "cutscene_data": "0x13F0",
+    "stage_data": "0x1658",
+    "gen/sprites": "0xC60C"
+   },
+   "unnamed_data_blobs": [],
+   "named_rodata": {
+    "cutscene": "0xD414",
+    "e_chamber": "0xD4B0",
+    "e_red_door": "0xD4D8",
+    "e_collect": "0xD560",
+    "e_misc": "0xD5B0",
+    "e_stage_name": "0xD5C4",
+    "prim_helpers": "0xD5F8"
+   }
   },
   "stchi": {
    "segmented": true,
@@ -75788,7 +76829,53 @@
    },
    "unnamed_blobs": [
     "0x2E780"
-   ]
+   ],
+   "data_segmented": true,
+   "named_data": {
+    "dt_header": "0x298",
+    "gen/e_laydef": "0x3B4",
+    "e_init": "0x55C",
+    "background_block_init": "0x730",
+    "e_red_door_tiles": "0x768",
+    "e_lock_camera": "0x798",
+    "en_breakable": "0x818",
+    "en_demon_switch_wall": "0x89C",
+    "en_breakable_wall": "0x8CC",
+    "en_falling_stairs": "0x974",
+    "dt_prize_drops": "0x9E4",
+    "st_update": "0xA00",
+    "st_collision": "0xA4C",
+    "en_red_door": "0xE0C",
+    "ut_common": "0xE24",
+    "en_collect": "0x1024",
+    "en_misc": "0x140C",
+    "en_particles": "0x142C",
+    "en_room_foreground": "0x14AC",
+    "e_salem_witch": "0x16C0",
+    "e_gremlin": "0x1724",
+    "en_thornweed_corpseweed": "0x173C",
+    "en_venus_weed": "0x17F4",
+    "gen/rooms": "0x195C",
+    "gen/e_layout": "0x19F8",
+    "stage_data": "0x20D8",
+    "gen/sprites": "0x17B90"
+   },
+   "unnamed_data_blobs": [],
+   "named_rodata": {
+    "en_demon_switch_wall": "0x1B100",
+    "en_breakable_wall": "0x1B144",
+    "en_debug_cerberus_gate": "0x1B168",
+    "en_falling_stairs": "0x1B180",
+    "en_red_door": "0x1B194",
+    "en_collect": "0x1B21C",
+    "en_misc": "0x1B26C",
+    "e_salem_witch": "0x1B2A8",
+    "e_gremlin": "0x1B2BC",
+    "en_thornweed_corpseweed": "0x1B2E8",
+    "en_venus_weed": "0x1B39C",
+    "en_stage_name": "0x1B3E0",
+    "ut_prim_helpers": "0x1B3F4"
+   }
   },
   "stdai": {
    "segmented": true,
@@ -75799,17 +76886,134 @@
     "e_cutscene_dialogue": "0x5B30C",
     "e_collect": "0x5B3C4"
    },
-   "unnamed_blobs": []
+   "unnamed_blobs": [],
+   "data_segmented": true,
+   "named_data": {
+    "header": "0x0",
+    "sprite_banks": "0x2C",
+    "pal_stained_glass": "0x8C",
+    "palette_def": "0xAC",
+    "layers": "0x178",
+    "graphics_banks": "0x468",
+    "gen/e_laydef": "0x670",
+    "e_init": "0x818",
+    "background_block_init": "0xAC4",
+    "e_red_door_tiles": "0xADC",
+    "e_lock_camera": "0xB0C",
+    "e_breakable": "0xB8C",
+    "e_dai_no2_shortcut": "0xCA4",
+    "e_bell": "0xCAC",
+    "e_confessional": "0xD54",
+    "e_chair": "0xE8C",
+    "e_end_chime": "0xEA0",
+    "e_spikes": "0xEA4",
+    "d_prize_drops": "0xEC0",
+    "e_cutscene_dialogue": "0xEE0",
+    "st_update": "0x1050",
+    "st_collision": "0x109C",
+    "e_red_door": "0x145C",
+    "st_common": "0x1474",
+    "e_collect": "0x1674",
+    "e_misc": "0x19C8",
+    "e_particles": "0x1A80",
+    "e_room_fg": "0x1B00",
+    "e_corner_guard": "0x1B8C",
+    "e_bone_pillar": "0x1C54",
+    "e_bone_halberd": "0x1D40",
+    "e_winged_guard": "0x1EC0",
+    "e_bat": "0x1F20",
+    "e_crow": "0x1F58",
+    "e_skelerang": "0x2030",
+    "e_hunting_girl": "0x211C",
+    "e_spectral_sword": "0x2294",
+    "e_sealed_door": "0x22A8",
+    "e_mist_door": "0x2318",
+    "gen/rooms": "0x2358",
+    "e_clouds": "0x242C",
+    "e_stained_glass": "0x2564",
+    "gen/e_layout": "0x2784",
+    "cutscene_data": "0x3A94",
+    "gfx_data": "0x3C2C",
+    "tilemaps": "0x1782C",
+    "gen/us/sprites": "0x3AA5C"
+   },
+   "unnamed_data_blobs": [],
+   "named_rodata": {
+    "e_breakable": "0x3FE3C",
+    "e_tower_exit": "0x3FE5C",
+    "e_confessional": "0x3FE98",
+    "e_chair": "0x3FF00",
+    "e_cutscene_dialogue": "0x3FF24",
+    "e_cutscene_actors": "0x3FFC0",
+    "e_red_door": "0x3FFE0",
+    "e_collect": "0x3FFF8",
+    "e_stage_name": "0x400CC",
+    "e_corner_guard": "0x40100",
+    "e_bone_pillar": "0x4013C",
+    "e_bone_halberd": "0x40160",
+    "e_winged_guard": "0x40180",
+    "e_bat": "0x4018C",
+    "e_crow": "0x401A0",
+    "e_skelerang": "0x401D0",
+    "e_hunting_girl": "0x4023C",
+    "e_spectral_sword": "0x40264",
+    "e_sealed_door": "0x402D0",
+    "prim_helpers": "0x402E8"
+   }
   },
   "stdre": {
    "segmented": true,
    "named_segments": {
     "create_entity": "0x23264",
-    "unused": "0x232CA",
+    "bss": "0x232CC",
     "e_cutscene_dialogue": "0x23ECC",
     "e_collect": "0x23FB6"
    },
-   "unnamed_blobs": []
+   "unnamed_blobs": [],
+   "data_segmented": true,
+   "named_data": {
+    "header": "0x0",
+    "sprite_banks": "0x40",
+    "palette_def": "0xA0",
+    "layers": "0xE8",
+    "gfx_banks": "0x128",
+    "gen/e_laydef": "0x220",
+    "e_init": "0x3C8",
+    "background_block_init": "0x518",
+    "e_red_door_tiles": "0x550",
+    "e_lock_camera": "0x580",
+    "d_prize_drops": "0x660",
+    "e_succubus": "0x660",
+    "e_cutscene_dialogue": "0x88C",
+    "e_cutscene_actors": "0x944",
+    "st_update": "0x95C",
+    "collision": "0x9A8",
+    "e_red_door": "0xD68",
+    "st_common": "0xD80",
+    "e_collect": "0xF80",
+    "e_misc": "0x12D4",
+    "e_particles": "0x138C",
+    "e_room_fg": "0x140C",
+    "gen/rooms": "0x1498",
+    "e_background_house": "0x14AC",
+    "gen/e_layout": "0x1608",
+    "cutscene_data": "0x16C0",
+    "gfx_data": "0x1D30",
+    "tilemaps": "0xB548",
+    "gen/us/sprites": "0x10168"
+   },
+   "unnamed_data_blobs": [],
+   "named_rodata": {
+    "e_background_clouds": "0x1171C",
+    "e_succubus": "0x11728",
+    "e_cutscene_dialogue": "0x1183C",
+    "e_cutscene_actors": "0x11910",
+    "e_red_door": "0x1193C",
+    "e_collect": "0x119C4",
+    "e_misc": "0x11A14",
+    "e_stage_name": "0x11A28",
+    "prim_helpers": "0x11A5C"
+   }
   },
   "stlib": {
    "segmented": true,
@@ -75821,7 +77025,80 @@
    },
    "unnamed_blobs": [
     "0x545D4"
-   ]
+   ],
+   "data_segmented": true,
+   "named_data": {
+    "header": "0x0",
+    "palette_def": "0x8C",
+    "gen/e_laydef": "0x520",
+    "e_init": "0x6C8",
+    "background_block_init": "0x9F8",
+    "e_red_door_tiles": "0xAC8",
+    "e_lock_camera": "0xAD8",
+    "e_breakable": "0xB58",
+    "first_c_file": "0xC48",
+    "e_library_bg": "0xDC0",
+    "e_shop": "0xE90",
+    "cutscene": "0x19BC",
+    "e_candle_table": "0x1A68",
+    "e_lesser_demon": "0x1AD4",
+    "e_chair": "0x1C48",
+    "st_update": "0x1C5C",
+    "collision": "0x1CA8",
+    "e_red_door": "0x2068",
+    "e_room_fg": "0x2080",
+    "st_common": "0x210C",
+    "e_misc": "0x230C",
+    "e_collect": "0x23C0",
+    "e_bloody_zombie": "0x2714",
+    "e_flying_zombie": "0x280C",
+    "e_particles": "0x28D4",
+    "e_dhuron": "0x2954",
+    "e_ectoplasm": "0x2AE0",
+    "en_thornweed_corpseweed": "0x2B80",
+    "e_skeleton": "0x2C38",
+    "e_mist_door": "0x2D38",
+    "e_flea_armor": "0x2D78",
+    "e_flea_man": "0x2DE4",
+    "e_mudman": "0x2E3C",
+    "gen/rooms": "0x2EC0",
+    "e_spellbook_magic_tome": "0x2F44",
+    "e_life_up": "0x319C",
+    "gen/e_layout": "0x31F0",
+    "cutscene_data": "0x3F68",
+    "gen/sprites": "0x266A0"
+   },
+   "unnamed_data_blobs": [
+    "0x19C",
+    "0x1A90",
+    "0x3F60",
+    "0x4124"
+   ],
+   "named_rodata": {
+    "e_breakable": "0x2B938",
+    "e_shop": "0x2B960",
+    "cutscene": "0x2D760",
+    "e_candle_table": "0x2D804",
+    "unk_3B200": "0x2D810",
+    "unk_3B53C": "0x2D828",
+    "e_lesser_demon": "0x2D848",
+    "e_chair": "0x2D980",
+    "e_red_door": "0x2D9C4",
+    "e_collect": "0x2D9DC",
+    "e_bloody_zombie": "0x2DAB0",
+    "e_flying_zombie": "0x2DAD8",
+    "e_stage_name": "0x2DB54",
+    "e_dhuron": "0x2DB88",
+    "e_ectoplasm": "0x2DBC4",
+    "en_thornweed_corpseweed": "0x2DC48",
+    "e_skeleton": "0x2DC84",
+    "e_flea_armor": "0x2DD08",
+    "e_flea_man": "0x2DD4C",
+    "e_mudman": "0x2DD60",
+    "prim_helpers": "0x2DDA4",
+    "e_spellbook_magic_tome": "0x2DDAC",
+    "e_life_up": "0x2DEB4"
+   }
   },
   "stmad": {
    "segmented": true,
@@ -75830,7 +77107,46 @@
     "bss": "0x197ED",
     "e_collect": "0x19E54"
    },
-   "unnamed_blobs": []
+   "unnamed_blobs": [],
+   "data_segmented": true,
+   "named_data": {
+    "header": "0x0",
+    "sprite_banks": "0x40",
+    "palette_def": "0xA0",
+    "layers": "0xB8",
+    "graphics_banks": "0x290",
+    "gen/e_laydef": "0x2F4",
+    "e_init": "0x49C",
+    "background_block_init": "0x55C",
+    "e_red_door_tiles": "0x594",
+    "e_lock_camera": "0x5B4",
+    "e_breakable": "0x634",
+    "st_update": "0x694",
+    "collision": "0x6DC",
+    "e_red_door": "0x9D4",
+    "st_common": "0x9EC",
+    "e_collect": "0xBEC",
+    "d_prize_drops": "0xF5C",
+    "e_misc": "0xFAC",
+    "e_particles": "0x1068",
+    "e_room_fg": "0x10E8",
+    "gen/rooms": "0x1130",
+    "gen/e_layout": "0x11D4",
+    "stage_data": "0x1D14",
+    "pal": "0x2058",
+    "tilemaps": "0x2078",
+    "tiledef_1": "0x8A98",
+    "gen/sprites": "0xCAA8"
+   },
+   "unnamed_data_blobs": [],
+   "named_rodata": {
+    "D8C8": "0xD794",
+    "e_red_door": "0xD7CC",
+    "e_collect": "0xD85C",
+    "e_misc": "0xD874",
+    "e_stage_name": "0xD8AC",
+    "prim_helpers": "0xD8C0"
+   }
   },
   "stno0": {
    "segmented": true,
@@ -75841,7 +77157,78 @@
    },
    "unnamed_blobs": [
     "0x5E8DC"
-   ]
+   ],
+   "data_segmented": true,
+   "named_data": {
+    "header": "0x0",
+    "e_init": "0x920",
+    "e_red_door_tiles": "0xC5C",
+    "e_room_bg": "0xC8C",
+    "e_lock_camera": "0xE94",
+    "e_breakable": "0xF04",
+    "e_elevator": "0xFC0",
+    "42A34": "0xFF0",
+    "e_explosion_puff_opaque": "0x1094",
+    "d_prize_drops": "0x1100",
+    "st_update": "0x111C",
+    "collision": "0x1168",
+    "e_red_door": "0x1528",
+    "e_room_fg": "0x1540",
+    "e_particles": "0x15CC",
+    "st_common": "0x164C",
+    "e_collect": "0x184C",
+    "e_misc": "0x1B3C",
+    "4C750": "0x1C14",
+    "clock_room": "0x1C34",
+    "4E2E0": "0x1CA0",
+    "e_diplocephalus": "0x1CC8",
+    "e_diplocephalus_tail": "0x1DBC",
+    "e_skelerang": "0x1E94",
+    "e_plate_lord": "0x1F80",
+    "e_plate_lord_2": "0x1FA0",
+    "e_ghost": "0x1FC8",
+    "e_marionette": "0x1FE8",
+    "e_slinger": "0x2194",
+    "e_stone_rose": "0x2268",
+    "e_ctulhu": "0x234C",
+    "e_axe_knight": "0x2478",
+    "e_ouija_table": "0x25CC",
+    "e_flea_man": "0x2618",
+    "e_skeleton": "0x2670",
+    "e_sealed_door": "0x2770",
+    "gen/rooms": "0x27E0",
+    "stage_data": "0x48A0",
+    "gen/sprites": "0x3654C"
+   },
+   "unnamed_data_blobs": [
+    "0x778",
+    "0x291C",
+    "0x411B0"
+   ],
+   "named_rodata": {
+    "e_explosion_puff_opaque": "0x41368",
+    "e_red_door": "0x4137C",
+    "e_collect": "0x41394",
+    "e_misc": "0x4141C",
+    "clock_room": "0x41468",
+    "4E2E0": "0x414A8",
+    "e_stage_name": "0x414B8",
+    "e_diplocephalus": "0x414EC",
+    "e_diplocephalus_tail": "0x41540",
+    "e_skelerang": "0x415B8",
+    "e_plate_lord": "0x41624",
+    "e_plate_lord_2": "0x416A0",
+    "e_marionette": "0x416F0",
+    "e_slinger": "0x4171C",
+    "e_stone_rose": "0x41738",
+    "e_ctulhu": "0x41760",
+    "e_axe_knight": "0x4178C",
+    "e_ouija_table": "0x417B0",
+    "e_flea_man": "0x41804",
+    "e_skeleton": "0x41818",
+    "e_sealed_door": "0x41834",
+    "prim_helpers": "0x4184C"
+   }
   },
   "stno1": {
    "segmented": true,
@@ -75854,7 +77241,87 @@
    },
    "unnamed_blobs": [
     "0x56394"
-   ]
+   ],
+   "data_segmented": true,
+   "named_data": {
+    "header": "0x0",
+    "gen/e_laydef": "0x618",
+    "e_init": "0x7C0",
+    "e_room_bg": "0xB60",
+    "e_red_door": "0xC84",
+    "e_red_door_tiles": "0xC9C",
+    "e_lock_camera": "0xCFC",
+    "e_breakable": "0xD7C",
+    "unk_36490": "0xE8C",
+    "e_mouse": "0xF48",
+    "e_chair": "0xF8C",
+    "unk_381E8": "0xFA0",
+    "unk_38F50": "0x13AC",
+    "unk_39028": "0x142C",
+    "unk_39184": "0x1454",
+    "unk_3A290": "0x1474",
+    "unk_3B5E0": "0x1508",
+    "unk_3D8AC": "0x1570",
+    "e_secrets": "0x15F4",
+    "unk_3FA34": "0x16F8",
+    "d_prize_drops": "0x1A2C",
+    "st_update": "0x1A3C",
+    "collision": "0x1A88",
+    "st_common": "0x1E48",
+    "e_collect": "0x2048",
+    "e_misc": "0x2338",
+    "e_blue_axe_knight": "0x2450",
+    "e_particles": "0x2610",
+    "e_room_fg": "0x2690",
+    "e_skeleton": "0x271C",
+    "e_wereskeleton": "0x281C",
+    "e_bone_musket": "0x2998",
+    "e_sword_lord": "0x2A80",
+    "e_bone_archer": "0x2BD8",
+    "e_armor_lord": "0x2D4C",
+    "e_spear_guard": "0x2F04",
+    "unk_54400": "0x31D4",
+    "e_skeleton_ape": "0x3230",
+    "e_medusa_head": "0x33D0",
+    "e_mist_door": "0x3448",
+    "gen/rooms": "0x3488",
+    "gen/e_layout": "0x3544"
+   },
+   "unnamed_data_blobs": [
+    "0x2C",
+    "0x44FC"
+   ],
+   "named_rodata": {
+    "e_room_bg": "0x34668",
+    "e_red_door": "0x34670",
+    "e_breakable": "0x34688",
+    "unk_36490": "0x346A8",
+    "e_chair": "0x346BC",
+    "unk_381E8": "0x346D0",
+    "unk_39028": "0x34734",
+    "unk_39184": "0x34740",
+    "unk_3A290": "0x34768",
+    "unk_3B5E0": "0x3479C",
+    "unk_3D8AC": "0x347D8",
+    "e_secrets": "0x34810",
+    "unk_3FA34": "0x3486C",
+    "unk_40E98": "0x3488C",
+    "e_collect": "0x348A8",
+    "e_misc": "0x34930",
+    "e_blue_axe_knight": "0x3497C",
+    "e_stage_name": "0x34A00",
+    "e_skeleton": "0x34A34",
+    "e_wereskeleton": "0x34A50",
+    "e_bone_musket": "0x34AD4",
+    "e_sword_lord": "0x34AFC",
+    "e_bone_archer": "0x34B60",
+    "e_armor_lord": "0x34B6C",
+    "e_spear_guard": "0x34C28",
+    "unk_54400": "0x34C5C",
+    "e_skeleton_ape": "0x34C70",
+    "e_medusa_head": "0x34CB4",
+    "prim_helpers": "0x34CBC"
+   }
   },
   "stno2": {
    "segmented": true,
@@ -75865,7 +77332,75 @@
    },
    "unnamed_blobs": [
     "0x4F100"
-   ]
+   ],
+   "data_segmented": true,
+   "named_data": {
+    "header": "0x0",
+    "sprite_banks": "0x2C",
+    "palette_def": "0x8C",
+    "layers": "0x110",
+    "graphics_banks": "0x3E8",
+    "gen/e_laydef": "0x574",
+    "e_init": "0x71C",
+    "background_block_init": "0x994",
+    "e_red_door_tiles": "0x9AC",
+    "e_lock_camera": "0x9EC",
+    "e_breakable": "0xA6C",
+    "33D8C": "0xB7C",
+    "e_background_house": "0xBB8",
+    "e_spikes": "0xD38",
+    "e_secrets": "0xD48",
+    "e_prisoner": "0xE44",
+    "372E8": "0xEA8",
+    "37580": "0xF1C",
+    "e_sealed_door": "0xF7C",
+    "d_prize_drops": "0xFEC",
+    "st_update": "0x1008",
+    "collision": "0x1054",
+    "e_red_door": "0x1414",
+    "st_common": "0x142C",
+    "e_collect": "0x162C",
+    "e_misc": "0x1980",
+    "e_skelerang": "0x1A38",
+    "e_bloody_zombie": "0x1B24",
+    "e_owl_knight": "0x1C1C",
+    "e_life_up": "0x1EC8",
+    "e_particles": "0x1F1C",
+    "e_room_fg": "0x1F9C",
+    "e_valhalla_knight": "0x2028",
+    "hammer": "0x219C",
+    "gurkha": "0x2718",
+    "blade": "0x2C08",
+    "gen/rooms": "0x32A0",
+    "e_spectral_sword": "0x336C",
+    "gen/e_layout": "0x33F8",
+    "stage_data": "0x4248",
+    "tilemaps": "0x14E28",
+    "gen/sprites": "0x2C858"
+   },
+   "unnamed_data_blobs": [],
+   "named_rodata": {
+    "e_breakable": "0x32E00",
+    "34DA4": "0x32E20",
+    "e_secrets": "0x32E28",
+    "e_prisoner": "0x32E64",
+    "37580": "0x32EB8",
+    "e_sealed_door": "0x32EC4",
+    "e_red_door": "0x32EDC",
+    "e_collect": "0x32EF4",
+    "e_stage_name": "0x32FC8",
+    "e_skelerang": "0x32FFC",
+    "e_bloody_zombie": "0x33068",
+    "e_owl_knight": "0x33090",
+    "e_life_up": "0x331A0",
+    "e_valhalla_knight": "0x331BC",
+    "giantbro_helpers": "0x331E4",
+    "hammer": "0x33244",
+    "gurkha": "0x332F0",
+    "blade": "0x333DC",
+    "prim_helpers": "0x3345C",
+    "e_spectral_sword": "0x33464"
+   }
   },
   "stno3": {
    "segmented": true,
@@ -75874,7 +77409,77 @@
     "cutscene": "0x57120",
     "e_collect": "0x57DD8"
    },
-   "unnamed_blobs": []
+   "unnamed_blobs": [],
+   "data_segmented": true,
+   "named_data": {
+    "header": "0x0",
+    "sprite_banks": "0x30",
+    "palette_def": "0x90",
+    "layers": "0x1C4",
+    "graphics_banks": "0x5A4",
+    "gen/e_laydef": "0x77C",
+    "e_init": "0x924",
+    "background_block_init": "0xBB4",
+    "e_red_door_tiles": "0xDA0",
+    "e_lock_camera": "0xDC0",
+    "e_breakable": "0xE40",
+    "e_background_lightning": "0xEA0",
+    "e_castle_door": "0x1044",
+    "e_background_bushes_trees": "0x1140",
+    "e_trapdoor": "0x123C",
+    "e_jewel_sword_puzzle": "0x124C",
+    "e_death_sky_swirl": "0x1358",
+    "e_sky_entities": "0x1390",
+    "d_water_data": "0x13A8",
+    "e_outdoor_ents": "0x13DC",
+    "cutscene": "0x1A28",
+    "e_death": "0x1AD4",
+    "e_explosion_puff_opaque": "0x1C20",
+    "d_prize_drops": "0x1C8C",
+    "st_update": "0x1CA0",
+    "collision": "0x1CEC",
+    "e_red_door": "0x20AC",
+    "st_common": "0x20C4",
+    "e_collect": "0x22C4",
+    "e_misc": "0x25B4",
+    "e_particles": "0x26D0",
+    "e_room_fg": "0x2750",
+    "e_fire_warg": "0x27DC",
+    "e_warg": "0x30BC",
+    "water_effects": "0x3858",
+    "e_merman2": "0x3914",
+    "e_merman": "0x3A28",
+    "e_bone_scimitar": "0x3B50",
+    "e_bat": "0x3C44",
+    "e_zombie": "0x3C7C",
+    "gen/rooms": "0x3CC4",
+    "gen/e_layout": "0x3DC8",
+    "cutscene_data": "0x4CE0",
+    "stage_data": "0x4E74",
+    "tilemaps": "0x18838",
+    "gen/sprites": "0x2EA68"
+   },
+   "unnamed_data_blobs": [],
+   "named_rodata": {
+    "e_castle_door": "0x373E0",
+    "e_stairway": "0x37400",
+    "e_outdoor_ents": "0x37414",
+    "cutscene": "0x37458",
+    "e_death": "0x37514",
+    "e_explosion_puff_opaque": "0x37564",
+    "e_red_door": "0x37578",
+    "e_collect": "0x37600",
+    "e_misc": "0x37650",
+    "e_stage_name": "0x37664",
+    "e_fire_warg": "0x376E8",
+    "e_warg": "0x37704",
+    "e_merman2": "0x37738",
+    "e_merman": "0x3775C",
+    "e_bone_scimitar": "0x37784",
+    "e_bat": "0x377A4",
+    "e_zombie": "0x377B8",
+    "prim_helpers": "0x377CC"
+   }
   },
   "stno4": {
    "segmented": true,
@@ -75886,7 +77491,69 @@
    "unnamed_blobs": [
     "0x5EB10",
     "0x5EB80"
-   ]
+   ],
+   "data_segmented": true,
+   "named_data": {
+    "header": "0x0",
+    "gen/e_laydef": "0x864",
+    "e_init": "0xA0C",
+    "background_block_init": "0xCF4",
+    "e_red_door_tiles": "0xD2C",
+    "e_lock_camera": "0xD5C",
+    "e_breakable": "0xDDC",
+    "first_c_file": "0x1108",
+    "e_ferryman": "0x1678",
+    "482B8": "0x1804",
+    "e_secrets": "0x1880",
+    "e_bat": "0x18F0",
+    "e_killer_fish": "0x1974",
+    "cutscene": "0x19D0",
+    "st_update": "0x19D4",
+    "collision": "0x1A20",
+    "e_red_door": "0x1DE0",
+    "st_common": "0x1DF8",
+    "e_collect": "0x1FF8",
+    "e_misc": "0x234C",
+    "e_particles": "0x2404",
+    "e_room_fg": "0x2484",
+    "water_effects": "0x2510",
+    "e_toad": "0x25CC",
+    "e_frog": "0x2688",
+    "e_fishhead": "0x2700",
+    "e_frozen_shade": "0x27F0",
+    "e_spear_guard": "0x2B10",
+    "e_bone_archer": "0x2DE0",
+    "e_skeleton_ape": "0x2F54",
+    "gen/rooms": "0x30F0",
+    "gen/e_layout": "0x3244",
+    "cutscene_data": "0x5354",
+    "stage_data": "0x5400",
+    "gen/sprites": "0x39A84"
+   },
+   "unnamed_data_blobs": [
+    "0xECC",
+    "0x1928"
+   ],
+   "named_rodata": {
+    "e_breakable": "0x40980",
+    "first_c_file": "0x409A0",
+    "e_ferryman": "0x409B8",
+    "482B8": "0x40A30",
+    "e_bat": "0x40A48",
+    "e_killer_fish": "0x40A5C",
+    "cutscene": "0x40A70",
+    "e_red_door": "0x40B04",
+    "e_collect": "0x40B1C",
+    "e_stage_name": "0x40BF0",
+    "e_toad": "0x40C24",
+    "e_frog": "0x40C40",
+    "e_fishhead": "0x40C6C",
+    "e_frozen_shade": "0x40C84",
+    "e_spear_guard": "0x40CB8",
+    "e_bone_archer": "0x40CEC",
+    "e_skeleton_ape": "0x40CF8",
+    "prim_helpers": "0x40D3C"
+   }
   },
   "stnp3": {
    "segmented": true,
@@ -75896,7 +77563,75 @@
     "giantbro_helpers": "0x53378",
     "st_update": "0x533F4"
    },
-   "unnamed_blobs": []
+   "unnamed_blobs": [],
+   "data_segmented": true,
+   "named_data": {
+    "header": "0x558",
+    "gen/us/e_laydef": "0x728",
+    "e_init": "0x8D0",
+    "background_block_init": "0xBD4",
+    "e_red_door_tiles": "0xD78",
+    "e_lock_camera": "0xD98",
+    "e_breakable": "0xE18",
+    "e_background_lightning": "0xE78",
+    "e_castle_door": "0xF0C",
+    "e_background_bushes_trees": "0x1008",
+    "e_trapdoor": "0x1104",
+    "e_jewel_sword_puzzle": "0x1114",
+    "e_sky_entities": "0x11CC",
+    "d_water_data": "0x122C",
+    "e_explosion_puff_opaque": "0x1260",
+    "slogra": "0x12CC",
+    "gaibon": "0x14B4",
+    "d_prize_drops": "0x1618",
+    "st_update": "0x162C",
+    "collision": "0x1678",
+    "e_red_door": "0x1A38",
+    "st_common": "0x1A50",
+    "e_collect": "0x1C50",
+    "e_misc": "0x1F40",
+    "e_particles": "0x205C",
+    "e_room_fg": "0x20DC",
+    "water_effects": "0x2168",
+    "e_merman2": "0x2224",
+    "e_merman": "0x2338",
+    "e_bone_scimitar": "0x2460",
+    "e_bat": "0x2554",
+    "e_zombie": "0x258C",
+    "e_bloody_zombie": "0x25D4",
+    "e_owl_knight": "0x26CC",
+    "hammer": "0x2978",
+    "gurkha": "0x2EF4",
+    "blade": "0x33E4",
+    "gen/rooms": "0x3A7C",
+    "gen/us/e_layout": "0x3B68",
+    "stage_data": "0x49E0",
+    "gen/sprites": "0x2A124"
+   },
+   "unnamed_data_blobs": [],
+   "named_rodata": {
+    "e_castle_door": "0x31EA0",
+    "e_stairway": "0x31EB0",
+    "e_explosion_puff_opaque": "0x31EBC",
+    "slogra": "0x31ED0",
+    "gaibon": "0x31EDC",
+    "e_red_door": "0x31F00",
+    "e_collect": "0x31F68",
+    "e_misc": "0x31FD8",
+    "e_stage_name": "0x31FEC",
+    "e_merman2": "0x32020",
+    "e_merman": "0x32044",
+    "e_bone_scimitar": "0x3206C",
+    "e_bat": "0x3208C",
+    "e_zombie": "0x320A0",
+    "e_bloody_zombie": "0x320B4",
+    "e_owl_knight": "0x320DC",
+    "giantbro_helpers": "0x321EC",
+    "hammer": "0x322CC",
+    "gurkha": "0x32380",
+    "blade": "0x323E4",
+    "prim_helpers": "0x32464"
+   }
   },
   "stnz0": {
    "segmented": true,
@@ -75905,7 +77640,80 @@
     "bss": "0x4AA24",
     "e_collect": "0x4B740"
    },
-   "unnamed_blobs": []
+   "unnamed_blobs": [],
+   "data_segmented": true,
+   "named_data": {
+    "header": "0x47C",
+    "gen/e_laydef": "0x8EC",
+    "e_init": "0xA94",
+    "background_block_init": "0xD54",
+    "e_red_door_tiles": "0xD8C",
+    "e_lock_camera": "0xDBC",
+    "e_breakable": "0xDE4",
+    "e_left_secret_room_wall": "0xE54",
+    "e_puzzle": "0xEB4",
+    "e_cannon": "0xED0",
+    "e_elevator2": "0xEEC",
+    "e_nz0_room2": "0xEF0",
+    "e_life_max_tank": "0xF1C",
+    "e_blue_flame_table": "0xF50",
+    "e_explosion_puff_opaque": "0xFA4",
+    "bossfight": "0x1014",
+    "slogra": "0x105C",
+    "gaibon": "0x1240",
+    "e_elevator": "0x13A4",
+    "d_prize_drops": "0x13BC",
+    "cutscene": "0x13C8",
+    "maria": "0x1474",
+    "st_update": "0x1554",
+    "collision": "0x15A0",
+    "e_red_door": "0x1960",
+    "st_common": "0x1978",
+    "e_collect": "0x1B78",
+    "e_misc": "0x1E68",
+    "e_particles": "0x1F80",
+    "e_room_fg": "0x2000",
+    "e_bone_scimitar": "0x208C",
+    "e_axe_knight": "0x2180",
+    "e_bloody_zombie": "0x22D4",
+    "e_skeleton": "0x23DC",
+    "e_spittle_bone": "0x24CC",
+    "e_subweapon_container": "0x2584",
+    "e_blood_skeleton": "0x2610",
+    "e_sealed_door": "0x26B8",
+    "gen/rooms": "0x272C",
+    "e_life_up": "0x2830",
+    "gen/e_layout": "0x2884",
+    "cutscene_data": "0x3B0C",
+    "stage_data": "0x3CCC",
+    "gen/sprites": "0x26E8C"
+   },
+   "unnamed_data_blobs": [],
+   "named_rodata": {
+    "e_red_eye_bust": "0x3058C",
+    "e_blue_flame_table": "0x30598",
+    "e_explosion_puff_opaque": "0x305A4",
+    "bossfight": "0x305E8",
+    "slogra": "0x305FC",
+    "gaibon": "0x30618",
+    "e_elevator": "0x3063C",
+    "cutscene": "0x30664",
+    "maria": "0x306E8",
+    "e_red_door": "0x30728",
+    "e_collect": "0x307B0",
+    "e_misc": "0x30800",
+    "e_bone_scimitar": "0x30814",
+    "e_axe_knight": "0x30834",
+    "e_bloody_zombie": "0x30858",
+    "e_skeleton": "0x30880",
+    "e_spittle_bone": "0x3089C",
+    "e_subweapon_container": "0x308C8",
+    "e_blood_skeleton": "0x308D4",
+    "e_sealed_door": "0x308E8",
+    "e_stage_name": "0x30900",
+    "prim_helpers": "0x30934",
+    "e_life_up": "0x3093C"
+   }
   },
   "stnz1": {
    "segmented": true,
@@ -75916,7 +77724,89 @@
    },
    "unnamed_blobs": [
     "0x41698"
-   ]
+   ],
+   "data_segmented": true,
+   "named_data": {
+    "header": "0x0",
+    "sprite_banks": "0x40",
+    "palette_def": "0xA0",
+    "layers": "0x360",
+    "graphics_banks": "0x5A4",
+    "gen/e_laydef": "0x820",
+    "e_init": "0x9C8",
+    "background_block_init": "0xCF0",
+    "e_red_door_tiles": "0xD80",
+    "e_lock_camera": "0xDA0",
+    "e_breakable": "0xDC8",
+    "e_breakable_bridge": "0xEDC",
+    "e_explosion_puff_opaque": "0xF44",
+    "e_bg_gears": "0xFB0",
+    "e_gear_horizontal": "0xFB8",
+    "e_gear_vertical": "0xFC0",
+    "e_gear_small": "0xFC8",
+    "e_gear_puzzle": "0xFD0",
+    "e_pendulum": "0xFEC",
+    "e_secrets": "0xFF8",
+    "e_water_fg": "0x1094",
+    "d_water_data": "0x10CC",
+    "e_spikes": "0x1100",
+    "d_prize_drops": "0x111C",
+    "e_boss_doors": "0x1134",
+    "e_karasuman": "0x115C",
+    "st_update": "0x12F8",
+    "collision": "0x1344",
+    "e_red_door": "0x1704",
+    "st_common": "0x171C",
+    "e_collect": "0x191C",
+    "e_misc": "0x1C70",
+    "e_particles": "0x1D28",
+    "e_room_fg": "0x1DA8",
+    "water_effects": "0x1E34",
+    "e_skull_lord": "0x1EF0",
+    "e_harpy": "0x1F04",
+    "e_cloaked_knight": "0x1FB0",
+    "e_sword_lord": "0x1FBC",
+    "e_vandal_sword": "0x2114",
+    "e_phantom_skull": "0x2134",
+    "e_flail_guard": "0x2160",
+    "e_flea_armor": "0x21FC",
+    "e_flea_man": "0x2268",
+    "e_medusa_head": "0x22C4",
+    "gen/rooms": "0x233C",
+    "e_life_up": "0x23C8",
+    "gen/e_layout": "0x241C",
+    "stage_data": "0x3834",
+    "tilemaps": "0x137D8",
+    "gen/sprites": "0x20BF8"
+   },
+   "unnamed_data_blobs": [
+    "0x22C0",
+    "0x12DD8"
+   ],
+   "named_rodata": {
+    "e_breakable": "0x258D4",
+    "e_breakable_bridge": "0x258F8",
+    "e_explosion_puff_opaque": "0x2591C",
+    "e_clouds": "0x25930",
+    "e_gear_small": "0x2593C",
+    "e_boss_doors": "0x25948",
+    "e_karasuman": "0x25980",
+    "e_red_door": "0x25A10",
+    "e_collect": "0x25A28",
+    "e_stage_name": "0x25AFC",
+    "e_skull_lord": "0x25B30",
+    "e_harpy": "0x25B54",
+    "e_cloaked_knight": "0x25B60",
+    "e_sword_lord": "0x25BAC",
+    "e_vandal_sword": "0x25C10",
+    "e_phantom_skull": "0x25C38",
+    "e_flail_guard": "0x25C7C",
+    "e_flea_armor": "0x25CB4",
+    "e_flea_man": "0x25CF8",
+    "e_medusa_head": "0x25D0C",
+    "prim_helpers": "0x25D14",
+    "e_life_up": "0x25D1C"
+   }
   },
   "strare": {
    "segmented": true,
@@ -75926,7 +77816,51 @@
    },
    "unnamed_blobs": [
     "0x386E8"
-   ]
+   ],
+   "data_segmented": true,
+   "named_data": {
+    "header": "0x0",
+    "e_init": "0x664",
+    "e_lock_camera": "0x8A8",
+    "e_breakable": "0x928",
+    "d_prize_drops": "0xA3C",
+    "e_secrets": "0xA5C",
+    "e_background_door_rubble": "0xA6C",
+    "e_boss_torch": "0xAAC",
+    "st_update": "0xAC0",
+    "collision": "0xB0C",
+    "e_red_door": "0xECC",
+    "st_common": "0xEE4",
+    "e_collect": "0x10E4",
+    "e_misc": "0x1438",
+    "e_particles": "0x14F0",
+    "e_room_fg": "0x1570",
+    "e_minotaur": "0x15FC",
+    "e_azaghal": "0x18B0",
+    "e_white_dragon": "0x1B64",
+    "e_stone_skull": "0x1BE4",
+    "e_werewolf": "0x1CFC"
+   },
+   "unnamed_data_blobs": [
+    "0x2C",
+    "0x808",
+    "0x1C58",
+    "0x1F78"
+   ],
+   "named_rodata": {
+    "e_breakable": "0x25284",
+    "e_boss_torch": "0x252A8",
+    "e_boss_doors": "0x252B4",
+    "e_red_door": "0x252C0",
+    "e_collect": "0x252D8",
+    "e_stage_name": "0x253AC",
+    "e_minotaur": "0x253E0",
+    "e_azaghal": "0x25414",
+    "e_white_dragon": "0x254A0",
+    "e_stone_skull": "0x254D0",
+    "prim_helpers": "0x254DC",
+    "e_werewolf": "0x254E4"
+   }
   },
   "strcat": {
    "segmented": true,
@@ -75936,7 +77870,63 @@
     "43204": "0x43204",
     "st_update": "0x43E6C"
    },
-   "unnamed_blobs": []
+   "unnamed_blobs": [],
+   "data_segmented": true,
+   "named_data": {
+    "header": "0x0",
+    "sprite_banks": "0x2C",
+    "palette_def": "0x58C",
+    "layers": "0x728",
+    "graphics_banks": "0xB80",
+    "gen/e_laydef": "0xD2C",
+    "e_init": "0xED4",
+    "background_block_init": "0x10E4",
+    "e_red_door_tiles": "0x1114",
+    "e_lock_camera": "0x1134",
+    "e_breakable": "0x11B4",
+    "e_lava": "0x12D4",
+    "e_cavern_background": "0x1314",
+    "e_spikes": "0x1364",
+    "unk_32118": "0x1380",
+    "d_prize_drops": "0x13C8",
+    "e_secrets": "0x1408",
+    "e_bat": "0x150C",
+    "st_update": "0x1544",
+    "collision": "0x1590",
+    "e_red_door": "0x1950",
+    "st_common": "0x1968",
+    "e_collect": "0x1B68",
+    "e_misc": "0x1EBC",
+    "e_particles": "0x1F74",
+    "e_room_fg": "0x1FF4",
+    "e_frozen_half": "0x2080",
+    "e_salome": "0x2190",
+    "e_blood_skeleton": "0x22DC",
+    "e_skeleton": "0x2384",
+    "gen/rooms": "0x2484",
+    "gen/e_layout": "0x2578",
+    "gfx_data": "0x3BC0",
+    "gfx_data_palettes": "0x12594",
+    "tilemaps": "0x12E74",
+    "gen/us/sprites": "0x2AEA4"
+   },
+   "unnamed_data_blobs": [
+    "0x8C"
+   ],
+   "named_rodata": {
+    "unk_31F1C": "0x2F5EC",
+    "unk_32118": "0x2F610",
+    "e_secrets": "0x2F620",
+    "e_bat": "0x2F69C",
+    "e_red_door": "0x2F6B0",
+    "e_collect": "0x2F6C8",
+    "e_stage_name": "0x2F79C",
+    "e_frozen_half": "0x2F7D0",
+    "e_salome": "0x2F824",
+    "e_blood_skeleton": "0x2F830",
+    "e_skeleton": "0x2F844",
+    "prim_helpers": "0x2F860"
+   }
   },
   "strcen": {
    "segmented": true,
@@ -75947,14 +77937,174 @@
    },
    "unnamed_blobs": [
     "0x2C66C"
-   ]
+   ],
+   "data_segmented": true,
+   "named_data": {
+    "header": "0x0",
+    "e_init": "0x458",
+    "e_lock_camera": "0x614",
+    "e_breakable": "0x62C",
+    "cutscene": "0x94C",
+    "st_update": "0xA6C",
+    "collision": "0xAB8",
+    "e_red_door": "0xE78",
+    "st_common": "0xE90",
+    "e_collect": "0x1090",
+    "e_misc": "0x13E4",
+    "e_particles": "0x149C",
+    "e_room_fg": "0x151C"
+   },
+   "unnamed_data_blobs": [
+    "0x40",
+    "0x5AC",
+    "0x68C",
+    "0x9FC",
+    "0x15A8"
+   ],
+   "named_rodata": {
+    "e_shaft": "0x19FB4",
+    "unk_1D260": "0x1A078",
+    "cutscene": "0x1A08C",
+    "unk_1F0D8": "0x1A128",
+    "e_red_door": "0x1A184",
+    "e_collect": "0x1A19C",
+    "e_stage_name": "0x1A270",
+    "prim_helpers": "0x1A2A4"
+   }
+  },
+  "strchi": {
+   "segmented": true,
+   "named_segments": {
+    "create_entity": "0x29E68",
+    "st_update": "0x2AAE0"
+   },
+   "unnamed_blobs": [
+    "0x29E78"
+   ],
+   "data_segmented": true,
+   "named_data": {
+    "header": "0x0",
+    "e_init": "0x4F4",
+    "e_room_bg": "0x690",
+    "e_lock_camera": "0x6F8",
+    "st_update": "0x8FC",
+    "collision": "0x948",
+    "e_red_door": "0xD08",
+    "st_common": "0xD20",
+    "e_collect": "0xF20",
+    "e_misc": "0x1274",
+    "e_particles": "0x132C",
+    "e_room_fg": "0x13AC",
+    "e_thornweed": "0x1780"
+   },
+   "unnamed_data_blobs": [
+    "0x2C",
+    "0x6C8",
+    "0x778",
+    "0x1438",
+    "0x1838"
+   ],
+   "named_rodata": {
+    "e_demon_switch_wall": "0x18F10",
+    "e_breakable_wall": "0x18F54",
+    "e_bat": "0x18F78",
+    "e_red_door": "0x18F8C",
+    "e_collect": "0x18FA4",
+    "e_stage_name": "0x19078",
+    "e_slogra": "0x190AC",
+    "e_gaibon": "0x190B8",
+    "e_thornweed": "0x190DC",
+    "prim_helpers": "0x19118"
+   }
+  },
+  "strdai": {
+   "segmented": true,
+   "named_segments": {
+    "create_entity": "0x47680",
+    "st_update": "0x482F8"
+   },
+   "unnamed_blobs": [
+    "0x47690"
+   ],
+   "data_segmented": true,
+   "named_data": {
+    "header": "0x0",
+    "e_init": "0x718",
+    "e_red_door_tiles": "0x944",
+    "e_lock_camera": "0x974",
+    "d_prize_drops": "0xD2C",
+    "e_spikes": "0xD5C",
+    "st_update": "0xD78",
+    "collision": "0xDC4",
+    "e_red_door": "0x1184",
+    "st_common": "0x119C",
+    "e_collect": "0x139C",
+    "e_misc": "0x16F0",
+    "e_particles": "0x17A8",
+    "e_room_fg": "0x1828"
+   },
+   "unnamed_data_blobs": [
+    "0x2C",
+    "0x8CC",
+    "0x9F4",
+    "0xD4C",
+    "0x18B4"
+   ],
+   "named_rodata": {
+    "e_breakable": "0x30FF8",
+    "func_us_801b1c34": "0x31018",
+    "unk_327A4": "0x3107C",
+    "func_us_80192d64_from_rbo3": "0x31088",
+    "e_red_door": "0x310B8",
+    "e_collect": "0x310D0",
+    "e_stage_name": "0x311A4",
+    "unk_3F6B4": "0x311D8",
+    "e_spectral_sword": "0x311FC",
+    "unk_41DE8": "0x31224",
+    "e_imp": "0x31270",
+    "unk_44578": "0x312A0",
+    "func_44c4c": "0x312AC",
+    "func_45aa0": "0x312C4",
+    "func_46040": "0x312E4",
+    "prim_helpers": "0x31378"
+   }
   },
   "strno0": {
    "segmented": false,
    "named_segments": {},
    "unnamed_blobs": [
     "0x53EB8"
-   ]
+   ],
+   "data_segmented": true,
+   "named_data": {
+    "header": "0x0",
+    "e_init": "0x8FC",
+    "e_room_bg": "0xC18"
+   },
+   "unnamed_data_blobs": [
+    "0x2C",
+    "0xE20"
+   ],
+   "named_rodata": {
+    "unk_39A8C": "0x35B00",
+    "e_collect": "0x35B18",
+    "e_clock_room": "0x35BEC",
+    "e_armor_lord_guardian": "0x35C2C",
+    "e_stage_name": "0x35CE8",
+    "e_floor_trap": "0x35D1C",
+    "e_thornweed_corpseweed": "0x35D28",
+    "e_stone_skull": "0x35D64",
+    "unk_48100": "0x35D70",
+    "giantbro_helpers": "0x35DD0",
+    "e_hammer": "0x35E30",
+    "e_gurkha": "0x35EDC",
+    "e_blade": "0x35FC8",
+    "e_subweapon_container": "0x36048",
+    "unk_4F968": "0x36054",
+    "e_medusa_head": "0x36200",
+    "unk_5289C": "0x36208",
+    "prim_helpers": "0x36220"
+   }
   },
   "strno3": {
    "segmented": true,
@@ -75964,7 +78114,69 @@
    },
    "unnamed_blobs": [
     "0x49884"
-   ]
+   ],
+   "data_segmented": true,
+   "named_data": {
+    "header": "0x0",
+    "sprite_banks": "0x2C",
+    "palette_def": "0x8C",
+    "layers": "0xEC",
+    "graphics_banks": "0x4CC",
+    "gen/e_laydef": "0x5EC",
+    "e_init": "0x794",
+    "e_room_bg": "0xA58",
+    "e_red_door_tiles": "0xBFC",
+    "e_lock_camera": "0xC1C",
+    "e_breakable": "0xC9C",
+    "e_castle_door": "0xCFC",
+    "e_shutting_window": "0xDF8",
+    "e_background_bushes_trees": "0xE58",
+    "d_prize_drops": "0xF10",
+    "e_background_lightning": "0xF38",
+    "e_sky_entities": "0xF9C",
+    "e_cavern_door": "0xFB4",
+    "e_jewel_sword_puzzle": "0xFC0",
+    "e_transparent_water": "0x10C0",
+    "d_water_data": "0x10F8",
+    "st_update": "0x112C",
+    "collision": "0x1178",
+    "e_red_door": "0x1538",
+    "st_common": "0x1550",
+    "e_collect": "0x1750",
+    "e_misc": "0x1AA4",
+    "e_particles": "0x1B5C",
+    "e_room_fg": "0x1BDC",
+    "e_fire_warg": "0x1C68",
+    "e_jack_o_bones": "0x2548",
+    "e_nova_skeleton": "0x2634",
+    "e_orobourous": "0x27BC",
+    "e_dragon_rider": "0x282C",
+    "e_blue_venus_weed": "0x28B4",
+    "water_effects": "0x2A34",
+    "e_dodo": "0x2AF0",
+    "gen/us/rooms": "0x2B20",
+    "gen/e_layout": "0x2C24",
+    "stage_data": "0x39BC",
+    "tilemaps": "0x10E88",
+    "gen/us/sprites": "0x270B8"
+   },
+   "unnamed_data_blobs": [],
+   "named_rodata": {
+    "e_castle_door": "0x2FF60",
+    "e_shutting_window": "0x2FF80",
+    "e_stairway": "0x2FF88",
+    "e_red_door": "0x2FF9C",
+    "e_collect": "0x2FFB4",
+    "e_stage_name": "0x30088",
+    "e_fire_warg": "0x300BC",
+    "e_jack_o_bones": "0x30120",
+    "e_nova_skeleton": "0x3013C",
+    "e_orobourous": "0x30180",
+    "e_blue_venus_weed": "0x301B4",
+    "water_effects": "0x302A4",
+    "e_dodo": "0x302D0",
+    "prim_helpers": "0x302E8"
+   }
   },
   "strnz0": {
    "segmented": true,
@@ -75974,7 +78186,66 @@
    },
    "unnamed_blobs": [
     "0x43F00"
-   ]
+   ],
+   "data_segmented": true,
+   "named_data": {
+    "header": "0x0",
+    "sprite_banks": "0x40",
+    "palette_def": "0xA4",
+    "layers": "0x14C",
+    "gfx_banks": "0x464",
+    "gen/e_laydef": "0x6F0",
+    "e_init": "0x898",
+    "e_room_bg": "0xB10",
+    "e_red_door_tiles": "0xB48",
+    "e_lock_camera": "0xB78",
+    "e_breakable": "0xBF8",
+    "e_left_secret_room_wall": "0xC68",
+    "d_prize_drops": "0xCC8",
+    "e_globe_table": "0xCE8",
+    "e_life_max_tank": "0xD08",
+    "e_blue_flame_table": "0xD38",
+    "e_cannon": "0xD84",
+    "st_update": "0xDA0",
+    "collision": "0xDEC",
+    "e_red_door": "0x11AC",
+    "st_common": "0x11C4",
+    "e_collect": "0x13C4",
+    "e_misc": "0x1718",
+    "e_particles": "0x17D0",
+    "e_room_fg": "0x1850",
+    "e_floor_trap": "0x18DC",
+    "e_ctulhu": "0x18F4",
+    "e_fire_demon": "0x1A20",
+    "e_lesser_demon": "0x1B18",
+    "e_sealed_door": "0x1C8C",
+    "e_bitterfly": "0x1CFC",
+    "e_imp": "0x1D70",
+    "e_gremlin": "0x1DA4",
+    "e_salem_witch": "0x1DF4",
+    "gen/rooms": "0x1FA8",
+    "gen/e_layout": "0x20AC",
+    "stage_data": "0x326C",
+    "gen/us/sprites": "0x2493C"
+   },
+   "unnamed_data_blobs": [],
+   "named_rodata": {
+    "e_red_eye_bust": "0x2ABEC",
+    "e_blue_flame_table": "0x2ABF8",
+    "e_room_bg": "0x2AC04",
+    "e_red_door": "0x2AC04",
+    "e_collect": "0x2AC1C",
+    "e_stage_name": "0x2ACF0",
+    "e_floor_trap": "0x2AD24",
+    "e_ctulhu": "0x2AD30",
+    "e_fire_demon": "0x2AD5C",
+    "e_lesser_demon": "0x2AE6C",
+    "e_sealed_door": "0x2AEBC",
+    "e_imp": "0x2AED4",
+    "e_gremlin": "0x2AF04",
+    "e_salem_witch": "0x2AF10",
+    "prim_helpers": "0x2AF4C"
+   }
   },
   "strtop": {
    "segmented": true,
@@ -75985,16 +78256,99 @@
    },
    "unnamed_blobs": [
     "0x30470"
-   ]
+   ],
+   "data_segmented": true,
+   "named_data": {
+    "header": "0x0",
+    "sprite_banks": "0x40",
+    "palette_def": "0xA0",
+    "layers": "0xE8",
+    "graphics_banks": "0x230",
+    "gen/e_laydef": "0x2FC",
+    "e_init": "0x4A4",
+    "e_room_bg": "0x608",
+    "e_red_door_tiles": "0x640",
+    "e_lock_camera": "0x670",
+    "e_breakable": "0x6B8",
+    "d_prize_drops": "0x7C8",
+    "20B48": "0x80C",
+    "st_update": "0x910",
+    "collision": "0x95C",
+    "e_red_door": "0xD1C",
+    "st_common": "0xD34",
+    "e_collect": "0xF34",
+    "e_misc": "0x1288",
+    "e_particles": "0x1340",
+    "e_room_fg": "0x13C0",
+    "e_tombstone": "0x144C",
+    "e_yorick": "0x1468",
+    "e_skull_lord": "0x151C",
+    "gen/rooms": "0x1530",
+    "e_clouds": "0x15B4",
+    "e_clock_tower": "0x16B4",
+    "gen/e_layout": "0x1A64",
+    "stage_data": "0x22FC",
+    "tilemaps": "0xB274",
+    "gen/sprites": "0x1DEA4"
+   },
+   "unnamed_data_blobs": [],
+   "named_rodata": {
+    "e_richter_fight_trigger": "0x1FC14",
+    "e_breakable": "0x1FC2C",
+    "20B48": "0x1FC4C",
+    "e_red_door": "0x1FC8C",
+    "e_collect": "0x1FCA4",
+    "e_stage_name": "0x1FD78",
+    "e_yorick": "0x1FDAC",
+    "e_skull_lord": "0x1FDD0",
+    "prim_helpers": "0x1FDF4"
+   }
   },
   "strwrp": {
    "segmented": true,
    "named_segments": {
-    "rwrp/create_entity": "0x15A20",
-    "rwrp/bss": "0x15A36",
-    "rwrp/e_collect": "0x166A8"
+    "create_entity": "0x15A20",
+    "bss": "0x15A36",
+    "e_collect": "0x166A8"
    },
-   "unnamed_blobs": []
+   "unnamed_blobs": [],
+   "data_segmented": true,
+   "named_data": {
+    "header": "0x0",
+    "sprite_banks": "0x40",
+    "palette_def": "0xA0",
+    "layers": "0xB8",
+    "graphics_banks": "0x1B8",
+    "gen/e_laydef": "0x23C",
+    "e_init": "0x3E4",
+    "background_block_init": "0x4D0",
+    "e_red_door_tiles": "0x508",
+    "e_lock_camera": "0x528",
+    "e_breakable": "0x5A8",
+    "d_prize_drops": "0x608",
+    "warp": "0x648",
+    "st_update": "0x690",
+    "collision": "0x6BC",
+    "e_red_door": "0xA7C",
+    "st_common": "0xA94",
+    "e_collect": "0xC94",
+    "e_misc": "0xF84",
+    "e_particles": "0xFE8",
+    "e_room_fg": "0x1120",
+    "gen/rooms": "0x11AC",
+    "gen/e_layout": "0x1228",
+    "stage_data": "0x1420",
+    "gen/us/sprites": "0x6FE8"
+   },
+   "unnamed_data_blobs": [],
+   "named_rodata": {
+    "warp": "0x8CB0",
+    "e_red_door": "0x8CC8",
+    "e_collect": "0x8D50",
+    "e_misc": "0x8DA0",
+    "e_stage_name": "0x8DB4",
+    "prim_helpers": "0x8DE8"
+   }
   },
   "stsel": {
    "segmented": true,
@@ -76008,7 +78362,42 @@
     "stream": "0x3C300",
     "bss": "0x3C350"
    },
-   "unnamed_blobs": []
+   "unnamed_blobs": [],
+   "data_segmented": true,
+   "named_data": {
+    "2C048": "0x0",
+    "318CC": "0x46C",
+    "3410C": "0x4D0",
+    "34B30": "0x4E0",
+    "banks": "0x59C",
+    "764": "0x764",
+    "cutscene": "0x824",
+    "save_mgr": "0x8DC",
+    "config_us": "0x25FC",
+    "lba_stage": "0xA50C",
+    "stream_info": "0xB2CC",
+    "cutscene_data": "0xB304",
+    "CD54": "0xCD54",
+    "sprites": "0xDBD4",
+    "F9A8": "0xF9A8",
+    "libpress": "0x162F4"
+   },
+   "unnamed_data_blobs": [
+    "0x2584",
+    "0xC404",
+    "0x16438"
+   ],
+   "named_rodata": {
+    "2C048": "0x27438",
+    "32D6C": "0x27AE4",
+    "3410C": "0x27B60",
+    "34B30": "0x27B98",
+    "cutscene": "0x27CD4",
+    "save_mgr": "0x27D78",
+    "config_us": "0x28040",
+    "lba_stage": "0x2BBF0",
+    "libpress": "0x2BF9C"
+   }
   },
   "stst0": {
    "segmented": true,
@@ -76028,18 +78417,127 @@
     "2A218": "0x4257C",
     "st_update": "0x42584"
    },
-   "unnamed_blobs": []
+   "unnamed_blobs": [],
+   "data_segmented": true,
+   "named_data": {
+    "header": "0x1A4",
+    "gen/e_laydef": "0x314",
+    "e_init": "0x4BC",
+    "background_block_init": "0x634",
+    "e_red_door_tiles": "0x64C",
+    "e_lock_camera": "0x65C",
+    "2805C": "0x674",
+    "cutscene": "0x784",
+    "2A218": "0x830",
+    "2A8DC": "0x89C",
+    "title_card": "0x908",
+    "2C564": "0x90C",
+    "2DAC8": "0xAA4",
+    "prologue_scroll": "0x1568",
+    "st_update": "0x15CC",
+    "collision": "0x1618",
+    "e_red_door": "0x1978",
+    "st_common": "0x1990",
+    "e_collect": "0x1E3C",
+    "e_misc": "0x1E5C",
+    "e_particles": "0x1F54",
+    "e_room_fg": "0x1FD4",
+    "gen/rooms": "0x2060",
+    "3AB08": "0x2438",
+    "3C5C0": "0x24E8",
+    "3D8F0": "0x2690",
+    "gen/e_layout": "0x26B8",
+    "cutscene_data": "0x29D8",
+    "3101C_psx": "0x2C58",
+    "stage_data": "0x3124",
+    "gen/sprites": "0x226E0"
+   },
+   "unnamed_data_blobs": [],
+   "named_rodata": {
+    "2805C": "0x27984",
+    "cutscene": "0x279E8",
+    "2A218": "0x27A74",
+    "2A8DC": "0x27ACC",
+    "title_card": "0x27B00",
+    "2C564": "0x27B40",
+    "2DAC8": "0x27BFC",
+    "prologue_scroll": "0x27C1C",
+    "e_red_door": "0x27C6C",
+    "e_collect": "0x27CAC",
+    "e_misc": "0x27CC4",
+    "3AB08": "0x27CFC",
+    "3C5C0": "0x27D30",
+    "prim_helpers": "0x27D3C",
+    "3D8F0": "0x27D44"
+   }
   },
   "sttop": {
    "segmented": true,
    "named_segments": {
-    "create_entity": "0x3B850",
+    "create_entity": "0x3B7F0",
+    "cutscene": "0x3B860",
     "e_collect": "0x3C51C"
    },
-   "unnamed_blobs": [
-    "0x3B7F0",
-    "0x3B860"
-   ]
+   "unnamed_blobs": [],
+   "data_segmented": true,
+   "named_data": {
+    "header": "0x0",
+    "sprite_banks": "0x34",
+    "palette_def": "0x94",
+    "layers": "0x4E8",
+    "graphics_banks": "0x630",
+    "gen/e_laydef": "0x740",
+    "e_init": "0x8E8",
+    "e_room_bg": "0xA30",
+    "e_red_door_tiles": "0xA68",
+    "e_lock_camera": "0xA98",
+    "e_breakable": "0xAF8",
+    "e_secret_stairs": "0xC08",
+    "e_breakable_wall": "0xCBC",
+    "e_elevator": "0xCC8",
+    "e_lion_lamp": "0xCF0",
+    "d_prize_drops": "0xD10",
+    "cutscene": "0xD38",
+    "post_richter_cutscene": "0xDF0",
+    "st_update": "0xE28",
+    "collision": "0xE74",
+    "e_red_door": "0x1234",
+    "st_common": "0x124C",
+    "e_collect": "0x144C",
+    "e_misc": "0x17A0",
+    "e_particles": "0x1858",
+    "e_room_fg": "0x18D8",
+    "e_flea_rider": "0x1964",
+    "e_blue_axe_knight": "0x19BC",
+    "gen/rooms": "0x1B78",
+    "e_clouds": "0x1BFC",
+    "e_clock_tower": "0x1CFC",
+    "gen/e_layout": "0x20AC",
+    "cutscene_data": "0x2C08",
+    "richter_sprites": "0x2E44",
+    "stage_data": "0x3418",
+    "tilemaps": "0x11C54",
+    "gen/sprites": "0x24884"
+   },
+   "unnamed_data_blobs": [
+    "0x2C04"
+   ],
+   "named_rodata": {
+    "e_lock_camera": "0x288E8",
+    "e_richter_fight_trigger": "0x28904",
+    "e_breakable": "0x2891C",
+    "e_secret_stairs": "0x2893C",
+    "e_lion_lamp": "0x28978",
+    "e_warp_trigger": "0x28984",
+    "cutscene": "0x2898C",
+    "post_richter_cutscene": "0x28A30",
+    "e_red_door": "0x28A64",
+    "e_collect": "0x28A7C",
+    "e_stage_name": "0x28B50",
+    "e_flea_rider": "0x28B84",
+    "e_blue_axe_knight": "0x28BAC",
+    "prim_helpers": "0x28C30"
+   }
   },
   "stwrp": {
    "segmented": true,
@@ -76048,42 +78546,132 @@
     "bss": "0x13AC0",
     "e_collect": "0x14728"
    },
-   "unnamed_blobs": []
+   "unnamed_blobs": [],
+   "data_segmented": true,
+   "named_data": {
+    "header": "0x0",
+    "sprite_banks": "0x40",
+    "cluts": "0xA0",
+    "layers": "0xB8",
+    "graphics_banks": "0x1B8",
+    "gen/e_laydef": "0x23C",
+    "e_init": "0x3E4",
+    "background_block_init": "0x4D0",
+    "e_red_door_tiles": "0x508",
+    "e_lock_camera": "0x528",
+    "e_breakable": "0x5A8",
+    "d_prize_drops": "0x608",
+    "warp": "0x648",
+    "st_update": "0x670",
+    "collision": "0x6BC",
+    "e_red_door": "0xA7C",
+    "st_common": "0xA94",
+    "e_collect": "0xC94",
+    "e_misc": "0xF84",
+    "e_particles": "0xFE8",
+    "e_room_fg": "0x1120",
+    "gen/rooms": "0x11AC",
+    "gen/e_layout": "0x1228",
+    "stage_data": "0x1420",
+    "gen/us/sprites": "0x6D88"
+   },
+   "unnamed_data_blobs": [],
+   "named_rodata": {
+    "warp": "0x6E30",
+    "e_red_door": "0x6EA8",
+    "e_collect": "0x6EC0",
+    "e_misc": "0x6F48",
+    "e_stage_name": "0x6F94",
+    "prim_helpers": "0x6FC8"
+   }
   },
   "tt_000": {
    "segmented": true,
    "named_segments": {
     "bat": "0x48D8"
    },
-   "unnamed_blobs": []
+   "unnamed_blobs": [],
+   "data_segmented": true,
+   "named_data": {
+    "init": "0x0",
+    "servant_spriteparts": "0x40",
+    "servant_clutdata": "0x448",
+    "bat": "0x4A8"
+   },
+   "unnamed_data_blobs": [],
+   "named_rodata": {
+    "bat": "0x10AC"
+   }
   },
   "tt_001": {
    "segmented": true,
    "named_segments": {
     "ghost": "0x35B0"
    },
-   "unnamed_blobs": []
+   "unnamed_blobs": [],
+   "data_segmented": true,
+   "named_data": {
+    "init": "0x0",
+    "servant_spriteparts": "0x40",
+    "servant_clutdata": "0x448",
+    "ghost": "0x4A8"
+   },
+   "unnamed_data_blobs": [],
+   "named_rodata": {
+    "ghost": "0xEFC"
+   }
   },
   "tt_002": {
    "segmented": true,
    "named_segments": {
     "faerie": "0x92D0"
    },
-   "unnamed_blobs": []
+   "unnamed_blobs": [],
+   "data_segmented": true,
+   "named_data": {
+    "init": "0x0",
+    "faerie_spriteparts": "0x40",
+    "faerie": "0x2368"
+   },
+   "unnamed_data_blobs": [],
+   "named_rodata": {
+    "faerie": "0x3678"
+   }
   },
   "tt_003": {
    "segmented": true,
    "named_segments": {
     "demon": "0x83C4"
    },
-   "unnamed_blobs": []
+   "unnamed_blobs": [],
+   "data_segmented": true,
+   "named_data": {
+    "init": "0x0",
+    "demon_spriteparts": "0x40",
+    "demon": "0x19F0"
+   },
+   "unnamed_data_blobs": [],
+   "named_rodata": {
+    "demon": "0x29DC"
+   }
   },
   "tt_004": {
    "segmented": true,
    "named_segments": {
     "sword": "0x82B0"
    },
-   "unnamed_blobs": []
+   "unnamed_blobs": [],
+   "data_segmented": true,
+   "named_data": {
+    "init": "0x0",
+    "servant_clutdata": "0x40",
+    "sword": "0x60"
+   },
+   "unnamed_data_blobs": [],
+   "named_rodata": {
+    "sword": "0x2330",
+    "servant_common": "0x23FC"
+   }
   },
   "weapon": {
    "segmented": true,
@@ -76097,7 +78685,98 @@
     "w_051": "0x16B0E0",
     "w_052": "0x172B84"
    },
-   "unnamed_blobs": []
+   "unnamed_blobs": [],
+   "data_segmented": true,
+   "named_data": {
+    "w_000": "0x04040",
+    "w_001": "0x0BA44",
+    "w_002": "0x12040",
+    "w_003": "0x19884",
+    "w_004": "0x20EAC",
+    "w_005": "0x27EAC",
+    "w_006": "0x2E884",
+    "w_007": "0x35040",
+    "w_008": "0x3C804",
+    "w_009": "0x43804",
+    "w_010": "0x4A8EC",
+    "w_011": "0x51958",
+    "w_012": "0x58040",
+    "w_013": "0x5F2B0",
+    "w_014": "0x662B0",
+    "w_015": "0x6D478",
+    "w_016": "0x742B0",
+    "w_017": "0x7B040",
+    "w_018": "0x82488",
+    "w_019": "0x8930C",
+    "w_020": "0x90630",
+    "w_021": "0x97564",
+    "w_022": "0x9E540",
+    "w_023": "0xA58A4",
+    "w_024": "0xAC804",
+    "w_025": "0xB3804",
+    "w_026": "0xBA804",
+    "w_027": "0xC1A18",
+    "w_028": "0xC8804",
+    "w_029": "0xCF884",
+    "w_030": "0xD6040",
+    "w_031": "0xDD704",
+    "w_032": "0xE4704",
+    "w_033": "0xEBA9C",
+    "w_034": "0xF2040",
+    "w_035": "0xF9404",
+    "w_036": "0x100404",
+    "w_037": "0x107040",
+    "w_038": "0x10EC08",
+    "w_039": "0x115C08",
+    "w_040": "0x11C504",
+    "w_041": "0x123040",
+    "w_042": "0x12A3E4",
+    "w_043": "0x131A44",
+    "w_044": "0x138040",
+    "w_045": "0x13F040",
+    "w_046": "0x146040",
+    "w_047": "0x14D228",
+    "w_048": "0x154A44",
+    "w_049": "0x15BC00",
+    "w_050": "0x162A44",
+    "w_051": "0x169040",
+    "w_052": "0x170040",
+    "w_053": "0x177A44",
+    "w_054": "0x17EA44",
+    "w_055": "0x185A44",
+    "w_056": "0x18CA44",
+    "w_057": "0x193A44",
+    "w_058": "0x19A808"
+   },
+   "unnamed_data_blobs": [],
+   "named_rodata": {
+    "w_001": "0x0BFF8",
+    "w_006": "0x2EC40",
+    "w_008": "0x3CAC4",
+    "w_009": "0x43AC4",
+    "w_010": "0x4AC08",
+    "w_011": "0x51C40",
+    "w_013": "0x5F608",
+    "w_016": "0x745F8",
+    "w_018": "0x8273C",
+    "w_020": "0x90BA0",
+    "w_021": "0x97798",
+    "w_023": "0xA5CF4",
+    "w_024": "0xACD54",
+    "w_025": "0xB3AE4",
+    "w_026": "0xBAAF0",
+    "w_027": "0xC1CCC",
+    "w_028": "0xC8B68",
+    "w_029": "0xCFD54",
+    "w_030": "0xD6680",
+    "w_041": "0x123560",
+    "w_042": "0x12A760",
+    "w_044": "0x1382A8",
+    "w_047": "0x14D554",
+    "w_052": "0x170C24",
+    "w_053": "0x17826C",
+    "w_058": "0x19ABCC"
+   }
   }
  },
  "unmatched": {
@@ -76761,9 +79440,145 @@
    "overlay": "BOSS/BO6",
    "asm": "asm/us/boss/bo6/nonmatchings/us_3E79C/func_us_801C9DE8.s"
   },
+  "a0123456789abcd_0": {
+   "overlay": "MAIN",
+   "asm": "asm/us/main/nonmatchings/psxsdk/libc/sprintf/a0123456789abcd_0.s"
+  },
+  "a0123456789abcd_1": {
+   "overlay": "MAIN",
+   "asm": "asm/us/main/nonmatchings/psxsdk/libc/sprintf/a0123456789abcd_1.s"
+  },
+  "aAcknowledge": {
+   "overlay": "MAIN",
+   "asm": "asm/us/main/nonmatchings/psxsdk/libcd/bios/aAcknowledge.s"
+  },
+  "aCdlbackword": {
+   "overlay": "MAIN",
+   "asm": "asm/us/main/nonmatchings/psxsdk/libcd/bios/aCdlbackword.s"
+  },
+  "aCdldemute": {
+   "overlay": "MAIN",
+   "asm": "asm/us/main/nonmatchings/psxsdk/libcd/bios/aCdldemute.s"
+  },
+  "aCdlforward": {
+   "overlay": "MAIN",
+   "asm": "asm/us/main/nonmatchings/psxsdk/libcd/bios/aCdlforward.s"
+  },
+  "aCdlgetlocl": {
+   "overlay": "MAIN",
+   "asm": "asm/us/main/nonmatchings/psxsdk/libcd/bios/aCdlgetlocl.s"
+  },
+  "aCdlgetlocp": {
+   "overlay": "MAIN",
+   "asm": "asm/us/main/nonmatchings/psxsdk/libcd/bios/aCdlgetlocp.s"
+  },
+  "aCdlgettd": {
+   "overlay": "MAIN",
+   "asm": "asm/us/main/nonmatchings/psxsdk/libcd/bios/aCdlgettd.s"
+  },
+  "aCdlgettn": {
+   "overlay": "MAIN",
+   "asm": "asm/us/main/nonmatchings/psxsdk/libcd/bios/aCdlgettn.s"
+  },
+  "aCdlmute": {
+   "overlay": "MAIN",
+   "asm": "asm/us/main/nonmatchings/psxsdk/libcd/bios/aCdlmute.s"
+  },
+  "aCdlnop": {
+   "overlay": "MAIN",
+   "asm": "asm/us/main/nonmatchings/psxsdk/libcd/bios/aCdlnop.s"
+  },
+  "aCdlpause": {
+   "overlay": "MAIN",
+   "asm": "asm/us/main/nonmatchings/psxsdk/libcd/bios/aCdlpause.s"
+  },
+  "aCdlplay": {
+   "overlay": "MAIN",
+   "asm": "asm/us/main/nonmatchings/psxsdk/libcd/bios/aCdlplay.s"
+  },
+  "aCdlreadn": {
+   "overlay": "MAIN",
+   "asm": "asm/us/main/nonmatchings/psxsdk/libcd/bios/aCdlreadn.s"
+  },
+  "aCdlreads": {
+   "overlay": "MAIN",
+   "asm": "asm/us/main/nonmatchings/psxsdk/libcd/bios/aCdlreads.s"
+  },
+  "aCdlreset": {
+   "overlay": "MAIN",
+   "asm": "asm/us/main/nonmatchings/psxsdk/libcd/bios/aCdlreset.s"
+  },
+  "aCdlseekl": {
+   "overlay": "MAIN",
+   "asm": "asm/us/main/nonmatchings/psxsdk/libcd/bios/aCdlseekl.s"
+  },
+  "aCdlseekp": {
+   "overlay": "MAIN",
+   "asm": "asm/us/main/nonmatchings/psxsdk/libcd/bios/aCdlseekp.s"
+  },
+  "aCdlsetloc": {
+   "overlay": "MAIN",
+   "asm": "asm/us/main/nonmatchings/psxsdk/libcd/bios/aCdlsetloc.s"
+  },
+  "aCdlstandby": {
+   "overlay": "MAIN",
+   "asm": "asm/us/main/nonmatchings/psxsdk/libcd/bios/aCdlstandby.s"
+  },
+  "aCdlstop": {
+   "overlay": "MAIN",
+   "asm": "asm/us/main/nonmatchings/psxsdk/libcd/bios/aCdlstop.s"
+  },
+  "aCdlsync": {
+   "overlay": "MAIN",
+   "asm": "asm/us/main/nonmatchings/psxsdk/libcd/bios/aCdlsync.s"
+  },
+  "aCdTimeout": {
+   "overlay": "MAIN",
+   "asm": "asm/us/main/nonmatchings/psxsdk/libcd/bios/aCdTimeout.s"
+  },
+  "aComplete": {
+   "overlay": "MAIN",
+   "asm": "asm/us/main/nonmatchings/psxsdk/libcd/bios/aComplete.s"
+  },
+  "aDataend": {
+   "overlay": "MAIN",
+   "asm": "asm/us/main/nonmatchings/psxsdk/libcd/bios/aDataend.s"
+  },
+  "aDataready": {
+   "overlay": "MAIN",
+   "asm": "asm/us/main/nonmatchings/psxsdk/libcd/bios/aDataready.s"
+  },
+  "aDiskerror_0": {
+   "overlay": "MAIN",
+   "asm": "asm/us/main/nonmatchings/psxsdk/libcd/bios/aDiskerror_0.s"
+  },
+  "aIdBiosCV177199": {
+   "overlay": "MAIN",
+   "asm": "asm/us/main/nonmatchings/psxsdk/libcd/bios/aIdBiosCV177199.s"
+  },
+  "aNointr": {
+   "overlay": "MAIN",
+   "asm": "asm/us/main/nonmatchings/psxsdk/libcd/bios/aNointr.s"
+  },
   "dma_execute": {
    "overlay": "MAIN",
    "asm": "asm/us/main/nonmatchings/psxsdk/libcd/c_011/dma_execute.s"
+  },
+  "aNone": {
+   "overlay": "MAIN",
+   "asm": "asm/us/main/nonmatchings/psxsdk/libcd/sys/aNone.s"
+  },
+  "aIdIntrCV173199": {
+   "overlay": "MAIN",
+   "asm": "asm/us/main/nonmatchings/psxsdk/libetc/intr/aIdIntrCV173199.s"
+  },
+  "a0123456789abcd": {
+   "overlay": "MAIN",
+   "asm": "asm/us/main/nonmatchings/psxsdk/libgpu/font/a0123456789abcd.s"
+  },
+  "aIdSysCV1831995": {
+   "overlay": "MAIN",
+   "asm": "asm/us/main/nonmatchings/psxsdk/libgpu/sys/aIdSysCV1831995.s"
   },
   "_SsContDataEntry": {
    "overlay": "MAIN",
@@ -76857,6 +79672,138 @@
    "overlay": "ST/RCEN",
    "asm": "asm/us/st/rcen/nonmatchings/unk_2BD24/func_us_801ABD24.s"
   },
+  "EntityBat": {
+   "overlay": "ST/RCHI",
+   "asm": "asm/us/st/rchi/nonmatchings/e_bat/EntityBat.s"
+  },
+  "EntityBreakable": {
+   "overlay": "ST/RNO0",
+   "asm": "asm/us/st/rno0/nonmatchings/e_breakable/EntityBreakable.s"
+  },
+  "EntityBreakableDebris": {
+   "overlay": "ST/RCHI",
+   "asm": "asm/us/st/rchi/nonmatchings/e_breakable/EntityBreakableDebris.s"
+  },
+  "EntityBreakableWall": {
+   "overlay": "ST/RCHI",
+   "asm": "asm/us/st/rchi/nonmatchings/e_breakable_wall/EntityBreakableWall.s"
+  },
+  "EntityBreakableWallDebris": {
+   "overlay": "ST/RCHI",
+   "asm": "asm/us/st/rchi/nonmatchings/e_breakable_wall/EntityBreakableWallDebris.s"
+  },
+  "EntityDemonSwitch": {
+   "overlay": "ST/RCHI",
+   "asm": "asm/us/st/rchi/nonmatchings/e_demon_switch_wall/EntityDemonSwitch.s"
+  },
+  "EntityDemonSwitchWall": {
+   "overlay": "ST/RCHI",
+   "asm": "asm/us/st/rchi/nonmatchings/e_demon_switch_wall/EntityDemonSwitchWall.s"
+  },
+  "UpdateFallingPebble": {
+   "overlay": "ST/RCHI",
+   "asm": "asm/us/st/rchi/nonmatchings/e_demon_switch_wall/UpdateFallingPebble.s"
+  },
+  "EntityGaibon": {
+   "overlay": "ST/RCHI",
+   "asm": "asm/us/st/rchi/nonmatchings/e_gaibon/EntityGaibon.s"
+  },
+  "EntityGaibonLeg": {
+   "overlay": "ST/RCHI",
+   "asm": "asm/us/st/rchi/nonmatchings/e_gaibon/EntityGaibonLeg.s"
+  },
+  "EntityLargeGaibonProjectile": {
+   "overlay": "ST/RCHI",
+   "asm": "asm/us/st/rchi/nonmatchings/e_gaibon/EntityLargeGaibonProjectile.s"
+  },
+  "EntitySmallGaibonProjectile": {
+   "overlay": "ST/RCHI",
+   "asm": "asm/us/st/rchi/nonmatchings/e_gaibon/EntitySmallGaibonProjectile.s"
+  },
+  "EntitySlogra": {
+   "overlay": "ST/RCHI",
+   "asm": "asm/us/st/rchi/nonmatchings/e_slogra/EntitySlogra.s"
+  },
+  "EntitySlograSpear": {
+   "overlay": "ST/RCHI",
+   "asm": "asm/us/st/rchi/nonmatchings/e_slogra/EntitySlograSpear.s"
+  },
+  "EntitySlograSpearProjectile": {
+   "overlay": "ST/RCHI",
+   "asm": "asm/us/st/rchi/nonmatchings/e_slogra/EntitySlograSpearProjectile.s"
+  },
+  "func_us_801C0C44": {
+   "overlay": "ST/RDAI",
+   "asm": "asm/us/st/rdai/nonmatchings/e_spectral_sword/func_us_801C0C44.s"
+  },
+  "func_us_801C17E8": {
+   "overlay": "ST/RDAI",
+   "asm": "asm/us/st/rdai/nonmatchings/e_spectral_sword/func_us_801C17E8.s"
+  },
+  "func_us_801C4B2C": {
+   "overlay": "ST/RDAI",
+   "asm": "asm/us/st/rdai/nonmatchings/func_44b2c/func_us_801C4B2C.s"
+  },
+  "func_us_801C4C4C": {
+   "overlay": "ST/RDAI",
+   "asm": "asm/us/st/rdai/nonmatchings/func_44c4c/func_us_801C4C4C.s"
+  },
+  "func_us_801C5AA0": {
+   "overlay": "ST/RDAI",
+   "asm": "asm/us/st/rdai/nonmatchings/func_45aa0/func_us_801C5AA0.s"
+  },
+  "func_us_801C6040": {
+   "overlay": "ST/RDAI",
+   "asm": "asm/us/st/rdai/nonmatchings/func_46040/func_us_801C6040.s"
+  },
+  "func_us_801B1C34": {
+   "overlay": "ST/RDAI",
+   "asm": "asm/us/st/rdai/nonmatchings/func_us_801b1c34/func_us_801B1C34.s"
+  },
+  "func_us_801B2C28": {
+   "overlay": "ST/RDAI",
+   "asm": "asm/us/st/rdai/nonmatchings/unk_327A4/func_us_801B2C28.s"
+  },
+  "func_us_801B3368": {
+   "overlay": "ST/RDAI",
+   "asm": "asm/us/st/rdai/nonmatchings/unk_327A4/func_us_801B3368.s"
+  },
+  "func_us_801BF830": {
+   "overlay": "ST/RDAI",
+   "asm": "asm/us/st/rdai/nonmatchings/unk_3F6B4/func_us_801BF830.s"
+  },
+  "func_us_801BFE6C": {
+   "overlay": "ST/RDAI",
+   "asm": "asm/us/st/rdai/nonmatchings/unk_3F6B4/func_us_801BFE6C.s"
+  },
+  "func_us_801C0240": {
+   "overlay": "ST/RDAI",
+   "asm": "asm/us/st/rdai/nonmatchings/unk_3F6B4/func_us_801C0240.s"
+  },
+  "func_us_801C0528": {
+   "overlay": "ST/RDAI",
+   "asm": "asm/us/st/rdai/nonmatchings/unk_3F6B4/func_us_801C0528.s"
+  },
+  "func_us_801C0898": {
+   "overlay": "ST/RDAI",
+   "asm": "asm/us/st/rdai/nonmatchings/unk_3F6B4/func_us_801C0898.s"
+  },
+  "func_us_801C1DE8": {
+   "overlay": "ST/RDAI",
+   "asm": "asm/us/st/rdai/nonmatchings/unk_41DE8/func_us_801C1DE8.s"
+  },
+  "func_us_801C21E4": {
+   "overlay": "ST/RDAI",
+   "asm": "asm/us/st/rdai/nonmatchings/unk_41DE8/func_us_801C21E4.s"
+  },
+  "func_us_801C2418": {
+   "overlay": "ST/RDAI",
+   "asm": "asm/us/st/rdai/nonmatchings/unk_41DE8/func_us_801C2418.s"
+  },
+  "func_us_801C3580": {
+   "overlay": "ST/RDAI",
+   "asm": "asm/us/st/rdai/nonmatchings/unk_41DE8/func_us_801C3580.s"
+  },
   "EntityDamageDisplay": {
    "overlay": "ST/RNO0",
    "asm": "asm/us/st/rno0/nonmatchings/collision/EntityDamageDisplay.s"
@@ -76924,10 +79871,6 @@
   "EntityBladeWeapon": {
    "overlay": "ST/RNO0",
    "asm": "asm/us/st/rno0/nonmatchings/e_blade/EntityBladeWeapon.s"
-  },
-  "EntityBreakable": {
-   "overlay": "ST/RNO0",
-   "asm": "asm/us/st/rno0/nonmatchings/e_breakable/EntityBreakable.s"
   },
   "EntityBirdcageDoor": {
    "overlay": "ST/RNO0",

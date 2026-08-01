@@ -60,7 +60,12 @@ ENTITY_SIZE = 0xBC
 # The database is what the fixes are checked against, so it must not be derived
 # from the thing being fixed. asm/ is exempt: a .s file under nonmatchings/ is
 # produced by the extractor from the original binary, not by us.
-UPSTREAM_REF = os.environ.get("SOTN_INDEX_REF", "2472557")
+#
+# Re-point this whenever upstream is merged. It tracks upstream/master, NOT our
+# HEAD: after a merge our HEAD contains upstream's work plus our own, and
+# indexing HEAD would reintroduce exactly the circularity this constant exists
+# to prevent.
+UPSTREAM_REF = os.environ.get("SOTN_INDEX_REF", "upstream/master")
 
 _TREE_CACHE: dict[str, list[str]] = {}
 _BLOB_CACHE: dict[str, str] = {}
@@ -517,48 +522,147 @@ def build_bss_segments(version: str = "us") -> dict:
             continue
         text = read_source(path)
         named, blob = {}, []
+        named_data, blob_data = {}, []
+        named_rodata: dict[str, str] = {}
         for lm in re.finditer(
-                r"^\s*-\s*\[\s*(0x[0-9A-Fa-f]+)\s*,\s*\.?bss\s*(?:,\s*([\w/]+)\s*)?\]",
-                text, re.M):
-            addr, name = lm.group(1), lm.group(2)
-            if name:
-                named[name] = addr
+                r"^\s*-\s*\[\s*(0x[0-9A-Fa-f]+)\s*,\s*\.?(bss|data|rodata)\s*"
+                r"(?:,\s*([\w/]+)\s*)?\]", text, re.M):
+            addr, kind, name = lm.group(1), lm.group(2), lm.group(3)
+            if kind == "bss":
+                (named.__setitem__(name, addr) if name else blob.append(addr))
+            elif kind == "data":
+                # `- [0xE20, data]` with no filename is an unnamed blob, and it
+                # is exactly what makes a shim emit the same array twice.
+                (named_data.__setitem__(name, addr) if name
+                 else blob_data.append(addr))
             else:
-                blob.append(addr)
-        if not named and not blob:
+                if name:
+                    named_rodata[name] = addr
+        if not (named or blob or named_data or blob_data):
             continue
         out[m.group(1)] = {
             "segmented": bool(named),
             "named_segments": named,
             "unnamed_blobs": blob,
+            "data_segmented": bool(named_data),
+            "named_data": named_data,
+            "unnamed_data_blobs": blob_data,
+            "named_rodata": named_rodata,
         }
     return out
+
+
+def preprocess_us(text: str) -> str:
+    """Drop blocks that the US PSX build does not compile.
+
+    Needed because storage that only exists for another platform must not count
+    as a blocker. e_particles.h's only static is
+
+        #if defined(VERSION_HD)
+        static u32 padding = 0;
+        #endif
+
+    and counting it made e_particles look BSS-blocked for US when it has no bss
+    at all. Only the VERSION_* family is evaluated; every other conditional is
+    left in place, since guessing at unrelated macros would trade one wrong
+    answer for another.
+    """
+    defined = {"VERSION_US"}
+    out, stack = [], []                 # stack of "currently emitting?" flags
+    cond = re.compile(r"^\s*#\s*(if|ifdef|ifndef|elif|else|endif)\b(.*)$")
+
+    def truth(expr: str) -> bool | None:
+        names = re.findall(r"VERSION_\w+", expr)
+        if not names:
+            return None                 # not a VERSION_* test; do not judge it
+        val = any(n in defined for n in names)
+        return (not val) if re.search(r"^\s*!", expr.strip()) else val
+
+    for line in text.splitlines(keepends=True):
+        m = cond.match(line)
+        if not m:
+            if all(s is not False for s in stack):
+                out.append(line)
+            continue
+        kind, rest = m.group(1), m.group(2)
+        if kind in ("if", "ifdef", "ifndef"):
+            t = truth(rest)
+            if kind == "ifndef" and t is not None:
+                t = not t
+            stack.append(t)
+        elif kind == "elif":
+            if stack:
+                stack[-1] = truth(rest)
+        elif kind == "else":
+            if stack:
+                stack[-1] = None if stack[-1] is None else (not stack[-1])
+        elif kind == "endif":
+            if stack:
+                stack.pop()
+    return "".join(out)
 
 
 def shim_viable(stage: str, stem: str, idx: dict) -> tuple[bool, str]:
     """Can `stage` replace its private src/st/<stage>/<stem>.c with a shim?
 
-    Three independent blockers, each one observed in practice:
-      1. the shared header declares static storage and the stage has no .bss
-         segment for that file  (rno0/giantbro_helpers: 124-byte shift)
+    Four independent blockers, every one of them observed in a real build:
+
+      1. nothing shims it, so there is no shared implementation to defer to
+         (e_blade, e_gurkha: shimmed_by == []). Converting these would be
+         actively wrong, not merely unhelpful.
       2. the stage's translation unit defines functions the shared header does
-         not  (rno0/giantbro_helpers again: 22 functions vs the shared 15)
-      3. nothing shims it, so there is no shared implementation to defer to
-         (e_blade, e_gurkha: shimmed_by == [])
+         not (rno0/giantbro_helpers: 22 functions vs the shared 15, so it can
+         never be a PURE shim).
+      3. UNINITIALISED static storage with no '.bss, <stem>' splat segment to
+         pin it (rno0/giantbro_helpers: 124 bytes landed at 0x801D3EB8 instead
+         of 0x801D4AC8 and shifted every later bss address).
+      4. INITIALISED file-scope data with no '.data, <stem>' splat segment
+         (rno0/e_particles: the shared header emits g_ESoulStealOrbAngles, but
+         rno0 keeps .data in an unnamed blob at 0xE20 that ALSO emits it, so
+         both land in the overlay. rno0's values differ from the shared ones
+         besides -- 0x0597 repeated against 0x0820, 0x0840 -- so that one is
+         a content difference and not only a placement one.)
+
+    Blockers 3 and 4 are deliberately kept apart. Treating any `static` as bss
+    called e_collect BLOCKED when all of its statics are initialised and none
+    of them reach .bss.
+
+    This predicts; it does not prove. The build is still the oracle.
     """
     si = idx.get("shared_impls", {}).get(stem)
     if not si:
         return False, f"no shared implementation named {stem}"
     if not si["shimmed_by"]:
         return False, f"{stem} is shimmed by no stage; there is no shared impl to use"
-    hdr = read_source(si["header"])
-    static_bytes = bool(re.search(r"^\s*static\b|STATIC_PAD_BSS", hdr, re.M))
-    seg = idx.get("bss_segments", {}).get(f"st{stage}") or \
-        idx.get("bss_segments", {}).get(stage) or {}
-    if static_bytes and not seg.get("named_segments", {}).get(stem):
-        return False, (f"{stem} declares static storage but {stage} has no "
-                       f"'.bss, {stem}' splat segment to pin it; shimming will "
-                       f"shift every later bss address")
+
+    hdr = preprocess_us(read_source(si["header"]))
+    # Uninitialised static -> .bss.
+    #   excluding '='   : `static u16 tbl[] = {1,2};` is .data, not .bss
+    #   excluding '()'  : `static void Foo(u16 x) {` is a function, not storage
+    #   excluding '\n'  : a character class matches newlines, so [^;=] happily
+    #                     ran from a function's opening line to the first ';'
+    #                     in its BODY and reported 5 phantom bss objects in
+    #                     e_collect.h, which has none.
+    has_bss = bool(re.search(r"^[ \t]*static\b[^;=()\n]*;[ \t]*$", hdr, re.M) or
+                   re.search(r"\bSTATIC_PAD_BSS\b", hdr))
+    # Any file-scope definition WITH an initialiser -> .data/.rodata.
+    has_data = bool(re.search(r"^\s*(?:static\s+)?(?:const\s+)?[A-Za-z_]"
+                              r"[\w\s\*]*\w\s*(?:\[[^\]]*\])?\s*=\s*[\{\-0-9\"]",
+                              hdr, re.M))
+
+    segs = idx.get("splat_segments", {}).get(f"st{stage}") \
+        or idx.get("bss_segments", {}).get(f"st{stage}") or {}
+    named = segs.get("named_segments", {})
+    data_named = segs.get("named_data", {})
+
+    if has_bss and stem not in named:
+        return False, (f"{stem} has uninitialised static storage but {stage} "
+                       f"has no '.bss, {stem}' splat segment to pin it; "
+                       f"shimming will shift every later bss address")
+    if has_data and stem not in data_named:
+        return False, (f"{stem} defines initialised file-scope data but "
+                       f"{stage} has no '.data, {stem}' splat segment; the "
+                       f"unnamed data blob will emit it a second time")
     return True, "no known blocker"
 
 
@@ -695,11 +799,18 @@ def main() -> int:
     else:
         print(f"indexing from {UPSTREAM_REF} (upstream, not working tree)...",
               file=sys.stderr)
-        # .yaml included deliberately: build_bss_segments reads ~90 splat
-        # configs, and one `git show` each is slower than the entire rest of
-        # the index put together on a mounted filesystem.
+        # Prefetch EXACTLY what the builders read, nothing more. A blanket
+        # "every .h/.c/.txt/.yaml" pull is 3086 blobs at upstream/master, most
+        # of them Saturn sources that _c_sources() and _headers() discard
+        # anyway. Matching the builders' own filters cuts it to 2199 and, more
+        # to the point, keeps the cost from growing every time upstream adds a
+        # platform we do not index.
+        want = re.compile(
+            r"^(?:src/.*\.[ch]|include/.*\.h"
+            r"|config/symbols\.us.*\.txt|config/splat\.us\..*\.yaml)$")
+        skip = re.compile(r"_psp|saturn")
         prefetch([f for f in _ref_files(UPSTREAM_REF)
-                  if f.endswith((".h", ".c", ".txt", ".yaml"))])
+                  if want.match(f) and not skip.search(f)])
         structs = build_structs()
         idx = {
             "provenance": {
