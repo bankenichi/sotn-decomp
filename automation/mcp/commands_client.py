@@ -149,6 +149,13 @@ REGISTRY = {
     "queue_init": lambda from_file="automation/seed.us.txt": [
         PYTHON, "automation/scheduler.py", "init",
         "--from", _inrepo(from_file)],
+    # Attach twin candidates to queue records. Non-destructive (it writes only
+    # the `twin` field, never status), idempotent, and dry-run unless apply.
+    # MUST run here rather than in a sandbox shell: SOTN_QUEUE resolves via
+    # $HOME, so a different environment annotates a different queue file.
+    "queue_annotate": lambda from_file="automation/twins.us.json", apply=False: (
+        [PYTHON, "automation/scheduler.py", "annotate",
+         "--from", _inrepo(from_file)] + (["--apply"] if apply else [])),
     # queue pruning. The ONLY destructive queue action, so it is dry-run unless
     # apply=True is passed explicitly, and scheduler.py refuses to touch
     # anything that is not `todo`.

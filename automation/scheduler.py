@@ -393,6 +393,91 @@ def cmd_report(args):
     print("updated" if q.transaction(fn) else f"id not found: {args.id}")
 
 
+def cmd_annotate(args):
+    """Attach twin candidates from automation/twins.us.json to queue records.
+
+    174 of 335 unmatched stubs already exist somewhere else in the tree, 145 of
+    them findable by name alone. Recording that ON THE RECORD means a worker or
+    subagent starts from "this is RicStepStand in src/ric/pl_steps.c, diff it"
+    instead of from raw assembly, which is the difference between a cheap port
+    and an expensive rediscovery.
+
+    WHY THIS COMMAND EXISTS RATHER THAN A SANDBOX SCRIPT
+    SOTN_QUEUE defaults to ~/sotn-work/queue.jsonl, so it resolves to a
+    DIFFERENT file per HOME. A helper run from the Cowork sandbox saw 33 matched
+    where the live queue had 134. Writing from there would have forked the
+    harness state while printing success. So this runs inside the same process
+    family as every other writer, and it prints the resolved path every time so
+    a fork is visible immediately instead of months later.
+
+    Annotation is NOT progress: status, tier, iterations and updated_at are all
+    left alone. Only `twin` is written, so re-running is a no-op once applied
+    and this can never disturb the ordering the fleet pulls work in.
+
+    DRY RUN BY DEFAULT, matching `prune`.
+    """
+    src = Path(args.from_file)
+    if not src.is_absolute():
+        src = REPO / src
+    try:
+        doc = json.loads(src.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as e:
+        sys.exit(f"cannot read {src}: {e}")
+    twins = doc.get("twins") or {}
+    if not twins:
+        sys.exit(f"{src} has no 'twins' map; regenerate with "
+                 f"`python3 automation/asm_twin_finder.py --record`")
+
+    print(f"queue:  {QUEUE}")
+    print(f"twins:  {src}  ({len(twins)} entries, "
+          f"generated from {doc.get('generated_from') or 'unknown'})")
+
+    records = Queue()._read()
+    planned: dict[str, dict] = {}
+    for r in records:
+        entry = twins.get(f"{r.get('overlay')}/{r.get('function')}")
+        if not entry:
+            continue
+        twin = {
+            "name": [f"{t['file']}:{t['function']}"
+                     for t in entry.get("name_twins") or []],
+            "shape": [f"{t['overlay']}:{t['symbol']}"
+                      + ("" if t.get("identical_constants") else " (DIFFERENT constants)")
+                      for t in entry.get("shape_twins") or []],
+            "tokens": [f"{t['file']}:{t['function']} ({t['score']})"
+                       for t in entry.get("token_twins") or []],
+            "instructions": entry.get("instructions"),
+        }
+        if r.get("twin") == twin:
+            continue                      # already annotated, nothing to do
+        planned[r["id"]] = twin
+
+    for rid in sorted(planned):
+        names = planned[rid]["name"]
+        head = names[0] if names else "(no name twin)"
+        extra = f" +{len(names) - 1} more" if len(names) > 1 else ""
+        print(f"  annotate  {rid}\n              -> {head}{extra}")
+
+    if not planned:
+        print("\nnothing to do: every matching record is already annotated.")
+        return
+    if not args.apply:
+        print(f"\ndry run: {len(planned)} record(s) would be annotated. "
+              f"Re-run with --apply to write.")
+        return
+
+    def fn(records):
+        n = 0
+        for r in records:
+            if r["id"] in planned:
+                r["twin"] = planned[r["id"]]
+                n += 1
+        return records, n
+
+    n = Queue().transaction(fn)
+    print(f"\nannotated {n} record(s) in {QUEUE}")
+
+
 def cmd_prune(args):
     """Remove records that are not decompilable functions at all.
 
@@ -521,6 +606,13 @@ def main():
     pp.add_argument("--apply", action="store_true",
                     help="actually write; without it this is a dry run")
     pp.set_defaults(func=cmd_prune)
+
+    pa = sub.add_parser("annotate")
+    pa.add_argument("--from", dest="from_file",
+                    default="automation/twins.us.json")
+    pa.add_argument("--apply", action="store_true",
+                    help="actually write; without it this is a dry run")
+    pa.set_defaults(func=cmd_annotate)
 
     prc = sub.add_parser("reclaim"); prc.add_argument("--older-than-min", type=int, default=60)
     prc.set_defaults(func=cmd_reclaim)

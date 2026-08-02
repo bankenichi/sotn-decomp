@@ -29,11 +29,51 @@ import commands_client as cc
 mcp = FastMCP("sotn-cmd")
 
 
+def _exposed_tool_names() -> list[str]:
+    """Names actually decorated with @mcp.tool() in this module.
+
+    Derived from this module's own globals rather than from FastMCP internals
+    on purpose. Tool-registry attribute names differ between FastMCP versions,
+    and a diagnostic that reaches into them can raise on import or upgrade.
+    A diagnostic must never be able to kill its host: that has already happened
+    once here, when a startup guard referenced names it had not imported and
+    took the whole connector down. Hence the bare except and the empty-list
+    fallback -- a missing list is a nuisance, a dead connector is an outage."""
+    try:
+        names = []
+        for name, obj in list(globals().items()):
+            if name.startswith("_") or name == "mcp":
+                continue
+            target = obj if callable(obj) else None
+            fn = getattr(obj, "fn", None)          # FastMCP Tool wrapper, if any
+            if getattr(target, "__module__", None) == __name__:
+                names.append(name)
+            elif fn is not None and getattr(fn, "__module__", None) == __name__:
+                names.append(name)
+        return sorted(set(names))
+    except Exception:
+        return []
+
+
 @mcp.tool()
 def list_allowed() -> dict:
-    """Return the exact allowlist of command actions, filesystem actions, and
-    the dry-run state."""
-    return cc.capabilities()
+    """Return the allowlist, the CALLABLE tool surface, and the dry-run state.
+
+    There are TWO surfaces and they are not the same set. `commands_client
+    .REGISTRY` is the allowlist of shell actions; the `@mcp.tool()` decorators
+    in this file are what a caller can actually invoke. Some tools (verify_build,
+    fleet_start) are decorated without a REGISTRY entry, so a REGISTRY-only
+    answer under-reports them.
+
+    That gap cost a wasted connector restart: an action was added to REGISTRY
+    but not decorated, so it was uncallable while this reported it as available,
+    and reading this list looked like confirmation. Report both, always."""
+    caps = cc.capabilities()
+    caps["mcp_tools"] = _exposed_tool_names()
+    caps["note"] = ("'commands' is the shell allowlist; 'mcp_tools' is what is "
+                    "actually callable. A name in one but not the other is a "
+                    "wiring bug, not a capability.")
+    return caps
 
 
 @mcp.tool()
@@ -276,6 +316,31 @@ def queue_init(from_file: str = "automation/seed.us.txt", timeout: int = 120) ->
     Seeding the wrong file would fork the harness state while appearing to
     succeed."""
     return cc.run("queue_init", timeout=timeout, from_file=from_file)
+
+
+@mcp.tool()
+def queue_annotate(from_file: str = "automation/twins.us.json",
+                   apply: bool = False, timeout: int = 300) -> dict:
+    """`scheduler.py annotate`: attach twin candidates to queue records.
+
+    174 of 335 unmatched stubs already exist elsewhere in the tree, 145 of them
+    findable by name. Recording that on the record lets a worker start from
+    "this is RicStepStand in src/ric/pl_steps.c, diff it against the asm"
+    rather than from raw assembly.
+
+    Non-destructive: writes only the `twin` field, never status, tier or
+    iterations, so it cannot disturb the order the fleet pulls work in, and
+    re-running is a no-op. DRY RUN unless apply=True.
+
+    MUST run here, not in a sandbox shell. SOTN_QUEUE resolves via $HOME, so
+    another environment would annotate a different queue file and fork the
+    harness state while printing success. The command prints the resolved
+    queue path so that fork is visible immediately.
+
+    Regenerate the input first with:
+        python3 automation/asm_twin_finder.py --record"""
+    return cc.run("queue_annotate", timeout=timeout,
+                  from_file=from_file, apply=apply)
 
 
 # ---- scoped in-repo filesystem (edit the WSL2 tree through the connector) ----
