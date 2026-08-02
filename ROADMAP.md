@@ -307,6 +307,28 @@ both regression-tested against these nine cases:
 
 Corrected distribution: 79 of 124 are copies (was 83), 3 unattributable.
 
+## P4 — (resolved 2026-08-02) Review checks now gate the worker
+
+**Done.** `review_gate()` in `worker_direct.py` runs `review_checks.py`'s
+functions as a PRE-BUILD gate, reusing them rather than reimplementing so the
+two callers cannot drift. Wired: `linkage`, `ext`, `static`, `signature`,
+`stub`. Pinned by `automation/test_review_gate.py` (19 checks), which proves the
+end-to-end rejection against real cross-TU callers rather than a fixture.
+
+`virtual_apply()` reproduces `apply_code`'s substitution in memory, because the
+checks need whole-file context. The test asserts the candidate really lands in
+the inspected text: if that regex ever drifts, the gate would silently inspect
+the unmodified file and pass everything, which is the dangerous failure because
+it looks like success.
+
+Left manual as this entry already specified: `angle` and `argn`. Also left to
+review time: `comment` and `block`, which compare against a previous C version
+that does not exist before apply.
+
+Architecture is now written up in `docs/HARNESS-ARCHITECTURE.md`.
+
+### Original entry
+
 ## P4 — Wire the review checks into the worker
 
 `automation/review_checks.py` (9 checks) and `automation/provenance_check.py` currently inform a human. It should gate the

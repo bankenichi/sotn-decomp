@@ -47,6 +47,9 @@ import socket
 import subprocess
 import sys
 import threading
+# Only for review_gate: review_checks.py takes a pathlib.Path and does
+# .relative_to(REPO) on it, so a plain string will not do.
+from pathlib import Path
 import time
 import urllib.error
 import urllib.request
@@ -2170,6 +2173,102 @@ def replay_pending_journals() -> int:
     return n
 
 
+# P4. review_checks.py has always been able to catch these; it just ran after
+# the fact, for a human. Wiring the SAME functions in (rather than
+# reimplementing them here) means a check can never drift between the two
+# callers, and each keeps its own founding-bug fixture in review_checks'
+# self_test.
+#
+# Excluded on purpose, per ROADMAP P4 and MATCHING-LESSONS section 20:
+#   angle, argn  - "same as X except Y" comments that understate a real
+#                  difference, and descriptive parameter names replaced by
+#                  argN. Both need a reader to judge; as automatic gates they
+#                  would reject good code.
+#   comment, block - they compare against a PREVIOUS C version of the function.
+#                  Before apply the file still holds the INCLUDE_ASM stub, so
+#                  there is no prior text to have lost. They stay a review-time
+#                  check, where that comparison is meaningful.
+_REVIEW_GATE_CHECKS = ("linkage", "ext", "static", "signature", "stub")
+
+_REVIEW_MOD = None
+
+
+def _review_checks_module():
+    global _REVIEW_MOD
+    if _REVIEW_MOD is None:
+        import importlib.util
+        p = os.path.join(WIN_REPO, "automation", "review_checks.py")
+        spec = importlib.util.spec_from_file_location("review_checks", p)
+        m = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(m)
+        _REVIEW_MOD = m
+    return _REVIEW_MOD
+
+
+def virtual_apply(ctx: dict, fn: str, code: str) -> str:
+    """The file as it WOULD look after apply_code, without writing anything.
+
+    The checks need whole-file context: linkage has to see which functions the
+    file declares static, ext has to see every ext access in the function's
+    neighbourhood. Running them on the bare candidate would miss both.
+
+    Kept deliberately in lockstep with apply_code's substitution. If that
+    pattern changes and this does not, the gate silently starts inspecting the
+    unmodified file and passes everything, so test_review_gate.py asserts the
+    candidate actually appears in the result.
+    """
+    with open(win_path(ctx["src_rel"]), encoding="utf-8", errors="replace") as f:
+        original = f.read()
+    pattern = re.compile(
+        r'^[ \t]*INCLUDE_ASM\(\s*"' + re.escape(ctx["asm_rel"]) +
+        r'"\s*,\s*' + re.escape(fn) + r'\s*\);[ \t]*(?=\r?$)', re.M)
+    if not pattern.search(original):
+        return ""      # stub not found; apply_code will raise with a real message
+    return pattern.sub(lambda _m: code.replace("\r\n", "\n"), original, count=1)
+
+
+def review_gate(ctx: dict, fn: str, code: str) -> list[str]:
+    """Reviewer-perspective defects, as a PRE-BUILD gate.
+
+    The linkage check is the reason this runs before the build rather than
+    after: it predicts a link error that the build would otherwise take minutes
+    to surface, and it catches the specific mistake that a source grep cannot.
+    Adding `static` to StepTowards broke the link once precisely because its
+    callers were INCLUDE_ASM stubs in a sibling .c, invisible to grep and fully
+    visible to the linker.
+
+    Never raises. A crash in an advisory check must not fail a good candidate.
+    """
+    try:
+        src = virtual_apply(ctx, fn, code)
+        if not src:
+            return []
+        rc = _review_checks_module()
+        path = Path(win_path(ctx["src_rel"]))
+        out = []
+        for key in _REVIEW_GATE_CHECKS:
+            fnc = rc.CHECKS.get(key)
+            if fnc is None:
+                continue
+            try:
+                for f in fnc(path, src):
+                    # Only the function under generation. The file may contain
+                    # pre-existing findings in code this worker did not write,
+                    # and failing an attempt for those would make the record
+                    # unmatchable forever.
+                    if f.get("function") and f["function"] != fn:
+                        continue
+                    out.append(f"{f['check']}: {f['detail']}. FIX: {f['fix']}")
+            except Exception as e:
+                print(f"  ~~ review check {key} errored, ignored: "
+                      f"{type(e).__name__}", flush=True)
+        return out
+    except Exception as e:
+        print(f"  ~~ review gate unavailable, ignored: {type(e).__name__}",
+              flush=True)
+        return []
+
+
 def apply_code(ctx: dict, fn: str, code: str) -> str:
     """Replace the INCLUDE_ASM line with the generated C. Returns the original."""
     path = win_path(ctx["src_rel"])
@@ -2472,6 +2571,10 @@ def process_one(dry: bool = False) -> bool:
             # the retry feedback, which is what makes the next attempt better
             # rather than merely different.
             defects = quality_gate(code, ctx.get("asm", ""))
+            # P4: the same checks a reviewer would apply, now BEFORE the build.
+            # Appended rather than merged so a review finding reads distinctly
+            # in the retry feedback and in the log.
+            defects += review_gate(ctx, fn, code)
             if defects:
                 print(f"  !! QUALITY REJECT ({len(defects)}): "
                       + "; ".join(d[:70] for d in defects[:3]), flush=True)
