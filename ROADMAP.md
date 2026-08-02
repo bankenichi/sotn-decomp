@@ -161,7 +161,40 @@ separately.
   `ANIMSET_OVL` bank, and `CEN_OPEN` -> `RCEN_OPEN` (+228 = 0xE4, so a
   relocation differing by exactly 0xE4 is that, not a wrong symbol).
 
-## P3b — Segment rno0's `.data` (blocks only `e_red_door`)
+## P3b — (resolved 2026-08-02) rno0 shims `e_red_door.h`
+
+**Done.** `EntityRedDoor` matched, the duplicated `EntityIsNearPlayer`
+(`func_us_801B9A8C`) deleted, 81/81 verified, 0 shifted symbols across 43
+overlays. Commit `7c6ad016c`. Full working plan in
+`docs/P3b-rno0-red-door-plan.md`.
+
+It was far smaller than this entry assumed. rno0's `unk_39A8C` segment **already
+was** `e_red_door.c`, merely misnamed: its text span `0x39A8C..0x3A73C` is
+`0xCB0`, byte-identical to rcen's `e_red_door` segment. So the work was one
+`.data` split plus two renames, not the segmentation surgery `.bss` needed.
+
+What actually had to be discovered, none of it guessable:
+
+- `g_eRedDoorUV` at `0x1454`, found by searching `RNO0_BIN` for the
+  initialiser's 24-byte signature. The method was validated first against
+  `RCEN.BIN`, where it reproduces the `0xE78` rcen's config already declares.
+  `EntityRedDoor.s` independently references `D_us_80181454`.
+- `g_RedDoorTiles = 0x80180E20`, confirmed by USE: the assembly does
+  `sll $v0, $a0, 4` (params * 16) added to that base and stores into
+  `g_Tilemap + 0xA`, which is the header's
+  `g_Tilemap.fg[tileIdx] = g_RedDoorTiles[params][i]`.
+- `D_us_80181134` had to be named explicitly. splat emits no glabel for it in
+  rno0 because it falls mid-object inside the unnamed `0xE20` blob, so the
+  header's `extern` would not have linked.
+- `g_EInitCommon` needed the same `OVL_EXPORT` define that `e_clock_room.c`
+  already uses; rno0 exports it as `RNO0_EInitCommon`.
+
+**Lesson worth reusing:** before trusting a byte-signature search to locate a
+`static` array, run it against an overlay whose answer is already in a config
+file. A technique that reproduces a known boundary can be believed on an
+unknown one.
+
+### Original entry, kept for context
 
 **Why:** this single change unblocks five of the seven remaining private
 implementations. It is the highest-leverage item on the list and also the
