@@ -870,14 +870,36 @@ def prepare(rec: dict, located) -> dict:
             print(f"[prep] WARNING: asm truncated {asm_full} -> {MAX_ASM_CHARS} "
                   f"chars (MAX_ASM_CHARS)", flush=True)
 
+    # m2ctx.py writes ONE file, <repo>/ctx.c, with a hardcoded name.
+    #
+    # Generation is documented as "safe to overlap because it only reads", and
+    # that is wrong: every worker runs m2ctx during this phase and they all
+    # write and then read the same path. Worker A can read B's ctx.c and hand
+    # m2c the type context of an unrelated file, which silently degrades the
+    # draft the model is given. Nothing errors.
+    #
+    # Serialise the write, then immediately claim the result under a per-worker
+    # name. The lock is held only across m2ctx itself, which is fast, so this
+    # costs almost nothing compared to the model call it precedes.
+    ctx_name = f"ctx.{WORKER_NAME}.c"
+    ctx_path = os.path.join(WIN_REPO, ctx_name)
     with Status("m2ctx (generating C type context)") as st:
-        rc, out = wsl(f"python3 tools/m2ctx.py {src_rel}", timeout=300)
+        with BuildLock(os.path.join(WIN_REPO, "automation", ".m2ctx.lock"),
+                       stale_after=300.0):
+            rc, out = wsl(f"python3 tools/m2ctx.py {src_rel}", timeout=300)
+            shared = os.path.join(WIN_REPO, "ctx.c")
+            if rc == 0 and os.path.exists(shared):
+                try:
+                    shutil.copyfile(shared, ctx_path)
+                except OSError as e:
+                    rc = 1
+                    out = f"could not claim ctx.c: {e}"
         st.update("ok" if rc == 0 else "failed")
-    ctx_ok = rc == 0 and os.path.exists(os.path.join(WIN_REPO, "ctx.c"))
+    ctx_ok = rc == 0 and os.path.exists(ctx_path)
     if not ctx_ok:
         print(f"[prep] m2ctx failed (continuing without types): {out.strip()[:160]}")
 
-    ctx_arg = "--context ctx.c" if ctx_ok else ""
+    ctx_arg = f"--context {ctx_name}" if ctx_ok else ""
     with Status("m2c (first-draft decompilation)") as st:
         rc, draft = wsl(
             f"python3 tools/m2c/m2c.py --target mipsel-gcc-c {ctx_arg} "
@@ -2094,11 +2116,26 @@ class BuildLock:
                 except OSError:
                     continue
                 if age > self.stale_after:
-                    print(f"[lock] breaking stale lock ({age:.0f}s old)")
+                    # STEAL BY RENAME, NOT BY UNLINK.
+                    #
+                    # unlink was a TOCTOU: A and B both measure the same stale
+                    # lock, B unlinks and creates (B legitimately holds a FRESH
+                    # lock), then A unlinks -- removing B's lock -- and creates.
+                    # Both then believe they hold it and both build, which is
+                    # exactly what this lock exists to prevent.
+                    #
+                    # os.rename is atomic on one path: of two racing stealers
+                    # only one can move that inode, and the loser gets an error
+                    # and re-loops to find the winner's fresh lock. This is the
+                    # same reasoning scheduler.py:117-123 applies to the queue
+                    # lock. Found by audit 2026-08-02.
+                    steal = f"{self.path}.steal.{os.getpid()}"
                     try:
-                        os.unlink(self.path)
+                        os.rename(self.path, steal)
+                        os.unlink(steal)
+                        print(f"[lock] broke stale lock ({age:.0f}s old)")
                     except OSError:
-                        pass
+                        pass          # someone else won the steal; re-loop
                     continue
                 if waited == 0 or waited % 30 < poll:
                     print(f"[lock] another worker is building; waiting "
@@ -2790,6 +2827,21 @@ def process_one(dry: bool = False) -> bool:
         return True
     if _why and not dry:
         print(f"  ~~ {_why}", flush=True)
+        # RECORD it, do not just print it. shim_gate's docstring said the
+        # blocker was noted on the record; it was only ever written to
+        # automation/logs/, which is gitignored and periodically archived. So
+        # the one piece of structural analysis the gate produces -- exactly
+        # which segment a stem is missing -- was thrown away every run, and had
+        # to be rediscovered by hand each time. Found by audit 2026-08-02.
+        #
+        # Status stays `todo`: this is an annotation, not a routing decision.
+        # The record is still workable by the fleet.
+        try:
+            sched("report", "--id", rec["id"], "--status", "todo",
+                  "--notes", ("SHIM_BLOCKED: " + _why)[:250])
+        except Exception as e:      # noqa: BLE001
+            print(f"  ~~ could not record shim blocker: {type(e).__name__}",
+                  flush=True)
 
     if dry:
         print("--- prompt preview ---")
@@ -3017,6 +3069,7 @@ def process_one(dry: bool = False) -> bool:
             where = f" seed={seed_path}" if seed_path else " seed=NONE(save failed)"
             sched("report", "--id", rec["id"], "--status", "near",
                   "--score", "50", "--tier", "0",
+                  "--add-iters", str(attempt),
                   "--notes", ("compiled, byte mismatch; permuter candidate."
                               + where + " " + best)[:250])
         elif not produced_code:
@@ -3043,6 +3096,10 @@ def process_one(dry: bool = False) -> bool:
                   # not be what an escalated record is filed under; the
                   # compiler's message is the only actionable part.
                   "--score", "0", "--tier", "0",
+                  # Count the attempt. --add-iters had ZERO call sites, so
+                  # `iterations` was permanently 0 and nothing could ever brake
+                  # a requeue loop or tell a first attempt from a fifth.
+                  "--add-iters", str(attempt),
                   "--notes", (best_build or best)[:250])
     except KeyboardInterrupt:
         # Ctrl-C must never leave a half-applied edit in a real source file.
