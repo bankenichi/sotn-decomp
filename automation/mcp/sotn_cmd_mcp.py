@@ -376,6 +376,25 @@ def job_cancel(job_id: str) -> dict:
 
 
 @mcp.tool()
+def git_restore(path: str, timeout: int = 120) -> dict:
+    """`git checkout -- <path>`: discard uncommitted changes to ONE path.
+
+    DESTRUCTIVE. It throws away working-tree edits that are not committed, so
+    pass an explicit path and never a directory you have not inspected with
+    git_status first. There is deliberately no "restore everything" form.
+
+    Use it to revert a failed experiment: write, build, and if verify_build does
+    not report the expected N/N, restore the file and rebuild so the tree is
+    never left in a half-changed state.
+
+    Run it HERE, not from a sandbox shell. The Cowork sandbox tears down its PID
+    namespace when a bash call ends or hits its 45s cap. Doing this there once
+    killed git mid-operation and left a stale .git/index.lock that blocked every
+    later commit until it was removed by hand."""
+    return cc.run("git_restore", timeout=timeout, path=path)
+
+
+@mcp.tool()
 def run_analysis(script: str, args: str = "", timeout: int = 1800) -> dict:
     """Run a read-only analysis script in WSL, synchronously.
 

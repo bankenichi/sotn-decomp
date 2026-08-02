@@ -196,6 +196,18 @@ REGISTRY = {
     # the `twin` field, never status), idempotent, and dry-run unless apply.
     # MUST run here rather than in a sandbox shell: SOTN_QUEUE resolves via
     # $HOME, so a different environment annotates a different queue file.
+    # Discard uncommitted changes to ONE path. Destructive by design, which is
+    # why it takes an explicit in-repo path and has no default and no recursive
+    # "restore everything" form.
+    #
+    # WHY IT LIVES HERE: reverting a failed experiment used to mean running
+    # `git checkout --` from the Cowork sandbox. That sandbox tears down its PID
+    # namespace when a call ends or hits the 45s cap, which killed git
+    # mid-operation and left a stale .git/index.lock that blocked every
+    # subsequent commit. Git WRITES must run on this side; the sandbox may read
+    # the repo but must never mutate it.
+    "git_restore": lambda path: (
+        ["git", "checkout", "--", _inrepo(path, must_exist=False)]),
     # Run a read-only analysis script in WSL, where there is no 45s ceiling.
     "run_analysis": lambda script, args="": (
         [PYTHON, _script(script)] + _args(args)),
