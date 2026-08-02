@@ -395,6 +395,26 @@ def git_restore(path: str, timeout: int = 120) -> dict:
 
 
 @mcp.tool()
+def git_restore_from_head(path: str, timeout: int = 120) -> dict:
+    """`git checkout HEAD -- <path>`: restore ONE path to its committed state.
+
+    Different from git_restore, and the difference matters. git_restore restores
+    from the INDEX, so if something has staged a bad state it faithfully returns
+    the bad state. This restores from HEAD, which is what you want after an
+    interrupted rebase, a bad `git add`, or any time the index is not trusted.
+
+    DESTRUCTIVE in the same way: uncommitted edits to that path are discarded.
+    Pass an explicit path, and read git_status first.
+
+    Added 2026-08-02 because it did not exist when it was needed. Recovering
+    three source files meant reaching for sandbox git, which hit a stale
+    .git/index.lock left by an earlier sandbox git that the 45s cap had killed
+    mid-rebase. Git writes belong on this side, which means the git writes we
+    actually need have to live on this side."""
+    return cc.run("git_restore_from_head", timeout=timeout, path=path)
+
+
+@mcp.tool()
 def run_analysis(script: str, args: str = "", timeout: int = 1800) -> dict:
     """Run a read-only analysis script in WSL, synchronously.
 
@@ -502,3 +522,212 @@ def _assert_registry_is_exposed() -> None:
 if __name__ == "__main__":
     _assert_registry_is_exposed()
     mcp.run()  # stdio transport, as expected by Claude Desktop
+
+
+# ---------------------------------------------------------------------------
+# git, in full.
+#
+# The Cowork sandbox is FORBIDDEN from running git against this repo. Not
+# discouraged: forbidden. It reaches the repo over a Windows mount and is killed
+# at 45 seconds, and on 2026-08-02 that combination killed a rebase mid-flight,
+# left a stale .git/index.lock, and silently rolled three source files back to
+# their pre-shim state while the commits themselves stayed correct. Four of the
+# recovery calls also timed out.
+#
+# So every git operation this project needs lives here, where there is no
+# ceiling and the repo is local. There is still no general `git` passthrough:
+# each tool below maps to one fixed argv shape in commands_client.REGISTRY with
+# validated arguments, and anything that can destroy work requires confirm=True.
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+def git_log(n: int = 15, path: str = "", timeout: int = 120) -> dict:
+    """Recent commits as `<sha> <author> <date> <subject>`.
+
+    Pass path to see only the commits that touched it. Read-only."""
+    return cc.run("git_log", timeout=timeout, n=n, path=path)
+
+
+@mcp.tool()
+def git_diff(path: str = "", staged: bool = False, ref: str = "",
+             timeout: int = 120) -> dict:
+    """Working-tree diff. staged=True shows the index instead; ref compares
+    against a revision. Read-only."""
+    return cc.run("git_diff", timeout=timeout, path=path, staged=staged, ref=ref)
+
+
+@mcp.tool()
+def git_diff_stat(ref: str = "", staged: bool = False,
+                  timeout: int = 120) -> dict:
+    """Per-file insert/delete counts. Use this before git_diff on a wide change,
+    so a large diff does not have to be read to find out it is large."""
+    return cc.run("git_diff_stat", timeout=timeout, ref=ref, staged=staged)
+
+
+@mcp.tool()
+def git_show(ref: str = "HEAD", path: str = "", timeout: int = 120) -> dict:
+    """One commit: header, full message, and diff. Read-only."""
+    return cc.run("git_show", timeout=timeout, ref=ref, path=path)
+
+
+@mcp.tool()
+def git_rev_parse(ref: str = "HEAD", timeout: int = 60) -> dict:
+    """Resolve a revision to a full sha. Read-only."""
+    return cc.run("git_rev_parse", timeout=timeout, ref=ref)
+
+
+@mcp.tool()
+def git_state(timeout: int = 120) -> dict:
+    """Porcelain v2 status with branch headers.
+
+    Use this to find out whether a merge, rebase or cherry-pick is half-finished
+    before doing anything else. That question is exactly what was unanswerable
+    on 2026-08-02 without a sandbox shell. Read-only."""
+    return cc.run("git_state", timeout=timeout)
+
+
+@mcp.tool()
+def git_branch_list(timeout: int = 60) -> dict:
+    """Branches with upstream tracking info. Read-only."""
+    return cc.run("git_branch_list", timeout=timeout)
+
+
+@mcp.tool()
+def git_remote_list(timeout: int = 60) -> dict:
+    """Remotes and their URLs.
+
+    Worth reading before assuming where a push goes: this repo has `upstream`
+    pointing at the project it was forked from, with its push URL deliberately
+    disabled. Read-only."""
+    return cc.run("git_remote_list", timeout=timeout)
+
+
+@mcp.tool()
+def git_ls_files(path: str = "", timeout: int = 120) -> dict:
+    """List tracked files, optionally under one path. Read-only."""
+    return cc.run("git_ls_files", timeout=timeout, path=path)
+
+
+@mcp.tool()
+def git_stash_list(timeout: int = 60) -> dict:
+    """List stash entries. Read-only."""
+    return cc.run("git_stash_list", timeout=timeout)
+
+
+@mcp.tool()
+def git_config_get(key: str, timeout: int = 60) -> dict:
+    """Read one git config key. Restricted to user.name and user.email."""
+    return cc.run("git_config_get", timeout=timeout, key=key)
+
+
+@mcp.tool()
+def git_config_set(key: str, value: str, timeout: int = 60) -> dict:
+    """Set user.name or user.email for this repo.
+
+    Only those two keys are permitted: git config can otherwise rewrite how git
+    itself behaves (core.hooksPath, alias.*, credential.helper), which is not
+    something an allowlisted runner should be able to do.
+
+    Getting the email wrong is not cosmetic. GitHub rejects pushes that would
+    publish a private address (GH007), and on 2026-08-02 two commits had to be
+    rewritten because of it."""
+    return cc.run("git_config_set", timeout=timeout, key=key, value=value)
+
+
+@mcp.tool()
+def git_add(path: str, timeout: int = 120) -> dict:
+    """Stage ONE path. Use git_add_all to stage everything."""
+    return cc.run("git_add", timeout=timeout, path=path)
+
+
+@mcp.tool()
+def git_commit_amend(message: str = "", reset_author: bool = False,
+                     timeout: int = 120) -> dict:
+    """Amend the previous commit.
+
+    With no message the existing one is kept (--no-edit). reset_author=True
+    re-stamps author and committer from current config, which is the fix when a
+    commit was made under the wrong identity.
+
+    Rewrites history: only safe before the commit has been pushed."""
+    return cc.run("git_commit_amend", timeout=timeout, message=message,
+                  reset_author=reset_author)
+
+
+@mcp.tool()
+def git_checkout_branch(name: str, create: bool = False,
+                        timeout: int = 300) -> dict:
+    """Switch branches, or create one with create=True.
+
+    Changes the working tree, so commit or stash first; git will refuse rather
+    than clobber, but check git_status anyway."""
+    return cc.run("git_checkout_branch", timeout=timeout, name=name,
+                  create=create)
+
+
+@mcp.tool()
+def git_stash_push(message: str = "", timeout: int = 300) -> dict:
+    """Stash tracked modifications away. Recover with git_stash_pop."""
+    return cc.run("git_stash_push", timeout=timeout, message=message)
+
+
+@mcp.tool()
+def git_stash_pop(confirm: bool = False, timeout: int = 300) -> dict:
+    """Restore the top stash entry and drop it. Requires confirm=True: it can
+    conflict with current edits and it removes the entry either way."""
+    return cc.run("git_stash_pop", timeout=timeout, confirm=confirm)
+
+
+@mcp.tool()
+def git_reset(mode: str = "mixed", ref: str = "HEAD", confirm: bool = False,
+              timeout: int = 600) -> dict:
+    """Move the branch pointer. Requires confirm=True.
+
+    soft   keep index and working tree. Use to re-commit differently.
+    mixed  rebuild the index from ref, keep the working tree. Use to unstage,
+           or to repair an index left inconsistent by an interrupted operation.
+    hard   DISCARDS working-tree changes. There is no undo for uncommitted work.
+
+    Prefer soft or mixed. Reach for hard only when git_status has been read and
+    the losses are understood."""
+    return cc.run("git_reset", timeout=timeout, mode=mode, ref=ref,
+                  confirm=confirm)
+
+
+@mcp.tool()
+def git_rebase_abort(confirm: bool = False, timeout: int = 600) -> dict:
+    """Abandon an in-progress rebase and return to the pre-rebase state.
+
+    Requires confirm=True, because abort also reverts the working tree: on
+    2026-08-02 a half-completed abort is what silently rolled three shimmed
+    files back while their commits stayed intact. Read git_state first, and
+    verify the working tree afterwards."""
+    return cc.run("git_rebase_abort", timeout=timeout, confirm=confirm)
+
+
+@mcp.tool()
+def git_rebase_continue(confirm: bool = False, timeout: int = 600) -> dict:
+    """Resume a rebase after conflicts have been staged. Requires confirm=True."""
+    return cc.run("git_rebase_continue", timeout=timeout, confirm=confirm)
+
+
+@mcp.tool()
+def git_merge_abort(confirm: bool = False, timeout: int = 600) -> dict:
+    """Abandon an in-progress merge. Requires confirm=True."""
+    return cc.run("git_merge_abort", timeout=timeout, confirm=confirm)
+
+
+@mcp.tool()
+def git_cherry_pick_abort(confirm: bool = False, timeout: int = 600) -> dict:
+    """Abandon an in-progress cherry-pick. Requires confirm=True."""
+    return cc.run("git_cherry_pick_abort", timeout=timeout, confirm=confirm)
+
+
+@mcp.tool()
+def git_clean(path: str, confirm: bool = False, timeout: int = 300) -> dict:
+    """Delete UNTRACKED files and directories under one path. confirm=True.
+
+    Scoped to a path and never -x, so it cannot reach ignored build output or
+    the venv. Untracked files have no git copy: once removed they are gone."""
+    return cc.run("git_clean", timeout=timeout, path=path, confirm=confirm)

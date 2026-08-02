@@ -77,6 +77,64 @@ def _reject_fmt(fmt):
 
 STATUSES = {"todo", "claimed", "near", "matched", "escalated", "deferred"}
 
+# A git revision: branch, tag, sha, HEAD, HEAD~3, abc123^2, origin/master.
+# Deliberately excludes the `@{...}` reflog forms and anything with a space,
+# colon (refspecs) or dash-prefix (flag injection), so a ref can never be
+# mistaken for an option or a remote refspec.
+_REF_RX = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_./~^-]{0,99}$")
+_RESET_MODES = {"soft", "mixed", "hard"}
+
+
+def _ref(rev: str) -> str:
+    if not _REF_RX.match(rev or ""):
+        raise Rejected("ref must match ^[A-Za-z0-9_][A-Za-z0-9_./~^-]{0,99}$ "
+                       "(no spaces, colons, or leading dashes)")
+    return rev
+
+
+def _count(n, lo: int = 1, hi: int = 500) -> str:
+    try:
+        v = int(n)
+    except (TypeError, ValueError):
+        raise Rejected("count must be an integer")
+    if not lo <= v <= hi:
+        raise Rejected(f"count must be between {lo} and {hi}")
+    return str(v)
+
+
+# git config is a general key/value store that can rewrite how git itself
+# behaves (core.hooksPath, alias.*, credential.helper), so it is NOT open.
+# These are the keys this project actually sets.
+_CFG_KEYS = {"user.name", "user.email"}
+
+
+def _cfg_key(key: str) -> str:
+    if key not in _CFG_KEYS:
+        raise Rejected(f"git config key must be one of {sorted(_CFG_KEYS)}")
+    return key
+
+
+def _cfg_value(value: str) -> str:
+    v = (value or "").strip()
+    if not (1 <= len(v) <= 120) or "\n" in v:
+        raise Rejected("git config value must be 1-120 chars, single line")
+    return v
+
+
+def _bad_mode(mode):
+    raise Rejected(f"reset mode must be one of {sorted(_RESET_MODES)}")
+
+
+def _confirmed(confirm, what: str) -> None:
+    """Destructive git actions require an explicit opt-in, not a default.
+
+    Every one of these can throw away work that has no other copy. Making the
+    caller pass confirm=True means the destructive form can never be reached by
+    a default argument or a forgotten parameter.
+    """
+    if confirm is not True:
+        raise Rejected(f"{what} is destructive; pass confirm=True to proceed")
+
 # Read-only analysis tools that may be run through the connector.
 #
 # WHY THIS EXISTS: these were being run from the Cowork sandbox, which has a
@@ -107,6 +165,7 @@ ANALYSIS_SCRIPTS = {
     "shim_sweep.py",
     "test_shim_sweep.py",
     "test_queue_owner.py",
+    "test_connector_surfaces.py",
 }
 # Deliberately narrow: flags, numbers, and in-repo-looking relative paths.
 # No spaces, quotes, semicolons, redirects, or leading dashes-with-spaces, so
@@ -155,11 +214,35 @@ def _status(status: str) -> str:
     return status
 
 
-def _msg(message: str) -> str:
-    m = (message or "").strip()
-    if not (1 <= len(m) <= 200) or "\n" in m:
-        raise Rejected("commit message must be 1-200 chars, single line")
-    return m
+def _msg_argv(message: str) -> list[str]:
+    """Build the -m arguments for a commit message, subject and body.
+
+    Multi-line is supported deliberately. The old rule was "1-200 chars, single
+    line", and the practical effect of that on 2026-08-02 was to push two real
+    commits out to sandbox-side git, which is the one thing the git_restore
+    comment below says must never happen. Both commits then had to be rewritten
+    (wrong author) and the rebase that did it was killed by the sandbox's 45s
+    cap, leaving a stale index.lock and a worktree rolled back three files.
+
+    A commit message length limit was never a safety property. The safety
+    properties are that argv is a list, that no shell is involved, and that the
+    subject stays a single line. Those all still hold: git treats each -m as its
+    own paragraph, so nothing here is reinterpreted.
+    """
+    raw = (message or "").replace("\r\n", "\n").strip()
+    if not raw:
+        raise Rejected("commit message must not be empty")
+    if len(raw) > 8000:
+        raise Rejected("commit message must be at most 8000 chars")
+    subject, _, body = raw.partition("\n")
+    subject = subject.strip()
+    if not 1 <= len(subject) <= 200:
+        raise Rejected("commit subject (first line) must be 1-200 chars")
+    argv = ["-m", subject]
+    body = body.strip("\n")
+    if body.strip():
+        argv += ["-m", body]
+    return argv
 
 
 # ---- argv builders (validate then return an argv list) ----
@@ -238,7 +321,94 @@ REGISTRY = {
     # scoped git (no general shell): status, stage-all, commit, push
     "git_status":  lambda: ["git", "status", "--short"],
     "git_add_all": lambda: ["git", "add", "-A"],
-    "git_commit":  lambda message: ["git", "commit", "-m", _msg(message)],
+    "git_commit":  lambda message: ["git", "commit"] + _msg_argv(message),
+    # Restore paths from HEAD, not from the index.
+    #
+    # git_restore above is `git checkout -- <path>`, which restores from the
+    # INDEX. That is the wrong tool after anything has staged a bad state, and
+    # there was no right tool: recovering three files on 2026-08-02 meant
+    # running `git checkout HEAD -- ...` in the sandbox, which hit a stale
+    # index.lock left by an earlier sandbox git that the 45s cap had killed.
+    # Every git write belongs on this side; that means every git write we
+    # actually need has to exist here.
+    "git_restore_from_head": lambda path: (
+        ["git", "checkout", "HEAD", "--", _inrepo(path, must_exist=False)]),
+
+    # ---- the rest of git ----
+    #
+    # ALL of git lives here now, by instruction: the Cowork sandbox is forbidden
+    # from running git against this repo at all. It is not a style preference.
+    # The sandbox reaches the repo over a Windows mount and dies at 45s, and on
+    # 2026-08-02 that killed a rebase mid-flight, left a stale .git/index.lock,
+    # and rolled three source files back to a pre-shim state while the commits
+    # themselves stayed correct. Recovering took four more sandbox git calls,
+    # two of which also timed out.
+    #
+    # There is still no general `git` passthrough. Each action below is a fixed
+    # argv shape with validated arguments, and everything destructive needs
+    # confirm=True.
+
+    # read-only
+    "git_log": lambda n=15, path="": (
+        ["git", "log", f"-{_count(n)}", "--format=%h %an <%ae> %ad %s",
+         "--date=short"] + (["--", _inrepo(path, must_exist=False)] if path else [])),
+    "git_diff": lambda path="", staged=False, ref="": (
+        ["git", "diff"] + (["--staged"] if staged else [])
+        + ([_ref(ref)] if ref else [])
+        + (["--", _inrepo(path, must_exist=False)] if path else [])),
+    "git_diff_stat": lambda ref="", staged=False: (
+        ["git", "diff", "--stat"] + (["--staged"] if staged else [])
+        + ([_ref(ref)] if ref else [])),
+    "git_show": lambda ref="HEAD", path="": (
+        ["git", "show", "--format=%h %an <%ae> %ad%n%n%B", "--date=short",
+         _ref(ref)] + (["--", _inrepo(path, must_exist=False)] if path else [])),
+    "git_rev_parse": lambda ref="HEAD": ["git", "rev-parse", _ref(ref)],
+    "git_branch_list": lambda: ["git", "branch", "-vv", "--no-color"],
+    "git_remote_list": lambda: ["git", "remote", "-v"],
+    "git_ls_files": lambda path="": (
+        ["git", "ls-files"] + ([_inrepo(path, must_exist=False)] if path else [])),
+    "git_config_get": lambda key: (
+        ["git", "config", "--get", _cfg_key(key)]),
+    "git_stash_list": lambda: ["git", "stash", "list"],
+    # Is a merge/rebase/cherry-pick half-finished? Answers the question that
+    # sent this whole mess sideways, without needing a shell to stat .git.
+    "git_state": lambda: ["git", "status", "--porcelain=v2", "--branch"],
+
+    # write, non-destructive
+    "git_config_set": lambda key, value: (
+        ["git", "config", _cfg_key(key), _cfg_value(value)]),
+    "git_add": lambda path: ["git", "add", "--", _inrepo(path, must_exist=False)],
+    "git_commit_amend": lambda message="", reset_author=False: (
+        ["git", "commit", "--amend"]
+        + (["--reset-author"] if reset_author else [])
+        + (_msg_argv(message) if message else ["--no-edit"])),
+    "git_checkout_branch": lambda name, create=False: (
+        ["git", "checkout"] + (["-b"] if create else []) + [_ref(name)]),
+    "git_stash_push": lambda message="": (
+        ["git", "stash", "push"] + (["-m", _msg_argv(message)[1]] if message else [])),
+
+    # write, destructive: confirm=True required
+    "git_reset": lambda mode="mixed", ref="HEAD", confirm=False: (
+        _confirmed(confirm, f"git reset --{mode}")
+        or ["git", "reset", f"--{mode if mode in _RESET_MODES else _bad_mode(mode)}",
+            _ref(ref)]),
+    "git_stash_pop": lambda confirm=False: (
+        _confirmed(confirm, "git stash pop") or ["git", "stash", "pop"]),
+    "git_rebase_abort": lambda confirm=False: (
+        _confirmed(confirm, "git rebase --abort") or ["git", "rebase", "--abort"]),
+    "git_rebase_continue": lambda confirm=False: (
+        _confirmed(confirm, "git rebase --continue")
+        or ["git", "rebase", "--continue"]),
+    "git_merge_abort": lambda confirm=False: (
+        _confirmed(confirm, "git merge --abort") or ["git", "merge", "--abort"]),
+    "git_cherry_pick_abort": lambda confirm=False: (
+        _confirmed(confirm, "git cherry-pick --abort")
+        or ["git", "cherry-pick", "--abort"]),
+    # Removes UNTRACKED files. Scoped to one path and never -x, so it cannot
+    # reach .gitignore'd build output or the venv.
+    "git_clean": lambda path, confirm=False: (
+        _confirmed(confirm, "git clean -fd")
+        or ["git", "clean", "-fd", "--", _inrepo(path, must_exist=False)]),
     # Push takes NO ARGUMENTS, and that is the safety property. There is no
     # remote to choose, no refspec to craft and no flag to pass, so there is
     # nothing to validate and nothing to get wrong. It always means "publish the
@@ -617,7 +787,13 @@ def queue_report(function_id: str, status: str, proof: str = "",
     argv = [PYTHON, "automation/scheduler.py", "report",
             "--id", function_id, "--status", _status(status)]
     if proof:
-        argv += ["--proof", _msg(proof) if len(proof) <= 200 else proof[:200]]
+        # Proof is a single-line provenance string (a path and a sha1), not a
+        # commit message. It was validated with the old _msg(); that helper is
+        # now multi-line-aware and belongs to commits only, so validate here.
+        p = " ".join(str(proof).split())
+        if not p:
+            raise Rejected("proof must not be blank")
+        argv += ["--proof", p[:200]]
     if score:
         argv += ["--score", score]
     if notes:
