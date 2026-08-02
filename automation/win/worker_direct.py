@@ -2531,7 +2531,15 @@ _COMPILE_FAIL_MARKS = (
 )
 # GCC 2.7 (cc1-psx-26) writes `file.c:LINE: message` with NO "error:" keyword,
 # e.g.  src/boss/bo0/2D26C.c:133: structure has no member named `unk32'
-_DIAG_RX = re.compile(r"[^\s]+\.(?:c|h):\d+:")
+#
+# The negative lookahead is LOAD-BEARING. Warnings share that exact shape:
+#   src/st/rno0/e_misc.c:88: warning: unused variable `i'
+# Without it, a build that COMPILED FINE and merely produced a warning was
+# classified as a build failure, which is the precise misrouting this function
+# exists to prevent: the record goes to `escalated` instead of `near`, and
+# save_candidate() never runs, so the permuter seed is silently discarded.
+# GCC 2.7 emits plenty of warnings on this codebase, so this was not academic.
+_DIAG_RX = re.compile(r"[^\s]+\.(?:c|h):\d+:(?!\s*warning:)")
 
 
 def build_failed_to_compile(rc: int, out: str) -> bool:
@@ -2874,6 +2882,23 @@ def process_one(dry: bool = False) -> bool:
                           "--score", "100", "--tier", "0",
                           "--proof", detail[:200], "--notes", detail[:200])
                     matched = True
+                    # DISCARD THE CRASH JOURNAL. This is not tidy-up; omitting
+                    # it destroys the match.
+                    #
+                    # journal_write() saved the PRE-EDIT file (the INCLUDE_ASM
+                    # stub) before applying. journal_clear() used to be called
+                    # from exactly one place, restore(), which the match path
+                    # deliberately does NOT take because a match must keep its
+                    # edit. So after every success the journal survived holding
+                    # the stub, and replay_pending_journals() -- which runs at
+                    # worker startup, on SIGTERM and on Ctrl-C -- would write
+                    # that stub back over the matched function while the queue
+                    # still recorded `matched` with machine proof.
+                    #
+                    # Clearing here, after the report, is the right moment: the
+                    # applied content is now the intended state, so there is
+                    # nothing left to recover.
+                    journal_clear()
             best = best_build = detail
             if matched:
                 return True

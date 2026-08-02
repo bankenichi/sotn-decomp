@@ -174,7 +174,16 @@ EInit OVL_EXPORT(EInitUnkId13) = {ANIMSET_OVL(5), 0, 36, 0, 0x003};
 EInit OVL_EXPORT(EInitLockCamera) = {ANIMSET_DRA(2), 0, 72, 0, 0x05B};
 EInit Unused_ShouldBeCommon = {ANIMSET_DRA(3), 0, 72, 0, 0x05C};
 EInit OVL_EXPORT(EInitDamageNum) = {ANIMSET_DRA(0), 0, 0, 0, 0x002};
-EInit D_us_80180AA4 = {ANIMSET_DRA(0), 0, 0, 0, 0x001};
+// Was `D_us_80180AA4`, a raw-address name. This is the descriptor rno0's
+// EntityLockCamera actually uses, so it is what src/st/entity_lock_camera.h
+// means by g_EInitLockCamera.
+//
+// It is NOT the OVL_EXPORT(EInitLockCamera) twelve lines above, despite the
+// name. That one sits at 0x80180A80 and this at 0x80180AA4; bridging the
+// header to the wrong one left exactly one relocation-shaped difference with a
+// delta of -0x24, which is 3 * sizeof(EInit). relocation_check.py named that
+// delta and it is how this was found.
+EInit g_EInitLockCamera = {ANIMSET_DRA(0), 0, 0, 0, 0x001};
 EInit OVL_EXPORT(EInitCommon) = {ANIMSET_DRA(0), 0, 0, 0, 0x003};
 // Was `D_us_80180ABC`, a raw-address name. It is g_EInitDamageNum: identical
 // initialiser to are/cat/dai/dre's, and rno0's EntityDamageDisplay assembly

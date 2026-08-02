@@ -62,6 +62,22 @@ CASES = [
     # stay a build failure, or broken C gets handed to the permuter.
     ("a diagnostic outranks the checksum line",
      2, "src/x.c:9: parse error\ncheck: checksum check failed", True),
+    # A WARNING is not a build failure. GCC 2.7 writes warnings in the exact
+    # same `file.c:LINE:` shape as errors, so the diagnostic regex matched them
+    # and classified a clean compile as BUILD FAILED. That sent a permuter
+    # candidate to `escalated` AND suppressed its saved seed. Found by audit
+    # 2026-08-02; this suite had no case containing the word "warning".
+    ("a warning alongside a checksum failure is NOT a build failure",
+     2, "src/st/rno0/e_misc.c:88: warning: unused variable `i'\n"
+        "check: checksum check failed", False),
+    ("a warning on its own with a non-zero rc is still not a diagnostic",
+     2, "src/st/rno0/e_misc.c:88: warning: unused variable `i'\n"
+        "checksum check failed", False),
+    # ...but a real error in the same build still wins.
+    ("a real error outranks a warning in the same output",
+     2, "src/x.c:12: warning: unused variable `i'\n"
+        "src/x.c:20: parse error before `foo'\n"
+        "check: checksum check failed", True),
     ("unexplained non-zero stays a build failure",
      1, "make: *** [all] Error 1", True),
     ("rc=0 is never a failure", 0, "", False),

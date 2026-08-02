@@ -44,6 +44,17 @@ segments:
       - [0x8FC, .data, e_init]
       - [0xC18, .data, e_room_bg]
       - [0xE20, data]
+      # entity_lock_camera.h's three statics. Start 0xE50 is the minimum data
+      # address e_lock_camera's own assembly references, and its refs at 0xE50,
+      # 0xE58 and 0xE60 are 8 bytes apart, matching hitbox / data[8] / tilemap
+      # props. 0x80 is the size 20 of 27 peers use.
+      #
+      # NOTE the header is entity_lock_camera.h, NOT e_lock_camera.h. All 20
+      # shimming stages name the FILE e_lock_camera.c while including the other
+      # header, which is exactly what the old shimmed_by filename rule could not
+      # see. Their c segments are 0x1BC, byte-identical to rno0's.
+      - [0xE50, .data, e_lock_camera]   # 0x80
+      - [0xED0, data]
       # Located by automation/find_data_segment.py, which calibrates against a
       # peer whose address its config already declares before trusting a hit.
       # Cross-check: st_update 0x1048..0x1094, collision 0x1094..0x1454 and

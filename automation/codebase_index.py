@@ -446,13 +446,35 @@ def build_shared_impls() -> dict:
         if not funcs:
             continue
         stem = hdr.rsplit("/", 1)[-1][:-2]
-        pat = re.compile(rf"src/st/[^/]+/{re.escape(stem)}\.c")
+        # Match a stage file by what it INCLUDES, not by what it is called.
+        #
+        # This used to be `src/st/[^/]+/<stem>.c`, i.e. only a file named after
+        # the header counted as a shim. That is wrong for every header whose
+        # shimming files carry a different name, and there are many:
+        # entity_lock_camera.h is shimmed by 20 stages, all of them from a file
+        # called e_lock_camera.c, so it reported shimmed_by == [] and looked
+        # like a header nobody uses.
+        #
+        # The damage was not cosmetic. shim_viable() reads shimmed_by, so every
+        # such header produced "shimmed by no stage; there is no shared impl to
+        # use", which was then written into ROADMAP.md and MATCHING-LESSONS.md
+        # as "converting these would be actively wrong". Real, free work was
+        # ring-fenced as forbidden on the strength of a filename assumption.
+        # Found by audit 2026-08-02.
+        pat = re.compile(rf"src/st/[^/]+/[^/]+\.c")
+        inc = re.compile(rf'#\s*include\s+"(?:\.\./)?{re.escape(stem)}\.h"')
 
         shims, up_copies, up_state = [], [], {}
+        named = f"/{stem}.c"
         for path in ref_files:
             if not pat.fullmatch(path):
                 continue
-            r = _classify(stem, path, read_source(path))
+            src_text = read_source(path)
+            # Either named after the header (the old rule, still valid) or
+            # actually including it (the rule that was missing).
+            if not path.endswith(named) and not inc.search(src_text):
+                continue
+            r = _classify(stem, path, src_text)
             if not r:
                 continue
             up_state[r[1]["stage"]] = r

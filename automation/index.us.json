@@ -472586,7 +472586,10 @@
     "AnimateEntity"
    ],
    "static_functions": [],
-   "shimmed_by": [],
+   "shimmed_by": [
+    "sel",
+    "sel_psp"
+   ],
    "upstream_copies": [],
    "our_copies": []
   },
@@ -472596,7 +472599,10 @@
     "func_801CDC80"
    ],
    "static_functions": [],
-   "shimmed_by": [],
+   "shimmed_by": [
+    "rdai",
+    "rdai_psp"
+   ],
    "upstream_copies": [],
    "our_copies": []
   },
@@ -472640,7 +472646,9 @@
    "static_functions": [
     "UpdateStoneDoorTiles"
    ],
-   "shimmed_by": [],
+   "shimmed_by": [
+    "no0"
+   ],
    "upstream_copies": [],
    "our_copies": []
   },
@@ -472687,7 +472695,11 @@
    ],
    "static_functions": [],
    "shimmed_by": [
+    "are",
+    "cat",
     "cen",
+    "chi",
+    "dai",
     "dre",
     "lib",
     "no0",
@@ -472759,6 +472771,7 @@
     "are",
     "cat",
     "cen",
+    "chi",
     "dai",
     "dre",
     "lib",
@@ -472795,7 +472808,21 @@
    "static_functions": [
     "DrawCutsceneActorName"
    ],
-   "shimmed_by": [],
+   "shimmed_by": [
+    "cen",
+    "cen_psp",
+    "dai",
+    "dre",
+    "lib",
+    "no3",
+    "no4",
+    "nz0",
+    "rcen",
+    "sel",
+    "st0",
+    "top",
+    "top_psp"
+   ],
    "upstream_copies": [],
    "our_copies": []
   },
@@ -472805,7 +472832,12 @@
     "DrawCutsceneActorName"
    ],
    "static_functions": [],
-   "shimmed_by": [],
+   "shimmed_by": [
+    "lib_psp",
+    "no3",
+    "nz0",
+    "st0"
+   ],
    "upstream_copies": [],
    "our_copies": []
   },
@@ -472817,7 +472849,21 @@
    "static_functions": [
     "RunCutsceneEvents"
    ],
-   "shimmed_by": [],
+   "shimmed_by": [
+    "cen",
+    "cen_psp",
+    "dai",
+    "dre",
+    "lib",
+    "lib_psp",
+    "no3",
+    "nz0",
+    "nz0",
+    "rcen",
+    "st0",
+    "top",
+    "top_psp"
+   ],
    "upstream_copies": [],
    "our_copies": []
   },
@@ -472829,7 +472875,17 @@
    "static_functions": [
     "ScaleCutsceneAvatar"
    ],
-   "shimmed_by": [],
+   "shimmed_by": [
+    "cen",
+    "dre",
+    "lib",
+    "no3",
+    "no4",
+    "nz0",
+    "rcen",
+    "st0",
+    "top"
+   ],
    "upstream_copies": [],
    "our_copies": []
   },
@@ -472843,7 +472899,11 @@
     "CutsceneUnk3",
     "CutsceneUnk4"
    ],
-   "shimmed_by": [],
+   "shimmed_by": [
+    "dai",
+    "dre",
+    "no4"
+   ],
    "upstream_copies": [],
    "our_copies": []
   },
@@ -472856,8 +472916,18 @@
    "static_functions": [
     "SetCutsceneScript"
    ],
-   "shimmed_by": [],
-   "upstream_copies": [],
+   "shimmed_by": [
+    "dai",
+    "dre"
+   ],
+   "upstream_copies": [
+    {
+     "stage": "no4",
+     "lines": 772,
+     "include_asm": 0,
+     "bodies": 1
+    }
+   ],
    "our_copies": []
   },
   "cutscene_skip": {
@@ -472866,7 +472936,15 @@
     "CutsceneSkip"
    ],
    "static_functions": [],
-   "shimmed_by": [],
+   "shimmed_by": [
+    "dre",
+    "lib",
+    "lib_psp",
+    "no3",
+    "rcen",
+    "top",
+    "top_psp"
+   ],
    "upstream_copies": [],
    "our_copies": []
   },
@@ -472878,7 +472956,20 @@
    "static_functions": [
     "CutsceneUnk3"
    ],
-   "shimmed_by": [],
+   "shimmed_by": [
+    "cen",
+    "cen_psp",
+    "lib",
+    "lib_psp",
+    "no3",
+    "nz0",
+    "nz0",
+    "rcen",
+    "sel",
+    "st0",
+    "top",
+    "top_psp"
+   ],
    "upstream_copies": [],
    "our_copies": []
   },
@@ -472888,7 +472979,9 @@
     "DoorCascadePhysics"
    ],
    "static_functions": [],
-   "shimmed_by": [],
+   "shimmed_by": [
+    "are"
+   ],
    "upstream_copies": [],
    "our_copies": []
   },
@@ -472962,6 +473055,7 @@
    "static_functions": [],
    "shimmed_by": [
     "no3",
+    "no3",
     "np3",
     "rno3"
    ],
@@ -472975,6 +473069,7 @@
    ],
    "static_functions": [],
    "shimmed_by": [
+    "dai",
     "rdai"
    ],
    "upstream_copies": [],
@@ -473017,7 +473112,10 @@
     "func_801D0B40",
     "func_801D0B78"
    ],
-   "shimmed_by": [],
+   "shimmed_by": [
+    "no2",
+    "np3"
+   ],
    "upstream_copies": [],
    "our_copies": [
     {
@@ -473260,7 +473358,14 @@
     "EntityBreakableDebris"
    ],
    "static_functions": [],
-   "shimmed_by": [],
+   "shimmed_by": [
+    "dai",
+    "no1",
+    "no2",
+    "rdai",
+    "rtop",
+    "top"
+   ],
    "upstream_copies": [],
    "our_copies": []
   },
@@ -473272,7 +473377,10 @@
     "OVL_EXPORT"
    ],
    "static_functions": [],
-   "shimmed_by": [],
+   "shimmed_by": [
+    "cen",
+    "chi"
+   ],
    "upstream_copies": [],
    "our_copies": []
   },
@@ -473297,7 +473405,10 @@
     "EntityCastleWall2"
    ],
    "static_functions": [],
-   "shimmed_by": [],
+   "shimmed_by": [
+    "dai",
+    "rdai"
+   ],
    "upstream_copies": [],
    "our_copies": []
   },
@@ -473399,7 +473510,10 @@
     "EntityClouds"
    ],
    "static_functions": [],
-   "shimmed_by": [],
+   "shimmed_by": [
+    "rtop",
+    "top"
+   ],
    "upstream_copies": [],
    "our_copies": []
   },
@@ -473437,6 +473551,7 @@
     "are",
     "cat",
     "cen",
+    "chi",
     "dai",
     "dre",
     "lib",
@@ -473618,7 +473733,10 @@
     "func_801CF778",
     "func_801CF7A0"
    ],
-   "shimmed_by": [],
+   "shimmed_by": [
+    "no2",
+    "np3"
+   ],
    "upstream_copies": [],
    "our_copies": [
     {
@@ -473642,7 +473760,10 @@
    "static_functions": [
     "func_801CE4CC"
    ],
-   "shimmed_by": [],
+   "shimmed_by": [
+    "no2",
+    "np3"
+   ],
    "upstream_copies": [],
    "our_copies": []
   },
@@ -473717,7 +473838,10 @@
     "EntityImpDeathParticle"
    ],
    "static_functions": [],
-   "shimmed_by": [],
+   "shimmed_by": [
+    "rdai",
+    "rdai_psp"
+   ],
    "upstream_copies": [],
    "our_copies": []
   },
@@ -473728,6 +473852,7 @@
    ],
    "static_functions": [],
    "shimmed_by": [
+    "rdai",
     "rdai_psp"
    ],
    "upstream_copies": [],
@@ -474022,6 +474147,7 @@
     "are",
     "cat",
     "cen",
+    "chi",
     "dai",
     "dre",
     "lib",
@@ -474094,6 +474220,7 @@
     "are",
     "cat",
     "cen",
+    "chi",
     "dai",
     "dre",
     "lib",
@@ -474209,7 +474336,9 @@
     "func_us_801BFE6C"
    ],
    "static_functions": [],
-   "shimmed_by": [],
+   "shimmed_by": [
+    "rdai_psp"
+   ],
    "upstream_copies": [],
    "our_copies": []
   },
@@ -474219,7 +474348,10 @@
     "EntityRdaiUnk1F"
    ],
    "static_functions": [],
-   "shimmed_by": [],
+   "shimmed_by": [
+    "rdai",
+    "rdai_psp"
+   ],
    "upstream_copies": [],
    "our_copies": []
   },
@@ -474229,7 +474361,10 @@
     "EntityRdaiUnk33"
    ],
    "static_functions": [],
-   "shimmed_by": [],
+   "shimmed_by": [
+    "rdai",
+    "rdai_psp"
+   ],
    "upstream_copies": [],
    "our_copies": []
   },
@@ -474246,6 +474381,7 @@
     "are",
     "cat",
     "cen",
+    "chi",
     "dai",
     "dre",
     "lib",
@@ -474318,6 +474454,8 @@
     "rcat",
     "rcen",
     "rchi",
+    "rdai",
+    "rdai_psp",
     "rno3",
     "rnz0",
     "rtop",
@@ -474358,6 +474496,7 @@
     "are",
     "cat",
     "cen",
+    "chi",
     "dai",
     "dre",
     "lib",
@@ -474576,7 +474715,10 @@
     "SpearGuardCheckCollision"
    ],
    "static_functions": [],
-   "shimmed_by": [],
+   "shimmed_by": [
+    "rdai",
+    "rdai_psp"
+   ],
    "upstream_copies": [],
    "our_copies": []
   },
@@ -474586,7 +474728,11 @@
     "EntitySpectralSwordAura"
    ],
    "static_functions": [],
-   "shimmed_by": [],
+   "shimmed_by": [
+    "no2",
+    "rdai",
+    "rdai_psp"
+   ],
    "upstream_copies": [],
    "our_copies": []
   },
@@ -474624,7 +474770,32 @@
    "static_functions": [
     "LoadStageNameGraphics"
    ],
-   "shimmed_by": [],
+   "shimmed_by": [
+    "are",
+    "cat",
+    "cen",
+    "dai",
+    "dre",
+    "lib",
+    "mad",
+    "no0",
+    "no1",
+    "no2",
+    "no3",
+    "no4",
+    "np3",
+    "nz1",
+    "rare",
+    "rcat",
+    "rcen",
+    "rchi",
+    "rdai",
+    "rno3",
+    "rnz0",
+    "rwrp",
+    "top",
+    "wrp"
+   ],
    "upstream_copies": [],
    "our_copies": []
   },
@@ -474637,7 +474808,34 @@
    "static_functions": [
     "StageNamePopupDissolver"
    ],
-   "shimmed_by": [],
+   "shimmed_by": [
+    "are",
+    "cat",
+    "cen",
+    "chi",
+    "dai",
+    "dre",
+    "lib",
+    "no0",
+    "no1",
+    "no2",
+    "no3",
+    "no4",
+    "np3",
+    "nz0",
+    "nz1",
+    "rare",
+    "rcat",
+    "rcen",
+    "rchi",
+    "rdai",
+    "rno3",
+    "rnz0",
+    "rtop",
+    "rwrp",
+    "top",
+    "wrp"
+   ],
    "upstream_copies": [],
    "our_copies": []
   },
@@ -474647,7 +474845,10 @@
     "StainedGlassBlendPalette"
    ],
    "static_functions": [],
-   "shimmed_by": [],
+   "shimmed_by": [
+    "dai",
+    "rdai"
+   ],
    "upstream_copies": [],
    "our_copies": []
   },
@@ -474742,7 +474943,10 @@
     "EntityTriggerBeforeCastleWarp"
    ],
    "static_functions": [],
-   "shimmed_by": [],
+   "shimmed_by": [
+    "rtop",
+    "top"
+   ],
    "upstream_copies": [],
    "our_copies": []
   },
@@ -474774,7 +474978,10 @@
    "static_functions": [
     "SetupPrimsForEntitySpriteParts"
    ],
-   "shimmed_by": [],
+   "shimmed_by": [
+    "chi",
+    "rno3"
+   ],
    "upstream_copies": [],
    "our_copies": []
   },
@@ -474819,7 +475026,9 @@
    "shimmed_by": [
     "cat",
     "chi",
-    "lib"
+    "lib",
+    "rchi",
+    "rchi_psp"
    ],
    "upstream_copies": [],
    "our_copies": []
@@ -474837,7 +475046,10 @@
    "static_functions": [
     "AxeKnightUnkFunc1"
    ],
-   "shimmed_by": [],
+   "shimmed_by": [
+    "no0",
+    "nz0"
+   ],
    "upstream_copies": [],
    "our_copies": []
   },
@@ -474847,7 +475059,10 @@
     "EntityDamageDisplay"
    ],
    "static_functions": [],
-   "shimmed_by": [],
+   "shimmed_by": [
+    "mad",
+    "st0"
+   ],
    "upstream_copies": [],
    "our_copies": []
   },
@@ -474857,7 +475072,28 @@
     "EntityLockCamera"
    ],
    "static_functions": [],
-   "shimmed_by": [],
+   "shimmed_by": [
+    "are",
+    "cat",
+    "cen",
+    "chi",
+    "dai",
+    "dre",
+    "mad",
+    "no1",
+    "no2",
+    "no3",
+    "no4",
+    "np3",
+    "rare",
+    "rcat",
+    "rchi",
+    "rdai",
+    "rno3",
+    "rnz0",
+    "rwrp",
+    "wrp"
+   ],
    "upstream_copies": [],
    "our_copies": []
   },
@@ -474867,7 +475103,10 @@
     "EntityUnkId16"
    ],
    "static_functions": [],
-   "shimmed_by": [],
+   "shimmed_by": [
+    "no3",
+    "np3"
+   ],
    "upstream_copies": [],
    "our_copies": []
   },
@@ -474896,7 +475135,9 @@
     "EntityRbo3Door"
    ],
    "static_functions": [],
-   "shimmed_by": [],
+   "shimmed_by": [
+    "rdai"
+   ],
    "upstream_copies": [],
    "our_copies": []
   },
@@ -474907,7 +475148,8 @@
    ],
    "static_functions": [],
    "shimmed_by": [
-    "rdai"
+    "rdai",
+    "rdai_psp"
    ],
    "upstream_copies": [],
    "our_copies": []
@@ -474918,7 +475160,19 @@
     "GetLangAt"
    ],
    "static_functions": [],
-   "shimmed_by": [],
+   "shimmed_by": [
+    "cen_psp",
+    "dai",
+    "dre",
+    "lib_psp",
+    "no3",
+    "no4",
+    "nz0",
+    "rcen",
+    "sel_psp",
+    "st0_psp",
+    "top"
+   ],
    "upstream_copies": [],
    "our_copies": []
   },
@@ -474962,7 +475216,9 @@
     "func_us_801B4210"
    ],
    "static_functions": [],
-   "shimmed_by": [],
+   "shimmed_by": [
+    "no2"
+   ],
    "upstream_copies": [],
    "our_copies": []
   },
@@ -474972,7 +475228,9 @@
     "func_us_801B4DA4"
    ],
    "static_functions": [],
-   "shimmed_by": [],
+   "shimmed_by": [
+    "no2"
+   ],
    "upstream_copies": [],
    "our_copies": []
   },
@@ -474982,7 +475240,9 @@
     "func_us_801B72E8"
    ],
    "static_functions": [],
-   "shimmed_by": [],
+   "shimmed_by": [
+    "no2"
+   ],
    "upstream_copies": [],
    "our_copies": []
   },
@@ -474994,7 +475254,11 @@
    "static_functions": [
     "PlayerIsWithinHitbox"
    ],
-   "shimmed_by": [],
+   "shimmed_by": [
+    "lib",
+    "rcen",
+    "st0"
+   ],
    "upstream_copies": [],
    "our_copies": []
   },
@@ -475008,6 +475272,7 @@
     "are",
     "cat",
     "cen",
+    "chi",
     "dai",
     "dre",
     "lib",
@@ -475054,6 +475319,7 @@
     "are",
     "cat",
     "cen",
+    "chi",
     "dai",
     "dre",
     "lib",
@@ -475088,7 +475354,21 @@
     "SetCutsceneEvents"
    ],
    "static_functions": [],
-   "shimmed_by": [],
+   "shimmed_by": [
+    "cen",
+    "cen_psp",
+    "lib",
+    "lib_psp",
+    "no3",
+    "nz0",
+    "nz0",
+    "rcen",
+    "sel",
+    "sel_psp",
+    "st0",
+    "top",
+    "top_psp"
+   ],
    "upstream_copies": [],
    "our_copies": []
   },
@@ -475100,7 +475380,19 @@
    "static_functions": [
     "SetCutsceneScript"
    ],
-   "shimmed_by": [],
+   "shimmed_by": [
+    "cen",
+    "cen_psp",
+    "lib",
+    "lib_psp",
+    "no3",
+    "nz0",
+    "nz0",
+    "rcen",
+    "st0",
+    "top",
+    "top_psp"
+   ],
    "upstream_copies": [],
    "our_copies": []
   },
@@ -475110,7 +475402,9 @@
     "OVL_EXPORT"
    ],
    "static_functions": [],
-   "shimmed_by": [],
+   "shimmed_by": [
+    "st0"
+   ],
    "upstream_copies": [],
    "our_copies": []
   },
@@ -475157,6 +475451,7 @@
     "are",
     "cat",
     "cen",
+    "chi",
     "dai",
     "dre",
     "lib",
@@ -475241,7 +475536,10 @@
     "StainedGlassRecurse"
    ],
    "static_functions": [],
-   "shimmed_by": [],
+   "shimmed_by": [
+    "rdai",
+    "rdai_psp"
+   ],
    "upstream_copies": [],
    "our_copies": []
   },
@@ -475253,7 +475551,13 @@
    "static_functions": [
     "StepTowards"
    ],
-   "shimmed_by": [],
+   "shimmed_by": [
+    "dai",
+    "no2",
+    "nz1",
+    "rdai",
+    "rdai_psp"
+   ],
    "upstream_copies": [],
    "our_copies": []
   },
