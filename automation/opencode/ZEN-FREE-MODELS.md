@@ -24,11 +24,39 @@ All at `https://opencode.ai/zen/v1/chat/completions`:
 
 | Model ID | Notes |
 |---|---|
-| `big-pickle` | stealth model, free for a limited time |
-| `deepseek-v4-flash-free` | free for a limited time |
+| `big-pickle` | **DO NOT USE.** See below. |
+| `deepseek-v4-flash-free` | free for a limited time, untried here |
 | `mimo-v2.5-free` | free for a limited time |
-| `north-mini-code-free` | Cohere-backed |
+| `north-mini-code-free` | Cohere-backed. **Current default.** |
 | `nemotron-3-ultra-free` | NVIDIA trial endpoints |
+
+### big-pickle returns nothing on real prompts
+
+Measured across `automation/logs` on 2026-08-01:
+
+| model | runs | empty |
+|---|---|---|
+| `big-pickle` | 16 | **7** |
+| `north-mini-code-free` | 4 | 0 |
+| `nemotron-3-ultra-free` | 3 | 0 |
+| `mimo-v2.5-free` | 2 | 0 |
+
+It is the only model that exits `rc=0` having written zero bytes, and it does so
+on nearly half its calls, each after 250-380s. Three of those in a row is a
+quarter of an hour for nothing.
+
+Three explanations were considered and all three are WRONG, so do not revisit
+them:
+
+- **Not quota.** A throttled call does not run for 250s and exit 0.
+- **Not auth or config.** stderr shows `> raw · big-pickle`, so the agent and the
+  model both resolved.
+- **Not the CLI's stdout routing.** Run by hand it answers normally:
+  `opencode run --model opencode/big-pickle --agent raw --auto "Reply with the
+  single word OK"` prints `OK`, `rc=0`.
+
+It fails specifically on the 6k-11k character prompts that real functions
+generate, which is the only prompt size that matters here.
 
 These are time-limited promotions. If a model 404s, re-check
 <https://opencode.ai/docs/zen/> and refresh this list.

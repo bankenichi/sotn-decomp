@@ -84,7 +84,24 @@ RATE_LIMIT_BACKOFF = float(os.environ.get("RATE_LIMIT_BACKOFF", "20"))
 # stream and cannot function here. FUNC_BUDGET is the only remaining backstop
 # against a wedged generation, so keep it set.
 MODEL_BACKEND = os.environ.get("MODEL_BACKEND", "http").strip().lower()
-OPENCODE_MODEL = os.environ.get("OPENCODE_MODEL", "opencode/big-pickle")
+# NOT big-pickle. Measured across automation/logs on 2026-08-01:
+#
+#   big-pickle             16 runs,  7 empty   (44% dead)
+#   north-mini-code-free    4 runs,  0 empty
+#   nemotron-3-ultra-free   3 runs,  0 empty
+#   mimo-v2.5-free          2 runs,  0 empty
+#
+# big-pickle is the ONLY model that returns rc=0 with zero bytes, and it does it
+# on nearly half its calls, each after burning 250-380s. It is not quota, not
+# auth, and not the CLI's output routing: a hand-run
+# `opencode run --model opencode/big-pickle --agent raw --auto "Reply with the
+# single word OK"` answers "OK" with rc=0. It fails specifically on the 6k-11k
+# character prompts that real functions produce, which is the only size that
+# matters here.
+#
+# Three empty responses cost ~15 minutes of wall clock and produce nothing, so a
+# 44% empty rate makes it worse than useless as a default.
+OPENCODE_MODEL = os.environ.get("OPENCODE_MODEL", "opencode/north-mini-code-free")
 # Optional: point at a running `opencode serve` to skip MCP cold-boot per call.
 OPENCODE_ATTACH = os.environ.get("OPENCODE_ATTACH", "").strip()
 # Tool-less agent defined in automation/opencode/opencode.json. Must be used, or
