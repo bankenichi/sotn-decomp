@@ -1,82 +1,18 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #include "rno0.h"
 
-// Gurkha entity 15: sync rotation to its parent's rotation plus a fixed
-// offset. This codebase uses 4096 angle units per full turn (see FLT/ROT in
-// include/common.h), so 0x300 is 768/4096 of a turn, i.e. 67.5 degrees.
-static void func_801CF778(void) {
-    Entity* currEnt15;
-    Entity* ent15Parent;
-    currEnt15 = g_CurrentEntity + 15;
-    ent15Parent = currEnt15->ext.GH_Props.parent;
-    currEnt15->ext.GH_Props.rotate = ent15Parent->ext.GH_Props.rotate + 0x300;
-}
+// rno0's giant-bro entities sit 8 z-levels forward of every other stage's.
+// That single difference -- three instructions, 0xC -- is why this file could
+// not be a shim. Found 2026-08-02 by aligning rno0's assembly against no2's
+// compiled bytes with automation/fn_diff.py.
+#define GIANTBRO_ZPRIORITY_ADJUST 8
 
-static s32 func_801CF7A0(Entity* self) {
-    Entity* otherEnt;
-    s32 step;
-    s32 dx;
+// no2.h and np3.h declare these; rno0.h does not. Without them GCC 2.7 treats
+// the identifier as an implicit int and passes its VALUE instead of its
+// address, so InitializeEntity was called with 0. That cost 2 instructions per
+// call site and was invisible except as a size delta, because an implicit
+// declaration is only a WARNING.
+extern EInit g_EInitGurkha;
+extern EInit g_EInitGurkhaWeapon;
 
-    if (g_CurrentEntity->ext.GH_Props.unk8E) {
-        g_CurrentEntity->ext.GH_Props.unk8E--;
-    }
-    otherEnt = &PLAYER;
-    dx = self->posX.i.hi - otherEnt->posX.i.hi;
-    if (g_CurrentEntity->facingLeft) {
-        dx = -dx;
-    }
-
-    if (dx < -16) {
-        func_801CE1E8(10);
-        return;
-    }
-
-    if (g_CurrentEntity->ext.GH_Props.unk84 == 1) {
-        otherEnt = g_CurrentEntity + 10;
-    } else {
-        otherEnt = g_CurrentEntity + 13;
-    }
-
-    step = func_801CE120(otherEnt, g_CurrentEntity->facingLeft);
-    if (step != 0) {
-        func_801CE1E8(7);
-        return;
-    }
-
-    step = 5;
-
-    if (dx < 48) {
-        step = 7;
-    }
-
-    if (dx < 80) {
-        step = 5;
-    }
-
-    if (dx > 128) {
-        step = 8;
-    }
-
-    if (!g_CurrentEntity->ext.GH_Props.unk8E) {
-        if (dx < 160) {
-            g_CurrentEntity->ext.GH_Props.unk8E = 3;
-            step = 6;
-            g_CurrentEntity->ext.GH_Props.unk8C = 1;
-        }
-        if (dx < 64) {
-            g_CurrentEntity->ext.GH_Props.unk8C = 0;
-        }
-    }
-
-    if (step != g_CurrentEntity->step) {
-        func_801CE1E8(step);
-    }
-
-    if (g_CurrentEntity->step == 7 && step == 5) {
-        g_CurrentEntity->ext.GH_Props.unkB0[0] = 1;
-    }
-}
-
-INCLUDE_ASM("st/rno0/nonmatchings/e_gurkha", EntityGurkha);
-
-INCLUDE_ASM("st/rno0/nonmatchings/e_gurkha", EntityGurkhaWeapon);
+#include "../e_gurkha.h"

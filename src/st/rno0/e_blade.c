@@ -1,120 +1,18 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #include "rno0.h"
 
-static void func_801D0A00(s16* arg0) {
-    Entity* ent;
+// rno0's giant-bro entities sit 8 z-levels forward of every other stage's.
+// That single difference -- three instructions, 0xC -- is why this file could
+// not be a shim. Found 2026-08-02 by aligning rno0's assembly against no2's
+// compiled bytes with automation/fn_diff.py.
+#define GIANTBRO_ZPRIORITY_ADJUST 8
 
-    ent = g_CurrentEntity + arg0[1];
-    func_801CD91C(ent);
-    ent = g_CurrentEntity + arg0[0];
-    func_801CD91C(ent);
-    ent = g_CurrentEntity + 18;
-    func_801CD91C(ent);
-    ent = g_CurrentEntity + arg0[2];
-    polarPlacePart(ent);
-    ent = g_CurrentEntity + arg0[3];
-    polarPlacePart(ent);
+// no2.h and np3.h declare these; rno0.h does not. Without them GCC 2.7 treats
+// the identifier as an implicit int and passes its VALUE instead of its
+// address, so InitializeEntity was called with 0. That cost 2 instructions per
+// call site and was invisible except as a size delta, because an implicit
+// declaration is only a WARNING.
+extern EInit g_EInitBlade;
+extern EInit g_EInitBladeWeapon;
 
-    for (arg0 += 4; *arg0; arg0++) {
-        if (*arg0 != 0xFF) {
-            ent = g_CurrentEntity + *arg0;
-            polarPlacePart(ent);
-        }
-    }
-}
-
-static void func_801D0B40(void) {
-    Entity* ent;
-    s16* unk88;
-
-    ent = g_CurrentEntity + 15;
-    unk88 = ent->ext.et_801D0B40.unk88;
-    ent->ext.et_801D0B40.unk84 = unk88[0x4E] - 0x600;
-
-    ent = g_CurrentEntity + 16;
-    unk88 = ent->ext.et_801D0B40.unk88;
-    ent->ext.et_801D0B40.unk84 = unk88[0x4E] - 0x600;
-}
-
-static s32 func_801D0B78(Entity* ent) {
-    Entity* player = &PLAYER;
-    s32 xDist_unused;
-    s32 ret;
-
-    // This is the logic of GetDistanceToPlayerX.
-    // We just call the function over and over instead.
-    xDist_unused = player->posX.i.hi - ent->posX.i.hi;
-    if (xDist_unused < 0) {
-        xDist_unused = -xDist_unused;
-    }
-
-    ret = 0;
-
-    switch (g_CurrentEntity->step) {
-    case 8:
-        if (GetDistanceToPlayerX() < 64) {
-            ret = 10;
-        }
-        if (GetDistanceToPlayerX() > 80) {
-            ret = 6;
-        }
-        if (g_CurrentEntity->ext.et_801D0B78.unk88) {
-            ret = 7;
-        }
-        break;
-
-    case 10:
-        if (GetDistanceToPlayerX() < 88) {
-            ret = 8;
-        }
-        if (GetDistanceToPlayerX() < 56) {
-            ret = 7;
-        }
-        if (GetDistanceToPlayerX() > 80) {
-            ret = 6;
-        }
-        if (g_CurrentEntity->ext.et_801D0B78.unk88) {
-            ret = 7;
-        }
-        break;
-
-    case 12:
-        if (GetDistanceToPlayerX() < 64) {
-            ret = 10;
-        }
-        break;
-
-    case 6:
-        if (g_CurrentEntity->ext.et_801D0B78.unk88) {
-            ret = 7;
-        }
-        if (GetDistanceToPlayerX() < 48) {
-            ret = 10;
-        }
-        if (GetDistanceToPlayerX() < 80) {
-            ret = 8;
-        }
-        break;
-
-    default:
-        if (GetDistanceToPlayerX() > 80) {
-            ret = 6;
-        }
-        if (GetDistanceToPlayerX() < 64) {
-            ret = 10;
-        }
-        if (g_CurrentEntity->ext.et_801D0B78.unk88) {
-            ret = 7;
-        }
-        break;
-    }
-
-    if (g_CurrentEntity->facingLeft != ((GetSideToPlayer() & 1) ^ 1)) {
-        ret = 12;
-    }
-    return ret;
-}
-
-INCLUDE_ASM("st/rno0/nonmatchings/e_blade", EntityBlade);
-
-INCLUDE_ASM("st/rno0/nonmatchings/e_blade", EntityBladeWeapon);
+#include "../e_blade.h"

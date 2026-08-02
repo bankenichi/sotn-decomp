@@ -1,5 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+// rno0 places its giant-bro entities 8 z-levels forward of every other stage.
+// Default 0, guarded by #if rather than #ifdef so a stage that does not opt in
+// emits NO instructions here and stays byte-identical. Measured 2026-08-02:
+// this is exactly the 3-instruction (0xC) difference that made e_hammer,
+// e_gurkha and e_blade unshimmable in rno0.
+#ifndef GIANTBRO_ZPRIORITY_ADJUST
+#define GIANTBRO_ZPRIORITY_ADJUST 0
+#endif
+
+
 // The enemy called "Blade", his helper functions, and his swords
 
 static void func_801D0A00(s16* arg0) {
@@ -328,6 +338,9 @@ void EntityBlade(Entity* self) {
         self->facingLeft = self->params;
         self->hitboxWidth = 6;
         self->hitboxHeight = 6;
+#if GIANTBRO_ZPRIORITY_ADJUST
+        self->zPriority += GIANTBRO_ZPRIORITY_ADJUST;
+#endif
         /* fallthrough */
     case 1:
         if (UnkCollisionFunc3(D_801833E4) & 1) {

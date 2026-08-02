@@ -87,6 +87,15 @@ segments:
       # matching .bss segment; that was checked before building.
       - [0x1CB8, .data, e_particles]     # 0x80
       - [0x1D38, data]
+      # e_hammer / e_gurkha / e_blade, shimmed 2026-08-02 once the shared
+      # headers gained GIANTBRO_ZPRIORITY_ADJUST. Starts are the minimum data
+      # address each file's assembly references; sizes are confirmed three ways
+      # (no2 and np3 both declare 0x57C / 0x4F0 / 0x698, and the derived starts
+      # reproduce them: 0x26A0-0x2124 = 0x57C, 0x2B90-0x26A0 = 0x4F0).
+      - [0x2124, .data, e_hammer]        # 0x57C
+      - [0x26A0, .data, e_gurkha]        # 0x4F0
+      - [0x2B90, .data, e_blade]         # 0x698
+      - [0x3228, data]
       # e_room_fg is NOT shimmable here and must stay assembly. Measured
       # 2026-08-02: the shared header emits 0x8C (0x14 of anim tables plus SIX
       # ObjInit entries of 0x14), but rno0's slot is 0x1D4C..0x1DC4 = 0x78,

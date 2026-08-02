@@ -208,11 +208,17 @@ EInit D_us_80180B4C = {ANIMSET_OVL(7), 21, 74, 528, 0x075};
 EInit g_EInitNovaSkeleton = {ANIMSET_OVL(8), 1, 72, 532, 0x07E};
 EInit D_us_80180B64 = {ANIMSET_OVL(8), 0, 72, 532, 0x07F};
 EInit g_EInitHammer = {ANIMSET_OVL(9), 2, 87, 547, 0x0BA};
-EInit D_us_80180B7C = {ANIMSET_OVL(9), 18, 87, 547, 0x0BB};
+// Was `D_us_80180B7C`, a raw-address name. Identified by its frame index and
+// params (18, 0x0BB, matching no2 g_EInitHammerWeapon); src/st/e_hammer.h and friends require the real name.
+EInit g_EInitHammerWeapon = {ANIMSET_OVL(9), 18, 87, 547, 0x0BB};
 EInit g_EInitGurkha = {ANIMSET_OVL(9), 2, 87, 544, 0x0BC};
-EInit D_us_80180B94 = {ANIMSET_OVL(9), 20, 87, 544, 0x0BD};
+// Was `D_us_80180B94`, a raw-address name. Identified by its frame index and
+// params (20, 0x0BD, matching no2 g_EInitGurkhaWeapon); src/st/e_hammer.h and friends require the real name.
+EInit g_EInitGurkhaWeapon = {ANIMSET_OVL(9), 20, 87, 544, 0x0BD};
 EInit g_EInitBlade = {ANIMSET_OVL(9), 2, 87, 541, 0x0BE};
-EInit D_us_80180BAC = {ANIMSET_OVL(9), 19, 87, 541, 0x0BF};
+// Was `D_us_80180BAC`, a raw-address name. Identified by its frame index and
+// params (19, 0x0BF, matching no2 g_EInitBladeWeapon); src/st/e_hammer.h and friends require the real name.
+EInit g_EInitBladeWeapon = {ANIMSET_OVL(9), 19, 87, 541, 0x0BF};
 EInit D_us_80180BB8 = {ANIMSET_OVL(10), 0, 76, 550, 0x005};
 EInit D_us_80180BC4 = {ANIMSET_OVL(10), 0, 76, 550, 0x002};
 EInit g_EInitGorgon = {ANIMSET_OVL(11), 0, 76, 560, 0x01F};
