@@ -206,7 +206,42 @@ INCLUDE_ASM("boss/bo6/nonmatchings/us_39144", BO6_RicSetFall);
 
 INCLUDE_ASM("boss/bo6/nonmatchings/us_39144", func_us_801BA050);
 
-INCLUDE_ASM("boss/bo6/nonmatchings/us_39144", BO6_RicCheckSubwpnChainLimit);
+// Richter (BO6): refuse to spawn another subweapon if `limit` of the same id
+// are already live, or if there is no free slot at all.
+//
+// Twin of RicCheckSubwpnChainLimit in src/ric/pl_setstep.c, where it is
+// static. It must NOT be static here: assembly still stubbing the rest of this
+// overlay calls it across translation units.
+//
+// Real difference from RIC: the scanned window. RIC walks g_Entities[32..47],
+// 16 slots. BO6 walks g_Entities[96..127], 32 slots. The base came out of the
+// induction variable: the loop loads at D_80077B08 with member offset 0xB0, so
+// the entity base is 0x80077B08 - 0xB0 = 0x80077A58, which is g_Entities + 96
+// exactly. The count is the literal in `slti $a3, 0x20`.
+s32 BO6_RicCheckSubwpnChainLimit(s16 subwpnId, s16 limit) {
+    Entity* entity;
+    s32 i;
+    s32 nFound;
+    s32 nEmpty;
+
+    entity = &g_Entities[STAGE_ENTITY_START + 32];
+    for (i = 0, nFound = 0, nEmpty = 0; i < 32; i++, entity++) {
+        if (!entity->entityId) {
+            nEmpty++;
+        }
+        if (entity->ext.subweapon.subweaponId &&
+            entity->ext.subweapon.subweaponId == subwpnId) {
+            nFound++;
+        }
+        if (nFound >= limit) {
+            return -1;
+        }
+    }
+    if (nEmpty) {
+        return 0;
+    }
+    return -1;
+}
 
 INCLUDE_ASM("boss/bo6/nonmatchings/us_39144", BO6_RicDoSubweapon);
 
