@@ -2192,6 +2192,90 @@ def _codebase_index_module():
     return _CI_MOD
 
 
+_SEG_CACHE: dict = {}
+
+
+def _c_segment_sizes(stage: str) -> dict:
+    """{stem: text size} for one overlay, from its splat config.
+
+    A segment's size is the distance to the next `c` segment, which is exactly
+    the compiled text for that file. That makes it directly comparable across
+    overlays implementing the same shared header.
+    """
+    if stage in _SEG_CACHE:
+        return _SEG_CACHE[stage]
+    out: dict = {}
+    path = os.path.join(WIN_REPO, "config", f"splat.us.st{stage}.yaml")
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            lines = [ln for ln in f.read().splitlines() if ", c, " in ln]
+        for i, ln in enumerate(lines):
+            addr = int(ln.split("[")[1].split(",")[0], 16)
+            name = ln.split(", c, ")[1].split("]")[0].strip()
+            if i + 1 < len(lines):
+                nxt = int(lines[i + 1].split("[")[1].split(",")[0], 16)
+                out[name] = nxt - addr
+    except (OSError, ValueError, IndexError):
+        pass
+    _SEG_CACHE[stage] = out
+    return out
+
+
+# How far a stage's text may diverge from its peers' and still plausibly BE the
+# same implementation. Peers differ a little for real reasons (inverted-castle
+# sign flips, a different ANIMSET bank), so the band is not tight; it only has
+# to separate "same code" from "different code".
+_SHIM_SIZE_LO, _SHIM_SIZE_HI = 0.75, 1.25
+
+
+def shim_size_divergence(stage: str, stem: str, idx: dict) -> str:
+    """Is this stage's text a plausible size for the shared implementation?
+
+    THIS IS THE BLOCKER shim_viable() DOES NOT HAVE. It checks placement only:
+    segments, .data, .bss. It never asks whether the stage's function is the
+    SAME CODE. So it happily reported "no known blocker" for
+    src/st/rchi/e_breakable.c, a file whose own comment reads "RCHI's breakable
+    entity is stage-specific and roughly twice the size of the shared candle
+    implementation (0x270 versus 0x134 bytes)" -- a rejection upstream had
+    already investigated and recorded.
+
+    Measured 2026-08-02 against the peer median for each shared header:
+
+        rchi/e_breakable     0x674 vs 0x134   5.36x   different code
+        rno0/e_lock_camera   0x1bc vs 0x4cc   0.36x   different code
+        rno0/e_breakable     0x170 vs 0x134   1.19x   plausible
+
+    Both directions matter and the too-SMALL case is the one a naive check
+    misses: rno0's lock camera is a third of its peers', which is no more
+    shimmable than rchi's being five times larger.
+
+    Returns "" when the size is plausible, otherwise the reason to block.
+    """
+    mine = _c_segment_sizes(stage).get(stem)
+    if not mine:
+        return ""      # no segment of its own; nothing measurable, stay silent
+    peers = []
+    for p in idx.get("shared_impls", {}).get(stem, {}).get("shimmed_by", []):
+        s = _c_segment_sizes(p).get(stem)
+        if s:
+            peers.append(s)
+    if len(peers) < 2:
+        return ""      # too few peers for a median to mean anything
+    peers.sort()
+    med = peers[len(peers) // 2]
+    if not med:
+        return ""
+    ratio = mine / med
+    if _SHIM_SIZE_LO <= ratio <= _SHIM_SIZE_HI:
+        return ""
+    how = "larger" if ratio > 1 else "smaller"
+    return (f"{stage}'s {stem} text is {mine:#x} bytes against a peer median of "
+            f"{med:#x} ({ratio:.2f}x, {how}). That is a different "
+            f"implementation, not a placement problem, so shimming it would "
+            f"change behaviour. shim_viable() cannot see this: it checks "
+            f"segments and storage, never whether the code is the same")
+
+
 def shim_gate(ctx: dict) -> tuple[bool, str]:
     """Should this record be SHIMMED instead of generated? (P6)
 
@@ -2221,6 +2305,13 @@ def shim_gate(ctx: dict) -> tuple[bool, str]:
         if len(parts) != 4 or parts[0] != "src" or parts[1] != "st":
             return False, ""
         stage, stem = parts[2], parts[3][:-2]
+        # Different BUILD TARGET, not a us overlay. shim_viable reasons from
+        # config/splat.us.* and config/check.us.sha, neither of which describes
+        # these, so any verdict it returns about them is unfounded. The us
+        # oracle cannot verify a psp or saturn change either, so deferring one
+        # would park a record on evidence we do not have.
+        if any(t in stage for t in ("_psp", "_saturn", "psp", "saturn")):
+            return False, ""
         ci = _codebase_index_module()
         with open(os.path.join(WIN_REPO, "automation", "index.us.json"),
                   encoding="utf-8") as f:
@@ -2229,6 +2320,11 @@ def shim_gate(ctx: dict) -> tuple[bool, str]:
             return False, ""          # nothing to defer to; generate
         ok, why = ci.shim_viable(stage, stem, idx)
         if ok:
+            # shim_viable said placement is fine. Ask the question it does not:
+            # is this even the same code?
+            diverged = shim_size_divergence(stage, stem, idx)
+            if diverged:
+                return False, f"shared impl exists but blocked: {diverged}"
             return True, (
                 f"src/st/{stem}.h is a shared implementation and {stage} has no "
                 f"blocker against using it ({why}). The correct fix is a shim, "

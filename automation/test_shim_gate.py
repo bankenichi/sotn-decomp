@@ -38,6 +38,10 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 
 
+def idx_for(wd):
+    return json.loads((REPO / "automation" / "index.us.json").read_text())
+
+
 def main() -> int:
     spec = importlib.util.spec_from_file_location(
         "worker_direct", REPO / "automation" / "win" / "worker_direct.py")
@@ -54,13 +58,37 @@ def main() -> int:
             failures.append(name)
 
     # --- shimmable NOW must be deferred ------------------------------------
-    # rno0/e_lock_camera and rno0/e_breakable were both measured as
-    # "no known blocker" while still carrying INCLUDE_ASM stubs.
-    for stage, stem in (("rno0", "e_lock_camera"), ("rno0", "e_breakable")):
+    for stage, stem in (("rno0", "e_breakable"),):
         d, why = wd.shim_gate({"src_rel": f"src/st/{stage}/{stem}.c"})
         check(f"{stage}/{stem}: deferred rather than generated", d, why[:90])
         check(f"{stage}/{stem}: reason names the shim include",
               f'#include "../{stem}.h"' in why, why[:90])
+
+    # --- FALSE POSITIVES the size check must catch -------------------------
+    #
+    # shim_viable() reported "no known blocker" for all of these, because it
+    # checks placement only. They are different implementations.
+    #
+    # rchi/e_breakable is the one that proves it: the file's own comment says
+    # "roughly twice the size of the shared candle implementation (0x270 versus
+    # 0x134 bytes)", a rejection upstream had ALREADY investigated. Deferring
+    # it would have parked a record behind structural work that can never
+    # happen.
+    #
+    # rno0/e_lock_camera is the direction a naive check misses: it is 0.36x its
+    # peers, not larger. Too small is just as divergent as too large.
+    for stage, stem, why_frag in (
+            ("rchi", "e_breakable", "larger"),
+            ("rno0", "e_lock_camera", "smaller")):
+        d, why = wd.shim_gate({"src_rel": f"src/st/{stage}/{stem}.c"})
+        check(f"{stage}/{stem}: size divergence blocks the shim", not d, why[:110])
+        check(f"{stage}/{stem}: reason says {why_frag}", why_frag in why, why[:110])
+        check(f"{stage}/{stem}: reason gives both sizes",
+              "0x" in why and "x," in why, why[:110])
+
+    # the divergence check itself, directly
+    check("divergence is silent for an unknown stem",
+          wd.shim_size_divergence("rno0", "no_such_stem", idx_for(wd)) == "")
 
     # --- blocked must NOT be deferred, only annotated ----------------------
     # rno0/e_blade has no shared impl to defer to; rno0/collision has one but
@@ -76,7 +104,11 @@ def main() -> int:
     check("no shared impl: not deferred", not d, why[:90])
 
     # --- paths outside src/st/<stage>/<stem>.c are out of scope -------------
+    # _psp and _saturn are different BUILD TARGETS. shim_viable reasons from
+    # config/splat.us.* and the us oracle cannot verify a change to them, so a
+    # verdict either way would be unfounded.
     for p in ("src/boss/bo6/richter.c", "src/dra/menu.c", "src/st/e_red_door.h",
+              "src/st/rchi_psp/e_breakable.c", "src/st/rno0_psp/e_lock_camera.c",
               "", "weird"):
         d, why = wd.shim_gate({"src_rel": p})
         check(f"out of scope, silent: {p!r}", (not d) and why == "", why[:60])

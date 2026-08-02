@@ -150,7 +150,32 @@ Measured over the 417 `INCLUDE_ASM` stubs in `src/st`:
 |---|---|---|
 | no shared implementation | 288 | generate, correct as-is |
 | shared impl exists, blocked | 121 | **annotate only** |
-| shimmable now, no blocker | 8 | **defer** |
+| shimmable now, no blocker | 8 → **1** | **defer** |
+
+### shim_viable has a blind spot: it never asks if it is the same code
+
+`shim_viable()` checks *placement* — segments, `.data`, `.bss`. It does not
+compare implementations. Of the 8 it first reported, 7 were false positives:
+
+| | own text | peer median | ratio | verdict |
+|---|---|---|---|---|
+| rchi/e_breakable | 0x674 | 0x134 | 5.36x | different code |
+| rno0/e_lock_camera | 0x1bc | 0x4cc | 0.36x | different code |
+| rno0/e_breakable | 0x170 | 0x134 | 1.19x | plausible |
+
+`rchi/e_breakable.c` had a comment saying so all along: "stage-specific and
+roughly twice the size of the shared candle implementation (0x270 versus 0x134
+bytes)" — a rejection upstream had already investigated.
+
+`shim_size_divergence()` compares a stage's `c` segment size against the median
+of the stages that already shim that header, and blocks outside 0.75x–1.25x.
+**Both directions matter**: rno0's lock camera is a third of its peers', which
+is no more shimmable than rchi's being five times larger. Too-small is the case
+a naive check misses.
+
+`_psp` and `_saturn` paths are also out of scope: `shim_viable` reasons from
+`config/splat.us.*`, and the us oracle cannot verify a change to another build
+target, so any verdict about them is unfounded.
 
 Deferring the blocked 121 as well would follow ROADMAP P6 literally and stall
 29% of the queue behind structural work that has no automated consumer. The
