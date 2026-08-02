@@ -96,6 +96,7 @@ ANALYSIS_SCRIPTS = {
     "review_checks.py",
     "decl_coverage.py",
     "test_twin_wiring.py",
+    "opencode_size_bisect.py",
 }
 # Deliberately narrow: flags, numbers, and in-repo-looking relative paths.
 # No spaces, quotes, semicolons, redirects, or leading dashes-with-spaces, so
