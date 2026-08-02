@@ -97,6 +97,7 @@ ANALYSIS_SCRIPTS = {
     "decl_coverage.py",
     "test_twin_wiring.py",
     "opencode_size_bisect.py",
+    "test_build_classifier.py",
 }
 # Deliberately narrow: flags, numbers, and in-repo-looking relative paths.
 # No spaces, quotes, semicolons, redirects, or leading dashes-with-spaces, so

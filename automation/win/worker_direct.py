@@ -2195,6 +2195,48 @@ def restore(ctx: dict, original: str) -> None:
     journal_clear()
 
 
+_COMPILE_FAIL_MARKS = (
+    "FAILED:",              # ninja's failed-target block
+    "undefined reference",  # link error
+    ": error",              # some tools do emit this
+)
+# GCC 2.7 (cc1-psx-26) writes `file.c:LINE: message` with NO "error:" keyword,
+# e.g.  src/boss/bo0/2D26C.c:133: structure has no member named `unk32'
+_DIAG_RX = re.compile(r"[^\s]+\.(?:c|h):\d+:")
+
+
+def build_failed_to_compile(rc: int, out: str) -> bool:
+    """Did the BUILD fail, as opposed to the checksum merely mismatching?
+
+    THIS DISTINCTION IS THE WHOLE POINT. `make build` runs the `check` target
+    itself, so a perfectly good compile whose bytes differ still exits non-zero.
+    Treating rc != 0 as "build failed" therefore collapsed two outcomes that
+    have different owners:
+
+      - never compiled   -> escalated, needs a better model or a human
+      - compiled, bytes differ -> near, needs the PERMUTER, costs no tokens
+
+    Everything downstream keys off this, and it was wrong. Observed 2026-08-02
+    on func_us_8019AA04: every overlay printed OK, the only failure line was
+    `check: checksum check failed`, and the worker still recorded BUILD FAILED.
+    That is why four `near` records had to be retriaged BY HAND on 2026-08-01
+    with notes reading "misrouted... the tree BUILT and only the checksum
+    differed". The hand-fix was applied to the records; the cause was here.
+
+    Deliberately conservative: anything that looks like a compiler diagnostic,
+    a ninja FAILED block or a link error counts as a real build failure. Only a
+    non-zero exit with NO such evidence is reclassified as a checksum miss, so
+    a genuinely broken compile can never be mistaken for a permuter candidate.
+    """
+    if rc == 0:
+        return False
+    if any(m in out for m in _COMPILE_FAIL_MARKS) or _DIAG_RX.search(out):
+        return True
+    # Non-zero, no diagnostics. If make explicitly says the checksum failed,
+    # the build itself was fine.
+    return "checksum check failed" not in out
+
+
 def build_and_check(rec: dict) -> tuple[bool, str]:
     with Status(f"make build VERSION={rec['build']}") as st:
         # `set -o pipefail` is LOAD-BEARING, not tidiness.
@@ -2244,9 +2286,19 @@ def build_and_check(rec: dict) -> tuple[bool, str]:
             f"[ $rc -ne 0 ] && echo '--- build tail ---' && tail -6 {blog}; "
             f"rm -f {blog}; exit $rc",
             timeout=BUILD_TIMEOUT)
-        st.update("compiled" if rc == 0 else "BUILD FAILED")
-    if rc != 0:
+        really_broken = build_failed_to_compile(rc, out)
+        st.update("compiled" if rc == 0 else
+                  "BUILD FAILED" if really_broken else
+                  "compiled, checksum differs")
+    if really_broken:
         return False, "BUILD FAILED:\n" + out.strip()[-1500:]
+    if rc != 0:
+        # Compiled and linked; make only exited non-zero because its own `check`
+        # target found the wrong bytes. The string must NOT contain "BUILD
+        # FAILED": the near/escalated routing and the permuter-seed save both
+        # test for exactly that substring.
+        return False, ("BUILT, CHECKSUM MISMATCH (compiled and linked; bytes "
+                       "differ) - permuter candidate:\n" + out.strip()[-1200:])
     artifact = overlay_artifact(rec)
     with Status(f"verifying {artifact} sha1"):
         rc, out = wsl(f"grep -F '{artifact}' config/check.{rec['build']}.sha "
