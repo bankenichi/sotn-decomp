@@ -136,6 +136,33 @@ would make the record permanently unmatchable.
 
 ---
 
+## 4a. The shim gate (before the model, not after)
+
+`shim_gate()` asks `codebase_index.shim_viable()` whether the record's target
+file should defer to a shared implementation in `src/st/<stem>.h`. If it should,
+the record is deferred with marker `SHIM_INSTEAD_OF_GENERATE` and **no model
+call is made**. Writing a private copy of code the tree already has is wrong
+work: the quality audit flags it as a duplicate and a reviewer rejects it.
+
+Measured over the 417 `INCLUDE_ASM` stubs in `src/st`:
+
+| Group | Count | Behaviour |
+|---|---|---|
+| no shared implementation | 288 | generate, correct as-is |
+| shared impl exists, blocked | 121 | **annotate only** |
+| shimmable now, no blocker | 8 | **defer** |
+
+Deferring the blocked 121 as well would follow ROADMAP P6 literally and stall
+29% of the queue behind structural work that has no automated consumer. The
+narrowing is deliberate and asserted in `test_shim_gate.py`, which fails both if
+the gate becomes eager (the fleet would starve) and if it stops deferring
+anything (duplicates return).
+
+Deferred records are greppable by their marker and can be requeued as a batch
+once the shim lands.
+
+---
+
 ## 5. Failure taxonomy, and why it kept going wrong
 
 Three outcomes, three different owners:

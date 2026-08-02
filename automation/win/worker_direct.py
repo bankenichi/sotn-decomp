@@ -421,6 +421,10 @@ MAX_FUNC_CHARS = int(os.environ.get("MAX_FUNC_CHARS", _DEFAULT_MAX_FUNC))
 # Stable marker in the notes so the next tier can find exactly these records.
 # Matching on prose would break the moment someone reworded the message.
 DEFER_TOO_LARGE = "TIER_HANDOFF_TOO_LARGE"
+# A distinct marker so these are greppable and requeueable as a batch once the
+# shim is done. They are NOT failures: they are records whose correct fix is
+# structural, caught before any quota was spent on them.
+DEFER_SHIMMABLE = "SHIM_INSTEAD_OF_GENERATE"
 # Hard wall-clock ceiling for one function across ALL attempts. Without it,
 # MAX_ATTEMPTS forced passes at GEN_TIMEOUT each can silently burn ~40 minutes.
 #
@@ -2173,6 +2177,71 @@ def replay_pending_journals() -> int:
     return n
 
 
+_CI_MOD = None
+
+
+def _codebase_index_module():
+    global _CI_MOD
+    if _CI_MOD is None:
+        import importlib.util
+        p = os.path.join(WIN_REPO, "automation", "codebase_index.py")
+        spec = importlib.util.spec_from_file_location("codebase_index", p)
+        m = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(m)
+        _CI_MOD = m
+    return _CI_MOD
+
+
+def shim_gate(ctx: dict) -> tuple[bool, str]:
+    """Should this record be SHIMMED instead of generated? (P6)
+
+    `shim_viable()` in codebase_index.py already answered this; it just
+    informed a human. Asking it here stops the fleet spending model quota
+    writing a private copy of code the tree already has, which the quality
+    audit then flags as a duplicate and a reviewer then rejects.
+
+    MEASURED over the 417 INCLUDE_ASM stubs in src/st before this was wired:
+
+        288  no shared implementation      -> generating is correct
+        121  shared impl exists, BLOCKED   -> generating is the only option today
+          8  shimmable NOW, no blocker     -> generating is simply wrong work
+
+    Only the last group is deferred, and that is a deliberate narrowing of
+    ROADMAP P6's wording. Deferring the 121 blocked records too would stall 29%
+    of the queue behind structural work that has no automated consumer, which
+    trades a small waste for a large stall. They are annotated instead, so the
+    blocker is visible on the record without blocking the record.
+
+    Returns (defer, reason). Never raises: a broken advisory check must not
+    take the fleet down.
+    """
+    try:
+        parts = ctx.get("src_rel", "").split("/")
+        # Only src/st/<stage>/<stem>.c has a shared-implementation notion.
+        if len(parts) != 4 or parts[0] != "src" or parts[1] != "st":
+            return False, ""
+        stage, stem = parts[2], parts[3][:-2]
+        ci = _codebase_index_module()
+        with open(os.path.join(WIN_REPO, "automation", "index.us.json"),
+                  encoding="utf-8") as f:
+            idx = json.load(f)
+        if not idx.get("shared_impls", {}).get(stem):
+            return False, ""          # nothing to defer to; generate
+        ok, why = ci.shim_viable(stage, stem, idx)
+        if ok:
+            return True, (
+                f"src/st/{stem}.h is a shared implementation and {stage} has no "
+                f"blocker against using it ({why}). The correct fix is a shim, "
+                f"not a generated copy: replace this file's body with "
+                f'`#include "../{stem}.h"`. Generating C here would duplicate '
+                f"tree code and be rejected in review.")
+        return False, f"shared impl exists but blocked: {why}"
+    except Exception as e:
+        print(f"  ~~ shim gate unavailable, ignored: {type(e).__name__}",
+              flush=True)
+        return False, ""
+
+
 # P4. review_checks.py has always been able to catch these; it just ran after
 # the fact, for a human. Wiring the SAME functions in (rather than
 # reimplementing them here) means a check can never drift between the two
@@ -2466,6 +2535,18 @@ def process_one(dry: bool = False) -> bool:
                          f"{MAX_FUNC_CHARS} on backend={MODEL_BACKEND}; "
                          f"handed off to the next tier")
         return True
+    # P6. Ask BEFORE the model, not after: a record whose right answer is a
+    # shim must never cost a generation. The blocked-but-not-shimmable case is
+    # only annotated, so it stays workable; see shim_gate's docstring.
+    _defer, _why = shim_gate(ctx)
+    if _defer and not dry:
+        print(f"[worker] SHIM INSTEAD: {_why}", flush=True)
+        sched("report", "--id", rec["id"], "--status", "deferred",
+              "--notes", (DEFER_SHIMMABLE + ": " + _why)[:250])
+        return True
+    if _why and not dry:
+        print(f"  ~~ {_why}", flush=True)
+
     if dry:
         print("--- prompt preview ---")
         print(build_prompt(rec, ctx)[:1500])

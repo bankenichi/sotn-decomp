@@ -361,6 +361,34 @@ because it generalises:
 
 Remaining audit output is 67 duplicates, all blocked on P3, and nothing else.
 
+## P6 — (partly resolved 2026-08-02) The shim gate runs before the model
+
+**Done:** `shim_gate()` in `worker_direct.py` asks `shim_viable()` before any
+model call and defers records whose correct fix is a shim, with marker
+`SHIM_INSTEAD_OF_GENERATE`. Pinned by `automation/test_shim_gate.py` (21
+checks).
+
+Measured over the 417 `INCLUDE_ASM` stubs in `src/st`: 288 have no shared
+implementation (generating is correct), 121 have one but are blocked, and 8 are
+shimmable now. **Only the 8 are deferred.** This entry said a record targeting a
+shared-implementation file "should not reach a model at all until the blocker is
+cleared"; applied literally that defers all 129 and stalls 29% of the queue
+behind structural work with no automated consumer. The test asserts both edges,
+because the failure modes are opposite: too eager starves the fleet, too lax
+brings the duplicates back.
+
+**Immediate follow-up:** those 8 stubs across `rno0/e_breakable`,
+`rno0/e_lock_camera`, `rchi/e_breakable` and `rchi_psp/e_breakable` are free
+matches sitting behind a three-line shim each.
+
+**Still open from this entry:**
+
+1. The **relocation detector** (item 1 below). Worked out by hand twice; still
+   not a tool.
+2. **Tier 2/3 consumers** for `escalated` (item 2 below).
+
+### Original entry
+
 ## P6 — Harness: make the four blockers unskippable
 
 `shim_viable` currently informs a human. It should gate the worker: a record
