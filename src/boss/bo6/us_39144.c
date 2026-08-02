@@ -294,7 +294,27 @@ void BO6_RicSetSlide(void) {
     g_Ric.timers[0xC] = 4;
 }
 
-INCLUDE_ASM("boss/bo6/nonmatchings/us_39144", BO6_RicSetSlideKick);
+extern AnimationFrame D_us_80182304[];
+
+// Richter (BO6): enter the slide kick. Twin of RicSetSlideKick in
+// src/ric/pl_setstep.c.
+//
+// One real divergence: the sfx. RIC plays SFX_VO_RIC_ATTACK_B (0x6FA); BO6
+// plays 0x82C from the boss-Richter voice bank (`ori $a0, $zero, 0x82C` at
+// 0x3A99C). RIC also calls through the g_api struct where BO6 loads the
+// standalone g_api_PlaySfx pointer, matching BO6_RicSetSlide above.
+void BO6_RicSetSlideKick(void) {
+    g_Ric.unk44 = 0;
+    BO6_RicSetStep(PL_S_SLIDE_KICK);
+    BO6_RicSetAnimation(D_us_80182304);
+    g_CurrentEntity->velocityY = FIX(-2);
+    BO6_RicSetSpeedX(FIX(5.5));
+    func_us_801B9C14();
+    BO6_RicCreateEntFactoryFromEntity(g_CurrentEntity, BP_25, 0);
+    g_api_PlaySfx(0x82C);
+    g_Ric.timers[PL_T_12] = 4;
+    BO6_RicCreateEntFactoryFromEntity(g_CurrentEntity, BP_31, 0);
+}
 
 INCLUDE_ASM("boss/bo6/nonmatchings/us_39144", func_us_801BA9D0);
 
