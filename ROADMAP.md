@@ -401,6 +401,39 @@ Two things it found immediately, both about the harness rather than the game:
 
 **Still open from this entry:** tier 2/3 consumers for `escalated` (item 2).
 
+### 2026-08-02 result: four stems shimmed, 7 functions matched
+
+`st_update`, `collision`, `e_particles` and `e_medusa_head` are all shimmed.
+81/81, 0 shifted symbols across 43 overlays after each. Seven functions matched
+(`Update`, `UpdateStageEntities`, `HitDetection`, `EntityDamageDisplay`,
+`EntitySoulStealOrb`, `EntityMedusaHeadSpawner`, `EntityMedusaHeadBlue`) and
+three private copies deleted (`Random`, `EntityEnemyBlood`,
+`EntityMedusaHeadYellow`).
+
+**The recipe, in the order that avoids wasted builds:**
+
+1. Check whether the header declares UNINITIALISED file-scope storage. Only
+   `st_update.h` did (`g_ItemIconSlots`), and it needs a `.bss, <stem>` segment
+   or the storage is appended after all other bss and shifts the overlay.
+2. Locate `.data` with `find_data_segment.py`, which calibrates against a peer
+   before trusting a hit.
+3. Expect to NAME symbols. Every one of the four needed it, and the linker says
+   exactly which: `g_ItemIconSlots` (was `D_us_801D4B4C`, also used by
+   `e_collect.c`), `g_EInitDamageNum` (was `D_us_80180ABC` in `e_init.c`), and
+   three medusa-head `EInit`s bridged by `#define` because rno0 names them
+   `g_EInitMedusaHead1/2` and `OVL_EXPORT(EInitSpawner)`.
+4. Read mappings OFF THE ASSEMBLY. The blue/yellow `EInit` assignment was
+   settled by the `bnez params` branch in `EntityMedusaHeadBlue.s`, not guessed.
+
+**A link error is the best failure to get here.** Unlike a checksum mismatch it
+names the missing symbol AND the file that wants it, which is how the
+`e_collect`/`g_ItemIconSlots` overlap and `g_EInitDamageNum` were both found in
+one build each.
+
+`collision` was the one surprise: `src/st/collision.h` includes
+`entity_damage_display.h` at its end, so a single shim covers both functions.
+That is also why no stage has a separate entity_damage_display file.
+
 ### The remaining shim lever, measured 2026-08-02
 
 A full sweep of all 130 shared implementations found 129 stubs in files a

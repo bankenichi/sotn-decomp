@@ -176,7 +176,14 @@ EInit Unused_ShouldBeCommon = {ANIMSET_DRA(3), 0, 72, 0, 0x05C};
 EInit OVL_EXPORT(EInitDamageNum) = {ANIMSET_DRA(0), 0, 0, 0, 0x002};
 EInit D_us_80180AA4 = {ANIMSET_DRA(0), 0, 0, 0, 0x001};
 EInit OVL_EXPORT(EInitCommon) = {ANIMSET_DRA(0), 0, 0, 0, 0x003};
-EInit D_us_80180ABC = {ANIMSET_DRA(0), 0, 0, 0, 0x003};
+// Was `D_us_80180ABC`, a raw-address name. It is g_EInitDamageNum: identical
+// initialiser to are/cat/dai/dre's, and rno0's EntityDamageDisplay assembly
+// referenced this exact address. src/st/collision.h (which includes
+// entity_damage_display.h) requires the real name to link.
+//
+// NOTE there is a SECOND, different descriptor above: OVL_EXPORT(EInitDamageNum)
+// carries 0x002 while this one carries 0x003. They are not interchangeable.
+EInit g_EInitDamageNum = {ANIMSET_DRA(0), 0, 0, 0, 0x003};
 EInit g_EInitGuardian = {ANIMSET_OVL(3), 1, 82, 518, 0x18C};
 EInit D_us_80180AD4 = {ANIMSET_OVL(3), 0, 82, 518, 0x18D};
 EInit D_us_80180AE0 = {ANIMSET_OVL(0), 0, 0, 0, 0x18E};

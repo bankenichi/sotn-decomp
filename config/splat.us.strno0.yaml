@@ -49,7 +49,10 @@ segments:
       # Cross-check: st_update 0x1048..0x1094, collision 0x1094..0x1454 and
       # e_red_door 0x1454 tile with no gaps, in `c` segment order.
       - [0x1048, .data, st_update]    # 0x4C
-      - [0x1094, data]
+      # collision.h's g_testCollEnemyLookup / g_testCollLuckCutoff. Selected by
+      # VERSION rather than by stage, hence identical in every us overlay and
+      # cleanly calibrated against cen, dre and lib.
+      - [0x1094, .data, collision]    # 0x3C0, abuts e_red_door at 0x1454
       # g_eRedDoorUV, 3 rows of 8 bytes. `static` in src/st/e_red_door.h, so
       # the compiled e_red_door.c must emit it and splat must NOT. Located by
       # searching RNO0.BIN for the initialiser's 24-byte signature; the same
@@ -58,6 +61,14 @@ segments:
       # EntityRedDoor.s independently references D_us_80181454.
       - [0x1454, .data, e_red_door]   # 0x18
       - [0x146C, data]
+      # Both located by automation/find_data_segment.py and calibrated against
+      # peers whose configs already declare the address. Neither header
+      # declares uninitialised storage, so unlike st_update these need no
+      # matching .bss segment; that was checked before building.
+      - [0x1CB8, .data, e_particles]     # 0x80
+      - [0x1D38, data]
+      - [0x3354, .data, e_medusa_head]   # 0x78
+      - [0x33CC, data]
       - [0x35B00, .rodata, e_red_door]
       - [0x35B18, .rodata, e_collect]
       - [0x35BEC, .rodata, e_clock_room]
