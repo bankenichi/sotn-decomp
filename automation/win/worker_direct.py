@@ -2146,8 +2146,12 @@ def journal_write(src_rel: str, original: str) -> None:
         os.makedirs(d, exist_ok=True)
         tmp = _journal_path() + ".tmp"
         with open(tmp, "w", encoding="utf-8") as f:
+            # pid is what makes replay safe. Without it a replay cannot tell an
+            # abandoned journal from one whose owner is mid-edit right now, and
+            # replaying a LIVE worker's journal reverts its edit underneath it.
             json.dump({"src_rel": src_rel, "original": original,
-                       "worker": WORKER_NAME, "at": time.time()}, f)
+                       "worker": WORKER_NAME, "pid": os.getpid(),
+                       "at": time.time()}, f)
         os.replace(tmp, _journal_path())
     except OSError as e:
         print(f"[worker] WARNING: could not write restore journal: {e}",
@@ -2161,31 +2165,64 @@ def journal_clear() -> None:
         pass
 
 
-def replay_pending_journals() -> int:
-    """Restore any source left modified by a worker that died mid-edit.
+def _pid_alive(pid: int) -> bool:
+    """Is that process still running? Workers share one OS, so signal 0 works."""
+    if not pid or pid == os.getpid():
+        return pid == os.getpid()
+    try:
+        os.kill(pid, 0)
+        return True
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True          # exists, owned by someone else
+    except OSError:
+        return True          # unknown: assume alive, i.e. do not touch it
 
-    Called at worker startup. Safe to run when nothing is pending.
+
+def replay_pending_journals() -> int:
+    """Restore source left modified by a worker that died mid-edit.
+
+    Called at worker startup, from the SIGTERM handler, and on Ctrl-C.
+
+    IT MUST NOT TOUCH A LIVE WORKER'S JOURNAL. This used to replay every file
+    in the directory unconditionally, so a worker joining a running fleet would
+    revert another worker's in-flight edit: that worker then compiled the stub
+    instead of its candidate, misfiled the result, and lost its crash
+    protection because the journal was deleted too. With four workers and a
+    staggered start that is not a rare race, it is the normal case.
+
+    Two guards, both required:
+      - skip journals whose owning pid is still alive;
+      - hold BuildLock, because writing source files is exactly what that lock
+        serialises. Replaying outside it can clobber a build in progress.
     """
     d = os.path.join(WIN_REPO, "automation", "logs", "pending")
     if not os.path.isdir(d):
         return 0
     n = 0
-    for name in sorted(os.listdir(d)):
-        if not name.endswith(".json"):
-            continue
-        full = os.path.join(d, name)
-        try:
-            with open(full, encoding="utf-8") as f:
-                j = json.load(f)
-            path = win_path(j["src_rel"])
-            with open(path, "w", encoding="utf-8", newline="") as f:
-                f.write(j["original"])
-            os.unlink(full)
-            n += 1
-            print(f"[worker] restored {j['src_rel']} from journal left by "
-                  f"{j.get('worker', '?')}", file=sys.stderr)
-        except (OSError, ValueError, KeyError) as e:
-            print(f"[worker] could not replay {name}: {e}", file=sys.stderr)
+    with BuildLock(os.path.join(WIN_REPO, "automation", ".build.lock")):
+        for name in sorted(os.listdir(d)):
+            if not name.endswith(".json"):
+                continue
+            full = os.path.join(d, name)
+            try:
+                with open(full, encoding="utf-8") as f:
+                    j = json.load(f)
+                owner = int(j.get("pid") or 0)
+                if owner and owner != os.getpid() and _pid_alive(owner):
+                    print(f"[worker] leaving {name}: owner pid {owner} is "
+                          f"still running", file=sys.stderr)
+                    continue
+                path = win_path(j["src_rel"])
+                with open(path, "w", encoding="utf-8", newline="") as f:
+                    f.write(j["original"])
+                os.unlink(full)
+                n += 1
+                print(f"[worker] restored {j['src_rel']} from journal left by "
+                      f"{j.get('worker', '?')}", file=sys.stderr)
+            except (OSError, ValueError, KeyError) as e:
+                print(f"[worker] could not replay {name}: {e}", file=sys.stderr)
     return n
 
 

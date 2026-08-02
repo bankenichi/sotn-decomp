@@ -102,6 +102,7 @@ ANALYSIS_SCRIPTS = {
     "test_shim_gate.py",
     "relocation_check.py",
     "find_data_segment.py",
+    "test_journal_replay.py",
 }
 # Deliberately narrow: flags, numbers, and in-repo-looking relative paths.
 # No spaces, quotes, semicolons, redirects, or leading dashes-with-spaces, so
@@ -267,25 +268,132 @@ def build_argv(action: str, **kwargs) -> list[str]:
 _HEAD_TRUNCATE = {"asm_diff"}
 
 
+# How old an index.lock must be before we will call it abandoned. Every git
+# operation this connector runs finishes in well under a second on this repo;
+# two minutes is far beyond any legitimate hold.
+_LOCK_STALE_SECONDS = 120
+
+
+def clear_stale_index_lock() -> dict | None:
+    """Remove a git index.lock that is provably abandoned.
+
+    WHY THIS IS NEEDED. `.git/index.lock` is created by any git command that
+    refreshes the index, including read-only-looking ones like `git status`.
+    If that git is KILLED mid-operation the lock survives and blocks every
+    later commit until someone deletes it by hand. Two ways that happens here:
+
+      - a git command run from the Cowork sandbox, which kills every call at
+        45s, over a slow Windows mount. Observed twice on 2026-08-02, both
+        times during read-only audit work.
+      - run()'s own subprocess timeout, which kills the child the same way.
+
+    SAFETY. This will not touch a lock that might be live. It requires the file
+    to be older than _LOCK_STALE_SECONDS, and it reports what it did rather
+    than deleting silently. A fresh lock is left alone and the caller gets
+    git's normal "another git process seems to be running" error, which is the
+    correct outcome when a real one is.
+    """
+    lock = REPO / ".git" / "index.lock"
+    try:
+        st = lock.stat()
+    except FileNotFoundError:
+        return None
+    except OSError:
+        return None
+    age = time.time() - st.st_mtime
+    if age < _LOCK_STALE_SECONDS:
+        return {"stale_lock": "present but FRESH; left alone",
+                "age_seconds": round(age, 1)}
+    try:
+        lock.unlink()
+    except OSError as e:
+        return {"stale_lock": f"could not remove: {e}",
+                "age_seconds": round(age, 1)}
+    return {"stale_lock": "REMOVED (abandoned)", "age_seconds": round(age, 1),
+            "note": "a git process was killed mid-operation. Do not run git "
+                    "from the Cowork sandbox; it is capped at 45s."}
+
+
+# Actions that read or write the shared build state. The fleet serialises
+# exactly these with automation/.build.lock; this connector did not take part
+# in that protocol at all, which is a direct path from an unverified edit to a
+# recorded match: verify_build could report all_ok about a tree containing a
+# worker's applied candidate.
+_NEEDS_BUILD_LOCK = {
+    "make_build", "make_extract", "make_clean", "make_expected",
+    "make_force_symbols", "make_reports", "make_duplicates_report",
+    "make_function_finder", "verify_build", "asm_diff", "git_restore",
+}
+# Matches BuildLock.stale_after in worker_direct.py. A lock older than this is
+# from a crashed worker and the fleet itself would take it over.
+_BUILD_LOCK_STALE_SECONDS = 3600
+
+
+def build_lock_holder() -> dict | None:
+    """Is a fleet worker inside its apply/build/verify critical section?
+
+    Returns a description when the lock is held and FRESH, else None. Callers
+    should refuse rather than proceed: running a build here while a worker has
+    its candidate applied verifies the wrong source, and running one while it
+    builds corrupts the shared build directory.
+    """
+    lock = REPO / "automation" / ".build.lock"
+    try:
+        st = lock.stat()
+        body = lock.read_text(errors="replace").strip()
+    except (FileNotFoundError, OSError):
+        return None
+    age = time.time() - st.st_mtime
+    if age > _BUILD_LOCK_STALE_SECONDS:
+        return None                       # stale; the fleet would take it over
+    return {"held_by": body or "unknown", "age_seconds": round(age, 1)}
+
+
 def run(action: str, timeout: float = 3600, **kwargs) -> dict:
     argv = build_argv(action, **kwargs)
     if DRYRUN:
         return {"action": action, "argv": argv, "dry_run": True}
+    if action in _NEEDS_BUILD_LOCK:
+        holder = build_lock_holder()
+        if holder:
+            return {
+                "action": action, "argv": argv, "dry_run": False,
+                "refused": True, "build_lock": holder,
+                "error": (
+                    f"REFUSED: a fleet worker holds automation/.build.lock "
+                    f"({holder['held_by']}, {holder['age_seconds']}s ago). It "
+                    f"has a candidate applied to the tree, so building or "
+                    f"verifying now would inspect the wrong source and could "
+                    f"record a false match. Stop the fleet first, or wait."),
+            }
+    lock_note = None
+    if argv and argv[0] == "git":
+        lock_note = clear_stale_index_lock()
     try:
         p = subprocess.run(argv, cwd=str(REPO), capture_output=True, text=True,
                            timeout=timeout)
         head = action in _HEAD_TRUNCATE
         cut = (lambda s: s[:MAX_OUT]) if head else (lambda s: s[-MAX_OUT:])
-        return {
+        out = {
             "action": action, "argv": argv, "dry_run": False,
             "returncode": p.returncode,
             "stdout": cut(p.stdout), "stderr": cut(p.stderr),
             "truncated": len(p.stdout) > MAX_OUT or len(p.stderr) > MAX_OUT,
             "truncated_from": ("tail" if not head else "end (head kept)"),
         }
+        if lock_note:
+            out["index_lock"] = lock_note
+        return out
     except subprocess.TimeoutExpired:
-        return {"action": action, "argv": argv, "dry_run": False,
-                "timed_out": True, "timeout": timeout}
+        # A killed git leaves .git/index.lock behind. Say so here rather than
+        # letting the NEXT caller discover it as a confusing failure.
+        res = {"action": action, "argv": argv, "dry_run": False,
+               "timed_out": True, "timeout": timeout}
+        if argv and argv[0] == "git":
+            res["warning"] = ("git was killed by the timeout; it may have left "
+                              ".git/index.lock. The next git action through "
+                              "this connector will clear it if it is stale.")
+        return res
 
 
 def allowed() -> list[str]:
@@ -459,6 +567,22 @@ def verify_build(version: str = "us") -> dict:
     match, so success there proves nothing. This is the missing tool: it runs
     the checksum file and reports a structured verdict.
     """
+    # THE ORACLE MUST NOT READ A TREE SOMEONE ELSE IS MUTATING.
+    #
+    # verify_build lives only on the @mcp.tool() surface, not in REGISTRY, so
+    # run()'s build-lock guard never sees it. Without this check it could
+    # report all_ok about a tree containing a worker's applied, unverified
+    # candidate -- a direct route from a non-matching change to a recorded
+    # `matched`. Found by audit 2026-08-02 (F3).
+    holder = build_lock_holder()
+    if holder:
+        return {"refused": True, "build_lock": holder, "all_ok": False,
+                "verdict": "REFUSED: build lock held",
+                "error": (
+                    f"REFUSED: a fleet worker holds automation/.build.lock "
+                    f"({holder['held_by']}, {holder['age_seconds']}s ago) and "
+                    f"has a candidate applied. Verifying now would judge the "
+                    f"wrong source. Stop the fleet first.")}
     v = _v(version)
     sha_file = f"config/check.{v}.sha"
     if not (REPO / sha_file).exists():
