@@ -292,7 +292,39 @@ void func_us_801BBBC8(void) {}
 
 INCLUDE_ASM("boss/bo6/nonmatchings/us_39144", func_us_801BBBD0);
 
-INCLUDE_ASM("boss/bo6/nonmatchings/us_39144", BO6_RicCreateEntFactoryFromEntity);
+Entity* BO6_RicGetFreeEntity(s16 start, s16 end);
+
+// Richter (BO6): spawn a factory entity that will build whatever the blueprint
+// in factoryParams names, seeded from `source`'s position, facing and depth.
+//
+// RIC's twin is RicCreateEntFactoryFromEntity in src/ric/pl_blueprints.c. Two
+// real differences, both visible in the assembly rather than assumed:
+//   - the free-slot window is 0x44..0x50 here, not 8..16. Those are stage
+//     entity slots 4..16, hence the STAGE_ENTITY_START arithmetic.
+//   - RIC's trailing `if (source->flags & FLAG_UNK_10000)` block is absent.
+//     BO6 does not propagate that flag; the assembly ends at the zPriority
+//     store, so adding the block would be inventing behaviour.
+//
+// arg2 is genuinely unused. It is kept because the callers pass three
+// arguments and because RIC's signature has it, but nothing reads $a2.
+Entity* BO6_RicCreateEntFactoryFromEntity(
+    Entity* source, u32 factoryParams, s32 arg2) {
+    Entity* entity =
+        BO6_RicGetFreeEntity(STAGE_ENTITY_START + 4, STAGE_ENTITY_START + 16);
+    if (!entity) {
+        return NULL;
+    }
+    DestroyEntity(entity);
+    entity->entityId = E_FACTORY;
+    entity->ext.factory.parent = source;
+    entity->posX.val = source->posX.val;
+    entity->posY.val = source->posY.val;
+    entity->facingLeft = source->facingLeft;
+    entity->zPriority = source->zPriority;
+    entity->params = factoryParams & 0xFFF;
+    entity->ext.factory.paramsBase = (factoryParams & 0xFF0000) >> 8;
+    return entity;
+}
 
 INCLUDE_ASM("boss/bo6/nonmatchings/us_39144", BO6_RicEntityFactory);
 
