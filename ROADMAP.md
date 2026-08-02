@@ -424,6 +424,53 @@ Not blocked on data placement, and NOT shimmable: `e_lock_camera` (0.36x its
 peers' text) and `e_breakable` (obliges rno0 to supply stage data tables).
 `e_blade`, `e_gurkha` and `e_hammer` have no shared implementation at all.
 
+### Finding the .data addresses is now a tool
+
+`automation/find_data_segment.py`. When a shared header defines its own data,
+those bytes are identical in every stage that shims it, so a peer's bytes are
+the search pattern. Every run **calibrates first**: it takes the pattern from
+peer A, searches peer B, and requires the hit to equal the address B's splat
+config already declares. If that fails it refuses to answer rather than
+producing a number.
+
+It re-derived `e_red_door` at `0x1454` — the address found by hand — from a
+peer's bytes, which is the strongest evidence the method is sound. Results for
+rno0:
+
+```
+st_update      0x1048  size 0x4C     collision   0x1094  size 0x3C0
+e_particles    0x1CB8  size 0x80     e_medusa_head 0x3354 size 0x78
+e_misc, e_collect, e_room_fg  -> REFUSED (bytes are stage-dependent)
+```
+
+An independent cross-check that cost nothing: `st_update 0x1048..0x1094`,
+`collision 0x1094..0x1454` and the hand-found `e_red_door 0x1454` tile with no
+gaps, in the same order as their `c` segments. splat emits a file's data in
+text order, so five independent searches agreeing on a contiguous run is far
+stronger than any one of them.
+
+### But .data placement is NOT the last blocker (attempted 2026-08-02)
+
+`st_update` was taken end to end: segment added at `0x1048`, file reduced to a
+shim. It **compiled and linked**, every other overlay passed, and RNO0 came out
+**0x40 bytes too large**.
+
+`overlay_size_check.py` localised it immediately: `BSS_START == TEXT_END` and
+`g_Statues` landed at `0x801D4B88` against an expected `0x801D4B48`, delta
+`+0x40`. Per the map-address diagnostic that means **the fault is in TEXT**, not
+in data or bss. Reverted; tree back to 81/81.
+
+So the shared header compiles 0x40 larger under `rno0.h` than rno0's own code,
+even though the declared `c` segment sizes are byte-identical (0x434 both, and
+0x0 delta for all seven stems). The declared size describes the ORIGINAL binary;
+it does not promise the header will compile to it here.
+
+**Next step, concrete:** diff the shim's compiled `Update` and
+`UpdateStageEntities` against `asm/us/st/rno0/nonmatchings/st_update/*.s` and
+find the 0x40. Most likely a macro in `rno0.h` that changes codegen, or an
+inverted-castle branch in the header. The `.data` addresses above are believed
+correct and independently cross-checked; they are not the problem.
+
 ### Original entry
 
 ## P6 — Harness: make the four blockers unskippable
