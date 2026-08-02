@@ -21,6 +21,8 @@ impossible twice.
 | Our private impls in rno0 | 9 found, 2 resolved, 7 blocked on splat config |
 | Manual review | all 142 defined functions read, 2026-08-01; 15 defects fixed |
 | Provenance | 124 authored; 79 (64%) are copies, 74 shimmable, 4 should become shared headers |
+| Twins | 174 of 335 unmatched stubs have a candidate already in the tree; 145 by name |
+| Twin audit | 30321 matched pairs cross-checked; 10 of ours are private copies of shared code |
 
 The queue and the index disagree (304 vs 370) because upstream's merge added 32
 unmatched functions in RCHI and RDAI that the queue has never seen. Reconciling
@@ -92,6 +94,33 @@ problem. Exhaust the structural and type causes first, then permute the residue.
 
 **Done when:** every escalated record has either matched, or carries a note
 saying the permuter was run and what it exhausted.
+
+## P2b — Port BO6's 65 named twins from `src/ric`  *(open, no blockers)*
+
+`automation/asm_twin_finder.py` found that 65 of BO6's unmatched stubs have a
+same-named function in `src/ric`. Four have been ported by hand and all four
+matched, two of them on the first build.
+
+These are NOT shimmable and must not be treated as such. RIC's copies read
+`g_Player` and `PLAYER`; BO6's read `g_Ric` and `RIC`, which are different
+objects at different addresses. The port is mechanical but not blind:
+
+1. `python3 automation/asm_twin_finder.py --symbol <SYM>` for the twin.
+2. Read the twin's C, then read the stub's assembly and resolve every global
+   BY ADDRESS, not by name affinity. `RIC_facingLeft` is `g_Entities[64] +
+   0x14`, which is `RIC.facingLeft`; writing the struct access matched.
+3. Diff the twin against the assembly before copying. Of the four done,
+   `BO6_RicCreateEntFactoryFromEntity` differed from RIC's by a slot window
+   AND a missing flag propagation. Copying it verbatim would have failed.
+
+The same finder reports 64 named twins in rno0, but almost all of those point
+at `src/st/<name>.h` shared implementations, so they are P3's work rather than
+this section's. rchi's 15 point at sibling stage overlays; `e_bat` and
+`e_breakable` there were already investigated and rejected upstream, and the
+rejection notes are in `src/st/rchi_psp/`.
+
+**Done when:** every BO6 stub with a `src/ric` twin has either matched or
+carries a note saying what the twin could not explain.
 
 ## P3 — Segment rno0's `.data` and `.bss` in the splat config
 
