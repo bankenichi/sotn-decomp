@@ -857,9 +857,18 @@ def prepare(rec: dict, located) -> dict:
     _ = _DECL_CACHE  # module-level cache, populated by lookup_declarations
 
     asm_text = ""
+    asm_full = 0
     p = win_path(asm_file)
     if os.path.exists(p):
-        asm_text = open(p, errors="ignore").read()[:MAX_ASM_CHARS]
+        _raw = open(p, errors="ignore").read()
+        asm_full = len(_raw)
+        asm_text = _raw[:MAX_ASM_CHARS]
+        if asm_full > MAX_ASM_CHARS:
+            # Say it out loud. Silently handing the model 12000 of a 40000-char
+            # function looks exactly like a normal run and produces confident,
+            # wrong C for the half it was shown.
+            print(f"[prep] WARNING: asm truncated {asm_full} -> {MAX_ASM_CHARS} "
+                  f"chars (MAX_ASM_CHARS)", flush=True)
 
     with Status("m2ctx (generating C type context)") as st:
         rc, out = wsl(f"python3 tools/m2ctx.py {src_rel}", timeout=300)
@@ -884,6 +893,10 @@ def prepare(rec: dict, located) -> dict:
           f"decls: {len(decls)}")
     return {"asm": asm_text, "draft": draft, "src_rel": src_rel,
             "lineno": lineno, "asm_rel": asm_rel, "asm_file": asm_file,
+            # UNtruncated length. The too-large handoff must be judged on the
+            # real function, not on what survived MAX_ASM_CHARS; see the
+            # deferral check.
+            "asm_full": asm_full,
             "decls": decls}
 
 
@@ -2750,11 +2763,19 @@ def process_one(dry: bool = False) -> bool:
     print(f"[worker] target {located[0]}:{located[1]}")
 
     ctx = prepare(rec, located)
-    if len(ctx["asm"]) > MAX_FUNC_CHARS and not dry:
-        print(f"[worker] SKIP: {len(ctx['asm'])} chars of asm exceeds "
+    # Judge the TRUE size, not the truncated one.
+    #
+    # This used to read `len(ctx["asm"])`, which prepare() has already clipped
+    # to MAX_ASM_CHARS (12000). On the cli backend MAX_FUNC_CHARS is 20000, so
+    # the condition could never be true: the tier never deferred anything for
+    # size, and instead silently decompiled the first 12000 chars of arbitrarily
+    # large functions. Found by audit 2026-08-02.
+    _asm_size = ctx.get("asm_full") or len(ctx["asm"])
+    if _asm_size > MAX_FUNC_CHARS and not dry:
+        print(f"[worker] SKIP: {_asm_size} chars of asm exceeds "
               f"MAX_FUNC_CHARS={MAX_FUNC_CHARS}; too large for this tier")
         sched("report", "--id", rec["id"], "--status", "deferred",
-              "--notes", f"{DEFER_TOO_LARGE}: asm {len(ctx['asm'])} chars > "
+              "--notes", f"{DEFER_TOO_LARGE}: asm {_asm_size} chars > "
                          f"{MAX_FUNC_CHARS} on backend={MODEL_BACKEND}; "
                          f"handed off to the next tier")
         return True

@@ -349,6 +349,19 @@ def _verify_artifacts(version: str) -> tuple[bool, str]:
             parts.append(f"{len(missing)} missing ({', '.join(missing[:3])}"
                          f"{'...' if len(missing) > 3 else ''})")
         return False, f"{expected - len(bad) - len(missing)}/{expected} OK, " + "; ".join(parts)
+    # AN EMPTY ORACLE IS NOT A PASS.
+    #
+    # With expected == 0 this returned True, "0/0 artifacts byte-exact", and
+    # this function is what gates recording a `matched` record. An empty or
+    # truncated check.<v>.sha therefore turned every claim into an automatic
+    # success. That file is also writable through the connector's write_file,
+    # so this was reachable without touching the repo by hand.
+    #
+    # There is no legitimate reason for the oracle to be empty: the us build
+    # has 81 artifacts. Refuse instead. Found by audit 2026-08-02.
+    if expected == 0:
+        return False, (f"REFUSED: {check} lists no artifacts. An empty oracle "
+                       f"cannot prove a match; expected 81 for us.")
     return True, f"{expected}/{expected} artifacts byte-exact"
 
 
@@ -398,7 +411,18 @@ def cmd_report(args):
                 return records, True
         return records, False
 
-    print("updated" if q.transaction(fn) else f"id not found: {args.id}")
+    # EXIT NON-ZERO WHEN NOTHING WAS UPDATED.
+    #
+    # This printed "id not found" and exited 0, so a caller that mistyped an id,
+    # or reported against a record pruned from the queue, saw success and moved
+    # on. The worker calls this to record every outcome, including `matched`, so
+    # a silent no-op loses the result of a whole function. sched() in
+    # worker_direct.py raises on rc != 0, which is exactly the behaviour wanted.
+    # Found by audit 2026-08-02.
+    if q.transaction(fn):
+        print("updated")
+    else:
+        sys.exit(f"id not found: {args.id} (nothing was updated)")
 
 
 def cmd_annotate(args):
