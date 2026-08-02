@@ -87,6 +87,11 @@ segments:
       - [0x47F24, c, e_stone_skull]
       - [0x48100, c, unk_48100]
       - [0x4992C, c, giantbro_helpers]
+      # Split 2026-08-01 at the upstream file boundary. giantbro_helpers.h ends
+      # at func_801CDFD8; no2/4966C.c and np3/4E04C.c begin at func_801CE04C,
+      # which in rno0 lives at 0x4A320 (the 0x801CExxx in the symbol names is
+      # no2/np3's address, not this overlay's).
+      - [0x4A320, c, unk_4A320]
       - [0x4A7A0, c, e_hammer]
       - [0x4BA58, c, e_gurkha]
       - [0x4CCEC, c, e_blade]
