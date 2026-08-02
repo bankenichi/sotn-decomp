@@ -24,13 +24,49 @@ All at `https://opencode.ai/zen/v1/chat/completions`:
 
 | Model ID | Notes |
 |---|---|
-| `big-pickle` | **DO NOT USE.** See below. |
-| `deepseek-v4-flash-free` | free for a limited time, untried here |
-| `mimo-v2.5-free` | free for a limited time |
-| `north-mini-code-free` | Cohere-backed. **Current default.** |
-| `nemotron-3-ultra-free` | NVIDIA trial endpoints |
+| `big-pickle` | **DO NOT USE.** Empty body on real prompts. |
+| `deepseek-v4-flash-free` | **USE THIS.** Best of the set; tolerates 12k prompts. |
+| `nemotron-3-ultra-free` | **USE THIS.** Produces real C, retries cleanly. |
+| `mimo-v2.5-free` | lower volume but produces real C |
+| `north-mini-code-free` | **DO NOT USE.** Empty body; also streams tool-call roleplay. |
+| `ling-3.0-flash-free` | **DO NOT USE.** New 2026-08; `rc=0` with 0 chars. |
+| `laguna-s-2.1-free` | **DO NOT USE.** New 2026-08; no output at all. |
 
-### OPEN BUG: the cli backend returns nothing on real prompts
+### RESOLVED 2026-08-02: it IS model-specific, and the fix is model choice
+
+A 4-worker cli fleet run one model per worker, on real queue functions, split
+the free tier cleanly in two:
+
+| Model | Prompt | Result |
+|---|---|---|
+| `nemotron-3-ultra-free` | 5180 | **real C in 145s**, compiled, checksum failed, retried |
+| `deepseek-v4-flash-free` | 6089 | **real C in 213s**, clean and commented |
+| `ling-3.0-flash-free` (new) | 9936 | `rc=0`, **0 chars** after 93s |
+| `laguna-s-2.1-free` (new) | 11249 | **nothing at all** after 7+ minutes |
+
+So the harness was never broken. `worker_direct.py` streams, echoes, hoists C89
+declarations, compiles and checksums exactly as designed; the entire pipeline
+was being fed by models that return an empty body.
+
+This also retracts the "Not the model" line below, which was wrong. It was
+inferred from `big-pickle` and `north-mini-code-free` failing identically, and
+identical failure across two members of the SAME class is not evidence that the
+class does not exist. The 2026-07-21 bake-off had it right the first time.
+
+Prompt size is a confound that is NOT yet separated: the working models happened
+to draw the two shortest prompts. `automation/opencode_size_bisect.py` holds the
+question at a fixed two-character answer and varies only length, across every
+model the CLI reports. Run it before assuming a big prompt is safe on any model:
+
+```
+run_analysis(script="opencode_size_bisect.py", args="--top 6")
+```
+
+**Operational rule: run cli fleets on `deepseek-v4-flash-free` and
+`nemotron-3-ultra-free` only.** Both new promotions are in the failing class, so
+"it's new, try it" is not a reason to add a model to a fleet.
+
+### Original diagnosis, kept for the reasoning trail
 
 **This is NOT model-specific.** An earlier version of this note blamed
 `big-pickle` on the strength of a per-model tally of empty responses. That tally
