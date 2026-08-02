@@ -319,6 +319,82 @@ def queue_init(from_file: str = "automation/seed.us.txt", timeout: int = 120) ->
 
 
 @mcp.tool()
+def job_start(action: str, version: str = "us", script: str = "",
+              args: str = "") -> dict:
+    """Start a long command in the background and return a job id immediately.
+
+    USE THIS INSTEAD OF make_build. A synchronous build outlives the MCP
+    transport timeout: 8 calls failed that way in one day while the build kept
+    running, leaving the tree mid-build with the caller unaware. This returns in
+    milliseconds and cannot time out.
+
+    action: make_build | make_extract | make_expected | make_clean |
+            make_force_symbols | make_reports | make_duplicates_report |
+            make_function_finder | run_analysis | permuter
+    For run_analysis, pass script= (e.g. asm_twin_finder.py) and args=.
+
+    Refuses to start a second job for the same action while one is running: two
+    concurrent builds share one build directory and would produce artifacts
+    matching nothing.
+
+    Then poll: job_status(job_id, wait_s=25) until state == 'done', and read
+    'ok' and 'summary'."""
+    kw = {}
+    if action == "run_analysis":
+        kw = {"script": script, "args": args}
+    elif action != "permuter":
+        kw = {"version": version}
+    return cc.start_job(action, **kw)
+
+
+@mcp.tool()
+def job_status(job_id: str, wait_s: float = 25.0,
+               tail_lines: int = 40) -> dict:
+    """Poll a job. Blocks up to wait_s (hard-capped at 30s), then returns.
+
+    The cap is deliberate: a caller polling this may itself be capped (the
+    Cowork sandbox kills any bash call at 45s), so a longer block would be
+    useless to it. Poll repeatedly; each call is cheap.
+
+    Returns state running|done|vanished, plus 'ok', 'returncode', 'summary'
+    (the lines that actually say whether it worked) and a short 'tail'. The full
+    log path is returned rather than the log: a build log is ~300 lines of ninja
+    chatter and returning it wastes enormous context."""
+    return cc.job_status(job_id, wait_s=wait_s, tail_lines=tail_lines)
+
+
+@mcp.tool()
+def job_list(limit: int = 20) -> dict:
+    """Recent jobs and their states."""
+    return cc.job_list(limit=limit)
+
+
+@mcp.tool()
+def job_cancel(job_id: str) -> dict:
+    """Terminate a running job's process group."""
+    return cc.job_cancel(job_id)
+
+
+@mcp.tool()
+def run_analysis(script: str, args: str = "", timeout: int = 1800) -> dict:
+    """Run a read-only analysis script in WSL, synchronously.
+
+    Exists because these were being run from the Cowork sandbox, which caps
+    every call at 45s and reaches the repo over a slow Windows mount:
+    asm_twin_finder used 1.8s of CPU but 37s of wall clock, and any extra
+    command after it blew the limit. That was most of the 40 sandbox timeouts
+    in a single day, each costing a full re-run.
+
+    Allowed scripts: asm_twin_finder.py, codebase_index.py, quality_audit.py,
+    provenance_check.py, review_checks.py, decl_coverage.py,
+    test_twin_wiring.py. All are read-only.
+
+    If it might exceed a couple of minutes, use
+    job_start('run_analysis', script=..., args=...) instead."""
+    return cc.run("run_analysis", timeout=timeout, script=script, args=args)
+
+
+@mcp.tool()
 def queue_annotate(from_file: str = "automation/twins.us.json",
                    apply: bool = False, timeout: int = 300) -> dict:
     """`scheduler.py annotate`: attach twin candidates to queue records.

@@ -77,6 +77,49 @@ def _reject_fmt(fmt):
 
 STATUSES = {"todo", "claimed", "near", "matched", "escalated", "deferred"}
 
+# Read-only analysis tools that may be run through the connector.
+#
+# WHY THIS EXISTS: these were being run from the Cowork sandbox, which has a
+# hard 45s ceiling per call and reaches the repo over a slow Windows mount.
+# asm_twin_finder spent 1.8s of CPU and 37s of wall clock on I/O, and a single
+# extra command after it blew the limit. That accounted for most of the 40
+# sandbox timeouts in one day, each one costing a full re-run.
+#
+# Here there is no ceiling and the repo is local to WSL. Every script listed is
+# read-only by design (they analyse and report; none edit sources or build), so
+# exposing them costs nothing in blast radius.
+ANALYSIS_SCRIPTS = {
+    "asm_twin_finder.py",
+    "codebase_index.py",
+    "quality_audit.py",
+    "provenance_check.py",
+    "review_checks.py",
+    "decl_coverage.py",
+    "test_twin_wiring.py",
+}
+# Deliberately narrow: flags, numbers, and in-repo-looking relative paths.
+# No spaces, quotes, semicolons, redirects, or leading dashes-with-spaces, so
+# nothing here can be reinterpreted by a shell even if one were ever involved.
+_ARG_RX = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_./=-]{0,120}$|^--?[A-Za-z0-9][A-Za-z0-9_-]{0,40}$")
+
+
+def _script(name: str) -> str:
+    if name not in ANALYSIS_SCRIPTS:
+        raise Rejected(f"script must be one of {sorted(ANALYSIS_SCRIPTS)}")
+    return f"automation/{name}"
+
+
+def _args(argstr: str) -> list[str]:
+    if not argstr:
+        return []
+    toks = argstr.split()
+    if len(toks) > 12:
+        raise Rejected("at most 12 arguments")
+    for t in toks:
+        if not _ARG_RX.match(t):
+            raise Rejected(f"rejected argument {t!r}")
+    return toks
+
 
 def _pattern(p: str) -> str:
     """A prune pattern must be a compilable regex of sane length.
@@ -153,6 +196,9 @@ REGISTRY = {
     # the `twin` field, never status), idempotent, and dry-run unless apply.
     # MUST run here rather than in a sandbox shell: SOTN_QUEUE resolves via
     # $HOME, so a different environment annotates a different queue file.
+    # Run a read-only analysis script in WSL, where there is no 45s ceiling.
+    "run_analysis": lambda script, args="": (
+        [PYTHON, _script(script)] + _args(args)),
     "queue_annotate": lambda from_file="automation/twins.us.json", apply=False: (
         [PYTHON, "automation/scheduler.py", "annotate",
          "--from", _inrepo(from_file)] + (["--apply"] if apply else [])),
@@ -226,6 +272,80 @@ def run(action: str, timeout: float = 3600, **kwargs) -> dict:
 
 def allowed() -> list[str]:
     return sorted(REGISTRY)
+
+
+# ---------------------------------------------------------------------------
+# Asynchronous execution.
+#
+# `run()` above holds the request open until the command finishes. For a build
+# that is minutes, and the MCP transport gives up first: 8 tool calls died with
+# "MCP error -32001: Request timed out" in a single day while the build carried
+# on in the background. The caller then cannot tell a finished build from a
+# half-finished one, which is the dangerous part -- verifying a mid-build tree
+# reports a stale pass.
+#
+# So long actions get started and polled instead. argv still comes from
+# build_argv, so the allowlist remains the only way to construct a command.
+# ---------------------------------------------------------------------------
+
+# Imported defensively. A bare `import jobs` resolves only when this module's
+# own directory happens to be on sys.path, which is true when the connector is
+# launched as a script from automation/mcp and false if anything imports
+# commands_client from elsewhere. A module-level ImportError here would take the
+# whole connector down at startup, which has already happened once with a
+# different missing name. Fall back to an explicit path load, and if even that
+# fails, degrade to async being unavailable rather than to a dead server.
+try:                                                    # noqa: E402
+    import jobs as _jobs
+except ImportError:                                     # pragma: no cover
+    try:
+        import importlib.util as _ilu
+        _spec = _ilu.spec_from_file_location(
+            "jobs", str(Path(__file__).resolve().parent / "jobs.py"))
+        _jobs = _ilu.module_from_spec(_spec)
+        _spec.loader.exec_module(_jobs)
+    except Exception:
+        _jobs = None
+
+LONG_ACTIONS = {
+    "make_build", "make_extract", "make_expected", "make_clean",
+    "make_force_symbols", "make_reports", "make_duplicates_report",
+    "make_function_finder", "run_analysis", "permuter",
+}
+
+
+def _need_jobs() -> dict | None:
+    if _jobs is None:
+        return {"error": "async jobs unavailable: automation/mcp/jobs.py could "
+                         "not be imported. Use run() with a generous timeout, "
+                         "and expect the transport to cut it off."}
+    return None
+
+
+def start_job(action: str, **kwargs) -> dict:
+    unavailable = _need_jobs()
+    if unavailable:
+        return unavailable
+    if action not in LONG_ACTIONS:
+        raise Rejected(f"start_job is for long actions: {sorted(LONG_ACTIONS)}. "
+                       f"Call run() for {action!r}; it returns promptly.")
+    argv = build_argv(action, **kwargs)
+    if DRYRUN:
+        return {"action": action, "argv": argv, "dry_run": True, "started": False}
+    return _jobs.start(action, argv, cwd=str(REPO))
+
+
+def job_status(job_id: str, wait_s: float = 25.0, tail_lines: int = 40) -> dict:
+    return _need_jobs() or _jobs.status(job_id, wait_s=wait_s,
+                                        tail_lines=tail_lines)
+
+
+def job_list(limit: int = 20) -> dict:
+    return _need_jobs() or _jobs.list_jobs(limit=limit)
+
+
+def job_cancel(job_id: str) -> dict:
+    return _need_jobs() or _jobs.cancel(job_id)
 
 
 # ---------------------------------------------------------------------------
