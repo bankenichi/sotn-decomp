@@ -130,17 +130,46 @@ riskiest, which is why it sits behind P1 and P2.
 
 The blocker is placement, not code. rno0 keeps `.data` in unnamed blobs (0x2C,
 0xE20) and `.bss` in one blob (0x53EB8), while every stage that shims
-successfully has them segmented per file. Addresses recovered from the binary:
+successfully has them segmented per file. `.text` and `.rodata` are ALREADY
+per-file segmented, so that single bss line is the entire obstacle.
 
-| segment | address | size |
-|---|---|---|
-| `create_entity` bss | 0x53EB8 | 16 bytes |
-| `giantbro_helpers` bss | 0x54AC8 | 124 bytes |
-| overlay bss end | 0x54B8C | |
+### The bss is now fully attributed (2026-08-01)
 
-`st_common`'s bss is a `short[256]`, 512 bytes, address not yet recovered. The
-region between 0x53EC8 and 0x54AC8 is unattributed and must be identified before
-writing any config.
+Earlier notes guessed at this and were wrong twice: `st_common` has no bss here,
+and the "unattributed 3 KB" is not a gap. Recovered from
+`build/us/strno0.map` plus each shared header's own declared section sizes:
+
+| address | size | owner | evidence |
+|---|---|---|---|
+| 0x53EB8 | 0x10 | `create_entity` | `src/st/create_entity.h` states `BSS 0x10`, and its 6 declarations sum to exactly 16 |
+| 0x53EC8 | 0xC00 | anonymous pad | the tree's own idiom: `np3/bss.c` and `nz0/bss.c` are `STATIC_PAD_BSS(0xC00)` and nothing else |
+| 0x54AC8 | 0xC4 | `giantbro_helpers` | 8 `D_us_801D4*` symbols summing to 196; `giantbro_helpers.h` carries `STATIC_PAD_BSS(104)` |
+| 0x54B8C | | overlay bss end | |
+
+**0x10 + 0xC00 + 0xC4 = 0xCD4, which is exactly the bss size the map reports.**
+The attribution closes with no gap and no overlap, so the proposed segmentation
+is arithmetically complete rather than a best guess:
+
+```yaml
+      - [0x53EB8, .bss, create_entity]
+      - [0x53EC8, .bss, bss]
+      - [0x54AC8, .bss, giantbro_helpers]
+  - [0x54B8C]
+```
+
+Two things worth knowing before editing. Every rno0 `.c` object contributes
+ZERO bss; all 0xCD4 comes from one extracted object,
+`asm/us/st/rno0/data/53EB8.bss.s.o`. And splat's label
+`g_LayoutObjPosVertical` currently appears to span 3076 bytes when it owns 4,
+because splat sizes a symbol by distance to the next label and the 0xC00 pad
+carries no label at all. Do not trust that number.
+
+The conflict a shim hits is now concrete: `src/st/create_entity.h:15` DEFINES
+`g_LayoutObjPosHorizontal` and friends as `static`, while
+`src/st/rno0/create_entity.c:12` declares them `extern` and takes them from the
+asm blob. Including the header emits those statics into the TU's own bss, which
+cannot land at the right address while the overlay's bss is one anonymous
+segment.
 
 **Risk, and treat this as the main constraint:** splat config changes drive
 re-extraction, which can overwrite source files. Back up `src/st/rno0/` and dry
