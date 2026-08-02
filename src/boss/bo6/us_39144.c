@@ -243,7 +243,22 @@ INCLUDE_ASM("boss/bo6/nonmatchings/us_39144", func_us_801BA9D0);
 
 INCLUDE_ASM("boss/bo6/nonmatchings/us_39144", BO6_RicCheckInput);
 
-INCLUDE_ASM("boss/bo6/nonmatchings/us_39144", BO6_RicGetFreeEntity);
+// Richter (BO6): first unused entity slot in [start, end), or NULL.
+// Straight port of RicGetFreeEntity in src/ric/pl_blueprints.c, where it is
+// static. It cannot be static here: the assembly still stubbing the rest of
+// this overlay calls it across translation units, and a C grep cannot see
+// those call sites.
+Entity* BO6_RicGetFreeEntity(s16 start, s16 end) {
+    Entity* entity = &g_Entities[start];
+    s16 i;
+
+    for (i = start; i < end; i++, entity++) {
+        if (entity->entityId == E_NONE) {
+            return entity;
+        }
+    }
+    return NULL;
+}
 
 INCLUDE_ASM("boss/bo6/nonmatchings/us_39144", BO6_RicGetFreeEntityReverse);
 
@@ -291,8 +306,6 @@ void func_us_801BBBC0(void) {}
 void func_us_801BBBC8(void) {}
 
 INCLUDE_ASM("boss/bo6/nonmatchings/us_39144", func_us_801BBBD0);
-
-Entity* BO6_RicGetFreeEntity(s16 start, s16 end);
 
 // Richter (BO6): spawn a factory entity that will build whatever the blueprint
 // in factoryParams names, seeded from `source`'s position, facing and depth.
