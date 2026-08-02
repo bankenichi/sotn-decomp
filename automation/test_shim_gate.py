@@ -57,6 +57,39 @@ def main() -> int:
         if not cond:
             failures.append(name)
 
+    # --- THE DEFERRAL BRANCH ITSELF -----------------------------------------
+    #
+    # Every other assertion in this file is `not d`. Audit 2026-08-02 found the
+    # consequence: shim_gate's entire `return True` path had never been executed
+    # by any test, so the behaviour the gate EXISTS for was unverified, and the
+    # file could have passed against a function that always returns False.
+    #
+    # No live stub currently qualifies (that is the honest state of the tree),
+    # so the branch is reached by making shim_viable answer yes for one call.
+    # The two extra blockers are real code and still run.
+    ci = wd._codebase_index_module()
+    real_viable = ci.shim_viable
+    try:
+        ci.shim_viable = lambda stage, stem, idx: (True, "no known blocker")
+        d, why = wd.shim_gate({"src_rel": "src/st/rno0/e_particles.c"})
+        check("DEFERRAL BRANCH: a genuinely shimmable record IS deferred", d,
+              why[:110])
+        check("the reason names the shim include",
+              '#include "../e_particles.h"' in why, why[:140])
+        check("the reason explains why generating would be wrong",
+              "duplicate" in why.lower() or "rejected" in why.lower(), why[:140])
+
+        # And the two extra blockers must still veto even when shim_viable
+        # says yes, otherwise they are decorative.
+        d2, why2 = wd.shim_gate({"src_rel": "src/st/rchi/e_breakable.c"})
+        check("size divergence still vetoes a 'viable' record", not d2,
+              why2[:110])
+        d3, why3 = wd.shim_gate({"src_rel": "src/st/rno0/e_breakable.c"})
+        check("stage-data obligation still vetoes a 'viable' record", not d3,
+              why3[:110])
+    finally:
+        ci.shim_viable = real_viable
+
     # --- the stage-data obligation -----------------------------------------
     #
     # src/st/e_breakable.h defines NO data of its own, so shim_viable's
@@ -86,9 +119,16 @@ def main() -> int:
     #
     # rno0/e_lock_camera is the direction a naive check misses: it is 0.36x its
     # peers, not larger. Too small is just as divergent as too large.
+    # NOTE rno0/e_lock_camera was previously asserted here as "smaller, 0.36x,
+    # different implementation". That was WRONG and this suite was encoding the
+    # error: it was shimmed and matched on 2026-08-02 (81/81). The divergence
+    # check had compared it against the 5 stages shimming e_lock_camera.h while
+    # the 20 real shimmers include entity_lock_camera.h and have c segments of
+    # 0x1BC, exactly rno0's. The check still keys on FILENAME stem, so it is
+    # unreliable whenever the header is named differently; that limitation is
+    # recorded rather than asserted as truth.
     for stage, stem, why_frag in (
-            ("rchi", "e_breakable", "larger"),
-            ("rno0", "e_lock_camera", "smaller")):
+            ("rchi", "e_breakable", "larger"),):
         d, why = wd.shim_gate({"src_rel": f"src/st/{stage}/{stem}.c"})
         check(f"{stage}/{stem}: size divergence blocks the shim", not d, why[:110])
         check(f"{stage}/{stem}: reason says {why_frag}", why_frag in why, why[:110])
@@ -124,20 +164,31 @@ def main() -> int:
 
     # --- must never raise ---------------------------------------------------
     wd.WIN_REPO = "/nonexistent-path"
+    wd._IDX_JSON = None      # the index is cached per process; clear it too
     try:
         d, why = wd.shim_gate({"src_rel": "src/st/rno0/e_breakable.c"})
         check("missing index degrades to no-defer, does not raise", not d)
     finally:
         wd.WIN_REPO = str(REPO)
         wd._CI_MOD = None
+        wd._IDX_JSON = None
 
     # --- and it must actually be reachable BEFORE generation ----------------
     src = (REPO / "automation" / "win" / "worker_direct.py").read_text(
         encoding="utf-8", errors="replace")
     check("shim_gate is called in the record path",
           "_defer, _why = shim_gate(ctx)" in src)
-    check("it runs BEFORE the first model call",
-          src.index("_defer, _why = shim_gate(ctx)") < src.index("build_prompt(rec, ctx)"))
+    # Anchor on the REAL model call, not the dry-run preview.
+    #
+    # This used to compare against `build_prompt(rec, ctx)`, which occurs only
+    # inside the dry-run branch. The live call is `build_prompt(rec, ctx,
+    # feedback)`, so the assertion proved the gate preceded a preview nobody
+    # runs in production. Found by audit 2026-08-02.
+    check("the real model call exists and is distinct from the preview",
+          "build_prompt(rec, ctx, feedback)" in src)
+    check("it runs BEFORE the real model call",
+          src.index("_defer, _why = shim_gate(ctx)")
+          < src.index("build_prompt(rec, ctx, feedback)"))
     check("deferrals carry a greppable marker",
           "DEFER_SHIMMABLE" in src and "SHIM_INSTEAD_OF_GENERATE" in src)
 

@@ -619,9 +619,24 @@ Also worth building, in rough value order:
 
 ## Deliberately not doing
 
-- **Shimming `e_blade` or `e_gurkha`.** No stage shims them, so there is no
-  shared implementation to defer to. Converting them would be wrong, not merely
-  unhelpful. The index flags both.
+- ~~**Shimming `e_blade` or `e_gurkha`.** No stage shims them...~~
+  **RETRACTED 2026-08-02. This was false and it cost real work.** `e_blade.h`,
+  `e_gurkha.h` and `e_hammer.h` all exist, and `no2` and `np3` each ship a
+  four-line pure shim of them. `provenance_check.py` scores rno0's private
+  copies at 1.000 against those headers.
+
+  The claim came from `codebase_index.py` building `shimmed_by` with a
+  FILENAME pattern, so a header shimmed from a differently-named file reported
+  `shimmed_by == []`. The rule now matches on what a file INCLUDES, and both
+  stems immediately reclassified from "no shared impl to use" to a real,
+  fixable blocker: no `.data, <stem>` splat segment.
+
+  This ring-fenced 7 rno0 stubs plus ~321 lines of duplicated copy as forbidden
+  work. Same root cause hid `e_lock_camera`, which is now MATCHED.
+
+  **Lesson: "X is impossible" is the most expensive kind of documentation
+  error, because nobody re-tests it.** Any such claim in this repo should name
+  the evidence and the date, so it can be re-checked rather than inherited.
 - **"Fixing" upstream's 55 private implementations.** rno3/water_effects,
   mad/collision and the rest are upstream's own architecture. They were briefly
   counted as our defects; they are not.

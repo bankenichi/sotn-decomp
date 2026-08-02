@@ -109,13 +109,60 @@ def main() -> int:
           repr(wd.review_gate(ctx, TARGET_FN, clean)))
 
     # --- findings about OTHER functions must not fail this attempt ---------
+    #
     # The file can carry pre-existing findings in code this worker did not
     # write. Failing on those would make the record unmatchable forever.
-    noisy = wd.review_gate(x_ctx, x_fn,
-                           f"void {x_fn}(Entity* self) {{ self->step++; }}\n"
-                           f"static void SomeOtherHelper(void) {{}}\n")
-    check("a finding about another function is not attributed here",
-          all("SomeOtherHelper" not in f for f in noisy), repr(noisy[:2]))
+    #
+    # This assertion USED TO BE VACUOUS. It ran the gate on a candidate that
+    # produced zero findings and asserted `all(... for f in [])`, which is true
+    # of anything: the per-function filter it claims to test could be deleted
+    # and the suite stayed green. Audit 2026-08-02.
+    #
+    # The fix is to construct a candidate that provably DOES produce a finding
+    # about another function -- a static helper the sibling assembly calls --
+    # and then assert both that findings exist and that this one is excluded.
+    # The helper must be one a WIRED check actually fires on. `linkage` is the
+    # only check that reports a function-scoped finding here, and it fires on a
+    # `static` function that sibling assembly calls across a TU boundary.
+    # func_801CE04C is stubbed in this same file and jal-ed from e_blade,
+    # e_gurkha and e_hammer, so declaring it static trips linkage for a
+    # function that is NOT the one under generation.
+    # Target a DIFFERENT stub in the same file, so the offending static belongs
+    # to another function. Targeting func_801CE04C itself would make the
+    # finding self-referential and the filter would correctly drop it as the
+    # function under generation, which is what made the first attempt at this
+    # fixture still vacuous.
+    noisy_fn = "func_801CE120"
+    noisy_code = (f"void {noisy_fn}(Entity* self) {{ self->step++; }}\n"
+                  f"static void func_801CE04C(Entity* s) {{ s->step++; }}\n")
+    virt = wd.virtual_apply(x_ctx, noisy_fn, noisy_code)
+    check("the noisy fixture really lands in the inspected text",
+          "static void func_801CE04C" in virt)
+
+    # Prove the filter has something to filter: with the filter bypassed, the
+    # SAME source yields at least one finding for a different function.
+    rc = wd._review_checks_module()
+    from pathlib import Path as _P
+    unfiltered = []
+    for key in wd._REVIEW_GATE_CHECKS:
+        fnc = rc.CHECKS.get(key)
+        if not fnc:
+            continue
+        try:
+            unfiltered += [f for f in fnc(_P(wd.win_path(x_ctx["src_rel"])), virt)
+                           if f.get("function") and f["function"] != noisy_fn]
+        except Exception:
+            pass
+    check("the fixture DOES produce findings about other functions",
+          len(unfiltered) > 0,
+          "no other-function finding was produced, so the filter below is "
+          "untested; pick a fixture that trips a wired check")
+
+    noisy = wd.review_gate(x_ctx, noisy_fn, noisy_code)
+    check("and the gate excludes every one of them",
+          all(f["function"] not in " ".join(noisy)
+              for f in unfiltered if f.get("function")),
+          repr(noisy[:2]))
 
     # --- never raises -------------------------------------------------------
     bad_ctx = {"src_rel": "src/does/not/exist.c", "asm_rel": "nope"}
@@ -136,8 +183,11 @@ def main() -> int:
         encoding="utf-8", errors="replace")
     check("review_gate is called in the attempt loop",
           "defects += review_gate(ctx, fn, code)" in src)
-    check("it runs BEFORE the build lock",
-          src.index("defects += review_gate") < src.index("with BuildLock("))
+    # rindex, not index. `with BuildLock(` now appears earlier in the file too,
+    # inside replay_pending_journals; anchoring on the FIRST occurrence made
+    # this assert something unrelated to the attempt loop.
+    check("it runs BEFORE the apply/build critical section",
+          src.index("defects += review_gate") < src.rindex("with BuildLock("))
 
     print()
     if failures:

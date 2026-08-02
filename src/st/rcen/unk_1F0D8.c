@@ -25,7 +25,11 @@ void func_us_801B4148_from_bo0(Entity* self) {
 void func_us_801C123C_from_no4(Entity* self) {
     if (self->step == 0) {
         InitializeEntity(g_EInitCommon);
-        self->animSet = -0x7FFF;
+        // Was the magic number -0x7FFF. ANIMSET_OVL(1) is `1 | 0x8000`, which
+        // as a signed 16-bit animSet is exactly -0x7FFF. Twelve lines above,
+        // the same value is written the named way; this is the same constant,
+        // now spelled consistently. Found by audit 2026-08-02.
+        self->animSet = ANIMSET_OVL(1);
         self->animCurFrame = 7;
         self->drawFlags = ENTITY_ROTATE;
         self->rotate = 0x800;

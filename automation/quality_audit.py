@@ -294,6 +294,22 @@ def check_file(path: Path, syms, layout, ent_size, ext_variants, bits,
                              "kind": kind, "detail": detail, "fix": fix,
                              "code": line.strip()[:120]})
 
+        # A line that is only a comment cannot contain a defect, just a mention
+        # of one. Without this, the comment explaining WHY a site is
+        # deliberately left as ext.ILLEGAL was itself reported as an
+        # ext.ILLEGAL finding, so documenting a decision raised the count.
+        #
+        # THIS GUARD MUST COME FIRST. It used to sit BELOW the fake_symbol
+        # check, which meant that check still ran on comments: the audit's only
+        # FAKE SYMBOL finding was a comment in us_39144.c explaining how an
+        # entity base was derived from the assembly, while the code below it
+        # used g_Entities[STAGE_ENTITY_START + 32] correctly. Clean work was
+        # penalised precisely for documenting itself, which is the opposite of
+        # what this tool should encourage. Found by audit 2026-08-02.
+        stripped = line.strip()
+        if stripped.startswith(("//", "/*", "*")):
+            continue
+
         # 1. invented externs that alias a real entity field
         for m in re.finditer(r"\bD_(?:us_)?[0-9A-Fa-f]{8}\b", line):
             real = resolve_fake_symbol(m.group(0), syms, layout, ent_size,
@@ -301,14 +317,6 @@ def check_file(path: Path, syms, layout, ent_size, ext_variants, bits,
             if real:
                 add("fake_symbol", f"{m.group(0)} is {real}",
                     f"use {real} instead of declaring {m.group(0)}")
-
-        # A line that is only a comment cannot contain a defect, just a mention
-        # of one. Without this, the comment explaining WHY a site is
-        # deliberately left as ext.ILLEGAL was itself reported as an
-        # ext.ILLEGAL finding, so documenting a decision raised the count.
-        stripped = line.strip()
-        if stripped.startswith(("//", "/*", "*")):
-            continue
 
         # 2. ext.ILLEGAL where named variants exist
         if "ext.ILLEGAL" in line:

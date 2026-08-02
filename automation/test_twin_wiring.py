@@ -125,10 +125,24 @@ def main() -> int:
     check("no inverted hint for a first-castle overlay",
           "INVERTED CASTLE" not in wd.twin_for("BO6_RicStepStand", "boss/bo6"))
 
-    # --- shared implementations must be routed to a shim, not a copy --------
+    # --- the shim advice is UNCONDITIONAL, and that is the point ------------
+    #
+    # This used to read: check("shared-impl twin names the shim rule",
+    # "#include shim" in bat). That was vacuous. The phrase is part of a
+    # trailer appended to EVERY twin section, so the assertion passed for any
+    # non-empty output and tested nothing about shared implementations.
+    # twin_for contains no shared-impl routing at all. Audit 2026-08-02.
+    #
+    # Asserting the truth instead: the advice appears for every twin, shared
+    # implementation or not, so its presence carries no information about the
+    # stem. If per-stem routing is ever added, the second assertion here fails
+    # and this comment stops being true.
     bat = wd.twin_for("EntityBat", "st/rchi")
-    check("shared-impl twin names the shim rule", "#include shim" in bat,
-          repr(bat[:160]))
+    ric = wd.twin_for("BO6_RicStepStand", "boss/bo6")
+    check("shim advice is present on a shared-impl twin", "#include shim" in bat)
+    check("shim advice is present on a NON-shared-impl twin too, so it is a "
+          "constant trailer and not evidence of routing",
+          "#include shim" in ric, repr(ric[:120]))
 
     # --- a missing or corrupt record file must never break a run ------------
     wd._TWINS = None

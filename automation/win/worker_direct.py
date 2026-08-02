@@ -2227,6 +2227,23 @@ def replay_pending_journals() -> int:
 
 
 _CI_MOD = None
+_IDX_JSON = None
+
+
+def _load_index_json() -> dict:
+    """automation/index.us.json, parsed once per process.
+
+    It is ~7.6 MB. shim_gate used to re-read and re-parse it on every call, so
+    a sweep over all 1253 stage files spent minutes in json.load and never
+    finished. The worker calls shim_gate once per record, so this also saves
+    the fleet a full parse per function.
+    """
+    global _IDX_JSON
+    if _IDX_JSON is None:
+        with open(os.path.join(WIN_REPO, "automation", "index.us.json"),
+                  encoding="utf-8") as f:
+            _IDX_JSON = json.load(f)
+    return _IDX_JSON
 
 
 def _codebase_index_module():
@@ -2412,9 +2429,7 @@ def shim_gate(ctx: dict) -> tuple[bool, str]:
         if any(t in stage for t in ("_psp", "_saturn", "psp", "saturn")):
             return False, ""
         ci = _codebase_index_module()
-        with open(os.path.join(WIN_REPO, "automation", "index.us.json"),
-                  encoding="utf-8") as f:
-            idx = json.load(f)
+        idx = _load_index_json()
         if not idx.get("shared_impls", {}).get(stem):
             return False, ""          # nothing to defer to; generate
         ok, why = ci.shim_viable(stage, stem, idx)

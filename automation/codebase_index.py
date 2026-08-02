@@ -655,7 +655,14 @@ def shim_viable(stage: str, stem: str, idx: dict) -> tuple[bool, str]:
     if not si:
         return False, f"no shared implementation named {stem}"
     if not si["shimmed_by"]:
-        return False, f"{stem} is shimmed by no stage; there is no shared impl to use"
+        # Word this as an OBSERVATION, not a prohibition. The old wording was
+        # "there is no shared impl to use", which got copied into ROADMAP.md and
+        # MATCHING-LESSONS.md as "converting these would be actively wrong" and
+        # ring-fenced 7 real stubs. It was produced by a filename-matching bug.
+        return False, (f"{stem}: no file was found including {stem}.h. Verify "
+                       f"before treating this as unshimmable; this verdict was "
+                       f"wrong for e_blade, e_gurkha and entity_lock_camera "
+                       f"until 2026-08-02")
 
     hdr = preprocess_us(read_source(si["header"]))
     # Uninitialised static -> .bss.

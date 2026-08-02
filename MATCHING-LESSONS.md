@@ -934,8 +934,21 @@ Four independent blockers, every one observed in a real build. Ask all four
 before touching the C:
 
 1. **Nothing shims it.** `shimmed_by == []` means there is no shared
-   implementation to defer to. `e_blade` and `e_gurkha` are in this class, and
-   converting them would be actively wrong, not merely unhelpful.
+   implementation to defer to.
+
+   **CORRECTED 2026-08-02: `e_blade` and `e_gurkha` were named here as examples
+   and they are NOT in this class.** Both headers exist and `no2` and `np3`
+   shim them. The error was in `codebase_index.py`, which matched shims by
+   FILENAME (`src/st/*/<stem>.c`), so any header shimmed from a differently
+   named file looked unused. `entity_lock_camera.h` is the extreme case: 20
+   stages shim it, all from a file called `e_lock_camera.c`, and it reported
+   zero.
+
+   The rule now matches on what a file INCLUDES. Before trusting
+   `shimmed_by == []`, confirm the header genuinely has no includers, because
+   this blocker is the only one of the four that says "do not try", and a false
+   positive here is unfalsifiable in practice: nobody re-tests a documented
+   impossibility.
 2. **The stage needs functions the shared header lacks.** rno0's giantbro
    translation unit defines 22 functions against the shared header's 15, so it
    can never be a *pure* shim. It can still be a shim plus the extras, which is
