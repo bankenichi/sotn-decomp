@@ -139,7 +139,29 @@ void func_us_801B9ACC(s32 speed) {
     RIC_velocityX = signedSpeed;
 }
 
-INCLUDE_ASM("boss/bo6/nonmatchings/us_39144", BO6_RicSetInvincibilityFrames);
+// Richter (BO6): raise an invincibility timer to at least
+// `invincibilityFrames`, never lower it. kind == 0 uses the scene timer and
+// also spawns the crash-dagger blueprint; anything else uses the ordinary
+// invincibility timer. Twin of RicSetInvincibilityFrames in src/ric/pl_utils.c,
+// semantically identical.
+//
+// Timer indices resolved by address: g_Ric + 0x34A and + 0x34C, with
+// PlayerState.timers at +0x330, give (0x34A-0x330)/2 = 13 and 14.
+//
+// The comparison direction is the easy thing to get backwards. The asm does
+// `slt $v0, $v0, $v1` on (frames < timer) and BRANCHES OVER the store, so the
+// store happens when timer <= frames.
+void BO6_RicSetInvincibilityFrames(s32 kind, s16 invincibilityFrames) {
+    if (!kind) {
+        BO6_RicCreateEntFactoryFromEntity(
+            g_CurrentEntity, FACTORY(BP_CRASH_DAGGER, 0x15), 0);
+        if (g_Ric.timers[PL_T_INVINCIBLE_SCENE] <= invincibilityFrames) {
+            g_Ric.timers[PL_T_INVINCIBLE_SCENE] = invincibilityFrames;
+        }
+    } else if (g_Ric.timers[PL_T_INVINCIBLE] <= invincibilityFrames) {
+        g_Ric.timers[PL_T_INVINCIBLE] = invincibilityFrames;
+    }
+}
 
 INCLUDE_ASM("boss/bo6/nonmatchings/us_39144", BO6_DisableAfterImage);
 
