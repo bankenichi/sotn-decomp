@@ -381,11 +381,48 @@ brings the duplicates back.
 `rno0/e_lock_camera`, `rchi/e_breakable` and `rchi_psp/e_breakable` are free
 matches sitting behind a three-line shim each.
 
-**Still open from this entry:**
+**Relocation detector: DONE.** `automation/relocation_check.py`, 9 self-test
+cases. Diffs a built overlay against `disks/us/...` and reports whether every
+differing word is relocation-shaped (same opcode, same registers, different
+16-bit immediate) with one dominant delta. It refuses to name a constant unless
+one covers 80% of the differences, because acting on the wrong constant is
+worse than acting on nothing.
 
-1. The **relocation detector** (item 1 below). Worked out by hand twice; still
-   not a tool.
-2. **Tier 2/3 consumers** for `escalated` (item 2 below).
+Two things it found immediately, both about the harness rather than the game:
+
+- **Build artifacts go stale.** A worker that fails restores the SOURCE but
+  leaves `build/us/<OVL>.BIN` behind. After the fleet stopped, `git status` was
+  clean while the oracle read 80/81 on a reverted RCEN candidate. The tool now
+  warns when `src`/`config` are newer than `build/us`, and a rebuild restored
+  81/81.
+- **`config/check.us.sha` is not uniformly lowercase.** CHI's line reads
+  `4ea14c8B54B8526e...`. A case-sensitive hash compare reported CHI as failing
+  while `shasum -c` and `verify_build` both passed it. Casefold both sides.
+
+**Still open from this entry:** tier 2/3 consumers for `escalated` (item 2).
+
+### The remaining shim lever, measured 2026-08-02
+
+A full sweep of all 130 shared implementations found 129 stubs in files a
+shared header could in principle cover. Excluding `_psp` (a build target the us
+oracle cannot verify), **seven rno0 stems are blocked on one single thing** — a
+missing `.data, <stem>` splat segment:
+
+```
+e_misc 14   collision 2   st_update 2   e_medusa_head 2
+e_collect 1   e_particles 1   e_room_fg 1        = 23 stubs
+```
+
+This is what P3b originally meant by "unblocks five of the seven remaining
+private implementations". The `e_red_door` work resolved the first of them and,
+more usefully, established the method: locate the `static` array by its
+initialiser byte signature in the overlay binary, and validate the technique
+against a peer overlay whose answer is already in a config file before trusting
+it. See `docs/P3b-rno0-red-door-plan.md`.
+
+Not blocked on data placement, and NOT shimmable: `e_lock_camera` (0.36x its
+peers' text) and `e_breakable` (obliges rno0 to supply stage data tables).
+`e_blade`, `e_gurkha` and `e_hammer` have no shared implementation at all.
 
 ### Original entry
 

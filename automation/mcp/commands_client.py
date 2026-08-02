@@ -100,6 +100,7 @@ ANALYSIS_SCRIPTS = {
     "test_build_classifier.py",
     "test_review_gate.py",
     "test_shim_gate.py",
+    "relocation_check.py",
 }
 # Deliberately narrow: flags, numbers, and in-repo-looking relative paths.
 # No spaces, quotes, semicolons, redirects, or leading dashes-with-spaces, so
