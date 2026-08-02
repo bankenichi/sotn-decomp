@@ -96,5 +96,15 @@ segments:
       - [0x524C8, c, e_medusa_head]
       - [0x5289C, c, unk_5289C]
       - [0x53688, c, prim_helpers]
-      - [0x53EB8, bss]
+      # Segmented 2026-08-01 so shared implementations can be shimmed. Sizes
+      # are 0x10 + 0xC00 + 0xC4 = 0xCD4, exactly the bss size in strno0.map.
+      # Same shape as config/splat.us.stnp3.yaml, which is the working
+      # reference for this overlay's layout.
+      - [0x53EB8, .bss, create_entity]
+      - [0x53EC8, .bss, bss]
+      # giantbro_helpers' 0xC4 stays as extracted assembly for now: its
+      # D_us_801D4* symbols are still referenced by the private
+      # giantbro_helpers.c, and naming this segment would demand that object
+      # supply the bss before the shim exists. Convert it in a second step.
+      - [0x54AC8, bss]
   - [0x54B8C]
