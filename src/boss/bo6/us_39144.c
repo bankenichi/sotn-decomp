@@ -260,7 +260,25 @@ Entity* BO6_RicGetFreeEntity(s16 start, s16 end) {
     return NULL;
 }
 
-INCLUDE_ASM("boss/bo6/nonmatchings/us_39144", BO6_RicGetFreeEntityReverse);
+// Richter (BO6): as above, but searching downward from the top of the range.
+// Port of RicGetFreeEntityReverse in src/ric/pl_blueprints.c.
+//
+// The assembly's base symbol is D_8007331C, which is g_Entities - 0xBC, one
+// Entity below the array. That is not a separate object: it is what GCC folds
+// `&g_Entities[end - 1]` into, hoisting the -1 into the base address so the
+// index scales cleanly. Declaring D_8007331C as a global would have invented
+// a symbol for an address that already has a meaning.
+Entity* BO6_RicGetFreeEntityReverse(s16 start, s16 end) {
+    Entity* entity = &g_Entities[end - 1];
+    s16 i;
+
+    for (i = end - 1; i >= start; i--, entity--) {
+        if (entity->entityId == E_NONE) {
+            return entity;
+        }
+    }
+    return NULL;
+}
 
 INCLUDE_ASM("boss/bo6/nonmatchings/us_39144", func_us_801BB314);
 
