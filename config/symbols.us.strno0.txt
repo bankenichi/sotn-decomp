@@ -226,3 +226,27 @@ g_LayoutObjHorizontal = 0x801D3EB8;
 g_LayoutObjVertical = 0x801D3EBC;
 g_LayoutObjPosHorizontal = 0x801D3EC0;
 g_LayoutObjPosVertical = 0x801D3EC4;
+
+// Clock-room tables, named so src/st/clock_room_entities.h can be shimmed in.
+// The header declares each `extern` and expects the overlay to supply it;
+// naming binds those externs to data already in the E20 blob, so no byte moves
+// and .data needs no segmenting. Addresses from the %hi/%lo relocations in
+// asm/us/st/rno0/nonmatchings/e_clock_room/*.s.
+//
+// ALL OR NOTHING: once renamed, the nonmatchings/*.s stubs still reference the
+// old D_us_ names and `make extract` does NOT rewrite them, so the INCLUDE_ASM
+// fallback stops linking. These must land together with the shim.
+//
+// Sizes matter: statue_pos_x and stone_door_pos_x are 8 bytes each, read at
+// both [params] and [params+2], so the compiler emits a second base address.
+bird_cage_pos_x = 0x80181A94; // size:0x4
+bird_cage_pos_y = 0x80181A98; // size:0x4
+statue_pos_x = 0x80181A9C; // size:0x8
+gear_pos_x = 0x80181AA4; // size:0x4
+stone_door_pos_x = 0x80181AA8; // size:0x8
+statue_pos_x_3 = 0x80181AB4; // size:0x8
+anim_bird_cage = 0x80181ABC; // size:0x4
+anim_gear_1 = 0x80181AD8; // size:0xC
+anim_gear_2 = 0x80181AE4; // size:0xC
+g_StoneDoorTiles = 0x80181AF0; // size:0x10
+g_Statues = 0x801D4B48; // size:0x4

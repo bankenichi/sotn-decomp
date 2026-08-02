@@ -1,20 +1,44 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #include "sfx.h"
 
+// Per-stage parameters. no0 and mar keep the defaults, so they stay
+// byte-identical; rno0 overrides these because its clock room is the inverted
+// castle's, with a different sprite bank and a different tilemap position.
+// Same idiom as src/st/e_breakable.h's SFX_BREAKABLE_HIT.
+#ifndef CLOCK_ROOM_ANIMSET
+#define CLOCK_ROOM_ANIMSET ANIMSET_OVL(1)
+#endif
+// Foreground tile index of the statue's clock-face segments, per params.
+#ifndef STATUE_TILE_POS_1
+#define STATUE_TILE_POS_1 2
+#endif
+#ifndef STATUE_TILE_POS_0
+#define STATUE_TILE_POS_0 12
+#endif
+// Foreground tile index the stone doors paint from.
+#ifndef STONE_DOOR_TILE_POS
+#define STONE_DOOR_TILE_POS 0xC4
+#endif
+// Which castle flag opens the stone doors. rno0 gates on the inverted castle's
+// own flag (RCEN_OPEN = 228), not the normal one.
+#ifndef CLOCK_ROOM_DOOR_FLAG
+#define CLOCK_ROOM_DOOR_FLAG CEN_OPEN
+#endif
+
 void EntityClockHands(Entity* self) {
     u16 params = self->params;
     Entity* handShadow = self + 5;
 
     if (!self->step) {
         InitializeEntity(g_EInitCommon);
-        self->animSet = ANIMSET_OVL(1);
+        self->animSet = CLOCK_ROOM_ANIMSET;
         self->animCurFrame = params + 25;
         self->zPriority = 0x3F - params;
         self->drawFlags = ENTITY_ROTATE;
 
         // Create hand shadows
         CreateEntityFromCurrentEntity(E_CLOCK_ROOM_SHADOW, handShadow);
-        handShadow->animSet = ANIMSET_OVL(1);
+        handShadow->animSet = CLOCK_ROOM_ANIMSET;
         handShadow->animCurFrame = params + 25;
         handShadow->zPriority = 0x3F - params;
         handShadow->drawFlags = ENTITY_OPACITY | ENTITY_ROTATE;
@@ -45,7 +69,7 @@ void EntityBirdcageDoor(Entity* self) {
     switch (self->step) {
     case 0:
         InitializeEntity(g_EInitCommon);
-        self->animSet = ANIMSET_OVL(1);
+        self->animSet = CLOCK_ROOM_ANIMSET;
         self->animCurFrame = anim_bird_cage[self->ext.birdcage.state & 1];
         self->ext.birdcage.prevState = self->ext.birdcage.state;
         self->zPriority = 0x3C;
@@ -131,7 +155,7 @@ void EntityStatue(Entity* self) {
     switch (self->step) {
     case 0:
         InitializeEntity(g_EInitCommon);
-        self->animSet = ANIMSET_OVL(1);
+        self->animSet = CLOCK_ROOM_ANIMSET;
         self->animCurFrame = params + 10;
         self->hitboxWidth = 16;
         self->hitboxHeight = 32;
@@ -140,30 +164,38 @@ void EntityStatue(Entity* self) {
         if (!g_Statues[params]) {
             self->posX.i.hi += statue_pos_x[params];
             if (self->params) {
-                UpdateStatueTiles(2, 0x597);
+                UpdateStatueTiles(STATUE_TILE_POS_1,0x597);
             } else {
-                UpdateStatueTiles(12, 0x597);
+                UpdateStatueTiles(STATUE_TILE_POS_0,0x597);
             }
         } else {
             self->posX.i.hi += statue_pos_x[params + 2];
             if (self->params) {
-                UpdateStatueTiles(2, 0);
+                UpdateStatueTiles(STATUE_TILE_POS_1,0);
             } else {
-                UpdateStatueTiles(12, 0);
+                UpdateStatueTiles(STATUE_TILE_POS_0,0);
             }
         }
 
         self->ext.statue.step = g_Statues[params];
+#ifdef STAGE_IS_RNO0
+        // The inverted castle's clock room is upside down, so the statue sits
+        // below its anchor rather than above it.
+        self->posY.i.hi += 58;
+#else
         self->posY.i.hi -= 58;
+#endif
 
         // Create shadow for the statue
         CreateEntityFromCurrentEntity(E_CLOCK_ROOM_SHADOW, entity);
-        entity->animSet = ANIMSET_OVL(1);
+        entity->animSet = CLOCK_ROOM_ANIMSET;
         entity->animCurFrame = params + 10;
         entity->zPriority = 0x3F;
         entity->drawFlags = ENTITY_OPACITY;
         entity->blendMode = BLEND_TRANSP;
-#ifndef STAGE_IS_NO0
+// no0 and rno0 leave the shadow's flags at whatever DestroyEntity set; only
+// mar overrides them here.
+#if !defined(STAGE_IS_NO0) && !defined(STAGE_IS_RNO0)
         entity->flags = FLAG_DESTROY_IF_OUT_OF_CAMERA | FLAG_POS_CAMERA_LOCKED |
                         FLAG_KEEP_ALIVE_OFFCAMERA;
 #endif
@@ -189,9 +221,9 @@ void EntityStatue(Entity* self) {
         if (!self->step_s) {
             if (self->ext.statue.step) {
                 if (self->params) {
-                    UpdateStatueTiles(2, 0);
+                    UpdateStatueTiles(STATUE_TILE_POS_1,0);
                 } else {
-                    UpdateStatueTiles(12, 0);
+                    UpdateStatueTiles(STATUE_TILE_POS_0,0);
                 }
             }
             self->ext.statue.timer = 96;
@@ -207,9 +239,9 @@ void EntityStatue(Entity* self) {
         if (!--self->ext.statue.timer) {
             if (!self->ext.statue.step) {
                 if (self->params) {
-                    UpdateStatueTiles(2, 0x597);
+                    UpdateStatueTiles(STATUE_TILE_POS_1,0x597);
                 } else {
-                    UpdateStatueTiles(12, 0x597);
+                    UpdateStatueTiles(STATUE_TILE_POS_0,0x597);
                 }
             }
             statueGear->ext.statue.step = 0;
@@ -236,11 +268,17 @@ void EntityStatueGear(Entity* self) {
     case 0:
         if (!self->step_s) {
             InitializeEntity(g_EInitCommon);
-            self->animSet = ANIMSET_OVL(1);
+            self->animSet = CLOCK_ROOM_ANIMSET;
             self->animCurFrame = 17;
             self->zPriority = 0x80;
             self->posX.i.hi += gear_pos_x[params];
+#ifdef STAGE_IS_RNO0
+            // Inverted castle: the gear hangs below its anchor, as with the
+            // statue's 58 above.
+            self->posY.i.hi += 44;
+#else
             self->posY.i.hi -= 44;
+#endif
             self->step = 0;
             self->step_s++;
         }
@@ -296,7 +334,7 @@ static void UpdateStoneDoorTiles(bool doorState) {
     s32 tilePos;
     s16 i, j;
 
-    for (tilePos = 0xC4, i = 0; i < 2; i++) {
+    for (tilePos = STONE_DOOR_TILE_POS, i = 0; i < 2; i++) {
         for (j = 0; j < 8; j++) {
             if (doorState) {
                 // Open stone doors
@@ -319,28 +357,33 @@ void EntityStoneDoor(Entity* self) {
     switch (self->step) {
     case 0:
         InitializeEntity(g_EInitCommon);
-        self->animSet = ANIMSET_OVL(1);
+        self->animSet = CLOCK_ROOM_ANIMSET;
         self->animCurFrame = params + 27;
         self->zPriority = 0x40;
-        if (!g_CastleFlags[CEN_OPEN]) {
+        if (!g_CastleFlags[CLOCK_ROOM_DOOR_FLAG]) {
             self->posX.i.hi += stone_door_pos_x[params];
             UpdateStoneDoorTiles(true);
         } else {
             self->posX.i.hi += stone_door_pos_x[params + 2];
             UpdateStoneDoorTiles(false);
         }
+#ifdef STAGE_IS_RNO0
+        // Inverted castle: the doors sit above the anchor.
+        self->posY.i.hi -= 88;
+#else
         self->posY.i.hi += 88;
-        self->ext.stoneDoor.flag = g_CastleFlags[CEN_OPEN];
+#endif
+        self->ext.stoneDoor.flag = g_CastleFlags[CLOCK_ROOM_DOOR_FLAG];
         break;
 
     case 1:
         if (self->ext.stoneDoor.flag == NULL) {
-            if (g_CastleFlags[CEN_OPEN]) {
+            if (g_CastleFlags[CLOCK_ROOM_DOOR_FLAG]) {
                 self->step++;
                 self->ext.stoneDoor.unk80 = 0;
             }
         }
-        self->ext.stoneDoor.flag = g_CastleFlags[CEN_OPEN];
+        self->ext.stoneDoor.flag = g_CastleFlags[CLOCK_ROOM_DOOR_FLAG];
         break;
 
     case 2:
@@ -350,12 +393,24 @@ void EntityStoneDoor(Entity* self) {
 
         ++self->ext.stoneDoor.unk80;
         if (self->ext.stoneDoor.unk80 & 1) {
+            // Mirrored in the inverted castle: the doors slide the other way.
             if (params) {
-                self->posX.i.hi++;
-            } else {
+#ifdef STAGE_IS_RNO0
                 self->posX.i.hi--;
+#else
+                self->posX.i.hi++;
+#endif
+            } else {
+#ifdef STAGE_IS_RNO0
+                self->posX.i.hi++;
+#else
+                self->posX.i.hi--;
+#endif
             }
-#ifdef STAGE_IS_NO0
+// no0 and rno0 set the flag unconditionally on odd frames; only mar alternates
+// it. The two forms differ by four instructions, which is exactly the size gap
+// that showed up as EntityStoneDoor running 0x10 long.
+#if defined(STAGE_IS_NO0) || defined(STAGE_IS_RNO0)
             g_backbufferY = 1;
 #else
             if (self->ext.stoneDoor.unk80 % 2) {

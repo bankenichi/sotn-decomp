@@ -36,31 +36,38 @@ void UpdateClockHands(Entity* self, PlayerStatus* status) {
 
 INCLUDE_ASM("st/rno0/nonmatchings/e_clock_room", EntityClockRoomController);
 
-INCLUDE_ASM("st/rno0/nonmatchings/e_clock_room", EntityClockHands);
+// Shared clock-room entity set; see src/st/clock_room_entities.h. Same
+// structure as src/st/no0/clock_room.c: the per-overlay controller and its
+// helpers stay here, header included at the END.
+//
+// UpdateBirdcages and UpdateClockHands above deliberately do NOT move into the
+// header: no0 and mar define them themselves ahead of their own include.
+//
+// The header's data tables are bound by naming them in
+// config/symbols.us.strno0.txt rather than re-authored here. g_Statues is used
+// by the header without a declaration of its own.
+extern u16 g_Statues[];
 
-INCLUDE_ASM("st/rno0/nonmatchings/e_clock_room", EntityBirdcageDoor);
+// no0 and mar name the shared init struct g_EInitCommon; rno0 exports it as
+// OVL_EXPORT(EInitCommon) = RNO0_EInitCommon at 0x80180AB0. Without this the
+// header's reference resolves to zero and every InitializeEntity passes NULL.
+extern EInit OVL_EXPORT(EInitCommon);
+#define g_EInitCommon OVL_EXPORT(EInitCommon)
 
-// Paints the tilemap foreground tiles for a statue's clock-face segments
-void UpdateStatueTiles(s32 tilePos, u16 tile) {
-    u32 i;
+// rno0's clock-room sprites are in overlay animset bank 2, not bank 1, and its
+// clock face sits elsewhere in the tilemap.
+#define CLOCK_ROOM_ANIMSET ANIMSET_OVL(2)
+#define STATUE_TILE_POS_1 0xAC
+#define STATUE_TILE_POS_0 0xA2
+#define STONE_DOOR_TILE_POS 0x24
+#define CLOCK_ROOM_DOOR_FLAG RCEN_OPEN
 
-    for (i = 0; i < 6; i++) {
-        g_Tilemap.fg[tilePos] = tile;
-        tilePos++;
-        g_Tilemap.fg[tilePos] = tile;
-        tilePos += 15;
-    }
-}
+// Same entity slot 0x20 as no0's E_CLOCK_ROOM_SHADOW, but rno0.h names it
+// E_DUMMY_20 because this overlay points that slot at EntityDummy. Map it here
+// rather than renaming the enum entry, which e_init.c's table also feeds.
+#define E_CLOCK_ROOM_SHADOW E_DUMMY_20
 
-INCLUDE_ASM("st/rno0/nonmatchings/e_clock_room", EntityStatue);
-
-INCLUDE_ASM("st/rno0/nonmatchings/e_clock_room", EntityStatueGear);
-
-INCLUDE_ASM("st/rno0/nonmatchings/e_clock_room", UpdateStoneDoorTiles);
-
-INCLUDE_ASM("st/rno0/nonmatchings/e_clock_room", EntityStoneDoor);
-
-// Takes Entity* even though it ignores it: e_init.c declares it that way and
-// stores it in EntityUpdates[], whose element type is
-// PfnEntityUpdate = void (*)(struct Entity*).
-void RNO0_Unused801C2338(Entity* self) {}
+// rno0 exports the trailing stub under its overlay-prefixed name, which
+// e_init.c references as OVL_EXPORT(Unused801C2338).
+#define EntityClockRoomUnused RNO0_Unused801C2338
+#include "../clock_room_entities.h"
