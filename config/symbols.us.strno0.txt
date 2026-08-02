@@ -250,3 +250,18 @@ anim_gear_1 = 0x80181AD8; // size:0xC
 anim_gear_2 = 0x80181AE4; // size:0xC
 g_StoneDoorTiles = 0x80181AF0; // size:0x10
 g_Statues = 0x801D4B48; // size:0x4
+
+// src/st/e_red_door.h. Named so rno0 can shim the shared header instead of
+// keeping a copy of EntityIsNearPlayer.
+//
+// g_RedDoorTiles: confirmed by USE, not by guessing. EntityRedDoor.s does
+//   sll $v0, $a0, 4        # params * 16, i.e. a u16[8] row
+//   addu $a2, $v0, %lo(D_us_80180E20)
+// and stores into %hi(g_Tilemap + 0xA), which is exactly the header's
+//   g_Tilemap.fg[tileIdx] = g_RedDoorTiles[params][i];
+g_RedDoorTiles = 0x80180E20; // size:0x20
+// Referenced by the header at `if (!self->params && D_us_80181134)`. Unlike
+// the two above, splat emits NO glabel for this address in rno0: it falls in
+// the middle of the unnamed 0xE20 data blob, so the extern would not link.
+// Naming it forces the label out.
+D_us_80181134 = 0x80181134; // size:0x4

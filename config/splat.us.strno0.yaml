@@ -44,7 +44,15 @@ segments:
       - [0x8FC, .data, e_init]
       - [0xC18, .data, e_room_bg]
       - [0xE20, data]
-      - [0x35B00, .rodata, unk_39A8C]
+      # g_eRedDoorUV, 3 rows of 8 bytes. `static` in src/st/e_red_door.h, so
+      # the compiled e_red_door.c must emit it and splat must NOT. Located by
+      # searching RNO0.BIN for the initialiser's 24-byte signature; the same
+      # search on RCEN.BIN returns 0xE78, which is what rcen's config already
+      # declares, so the method was validated against a known answer first.
+      # EntityRedDoor.s independently references D_us_80181454.
+      - [0x1454, .data, e_red_door]   # 0x18
+      - [0x146C, data]
+      - [0x35B00, .rodata, e_red_door]
       - [0x35B18, .rodata, e_collect]
       - [0x35BEC, .rodata, e_clock_room]
       - [0x35C2C, .rodata, e_armor_lord_guardian]
@@ -71,7 +79,11 @@ segments:
       - [0x37324, c, st_update]
       - [0x37758, c, collision]
       - [0x38F14, c, create_entity]
-      - [0x39A8C, c, unk_39A8C]
+      # Renamed, NOT resized. This segment was always e_red_door.c: its span
+      # 0x39A8C..0x3A73C is 0xCB0, byte-identical to rcen's e_red_door segment
+      # (0x22BD4..0x23884). The old `unk_39A8C` name was the only thing
+      # standing between rno0 and the shared header.
+      - [0x39A8C, c, e_red_door]
       - [0x3A73C, c, st_common]
       - [0x3BBEC, c, e_collect]
       - [0x3E55C, c, e_misc]
