@@ -284,6 +284,14 @@ def cmd_next(args):
         best = min(todo, key=key)
         for r in records:
             if r is best:
+                # Remember WHERE this was claimed from. Without it, reclaim and
+                # release both hard-coded "todo", so a `deferred` handoff record
+                # that got claimed and then stranded came back as `todo` and
+                # escaped the deferred pool entirely. That also blocks any
+                # future tier-2 consumer: a dead consumer's escalated record
+                # would silently fall back to Tier 0 and be reworked by the
+                # cheapest model, which is the opposite of escalation.
+                r["claimed_from"] = r["status"]
                 r["status"] = "claimed"
                 r["claimed_by"] = args.worker
                 r["updated_at"] = _now()
@@ -583,7 +591,11 @@ def cmd_reclaim(args):
                 ts = dt.datetime.strptime(r.get("updated_at", "1970-01-01T00:00:00Z"),
                                           "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=dt.timezone.utc)
                 if ts < cutoff:
-                    r["status"] = "todo"
+                    # Restore to whatever the record was claimed FROM, not to a
+                    # hard-coded "todo". Records claimed before claimed_from
+                    # existed have no such field, so they keep the old
+                    # behaviour rather than being guessed at.
+                    r["status"] = r.pop("claimed_from", None) or "todo"
                     r["claimed_by"] = "none"
                     r["updated_at"] = _now()
                     n += 1

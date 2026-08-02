@@ -547,17 +547,29 @@ def wsl(cmd: str, timeout: float = 300) -> tuple[int, str]:
 # claim and the handler used to strand the record as 'claimed' forever. Two leaked
 # that way on 2026-07-20.
 _CURRENT_CLAIM: str | None = None
+# The status the claim was taken FROM, so a stranded claim goes back there
+# rather than to a hard-coded "todo". See release_claim_if_held.
+_CURRENT_CLAIM_FROM: str | None = None
 
 
 def release_claim_if_held() -> None:
-    """Return a still-held claim to 'todo'. Safe to call twice."""
-    global _CURRENT_CLAIM
+    """Return a still-held claim to WHERE IT CAME FROM. Safe to call twice.
+
+    This used to hard-code 'todo'. `scheduler.py next` can claim a `deferred`
+    handoff record, so an interrupted worker silently promoted it out of the
+    deferred pool. The same hard-coding in cmd_reclaim would make any future
+    tier-2 consumer's escalated record fall back to Tier 0 and be reworked by
+    the cheapest model, which inverts the whole point of escalation.
+    """
+    global _CURRENT_CLAIM, _CURRENT_CLAIM_FROM
     cid, _CURRENT_CLAIM = _CURRENT_CLAIM, None
+    back, _CURRENT_CLAIM_FROM = _CURRENT_CLAIM_FROM or "todo", None
     if not cid:
         return
     try:
-        print(f"[worker] releasing stranded claim {cid}", file=sys.stderr)
-        sched("report", "--id", cid, "--status", "todo",
+        print(f"[worker] releasing stranded claim {cid} -> {back}",
+              file=sys.stderr)
+        sched("report", "--id", cid, "--status", back,
               "--notes", "released: worker interrupted before reporting")
     except Exception as e:
         print(f"[worker] could not release {cid}: {e}", file=sys.stderr)
@@ -2663,8 +2675,10 @@ def process_one(dry: bool = False) -> bool:
     if rec is None:
         print("[worker] queue empty")
         return False
-    global _CURRENT_CLAIM
+    global _CURRENT_CLAIM, _CURRENT_CLAIM_FROM
     _CURRENT_CLAIM = rec["id"]
+    # scheduler.py records this when it claims; older records predate it.
+    _CURRENT_CLAIM_FROM = rec.get("claimed_from") or "todo"
     fn = rec["function"]
     print(f"[worker] {rec['id']}")
 
@@ -2703,6 +2717,15 @@ def process_one(dry: bool = False) -> bool:
         return True
 
     original, feedback, best = None, "", "no attempt completed"
+    # The last BUILD verdict, kept apart from `best`.
+    #
+    # `best` is last-writer-wins and every generation failure overwrites it, so
+    # a function that produced C, failed to build, and then timed out on a later
+    # attempt was filed with the note "attempt 4 timed out". That hides the only
+    # useful fact (it reached the compiler and what the compiler said) behind
+    # the least useful one, and it is why several escalated records read like
+    # generation failures when they are really build failures.
+    best_build = ""
     # Did ANY attempt produce C that compiled and merely missed on bytes?
     # That is a fundamentally different outcome from "never built", and it
     # decides where the record is routed when the attempts run out. See the
@@ -2851,7 +2874,7 @@ def process_one(dry: bool = False) -> bool:
                           "--score", "100", "--tier", "0",
                           "--proof", detail[:200], "--notes", detail[:200])
                     matched = True
-            best = detail
+            best = best_build = detail
             if matched:
                 return True
             feedback = detail
@@ -2918,7 +2941,11 @@ def process_one(dry: bool = False) -> bool:
             # A candidate WAS produced and it failed to build. That is a genuine
             # escalation: the model tried and wrote non-compiling C.
             sched("report", "--id", rec["id"], "--status", "escalated",
-                  "--score", "0", "--tier", "0", "--notes", best[:250])
+                  # Prefer the BUILD verdict. A later generation timeout must
+                  # not be what an escalated record is filed under; the
+                  # compiler's message is the only actionable part.
+                  "--score", "0", "--tier", "0",
+                  "--notes", (best_build or best)[:250])
     except KeyboardInterrupt:
         # Ctrl-C must never leave a half-applied edit in a real source file.
         print("\n[worker] interrupted; restoring source and releasing record")

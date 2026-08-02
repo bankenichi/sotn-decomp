@@ -278,3 +278,9 @@ D_us_80181134 = 0x80181134; // size:0x4
 // fixes: "e_collect.c: undefined reference to `D_us_801D4B4C'". Naming it makes
 // both sides agree, since the shared header defines the symbol.
 g_ItemIconSlots = 0x801D4B4C; // size:0x40
+
+// src/st/e_misc.h: `extern AnimateEntityFrame g_bigRedFireballAnim[]`. rno0's
+// EntityBigRedFireball.s references this address and no other data besides
+// RNO0_EInitParticle. It sits OUTSIDE the 0x19C0 e_misc .data segment, so it is
+// a separate object that only needed a name.
+g_bigRedFireballAnim = 0x801818C4;

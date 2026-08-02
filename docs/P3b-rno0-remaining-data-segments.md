@@ -1,10 +1,46 @@
 # rno0's last three shim blockers: `e_misc`, `e_collect`, `e_room_fg`
 
-Status: **analysed, not applied.** Every address below is derived from data in
-the repo, with its confidence stated. Blocked only on the fleet being paused,
-because applying needs `make extract` plus a full build.
+## RESULT 2026-08-02: none of them is shimmable. This is a dead end.
 
-Worth 16 stubs, of which `e_misc` alone is 14.
+Tried `e_room_fg` and `e_misc` end to end. Both fail the same way, and the
+reason is not placement, so no amount of segment work fixes it:
+
+**rno0's data slot is SMALLER than the shared header can emit.**
+
+| stem | header emits | rno0's slot | short by | evidence |
+|---|---|---|---|---|
+| `e_room_fg` | 0x8C | 0x78 | 0x14 | declaring 0x48 shifted the build +0x44 (= 0x8C-0x48); declaring 0x8C orphaned `D_us_80181DC4`/`D_us_80181DD4`, which `e_floor_trap` and `e_thornweed_corpseweed` reference |
+| `e_misc` | 0xB8 | 0xB4 | 0x04 | declaring 0xB4 left the build 0x4 short; declaring 0xB8 orphaned `D_us_80181A74`, which `e_background_pillars` references |
+
+`e_room_fg`'s is exactly one `ObjInit` entry: the header emits 0x14 of anim
+tables plus SIX entries of 0x14 each; rno0 has five. And `e_room_fg.h` has ZERO
+preprocessor conditionals, so it cannot produce a five-entry variant for anyone.
+
+`e_misc.h` does have 6 conditionals, so a per-stage size was plausible there,
+but none of them yields 0xB4 for rno0.
+
+Both would need the SHARED HEADER parameterised, which changes a file 23 and 27
+stages respectively depend on. That is a different and much riskier task than
+adding a splat segment, and it is not worth one stub for `e_room_fg`. It may be
+worth revisiting for `e_misc` at 14 stubs, but as a header change, not a config
+change.
+
+`e_collect` was not attempted: it has 79 conditionals and the most raw `D_us_`
+externs, so it is strictly harder than the two that already failed.
+
+**What survives from this analysis:** the START rule is correct and is now
+proven three times (`e_particles` 0x1CB8, `e_medusa_head` 0x3354, and the
+starts derived here matched the failures' arithmetic exactly). The SIZE rule
+does not exist; peers disagree and the next file's first reference is not a
+boundary, because a file may reference another file's data.
+
+Tree left at 81/81. Everything below is the original analysis, kept because the
+addresses are right even though the conclusion changed.
+
+---
+
+Status: **analysed, applied, REJECTED.** Worth 16 stubs, of which `e_misc`
+alone is 14.
 
 ## Why `find_data_segment.py` refuses these three
 

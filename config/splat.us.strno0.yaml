@@ -61,14 +61,40 @@ segments:
       # EntityRedDoor.s independently references D_us_80181454.
       - [0x1454, .data, e_red_door]   # 0x18
       - [0x146C, data]
+      # e_misc is NOT shimmable here either, for the same reason as e_room_fg
+      # below. Its .data start IS 0x19C0 (the minimum address its own assembly
+      # references, by the rule validated on e_particles and e_medusa_head), but
+      # measured 2026-08-02 the shared header emits 0xB8 while rno0's slot is
+      # 0xB4: declaring 0xB4 left the build 0x4 short, and declaring 0xB8 made
+      # e_background_pillars' assembly lose D_us_80181A74, which lands in that
+      # last word. rno0's variant is 4 bytes smaller than any the header can
+      # produce. Worth 14 stubs, so worth revisiting if e_misc.h ever gains a
+      # matching conditional, but it is a header change, not a config change.
       # Both located by automation/find_data_segment.py and calibrated against
       # peers whose configs already declare the address. Neither header
       # declares uninitialised storage, so unlike st_update these need no
       # matching .bss segment; that was checked before building.
       - [0x1CB8, .data, e_particles]     # 0x80
       - [0x1D38, data]
+      # e_room_fg is NOT shimmable here and must stay assembly. Measured
+      # 2026-08-02: the shared header emits 0x8C (0x14 of anim tables plus SIX
+      # ObjInit entries of 0x14), but rno0's slot is 0x1D4C..0x1DC4 = 0x78,
+      # which is FIVE entries. e_room_fg.h has zero preprocessor conditionals,
+      # so it cannot emit a five-entry variant, and e_floor_trap and
+      # e_thornweed_corpseweed reference 0x1DC4/0x1DD4 inside what the header
+      # would claim. Shimming it would need the shared header parameterised for
+      # 23 stages, which is not worth one stub.
       - [0x3354, .data, e_medusa_head]   # 0x78
       - [0x33CC, data]
+      # NOTE these three are placed by REFERENCE ORDER, not by byte matching:
+      # e_room_fg/e_misc/e_collect have stage-dependent data (79 conditionals in
+      # e_collect.h alone) so find_data_segment.py correctly refuses them. splat
+      # emits a file's .data in its text order, so each segment starts at the
+      # minimum data address that file's own assembly references. The rule
+      # reproduces the already-declared e_particles (0x1CB8) and e_medusa_head
+      # (0x3354) exactly. Sizes are the peer variant that lands on the next
+      # file's first reference; the peer-MAJORITY size overlaps in all three
+      # cases. See docs/P3b-rno0-remaining-data-segments.md.
       - [0x35B00, .rodata, e_red_door]
       - [0x35B18, .rodata, e_collect]
       - [0x35BEC, .rodata, e_clock_room]
