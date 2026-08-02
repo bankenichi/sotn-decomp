@@ -53,13 +53,48 @@ inferred from `big-pickle` and `north-mini-code-free` failing identically, and
 identical failure across two members of the SAME class is not evidence that the
 class does not exist. The 2026-07-21 bake-off had it right the first time.
 
-Prompt size is a confound that is NOT yet separated: the working models happened
-to draw the two shortest prompts. `automation/opencode_size_bisect.py` holds the
-question at a fixed two-character answer and varies only length, across every
-model the CLI reports. Run it before assuming a big prompt is safe on any model:
+### The SECOND cause: the 32767-char Windows command-line limit
+
+Model choice was only half of it, which is why this resisted diagnosis for so
+long. `opencode` here is a Windows `.exe` invoked from WSL, and the prompt was
+passed as an argv element, so the whole command line had to fit inside Windows
+`CreateProcess`'s 32767-character limit. Past that the process never started.
+
+Bisected with `automation/opencode_size_bisect.py` on 2026-08-02, one model,
+same two-character question at every size, varying only length:
+
+| Prompt | on argv | on stdin |
+|---|---|---|
+| 32000 | ok, 7.7s | ok |
+| 32700 | `rc=1 opencode.exe: Invalid argument` in **0.0s** | ok |
+| 40000 | `Invalid argument` | ok, 7.0s |
+| 80000 | `Invalid argument` | ok, 7.6s |
+| 120000 | `Invalid argument` | ok, 10.2s |
+
+A failure to *exec* looks exactly like a model returning an empty body, which is
+what sent four earlier investigations at quota, auth, agent resolution and
+stdout routing.
+
+This mattered far more than the 6k-11k prompts we happened to observe suggested.
+Measured over the 308 us functions still on `INCLUDE_ASM` (the worker feeds the
+`.s` verbatim, so asm chars == raw file size):
 
 ```
-run_analysis(script="opencode_size_bisect.py", args="--top 6")
+p50 asm  8.8k -> ~13k prompt      59% of remaining exceed 32767
+p75 asm   21k -> ~29k prompt      37% exceed 20k
+p90 asm   41k -> ~55k prompt      15% exceed 40k
+max asm  120k -> ~156k prompt     func_us_801B365C, 1974 instructions
+```
+
+So on argv, the majority of the remaining work was unreachable by any model.
+`worker_direct.py` now pipes the prompt on stdin, writing from its own thread
+and closing the pipe afterwards. Do not move it back onto argv.
+
+Re-check any of this with:
+
+```
+run_analysis(script="opencode_size_bisect.py", args="--top 3 --big")
+run_analysis(script="opencode_size_bisect.py", args="--top 1 --stdin --big")
 ```
 
 **Operational rule: run cli fleets on `deepseek-v4-flash-free` and

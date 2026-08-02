@@ -40,18 +40,26 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 CONFIG = REPO / "automation" / "opencode" / "opencode.json"
 
-# Preferred order when the live list is available: least-tried first, so a
-# newly published model gets tested before one we already have data on.
-# big-pickle is deliberately last; it is a known failure and only here as a
-# control, to confirm the harness reproduces the bug it is meant to explain.
+# Order: the models we actually run fleets on come FIRST.
+#
+# This was reversed once, to test the newest promotions first. That was wrong.
+# The 2026-08-02 fleet run settled which models work, so the open question is no
+# longer "which of these is any good" but "how large a prompt can the two
+# working ones take before they go quiet" -- and a default `--top 3` must spend
+# the shared quota answering THAT.
+#
+# The known-bad four are still listed, after, so `--top 7` sweeps everything and
+# reproduces the failure as a control. Anything the CLI reports that is not
+# named here sorts last but is still tested, so a new promotion is never
+# silently skipped.
 PREFERRED = [
-    "laguna-s",
-    "ling-3.0",
-    "deepseek-v4",
-    "nemotron-3-ultra",
-    "mimo-v2.5",
-    "north-mini-code",
-    "big-pickle",
+    "deepseek-v4",       # works; tolerated 12k in the 07-21 bake-off
+    "nemotron-3-ultra",  # works
+    "mimo-v2.5",         # works, lower volume
+    "ling-3.0",          # rc=0, 0 chars at 9936
+    "laguna-s",          # no output at all at 11249
+    "north-mini-code",   # empty body, plus tool-call roleplay
+    "big-pickle",        # empty body; the original control
 ]
 
 # Fallback only. The real list comes from `opencode models opencode`, because
@@ -63,8 +71,24 @@ MODELS_FALLBACK = [
     "opencode/mimo-v2.5-free",
 ]
 
-# Straddles the real range. Real prompts are 6k-11k; 500 is known-good territory.
+# The first four fleet functions produced 5k-11k prompts, which made 11k look
+# like the ceiling worth testing. It is not. Measured over the 308 us functions
+# still on INCLUDE_ASM (the worker feeds the .s file verbatim, so asm chars ==
+# raw .s size, calibrated exactly against four observed runs):
+#
+#     p50 asm  8.8k -> ~13k prompt        59% of remaining exceed 11k
+#     p75 asm   21k -> ~29k prompt        37% exceed 20k
+#     p90 asm   41k -> ~55k prompt        15% exceed 40k
+#     max  asm 120k -> ~156k prompt       func_us_801B365C, 1974 instructions
+#
+# So a clean sweep to 11k says nothing about the majority of the work left.
 SIZES = [500, 2000, 4000, 6000, 9000, 11000]
+BIG_SIZES = [11000, 20000, 40000, 80000, 120000]
+
+# prompt ~= asm * 1.28 + 2100, from four observed runs: the m2c draft ran
+# 0.20-0.34 of asm length, and the fixed sections cost 1900-2700 chars.
+DRAFT_RATIO = 1.28
+FIXED_OVERHEAD = 2100
 
 ASK = "Reply with the single word OK and nothing else.\n"
 
@@ -113,16 +137,31 @@ def make_prompt(n: int) -> str:
     return f"{ASK}Ignore the following reference material entirely.\n{body}"
 
 
-def run_one(model: str, size: int) -> dict:
+def cap_for(size: int) -> int:
+    """Bigger prompts legitimately need longer, so a flat cap would read as a
+    size failure when it is really the stopwatch. Scales, floored at TIMEOUT."""
+    return max(TIMEOUT, size // 300)
+
+
+def run_one(model: str, size: int, use_stdin: bool = False) -> dict:
+    """One call. use_stdin moves the prompt off the command line.
+
+    The command line is where the 32767-char Windows CreateProcess limit
+    lives, so this is the candidate fix, not a stylistic preference.
+    """
     prompt = make_prompt(size)
     env = dict(os.environ, OPENCODE_CONFIG=str(CONFIG))
-    argv = ["opencode", "run", "--model", model, "--agent", "raw", "--auto",
-            prompt]
+    argv = ["opencode", "run", "--model", model, "--agent", "raw", "--auto"]
+    if not use_stdin:
+        argv.append(prompt)
     t0 = time.time()
     try:
         p = subprocess.run(argv, cwd=str(REPO), env=env, text=True,
-                           stdin=subprocess.DEVNULL, capture_output=True,
-                           encoding="utf-8", errors="replace", timeout=TIMEOUT)
+                           input=prompt if use_stdin else None,
+                           stdin=None if use_stdin else subprocess.DEVNULL,
+                           capture_output=True,
+                           encoding="utf-8", errors="replace",
+                           timeout=cap_for(size))
         out = (p.stdout or "").strip()
         return {"model": model, "size": size, "rc": p.returncode,
                 "chars": len(out), "secs": time.time() - t0,
@@ -133,15 +172,20 @@ def run_one(model: str, size: int) -> dict:
                 "secs": time.time() - t0, "head": "", "err": "TIMEOUT"}
 
 
-def sweep(model: str, sizes: list[int]) -> list[dict]:
+def sweep(model: str, sizes: list[int], use_stdin: bool = False) -> list[dict]:
     rows = []
     for s in sizes:
-        r = run_one(model, s)
+        r = run_one(model, s, use_stdin)
         rows.append(r)
         state = ("TIMEOUT" if r["err"] == "TIMEOUT"
                  else "EMPTY" if r["chars"] == 0 else "ok")
+        # On failure show stderr and the exit code, not just "EMPTY". A run
+        # that dies in 0.0s is the process never starting, which is a totally
+        # different fault from a model returning an empty body, and printing
+        # only "EMPTY" hides that distinction completely.
+        extra = r["head"] if r["chars"] else f"rc={r['rc']} {r['err']}"
         print(f"  {model.split('/')[-1]:24} {s:6} chars  "
-              f"{state:8} {r['chars']:5}b {r['secs']:6.1f}s  {r['head']}",
+              f"{state:8} {r['chars']:5}b {r['secs']:6.1f}s  {extra}",
               flush=True)
     return rows
 
@@ -157,6 +201,12 @@ def main() -> int:
                     help="how many models to sweep; also the parallelism")
     ap.add_argument("--quick", action="store_true",
                     help="three sizes instead of six, for a fast re-check")
+    ap.add_argument("--stdin", action="store_true",
+                    help="pipe the prompt instead of passing it as argv, to "
+                         "test the 32767-char Windows command-line limit")
+    ap.add_argument("--big", action="store_true",
+                    help="sweep 11k-120k, the range 59%% of remaining functions "
+                         "actually land in")
     a = ap.parse_args()
 
     if not CONFIG.exists():
@@ -164,14 +214,17 @@ def main() -> int:
         return 2
 
     if a.sizes:
-        sizes = [int(x) for x in a.sizes.replace(",", " ").split()]
+        sizes = [int(x) for x in a.sizes.replace(",", " ").replace("+", " ").replace("-", " ").split()]
+    elif a.big:
+        sizes = BIG_SIZES
     elif a.quick:
         sizes = [500, 6000, 11000]
     else:
         sizes = SIZES
 
     if a.models:
-        models = a.models.replace(",", " ").split()
+        # NOT split on "-": every model id contains hyphens.
+        models = a.models.replace(",", " ").replace("+", " ").split()
         note = "models given on the command line"
     else:
         models, note = discover_models()
@@ -187,7 +240,7 @@ def main() -> int:
 
     results: list[dict] = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=len(models)) as ex:
-        for rows in ex.map(lambda m: sweep(m, sizes), models):
+        for rows in ex.map(lambda m: sweep(m, sizes, a.stdin), models):
             results.extend(rows)
 
     print()
@@ -208,6 +261,17 @@ def main() -> int:
     print()
     any_ok = any(r["chars"] > 0 for r in results)
     small_ok = any(r["chars"] > 0 and r["size"] <= 2000 for r in results)
+    # The decisive signature, and the reason stderr is printed above: the
+    # process never starts. Windows CreateProcess caps a command line at 32767
+    # chars, and the prompt is passed as an argv element to opencode.exe.
+    if any(r["chars"] == 0 and "Invalid argument" in (r["err"] or "")
+           for r in results):
+        print("READ: opencode.exe returned 'Invalid argument' in ~0.0s. That is "
+              "the 32767-char Windows CreateProcess command-line limit, not the "
+              "model and not the content. Move the prompt off argv (--stdin), "
+              "or run a native Linux opencode inside WSL where the per-argument "
+              "limit is 131072.")
+        return 0
     if not any_ok:
         print("READ: nothing answered at any size, including small ones. Size is "
               "NOT the variable. Suspect the argv/exec path or the environment "

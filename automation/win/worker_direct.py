@@ -84,19 +84,21 @@ RATE_LIMIT_BACKOFF = float(os.environ.get("RATE_LIMIT_BACKOFF", "20"))
 # stream and cannot function here. FUNC_BUDGET is the only remaining backstop
 # against a wedged generation, so keep it set.
 MODEL_BACKEND = os.environ.get("MODEL_BACKEND", "http").strip().lower()
-# The cli backend currently produces NOTHING on real prompts, and the cause is
-# NOT the model. See automation/opencode/ZEN-FREE-MODELS.md for the evidence.
+# Free Zen models split cleanly into ones that answer and ones that return an
+# empty body. Measured 2026-08-02, one model per worker on real queue functions:
 #
-# Short version: big-pickle and north-mini-code-free both return rc=0 with zero
-# bytes, or hit the timeout, on every prompt in the 6k-11k range that a real
-# function generates. A 27-character prompt answers instantly on both. Quota,
-# auth, agent resolution and stdout routing are all ruled out with evidence.
-# Prompt size is the only variable that tracks the failure and has not been
-# bisected yet.
+#   WORK: deepseek-v4-flash-free, nemotron-3-ultra-free, mimo-v2.5-free
+#   DEAD: big-pickle, north-mini-code-free, ling-3.0-flash-free, laguna-s-2.1-free
 #
-# Do not "fix" this by rotating models again; that was tried and reproduced the
-# failure identically.
-OPENCODE_MODEL = os.environ.get("OPENCODE_MODEL", "opencode/north-mini-code-free")
+# deepseek is the default because it was the only model to produce clean C on
+# the first attempt at every size tested. Full table in
+# automation/opencode/ZEN-FREE-MODELS.md.
+#
+# Note that "the cli backend returns nothing" had TWO independent causes, which
+# is why it resisted diagnosis for so long: half the models genuinely return an
+# empty body, AND every prompt over 32767 chars failed to exec at all. Fixing
+# either one alone still looks broken. See the Popen call for the second.
+OPENCODE_MODEL = os.environ.get("OPENCODE_MODEL", "opencode/deepseek-v4-flash-free")
 # Optional: point at a running `opencode serve` to skip MCP cold-boot per call.
 OPENCODE_ATTACH = os.environ.get("OPENCODE_ATTACH", "").strip()
 # Tool-less agent defined in automation/opencode/opencode.json. Must be used, or
@@ -207,8 +209,13 @@ def _opencode_run_once(prompt: str, timeout: float | None = None) -> str:
     """Run one non-interactive completion through the OpenCode CLI.
 
     argv, never shell=True: the prompt contains assembly, braces and quotes that
-    would be mangled or worse by a shell. Linux argv limits are ~2MB and prompts
-    here run well under 20KB, so passing it directly is safe.
+    would be mangled or worse by a shell.
+
+    The prompt itself is piped on stdin rather than passed as an argument. The
+    old claim here, that "prompts here run well under 20KB", was measured on
+    four small functions and is false for the population: the median remaining
+    function yields a ~13KB prompt and the largest yields ~156KB. See the long
+    note at the Popen call.
     """
     # --agent raw and --auto are BOTH required.
     #
@@ -228,7 +235,8 @@ def _opencode_run_once(prompt: str, timeout: float | None = None) -> str:
             "--agent", OPENCODE_AGENT, "--auto"]
     if OPENCODE_ATTACH:
         argv += ["--attach", OPENCODE_ATTACH]
-    argv.append(prompt)
+    # The prompt is PIPED, not appended to argv. See the stdin note below; this
+    # is the single most important line in this function.
     print(f"  --- opencode run ({OPENCODE_MODEL}, prompt {len(prompt)} chars, "
           f"streaming) ---", flush=True)
     t0 = time.time()
@@ -247,12 +255,46 @@ def _opencode_run_once(prompt: str, timeout: float | None = None) -> str:
     # simply all arrive at the end and behaviour degrades to the old blocking
     # case, no worse. The live test tells us which it is on the first function.
     #
-    # stdin=DEVNULL is still REQUIRED: opencode probes stdin when it is not a
-    # TTY and blocks forever otherwise.
+    # THE PROMPT GOES ON STDIN. Do not move it back onto argv.
+    #
+    # opencode here is a Windows .exe invoked from WSL, so the whole command
+    # line must fit Windows CreateProcess's 32767-character limit. Past that the
+    # process never starts: rc=1, "opencode.exe: Invalid argument", in 0.0s.
+    #
+    # This produced months of misdiagnosis, because a failure to EXEC looks
+    # exactly like a model returning an empty body. Quota, auth, agent
+    # resolution, stdout routing and model choice were all investigated and
+    # cleared before the real cause was found. Measured with
+    # automation/opencode_size_bisect.py on 2026-08-02:
+    #
+    #     argv:   32000 chars ok  ->  32700 chars "Invalid argument" in 0.0s
+    #     stdin:  40000, 80000, 120000 chars ALL answer normally
+    #
+    # This is not a tuning knob. 59% of the remaining functions produce prompts
+    # over 32767 chars (p50 ~13k, p90 ~55k, max ~156k), so on argv the majority
+    # of the work left is unreachable no matter which model is selected.
+    #
+    # Closing stdin after the write is what makes this safe: opencode probes
+    # stdin when it is not a TTY, and an unclosed pipe blocks forever. That is
+    # the hang the previous stdin=DEVNULL was defending against.
     proc = subprocess.Popen(
         argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-        stdin=subprocess.DEVNULL, cwd=WIN_REPO, text=True,
+        stdin=subprocess.PIPE, cwd=WIN_REPO, text=True,
         encoding="utf-8", errors="replace", bufsize=1)
+
+    def feed():
+        # In its own thread: a prompt larger than the pipe buffer (64KB on
+        # Linux) blocks mid-write until the child drains it, and the child may
+        # not drain until it has written stdout that nobody is reading yet.
+        # Writing inline would deadlock on exactly the large prompts this
+        # change exists to support.
+        try:
+            proc.stdin.write(prompt)
+            proc.stdin.close()
+        except (BrokenPipeError, OSError, ValueError):
+            pass  # child already gone; proc.wait below reports the real error
+
+    threading.Thread(target=feed, daemon=True).start()
 
     degenerating = make_degeneration_detector()
     buf: list[str] = []
