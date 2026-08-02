@@ -64,7 +64,30 @@ INCLUDE_ASM("boss/bo6/nonmatchings/richter", BO6_RicStepRun);
 
 INCLUDE_ASM("boss/bo6/nonmatchings/richter", BO6_RicStepJump);
 
-INCLUDE_ASM("boss/bo6/nonmatchings/richter", BO6_RicStepFall);
+extern void func_us_801B9E70(void);
+
+// Richter (BO6): the falling step. Twin of RicStepFall in src/ric/pl_steps.c,
+// with no divergence beyond the g_Player -> g_Ric / PLAYER -> RIC swap.
+//
+// 0x9009 is the same capability mask RIC passes:
+// CHECK_GROUND(1) | CHECK_FACING(8) | CHECK_ATTACK(0x1000) |
+// CHECK_GRAVITY_FALL(0x8000). Spelled numerically because bo6.h pulls in
+// ric_shared.h but not src/ric/ric.h, where the CHECK_* enum lives.
+void BO6_RicStepFall(void) {
+    if (BO6_RicCheckInput(0x9009)) {
+        return;
+    }
+    DecelerateX(FIX(1. / 16));
+    switch (RIC.step_s) {
+    case 0:
+        if (g_Ric.timers[PL_T_5] && (g_Ric.padTapped & PAD_CROSS)) {
+            func_us_801B9E70();
+        } else if (BO6_RicCheckFacing()) {
+            BO6_RicSetSpeedX(FIX(0.75));
+        }
+        break;
+    }
+}
 
 INCLUDE_ASM("boss/bo6/nonmatchings/richter", BO6_RicStepCrouch);
 
@@ -96,7 +119,35 @@ INCLUDE_ASM("boss/bo6/nonmatchings/richter", BO6_RicStepHit);
 
 INCLUDE_ASM("boss/bo6/nonmatchings/richter", BO6_RicStepDead);
 
-INCLUDE_ASM("boss/bo6/nonmatchings/richter", BO6_RicStepStandInAir);
+extern s32 RIC_velocityY;
+extern AnimationFrame D_us_801820B0[];
+extern void BO6_RicSetStep(s32);
+extern void BO6_RicSetAnimation(AnimationFrame*);
+
+// Richter (BO6): the "hang in the air" step. Twin of RicStepStandInAir in
+// src/ric/pl_steps.c, MINUS its trailing `if (g_Player.unk72) PLAYER.velocityY
+// = 0;` clamp. All three exits jump straight to the epilogue at 0x385CC and
+// nothing in the function loads g_Ric + 0x3C2, so adding that block would be
+// inventing behaviour.
+//
+// RIC_velocityY is used as a flat extern rather than RIC.velocityY because the
+// assembly builds a fresh lui/%lo pair for each of the three accesses, while
+// step_s gets its address hoisted into $v1 once. That asymmetry is the
+// signature of a plain scalar global against a struct member.
+void BO6_RicStepStandInAir(void) {
+    if (RIC.step_s == 0) {
+        RIC_velocityY += 0x3800;
+        if (RIC_velocityY > 0) {
+            RIC_velocityY = 0;
+            RIC.step_s = 1;
+        }
+    } else if (g_Ric.unk4E) {
+        g_Ric.unk46 = 0;
+        BO6_RicSetStep(PL_S_JUMP);
+        BO6_RicSetAnimation(D_us_801820B0);
+        g_Ric.unk44 = 0;
+    }
+}
 
 INCLUDE_ASM("boss/bo6/nonmatchings/richter", BO6_RicStepEnableFlameWhip);
 
