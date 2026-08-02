@@ -1,4 +1,51 @@
-# rno0's last three shim blockers: `e_misc`, `e_collect`, `e_room_fg`
+# rno0's shim blockers: ONE cause, five stems, ~23 stubs
+
+## UPDATE 2026-08-02 (post-audit): the blocker is a single, shared cause
+
+The audit showed `e_blade`, `e_gurkha` and `e_hammer` DO have shared
+implementations (no2 and np3 shim all three), retracting a false "no shared
+impl" claim. All three were then attempted end to end. All three fail the same
+way as `e_misc` and `e_room_fg`, and the numbers are striking:
+
+| stem | rno0 text | no2 | np3 | delta |
+|---|---|---|---|---|
+| `e_hammer` | 0x12B8 | 0x12AC | 0x12AC | **+0xC** |
+| `e_gurkha` | 0x1294 | 0x1288 | 0x1288 | **+0xC** |
+| `e_blade`  | 0x1544 | 0x1538 | 0x1538 | **+0xC** |
+
+Exactly +0xC in all three, against two independent peers that agree with each
+other. That is three extra instructions per file, in the same amount, which is
+a systematic difference rather than three coincidences. `overlay_size_check`
+localised the first one to `EntityHammer` being 0x14 short.
+
+Their `.data` addresses ARE correct and were confirmed three ways: derived
+starts (0x2124 / 0x26A0 / 0x2B90) reproduce the peer-declared sizes exactly
+(0x26A0-0x2124 = 0x57C, 0x2B90-0x26A0 = 0x4F0), and no2 and np3 independently
+declare 0x57C / 0x4F0 / 0x698. Placement was never the problem.
+
+**So five stems are blocked on one thing: rno0's function bodies differ in size
+from what the shared header emits.**
+
+```
+e_misc     14 stubs   header emits 0xB8, rno0's slot is 0xB4   (-0x4)
+e_hammer    3 stubs   +0xC per file
+e_gurkha    2 stubs   +0xC per file
+e_blade     2 stubs   +0xC per file
+e_room_fg   1 stub    header emits 0x8C, rno0's slot 0x78      (one ObjInit)
+```
+
+That is ~22 stubs behind a single capability: parameterising the shared headers
+so a stage can supply its own variant. `entity_lock_camera.h` already proves the
+pattern works, and it produced a match. The identical +0xC across three
+unrelated giant-bro files is the best available lead: find that difference once
+and three stems may fall together.
+
+Scoped as task #64. Do NOT attempt these individually again without it; that has
+now been tried and reverted twice.
+
+---
+
+# Original: rno0's last three shim blockers: `e_misc`, `e_collect`, `e_room_fg`
 
 ## RESULT 2026-08-02: none of them is shimmable. This is a dead end.
 
