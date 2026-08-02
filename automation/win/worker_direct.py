@@ -723,6 +723,57 @@ def find_source(function: str, overlay: str | None = None):
     return cands[0]
 
 
+def candidate_path(rec: dict) -> str:
+    """Where a compiling-but-mismatching candidate is kept, per queue record.
+
+    NOT under automation/logs/: that whole directory is gitignored and gets
+    archived when the logs get noisy, so anything left there is disposable by
+    design. A compiling candidate is the opposite of disposable.
+    """
+    slug = re.sub(r"[^A-Za-z0-9_.-]+", "_", rec["id"]).strip("_")
+    return os.path.join(WIN_REPO, "automation", "candidates", f"{slug}.c")
+
+
+def save_candidate(rec: dict, code: str, attempt: int, detail: str) -> str:
+    """Preserve C that COMPILED AND LINKED but produced the wrong bytes.
+
+    This is the single most valuable artifact the worker produces short of a
+    match, and it was being thrown away.
+
+    The permuter mutates a compiling function to search codegen space. It needs
+    a compiling function to start from. The worker reverts every failed attempt
+    so the tree stays clean for other workers, which is correct, and it writes
+    each attempt to automation/logs/gen/ -- but that recorded no verdict, so
+    nothing downstream could tell a candidate that compiled from one that never
+    built, and the directory is gitignored and periodically archived.
+
+    Net effect measured 2026-08-02: all four `near` records had ZERO surviving
+    seeds, live or archived, so the permuter had nothing to run on and P2 sat
+    blocked. Every one of those had to be regenerated from scratch.
+
+    Returns the repo-relative path, or "" on failure. Never raises: losing the
+    seed is bad, but failing the attempt over a filesystem hiccup is worse.
+    """
+    try:
+        path = candidate_path(rec)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        model = OPENCODE_MODEL if MODEL_BACKEND == "cli" else LLAMA_MODEL
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(f"/* PERMUTER SEED -- compiled and linked, bytes differ.\n"
+                    f"   record : {rec['id']}\n"
+                    f"   attempt: {attempt}/{MAX_ATTEMPTS}\n"
+                    f"   model  : {model}\n"
+                    f"   verdict: {detail[:160]}\n"
+                    f"   Do NOT apply this to the tree as-is; it does not match.\n"
+                    f"   It exists so the permuter has a compiling starting"
+                    f" point. */\n")
+            f.write(code)
+        return os.path.relpath(path, WIN_REPO).replace("\\", "/")
+    except OSError as e:
+        print(f"  !! could not save permuter seed: {e}", flush=True)
+        return ""
+
+
 def asm_rel_path(rec: dict, asm_rel: str) -> str:
     base = asm_rel if asm_rel.startswith("asm/") else f"asm/{rec['build']}/{asm_rel}"
     return f"{base}/{rec['function']}.s"
@@ -2276,6 +2327,7 @@ def process_one(dry: bool = False) -> bool:
     # decides where the record is routed when the attempts run out. See the
     # status choice at the end of this function.
     compiled_once = False
+    seed_path = ""          # permuter seed written by the last compiling attempt
     produced_code = False   # did ANY attempt yield a candidate to build?
     gen_errors = 0          # attempts that errored during generation
     try:
@@ -2420,6 +2472,16 @@ def process_one(dry: bool = False) -> bool:
             feedback = detail
             if "BUILD FAILED" not in detail:
                 compiled_once = True
+                # Save BEFORE collecting the diff. asm-differ is a subprocess
+                # that can time out or be killed, and losing the seed to a
+                # feedback step that is only advisory would be absurd.
+                #
+                # A later compiling attempt overwrites an earlier one on
+                # purpose: retries carry asm-differ feedback the first attempt
+                # never had, so the last one to compile is the closest.
+                seed_path = save_candidate(rec, code, attempt, detail) or seed_path
+                if seed_path:
+                    print(f"  -> permuter seed saved: {seed_path}", flush=True)
                 with Status("asm-differ (collecting feedback)"):
                     feedback += "\n\nDIFF:\n" + diff_feedback(rec)
             for dl in detail.splitlines()[:6]:
@@ -2442,10 +2504,15 @@ def process_one(dry: bool = False) -> bool:
         if compiled_once:
             print(f"[worker] NEAR {fn}: compiled, bytes differ -> permuter",
                   flush=True)
+            # The note must name the seed FILE, not just assert one exists.
+            # The old note said "candidate for permuter" and pointed at nothing,
+            # so a later reader could not tell whether a seed had ever been
+            # written, and in fact none had.
+            where = f" seed={seed_path}" if seed_path else " seed=NONE(save failed)"
             sched("report", "--id", rec["id"], "--status", "near",
                   "--score", "50", "--tier", "0",
-                  "--notes", ("compiled, byte mismatch; candidate for permuter. "
-                              + best)[:250])
+                  "--notes", ("compiled, byte mismatch; permuter candidate."
+                              + where + " " + best)[:250])
         elif not produced_code:
             # The model NEVER produced a candidate: every attempt errored during
             # generation (server error, empty gateway drop, degeneration, or
