@@ -432,12 +432,23 @@ def cmd_annotate(args):
     print(f"twins:  {src}  ({len(twins)} entries, "
           f"generated from {doc.get('generated_from') or 'unknown'})")
 
+    # Case-insensitive keys. The queue stores overlay UPPERCASE ("BOSS/BO6",
+    # from the seed) while twins.us.json derives it from the asm path and gets
+    # lowercase ("boss/bo6"). Matching them literally found ZERO records, and
+    # the first version of this command then printed "every matching record is
+    # already annotated", which is how a total no-op passes for success. Fold
+    # case on both sides, and never let "nothing matched" share a message with
+    # "nothing left to do".
+    lookup = {k.lower(): v for k, v in twins.items()}
+
     records = Queue()._read()
     planned: dict[str, dict] = {}
+    matched_any = 0
     for r in records:
-        entry = twins.get(f"{r.get('overlay')}/{r.get('function')}")
+        entry = lookup.get(f"{r.get('overlay')}/{r.get('function')}".lower())
         if not entry:
             continue
+        matched_any += 1
         twin = {
             "name": [f"{t['file']}:{t['function']}"
                      for t in entry.get("name_twins") or []],
@@ -458,8 +469,22 @@ def cmd_annotate(args):
         extra = f" +{len(names) - 1} more" if len(names) > 1 else ""
         print(f"  annotate  {rid}\n              -> {head}{extra}")
 
+    if not matched_any:
+        # Loud, because this is indistinguishable from success if you only read
+        # the exit code. It means the two id schemes have drifted apart again.
+        sample_q = [f"{r.get('overlay')}/{r.get('function')}"
+                    for r in records[:3]]
+        sample_t = list(twins)[:3]
+        sys.exit(
+            f"\nERROR: not one of {len(records)} queue records matched any of "
+            f"the {len(twins)} twin entries.\n"
+            f"  queue keys look like: {sample_q}\n"
+            f"  twin  keys look like: {sample_t}\n"
+            f"This is a key-format mismatch, not an empty result. Nothing was "
+            f"written.")
     if not planned:
-        print("\nnothing to do: every matching record is already annotated.")
+        print(f"\nnothing to do: all {matched_any} matching record(s) are "
+              f"already annotated.")
         return
     if not args.apply:
         print(f"\ndry run: {len(planned)} record(s) would be annotated. "
