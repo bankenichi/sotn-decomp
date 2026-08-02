@@ -44,6 +44,12 @@ segments:
       - [0x8FC, .data, e_init]
       - [0xC18, .data, e_room_bg]
       - [0xE20, data]
+      # Located by automation/find_data_segment.py, which calibrates against a
+      # peer whose address its config already declares before trusting a hit.
+      # Cross-check: st_update 0x1048..0x1094, collision 0x1094..0x1454 and
+      # e_red_door 0x1454 tile with no gaps, in `c` segment order.
+      - [0x1048, .data, st_update]    # 0x4C
+      - [0x1094, data]
       # g_eRedDoorUV, 3 rows of 8 bytes. `static` in src/st/e_red_door.h, so
       # the compiled e_red_door.c must emit it and splat must NOT. Located by
       # searching RNO0.BIN for the initialiser's 24-byte signature; the same
@@ -123,8 +129,23 @@ segments:
       # STATIC_PAD_BSS(104). Confirmed against splat.us.stnp3.yaml, where the
       # same segment spans 0x53378..0x533F4 = 0x7C.
       - [0x54AC8, .bss, giantbro_helpers]
-      # The trailing 0x48 (D_us_801D4B48/4B4A/4B4C) belongs to some other file
-      # and stays as extracted assembly until it is identified. np3 attributes
-      # the equivalent region to st_update.
-      - [0x54B44, bss]
+      # IDENTIFIED 2026-08-02. The old note here guessed that this whole 0x48
+      # "belongs to some other file", and that np3 attributes the equivalent
+      # region to st_update. Half right: only the TAIL is st_update's.
+      #
+      # asm/us/st/rno0/data/54B44.bss.s labels it exactly:
+      #     0x54B44  D_us_801D4B44   0x4
+      #     0x54B48  g_Statues       0x4   (two shorts, used by e_clock_room.h)
+      #     0x54B4C  D_us_801D4B4C   0x40  (16 words, runs to 0x54B8C)
+      #
+      # That trailing 0x40 is precisely what src/st/st_update.h emits as
+      # uninitialised static storage, so it is st_update's and the split goes
+      # AFTER g_Statues, not before it.
+      #
+      # g_Statues must keep 0x801D4B48: e_clock_room.c shims a header that
+      # references it, so that address is encoded in already-matching code.
+      # Moving st_update to the front of this region would break six matched
+      # clock-room functions.
+      - [0x54B44, bss]                # 0x8: D_us_801D4B44 + g_Statues
+      - [0x54B4C, .bss, st_update]    # 0x40
   - [0x54B8C]

@@ -45,9 +45,11 @@ extern u8* D_us_80181830[];
 // Storage lives in an undecompiled data blob.
 extern s16 D_us_80181890[];
 
-// g_ItemIconSlots: icon-slot allocation table (ICON_SLOT_NUM entries).
-// Storage lives in an undecompiled data blob.
-extern u16 D_us_801D4B4C[32];
+// Icon-slot allocation table. Was `extern u16 D_us_801D4B4C[32]`, a raw
+// address. It is g_ItemIconSlots, declared by src/st/st_update.h as
+// `u16 g_ItemIconSlots[ICON_SLOT_NUM]` (32 u16 = 0x40) and now DEFINED by
+// rno0's st_update shim rather than extracted as anonymous bss.
+extern u16 g_ItemIconSlots[];
 
 // EntityRelicOrb's support tables. Storage lives in undecompiled data blobs.
 extern const char* D_us_8018195C[];  // g_RelicOrbTexts
@@ -517,7 +519,7 @@ void EntityEquipItemDrop(Entity* self) {
         }
 
         for (i = 0; i < ICON_SLOT_NUM; i++) {
-            if (!D_us_801D4B4C[i]) {
+            if (!g_ItemIconSlots[i]) {
                 break;
             }
         }
@@ -538,7 +540,7 @@ void EntityEquipItemDrop(Entity* self) {
         }
         self->flags |= FLAG_HAS_PRIMS;
         self->primIndex = primIndex;
-        D_us_801D4B4C[i] = 0x1E0;
+        g_ItemIconSlots[i] = 0x1E0;
         self->ext.equipItemDrop.iconSlot = i;
         if (itemId < NUM_HAND_ITEMS) {
             g_api.LoadEquipIcon(g_api.equipDefs[itemId].icon,
@@ -596,7 +598,7 @@ void EntityEquipItemDrop(Entity* self) {
             }
         } else {
             i = self->ext.equipItemDrop.iconSlot;
-            D_us_801D4B4C[i] = 0x10;
+            g_ItemIconSlots[i] = 0x10;
         }
         break;
     case 4:

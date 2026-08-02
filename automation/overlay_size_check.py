@@ -118,10 +118,68 @@ def check(overlay: str) -> tuple[int, list[str]]:
     # Text-vs-bss discrimination.
     bss_start = next((v for k, v in marks.items() if k.endswith("_BSS_START")), None)
     if bss_start is not None and bad:
-        lines.append(f"  BSS_START = 0x{bss_start:08x}. BSS_START equals "
-                     f"TEXT_END, so if it is off by the same delta the fault is "
-                     f"in TEXT, not in bss or the splat .bss segments.")
+        lines.extend(section_verdict(overlay, bss_start, bad[0][1], bad[0][2]))
     return len(bad), lines
+
+
+def expected_bss_start(overlay: str) -> int | None:
+    """First `.bss`/`bss` subsegment address plus the segment's vram base."""
+    p = REPO / "config" / f"splat.us.{overlay}.yaml"
+    if not p.exists():
+        return None
+    vram = None
+    for ln in p.read_text(encoding="utf-8", errors="replace").splitlines():
+        m = re.search(r"^\s*vram:\s*(0x[0-9A-Fa-f]+)", ln)
+        if m and vram is None:
+            vram = int(m.group(1), 16)
+        m = re.match(r"\s*-\s*\[\s*(0x[0-9A-Fa-f]+)\s*,\s*\.?bss\b", ln)
+        if m and vram is not None:
+            return int(m.group(1), 16) + vram
+    return None
+
+
+def section_verdict(overlay: str, bss_start: int, want: int, got: int) -> list[str]:
+    """Which SECTION grew? Requires knowing whether BSS_START itself moved.
+
+    THE BUG THIS FIXES. This used to print, unconditionally, "BSS_START equals
+    TEXT_END, so the fault is in TEXT, not in bss". That inference is only
+    sound when BSS_START is ITSELF wrong. On 2026-08-02 rno0's BSS_START was
+    exactly right and the growth was INSIDE bss -- st_update.h emitted 0x40 of
+    unreserved static storage which pushed the trailing bss along. The message
+    sent the diagnosis at TEXT for two full build cycles before the linker map
+    settled it.
+
+    Now it asks three questions in order:
+      1. Is the diverging symbol below BSS_START? Then it is text or data.
+      2. Is BSS_START where the splat config says? If NOT, everything before
+         bss grew, so the fault is upstream in text or data.
+      3. BSS_START correct but a bss symbol moved => something emitted bss that
+         no `.bss` segment reserved. That is the actual finding.
+    """
+    out = [f"  BSS_START = 0x{bss_start:08x} (equals TEXT_END)."]
+    if want < bss_start:
+        out.append("    The diverging symbol is BELOW BSS_START, so it is in "
+                   "TEXT or data. bss is not implicated.")
+        return out
+    exp = expected_bss_start(overlay)
+    if exp is None:
+        out.append("    Symbol is in bss, but the expected BSS_START could not "
+                   "be read from the splat config, so the section cannot be "
+                   "attributed. Compare the .bss objects in the map by hand.")
+        return out
+    if bss_start != exp:
+        out.append(f"    BSS_START is WRONG (expected 0x{exp:08x}, "
+                   f"{bss_start - exp:+#x}), so everything before bss grew: the "
+                   f"fault is in TEXT or data, not in the .bss segments.")
+        return out
+    out.append(f"    BSS_START is CORRECT, yet a bss symbol moved {got - want:+#x}. "
+               f"So the growth is INSIDE bss: some object is emitting static "
+               f"storage that no '.bss, <stem>' segment reserves, and it is "
+               f"pushing later bss along.")
+    out.append("    Do NOT go diffing functions. Instead list the .bss inputs "
+               f"in build/us/{overlay}.map and find the object with no matching "
+               f"segment in config/splat.us.{overlay}.yaml.")
+    return out
 
 
 def _locate(common: list[tuple[str, int]], actual: dict[str, int]):
@@ -163,6 +221,38 @@ def self_test() -> int:
         ck("names the FIRST divergence", first == "F", str(first))
         ck("reports the byte delta", delta == 0x10, hex(delta))
         ck("blames the PRECEDING function", culprit == "E", str(culprit))
+
+    # --- section attribution, the bug that cost two build cycles -----------
+    #
+    # rno0's real numbers on 2026-08-02: BSS_START 0x801d3eb8 exactly where the
+    # splat config puts it, and g_Statues (in bss) shifted +0x40 because
+    # st_update.h emitted unreserved static storage. The old code called this
+    # TEXT.
+    real_bss = 0x801D3EB8
+    v = section_verdict("strno0", real_bss, 0x801D4B48, 0x801D4B88)
+    joined = " ".join(v)
+    ck("bss symbol + correct BSS_START is reported as INSIDE bss",
+       "INSIDE bss" in joined, joined[:150])
+    ck("and it does NOT blame text", "fault is in TEXT" not in joined,
+       joined[:150])
+    ck("it says which map section to inspect", ".bss inputs" in joined)
+
+    # A symbol below BSS_START is text/data, whatever bss is doing.
+    v2 = " ".join(section_verdict("strno0", real_bss, 0x801B7324, 0x801B7364))
+    ck("symbol below BSS_START is attributed to TEXT or data",
+       "BELOW BSS_START" in v2, v2[:120])
+
+    # BSS_START itself wrong => the growth is upstream, in text or data.
+    v3 = " ".join(section_verdict("strno0", real_bss + 0x40,
+                                  0x801D4B48, 0x801D4B88))
+    ck("shifted BSS_START is attributed upstream to TEXT/data",
+       "BSS_START is WRONG" in v3 and "TEXT or data" in v3, v3[:150])
+
+    ck("expected BSS_START is read from the splat config",
+       expected_bss_start("strno0") == real_bss,
+       hex(expected_bss_start("strno0") or 0))
+    ck("unknown overlay degrades without raising",
+       expected_bss_start("stnosuch") is None)
 
     ck("clean input reports nothing",
        _locate(common, {n: a for n, a in common}) is None)

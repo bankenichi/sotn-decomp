@@ -465,11 +465,75 @@ even though the declared `c` segment sizes are byte-identical (0x434 both, and
 0x0 delta for all seven stems). The declared size describes the ORIGINAL binary;
 it does not promise the header will compile to it here.
 
-**Next step, concrete:** diff the shim's compiled `Update` and
-`UpdateStageEntities` against `asm/us/st/rno0/nonmatchings/st_update/*.s` and
-find the 0x40. Most likely a macro in `rno0.h` that changes codegen, or an
-inverted-castle branch in the header. The `.data` addresses above are believed
-correct and independently cross-checked; they are not the problem.
+**RESOLVED 2026-08-02. `st_update` is shimmed; 81/81, 0 shifted symbols.**
+`Update` and `UpdateStageEntities` matched, `Random`'s duplicate deleted. It
+needed THREE segments, and only the first was obvious:
+
+```
+.data, st_update  0x1048   the header's `unused` + UNK_Invincibility0
+.bss,  st_update  0x54B4C  g_ItemIconSlots, 0x40, was D_us_801D4B4C
+c,     st_update  0x37324  already present
+```
+
+The bss one is the trap: without it the storage is still emitted, just appended
+after every other bss object, silently pushing the whole overlay 0x40 higher.
+
+`g_ItemIconSlots` had to be NAMED in `config/symbols.us.strno0.txt`, not left as
+`D_us_801D4B4C`. `e_collect.c` declared `extern u16 D_us_801D4B4C[32]` against
+the same storage, so once st_update.c owned the segment that auto-generated
+label vanished and the link broke. Renaming both sides to the real name fixed it
+and removed a raw address from e_collect.c as a bonus.
+
+**Sequence of wrong turns, kept because each was cheap and each ruled something
+out.** Inverted-castle divergence (refuted: nine inverted stages shim this
+fine). The stage-header include (refuted: rebuilding without `#include "rno0.h"`
+gave an identical delta). Placing the bss BEFORE `g_Statues` (refuted by the
+linker, which named `e_collect.c` as another user of that exact address). The
+linker error was the most informative signal of the three -- far better than a
+checksum failure, because it names the symbol AND the file.
+
+**ROOT CAUSE, for the record: it is `.bss`, not text and not data.**
+
+Two hypotheses were tested and both refuted before the map gave the answer:
+
+- *Inverted-castle divergence.* Refuted: nine inverted stages shim `st_update`
+  successfully (rare, rcat, rcen, rchi, rdai, rno3, rnz0, rtop, rwrp). rno0 is
+  the only us stage that does not.
+- *The stage-header include.* Peer shims split two ways -- chi/no0/nz0 include
+  only the shared header, are/cat/rcen/rno3 also include their stage header.
+  Rebuilt with `#include "rno0.h"` removed: **identical +0x40**. Refuted.
+
+The linker map settles it. Every `.data` object, every `.rodata` object and
+every `c` segment lands at exactly its configured address. The growth is here:
+
+```
+bss 0x801d4ac8  0x7c  giantbro_helpers.c.o
+bss 0x801d4b44  0x40  st_update.c.o      <- emitted, nothing reserved for it
+bss 0x801d4b84  0x48  54B44.bss.s.o      <- g_Statues, pushed +0x40
+```
+
+`st_update.h` declares 0x40 of uninitialised static storage. rno0 has no
+`.bss, st_update` segment, so it is appended after everything and shoves the
+trailing bss along. **This overlay's own config predicted it**, in a comment
+written during the earlier bss work: "The trailing 0x48 belongs to some other
+file... np3 attributes the equivalent region to st_update." And np3 indeed has
+`[0x533F4, .bss, st_update]` where rno0 has an unnamed `[0x54B44, bss]`.
+
+**Correcting an error in the earlier diagnosis above:** `overlay_size_check`
+reports "BSS_START equals TEXT_END, so the fault is in TEXT". That reasoning is
+only valid when BSS_START itself is wrong. Here BSS_START was correct and the
+growth was *inside* bss, so the message pointed at the wrong section. The check
+should say so; see the follow-up task.
+
+**Not a clean rename, which is why it is still open.** rno0's trailing region is
+0x48 while the shim emits 0x40, and `g_Statues` sits at `0x801D4B48`, four bytes
+into it. So st_update's storage cannot simply take that region; the 0x40 has to
+be carved from the right place, most likely out of the `STATIC_PAD_BSS(0xC00)`
+in `src/st/rno0/bss.c`. Establish where it belongs in the ORIGINAL before
+moving anything.
+
+The `.data` addresses found by `find_data_segment.py` are independently
+cross-checked and were never the problem.
 
 ### Original entry
 

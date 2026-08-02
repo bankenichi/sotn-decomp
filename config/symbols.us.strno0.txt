@@ -265,3 +265,16 @@ g_RedDoorTiles = 0x80180E20; // size:0x20
 // the middle of the unnamed 0xE20 data blob, so the extern would not link.
 // Naming it forces the label out.
 D_us_80181134 = 0x80181134; // size:0x4
+
+// src/st/st_update.h: `u16 g_ItemIconSlots[ICON_SLOT_NUM]`, 32 u16 = 0x40.
+// Confirmed three ways: np3 places it at its own st_update bss start
+// (0x801D33F4, span 0x40); rno0's st_update assembly references this address
+// as its ONLY bss reference; and the extracted label D_us_801D4B4C is exactly
+// 0x40 bytes running to the end of bss.
+//
+// It MUST be named, not left as D_us_801D4B4C. e_collect.c's INCLUDE_ASM stubs
+// reference the same storage, and once st_update.c owns the segment the
+// auto-generated label disappears -- which is precisely the link error this
+// fixes: "e_collect.c: undefined reference to `D_us_801D4B4C'". Naming it makes
+// both sides agree, since the shared header defines the symbol.
+g_ItemIconSlots = 0x801D4B4C; // size:0x40
