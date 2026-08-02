@@ -444,6 +444,316 @@ def self_test() -> int:
     return 1 if failures else 0
 
 
+# ---------------------------------------------------------------------------
+# auditing what is ALREADY matched
+#
+# Be precise about what this can and cannot show, because the obvious reading
+# of "verify the matches against their twins" promises something the build
+# already guarantees.
+#
+# `verify_build` hashes every one of the 81 overlays against the retail disc.
+# A matched function therefore cannot contain a flattened constant, a dropped
+# branch, or a wrong field: any of those change the bytes and the overlay
+# fails. Looking for correctness defects among matched functions is looking
+# for something 81/81 has already excluded.
+#
+# What the byte check is blind to is architecture and intent, and that is
+# where a twin pass earns its keep:
+#
+#   SHIM_CANDIDATE   we wrote a private copy of a function that already
+#                    exists in a shared header. Byte-correct, structurally
+#                    wrong, and precisely the thing upstream objected to.
+#
+#   CONSTANT_DIVERGENT
+#                    our copy and its twin have the same shape but different
+#                    numbers. Both are correct, and the pair must NEVER be
+#                    merged into one shared implementation. Recording the
+#                    exact differing constants is what stops a later shim
+#                    attempt from silently breaking one of them -- which is
+#                    the failure mode the rno0/bo0 pair (0x11 vs 0x19) would
+#                    have produced.
+#
+#   IDENTICAL        same shape, same numbers, twin lives in a sibling
+#                    overlay .c. Expected; overlays duplicate by design.
+
+_NUMBER = re.compile(r"\b(?:0[xX][0-9A-Fa-f]+|\d+)\b")
+
+
+def _strip_comments(body: str) -> str:
+    body = re.sub(r"/\*.*?\*/", " ", body, flags=re.S)
+    return re.sub(r"//[^\n]*", " ", body)
+
+
+def body_numbers(body: str) -> list[int]:
+    out = []
+    for tok in _NUMBER.findall(_strip_comments(body)):
+        try:
+            out.append(int(tok, 0))
+        except ValueError:
+            pass
+    return out
+
+
+def body_shape(body: str) -> list[str]:
+    """Token sequence with identifiers and numbers erased.
+
+    Two bodies with the same shape do the same thing to different names and
+    numbers, which is exactly the comparison that separates "copied and
+    adapted" from "rewritten".
+    """
+    toks = re.findall(r"[A-Za-z_]\w*|0[xX][0-9A-Fa-f]+|\d+|[^\s\w]",
+                      _strip_comments(body))
+    out = []
+    for t in toks:
+        if re.fullmatch(r"[A-Za-z_]\w*", t):
+            out.append("ID")
+        elif re.fullmatch(r"0[xX][0-9A-Fa-f]+|\d+", t):
+            out.append("NUM")
+        else:
+            out.append(t)
+    return out
+
+
+def _is_shared_impl(rel: str) -> bool:
+    """Is this path a shared implementation rather than one overlay's copy?
+
+    src/st/<name>.h is the convention: the implementation sits at the src/st
+    level and each stage contributes a three-line shim. A header INSIDE an
+    overlay directory (src/st/are/e_breakable.h) is that overlay's own file
+    and is not shared.
+    """
+    if not rel.endswith(".h"):
+        return False
+    parts = rel.split("/")
+    return len(parts) == 3 and parts[0] == "src" and parts[1] in ("st", "ric", "dra")
+
+
+def _our_files() -> set[str]:
+    import subprocess
+
+    try:
+        p = subprocess.run(
+            ["git", "diff", "--name-only", "upstream/master..HEAD", "--", "src/"],
+            cwd=str(REPO), capture_output=True, text=True, timeout=120,
+        )
+        if p.returncode == 0:
+            return {l.strip() for l in p.stdout.splitlines() if l.strip()}
+    except Exception:
+        pass
+    return set()
+
+
+def audit_matched() -> list[dict]:
+    """Cross-check every function written in C against its same-named twins.
+
+    "Matched" here means "written in C and not stubbed by an INCLUDE_ASM",
+    which is the only definition available from the files alone. An earlier
+    version gated on a surviving nonmatchings/*.s, on the theory that the
+    extracted assembly records a function's origin. It does not: extraction
+    removes the .s once a function is written, so that gate saw only the two
+    functions matched since the last extract and silently called it "all".
+    """
+    still = include_asm_symbols()
+    extracted = {
+        p.stem for p in ASM_ROOT.rglob("*.s") if "nonmatchings" in str(p)
+    }
+
+    cfuncs = [
+        (rel, fname, body)
+        for rel, fname, body in c_functions()
+        if fname not in still
+    ]
+
+    groups: dict[str, list[int]] = defaultdict(list)
+    for i, (_, fname, _) in enumerate(cfuncs):
+        groups[strip_overlay_prefix(fname).lower()].append(i)
+
+    ours = _our_files()
+    cache: dict[int, tuple[list[int], list[str]]] = {}
+
+    def analysed(i):
+        if i not in cache:
+            body = cfuncs[i][2]
+            cache[i] = (body_numbers(body), body_shape(body))
+        return cache[i]
+
+    rows = []
+    for key, members in groups.items():
+        if len(members) < 2:
+            continue
+        # Each unordered pair once. Reporting both directions doubles every
+        # count and makes the totals meaningless.
+        for a_i in range(len(members)):
+            for b_i in range(a_i + 1, len(members)):
+                i, j = members[a_i], members[b_i]
+                rel, fname, _ = cfuncs[i]
+                trel, tfname, _ = cfuncs[j]
+                nums, shape = analysed(i)
+                tnums, tshape = analysed(j)
+
+                if shape != tshape:
+                    verdict = "STRUCTURAL_DIVERGENT"
+                elif nums != tnums:
+                    verdict = "CONSTANT_DIVERGENT"
+                elif _is_shared_impl(trel) or _is_shared_impl(rel):
+                    verdict = "SHIM_CANDIDATE"
+                else:
+                    verdict = "IDENTICAL"
+
+                rows.append(
+                    {
+                        "function": fname,
+                        "file": rel,
+                        "had_asm": fname in extracted,
+                        "ours": rel in ours or trel in ours,
+                        "twin_file": trel,
+                        "twin_function": tfname,
+                        "twin_is_shared_impl": _is_shared_impl(trel),
+                        "verdict": verdict,
+                        "our_constants": nums,
+                        "twin_constants": tnums,
+                        "differing_constants": (
+                            sorted(set(nums) ^ set(tnums)) if nums != tnums else []
+                        ),
+                    }
+                )
+    return rows
+
+
+def report_audit(rows: list[dict]) -> None:
+    order = ["SHIM_CANDIDATE", "CONSTANT_DIVERGENT", "STRUCTURAL_DIVERGENT",
+             "IDENTICAL"]
+    by = defaultdict(list)
+    for r in rows:
+        by[r["verdict"]].append(r)
+
+    funcs = {(r["file"], r["function"]) for r in rows}
+    funcs |= {(r["twin_file"], r["twin_function"]) for r in rows}
+    ourpairs = [r for r in rows if r["ours"]]
+    print("=" * 78)
+    print("AUDIT OF MATCHED FUNCTIONS AGAINST THEIR TWINS")
+    print("=" * 78)
+    print(f"{len(funcs)} matched functions participate in a twin relationship")
+    print(f"{len(rows)} unordered pairs examined, "
+          f"{len(ourpairs)} touching a file this fork changed")
+    print()
+    print("Scope note: all 81 overlays hash-match the retail disc, so none of")
+    print("these can be functionally wrong. What follows is architecture and")
+    print("intent, which the byte check cannot see.")
+    print()
+    for v in order:
+        print(f"  {v:22} {len(by[v]):5}")
+
+    if by["CONSTANT_DIVERGENT"]:
+        print()
+        print("CONSTANT_DIVERGENT -- same code, different numbers.")
+        print("These pairs are both correct and must NOT be merged into a")
+        print("shared implementation. This is the list to check before any")
+        print("future shim attempt.")
+        print("-" * 78)
+        for r in sorted(by["CONSTANT_DIVERGENT"], key=lambda r: r["function"]):
+            mark = "*" if r["ours"] else " "
+            print(f" {mark}{r['file']}:{r['function']}")
+            print(f"    vs {r['twin_file']}:{r['twin_function']}")
+            print(f"    differing constants: {r['differing_constants']}")
+
+    if by["SHIM_CANDIDATE"]:
+        print()
+        print("SHIM_CANDIDATE -- byte-identical to a SHARED implementation.")
+        print("A private copy of code that already has a home. Byte-correct,")
+        print("structurally wrong; this is upstream's objection, by name.")
+        print("-" * 78)
+        for r in sorted(by["SHIM_CANDIDATE"], key=lambda r: r["function"]):
+            mark = "*" if r["ours"] else " "
+            print(f" {mark}{r['file']}:{r['function']}  ->  {r['twin_file']}")
+    print()
+    print("* marks a file this fork changed relative to upstream/master.")
+
+
+RECORD_PATH = REPO / "automation" / "twins.us.json"
+
+
+def write_record() -> int:
+    """Persist the twin map where a worker can read it for free.
+
+    The obvious home for this is the work queue, one twin field per record.
+    That is not available: the queue lives at $SOTN_QUEUE, which defaults to
+    ~/sotn-work/queue.jsonl, so it resolves to a DIFFERENT file depending on
+    whose HOME is running. Writing it from here would fork the harness state
+    while appearing to succeed -- the same trap that made the sandbox report
+    33 matched where the live queue had 134.
+
+    A committed file in the repo is strictly better anyway. It is versioned,
+    it regenerates from the tree rather than drifting from it, and a worker
+    reads it with a dict lookup instead of spending model tokens rediscovering
+    that BO6_RicStepStand is RicStepStand.
+    """
+    import subprocess
+
+    try:
+        head = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"], cwd=str(REPO),
+            capture_output=True, text=True, timeout=60,
+        ).stdout.strip()
+    except Exception:
+        head = ""
+
+    rows = [r for r in analyse() if r["still_asm"]]
+
+    # Key on overlay AND symbol. A bare symbol is NOT unique: EntityBreakable
+    # is stubbed in both st/rchi and st/rno0, and EntityUnkId1B in both
+    # st/rcen and st/rno0. Keying on the symbol alone silently dropped one of
+    # each pair and would have handed a worker the other overlay's twin --
+    # a wrong answer delivered with the same confidence as a right one.
+    twins = {
+        f"{r['overlay']}/{r['symbol']}": {
+            "symbol": r["symbol"],
+            "overlay": r["overlay"],
+            "instructions": r["instructions"],
+            "name_twins": r["name_twins"],
+            "shape_twins": r["shape_twins"],
+            "token_twins": r["token_twins"],
+        }
+        for r in rows
+        if r["name_twins"] or r["shape_twins"] or r["token_twins"]
+    }
+    assert len(twins) == sum(
+        1 for r in rows
+        if r["name_twins"] or r["shape_twins"] or r["token_twins"]
+    ), "twin keys collided; the key is not unique"
+    doc = {
+        "generated_from": head,
+        "version": "us",
+        "unmatched_stubs": len(rows),
+        "with_candidates": len(twins),
+        "how_to_read": (
+            "A twin is a starting point, not an answer. Diff it against the "
+            "stub's assembly before copying: sibling overlays routinely differ "
+            "by one constant or one branch, and copying past that difference "
+            "produces a function that is wrong in a way the build will catch "
+            "but a reviewer will not. A twin under src/st/<name>.h is a SHARED "
+            "implementation, so the right answer there is usually a shim, not "
+            "a copy -- check shim_viable() in codebase_index.py first."
+        ),
+        "regenerate": "python3 automation/asm_twin_finder.py --record",
+        "twins": twins,
+    }
+    RECORD_PATH.write_text(json.dumps(doc, indent=1, sort_keys=True) + "\n")
+    print(f"wrote {RECORD_PATH.relative_to(REPO)}")
+    print(f"  {len(rows)} unmatched stubs, {len(twins)} with a twin candidate")
+    kinds = Counter()
+    for v in twins.values():
+        if v["name_twins"]:
+            kinds["name"] += 1
+        if v["shape_twins"]:
+            kinds["shape"] += 1
+        if v["token_twins"]:
+            kinds["tokens"] += 1
+    for k, n in sorted(kinds.items()):
+        print(f"  {k:8} {n}")
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -451,6 +761,12 @@ def main() -> int:
     ap.add_argument("--json", default="")
     ap.add_argument("--symbol", default="", help="restrict to one stub")
     ap.add_argument("--self-test", action="store_true")
+    ap.add_argument("--audit-matched", action="store_true")
+    ap.add_argument(
+        "--record",
+        action="store_true",
+        help="write automation/twins.us.json for workers to read",
+    )
     ap.add_argument(
         "--all", action="store_true", help="include stubs already written in C"
     )
@@ -458,6 +774,17 @@ def main() -> int:
 
     if a.self_test:
         return self_test()
+
+    if a.audit_matched:
+        rows = audit_matched()
+        report_audit(rows)
+        if a.json:
+            Path(a.json).write_text(json.dumps(rows, indent=2))
+            print(f"\nwrote {a.json}")
+        return 0
+
+    if a.record:
+        return write_record()
 
     rows = analyse(a.symbol)
     if not a.all:
