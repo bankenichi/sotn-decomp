@@ -19,7 +19,7 @@ and the Claude harness handles escalation, match closing, and merge review.
         claude_desktop_config.snippet.json       registration for sotn-local
         claude_desktop_config.cmd.snippet.json   registration for sotn-cmd
       qwen.sh                           zero-infra bash wrapper (Section 5.2 fallback)
-      scheduler.py                      single writer to work/queue.jsonl
+      scheduler.py                      single writer to ~/sotn-work/queue.jsonl
       worker.py                         one volume-engine worker (claim, run OpenCode, report)
       start_fleet.sh                    launch N workers in parallel
       merge_matched.py                  review and merge matched branches
@@ -37,7 +37,7 @@ and the Claude harness handles escalation, match closing, and merge review.
         gitexclude.sh                   keep scratch state out of git
       wt/                               git worktrees, one per claimed function (created at runtime)
 
-The live queue lives at `work/queue.jsonl` at the repo root (created on first
+The live queue lives at `~/sotn-work/queue.jsonl`, OUTSIDE the repo (created on first
 `scheduler.py init`). Add `work/` and `automation/wt/` to your local
 `.git/info/exclude` so scratch state never lands in a commit.
 
@@ -135,7 +135,7 @@ Section 5: allowlisted actions only, not an open shell.
 
 ## 2. The work queue and scheduler
 
-`scheduler.py` is the only writer to `work/queue.jsonl`, guarded by an exclusive
+`scheduler.py` is the only writer to `~/sotn-work/queue.jsonl`, guarded by an exclusive
 file lock so concurrent workers cannot corrupt it. Workers never edit the queue;
 they claim work and report results through the scheduler.
 
@@ -201,7 +201,7 @@ OpenCode and llama-server run natively on Windows. Only the build toolchain and
 the repo live in WSL, so the VM stays small. The split:
 
 - Scheduler, git, and the build stay in WSL. The scheduler remains the single
-  writer to `work/queue.jsonl` with real POSIX locking, and git worktrees are
+  writer to `~/sotn-work/queue.jsonl` with real POSIX locking, and git worktrees are
   created natively on ext4.
 - `automation/win/worker_win.py` runs on WINDOWS with Windows Python. It drives
   the Windows OpenCode CLI and reaches the scheduler through `wsl.exe`.

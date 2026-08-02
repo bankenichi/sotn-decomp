@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """
-scheduler.py: the single writer to work/queue.jsonl.
+scheduler.py: the single writer to the work queue.
+
+The queue lives at ~/sotn-work/queue.jsonl by default, NOT at work/queue.jsonl.
+That legacy in-repo path is still recognised for migration but is not where the
+live queue is; a file-sync daemon destroyed it once (see _DEFAULT_QUEUE below).
 
 Design (see automation/Orchestration-Setup.md and SOTN-Orchestration-Stack.md):
   Workers never edit the queue. They ask the scheduler for the next todo, do the
@@ -21,7 +25,7 @@ Usage:
   scheduler.py reclaim  --older-than-min M   return stale 'claimed' records to todo
 
 Env:
-  SOTN_QUEUE   path to queue.jsonl (default: <repo>/work/queue.jsonl)
+  SOTN_QUEUE   path to queue.jsonl (default: ~/sotn-work/queue.jsonl)
   SOTN_REPO    repo root (default: two levels up from this file)
 """
 from __future__ import annotations

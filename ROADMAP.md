@@ -31,8 +31,17 @@ that is P1 below.
 ### Where the remaining work is
 
 ```
-ST/RNO0  115    BOSS/BO6  98    BOSS/BO0  66    MAIN  36
-ST/RCEN   19    ST/RDAI   18    ST/RCHI   14    ST/MAD  3
+ST/RNO0  115    BOSS/BO6  98    BOSS/BO0  66    MAIN   2
+ST/RCEN   19    ST/RDAI   18    ST/RCHI   14    ST/MAD 3
+```
+
+These are SEED counts, i.e. what was queued, and they drift as work lands. The
+`MAIN 36` here read 36 until 2026-08-02 when the audit measured 2 actual
+`INCLUDE_ASM` stubs under `src/main`; corrected. Re-derive from the tree rather
+than trusting this block:
+
+```
+grep -rc INCLUDE_ASM src/<area>/*.c
 ```
 
 Three overlays hold 75% of it. RNO0 is also where every one of our private

@@ -27,7 +27,8 @@ hour, or to stop bad candidates reaching it.
 ## 2. Component map
 
 ```
-                    work/queue.jsonl          <- single source of truth
+              ~/sotn-work/queue.jsonl         <- single source of truth
+                (NOT work/queue.jsonl; that path is legacy)
                           |                      (scheduler.py is its ONLY writer)
         +-----------------+------------------+
         |                                    |
@@ -363,7 +364,10 @@ human may have stopped the fleet to reconfigure something.
 
 1. The tree is left clean and at 81/81 after every unit of work. On failure,
    revert and re-verify before doing anything else.
-2. `scheduler.py` is the only writer of `work/queue.jsonl`. Never hand-edit it.
+2. `scheduler.py` is the only writer of the queue, which lives at
+   `~/sotn-work/queue.jsonl` (NOT `work/queue.jsonl`, which is the legacy path
+   a sync daemon once emptied). Never hand-edit it. It is outside the repo, so
+   the sandbox cannot read it; use `queue_stats` and `queue_list`.
 3. `matched` requires machine proof — the verify verdict and the artifact hash.
 4. Verify any untested script before running it. Bricking the repo costs far
    more than the check.

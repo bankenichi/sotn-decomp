@@ -84,7 +84,28 @@ original addresses. It compiles cleanly and produces wrong bytes every time.
 `.s` stub under `asm/us/.../nonmatchings/`:
 
 - zero `D_us_` references -> likely a free match, attempt it
-- any `D_us_` references -> it will compile and fail. Skip it.
+- ~~any `D_us_` references -> it will compile and fail. Skip it.~~
+
+**SUPERSEDED 2026-08-02. Do not skip on this signal alone.** The whole shim
+campaign of that day contradicts it: `e_red_door`, `st_update`, `collision`,
+`e_particles`, `e_medusa_head` and `e_lock_camera` all reference `D_us_`
+support data and all MATCHED. Eleven functions.
+
+What changed is that a `D_us_` reference is now a solvable placement problem
+rather than a wall:
+
+- give the stem its own `.data, <stem>` (and `.bss, <stem>` where the header
+  declares uninitialised storage) splat segment, so the compiled C owns those
+  bytes instead of duplicating them;
+- NAME the symbol in `config/symbols.us.<overlay>.txt` or in the owning `.c`,
+  so siblings referencing the same storage still link. `g_ItemIconSlots` (was
+  `D_us_801D4B4C`) and `g_EInitDamageNum` (was `D_us_80180ABC`) are worked
+  examples.
+
+The revised rule: a `D_us_` reference means **do the placement work first**, not
+**give up**. What genuinely blocks a shim is the stage's code or data being a
+different SIZE from what the header emits; see `docs/shared-header-
+parameterisation.md`.
 
 Evidence:
 
