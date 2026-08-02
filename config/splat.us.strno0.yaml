@@ -107,17 +107,12 @@ segments:
       # reference for this overlay's layout.
       - [0x53EB8, .bss, create_entity]
       - [0x53EC8, .bss, bss]
-      # giantbro_helpers' 0xC4 stays as extracted assembly. Naming this segment
-      # requires giantbro_helpers.c to be a shim over ../giantbro_helpers.h,
-      # and that shim does NOT link yet: rno0's private copy also defines
-      # polarPlacePartsList, func_801CE1E8 and func_801CE228, which e_blade.c
-      # and e_gurkha.c call and which the shared header does not have. Attempted
-      # 2026-08-01, reverted on `undefined reference to polarPlacePartsList`.
-      # Task #48 moves those three up first; this segment follows after.
-      #
-      # The sizes are known and correct when that lands:
-      #   [0x54AC8, .bss, giantbro_helpers]   0x7C (5 s32 + STATIC_PAD_BSS(104),
-      #                                       confirmed against stnp3.yaml)
-      #   [0x54B44, bss]                      0x48, owner unidentified
-      - [0x54AC8, bss]
+      # giantbro_helpers.h emits exactly 0x7C: five s32 debug vars (0x14) plus
+      # STATIC_PAD_BSS(104). Confirmed against splat.us.stnp3.yaml, where the
+      # same segment spans 0x53378..0x533F4 = 0x7C.
+      - [0x54AC8, .bss, giantbro_helpers]
+      # The trailing 0x48 (D_us_801D4B48/4B4A/4B4C) belongs to some other file
+      # and stays as extracted assembly until it is identified. np3 attributes
+      # the equivalent region to st_update.
+      - [0x54B44, bss]
   - [0x54B8C]
