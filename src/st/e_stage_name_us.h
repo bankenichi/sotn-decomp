@@ -93,7 +93,19 @@ static void StageNamePopupDissolver(Primitive* prim) {
     }
 }
 
-extern EInit g_EInitInteractable;
+// Which EInit descriptor this stage's popup initialises from. 24 of the 25
+// stages that shim this header export it under the shared name and get the
+// default. rno0 exports it as RNO0_EInitInteractable, because its unconverted
+// EntityArmorLordFireWave.s still references that prefixed symbol; giving rno0
+// a #define here is cheaper and less invasive than renaming the descriptor and
+// then having to re-provide the old name for one assembly file.
+//
+// A plain token substitution, so every other stage compiles byte-identically.
+#ifndef STAGE_NAME_EINIT
+#define STAGE_NAME_EINIT g_EInitInteractable
+#endif
+
+extern EInit STAGE_NAME_EINIT;
 
 // This is the banner version which fades the text in and then dissolves it away
 void EntityStageNamePopup(Entity* self) {
@@ -111,7 +123,7 @@ void EntityStageNamePopup(Entity* self) {
             return;
         }
 
-        InitializeEntity(g_EInitInteractable);
+        InitializeEntity(STAGE_NAME_EINIT);
         primIndex = g_api.AllocPrimitives(PRIM_GT4, 87);
         if (primIndex == -1) {
             DestroyEntity(self);

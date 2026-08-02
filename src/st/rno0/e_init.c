@@ -169,6 +169,11 @@ EInit g_EInitBreakable = {ANIMSET_DRA(3), 0, 0, 0, 0x000};
 EInit g_EInitObtainable = {ANIMSET_DRA(3), 0, 0, 0, 0x001};
 EInit OVL_EXPORT(EInitParticle) = {ANIMSET_DRA(3), 0, 0, 0, 0x002};
 EInit OVL_EXPORT(EInitSpawner) = {ANIMSET_DRA(0), 0, 0, 0, 0x004};
+// Stays OVL_EXPORT. Renaming this to the shared g_EInitInteractable would let
+// e_stage_name_us.h link, but it also removes the RNO0_-prefixed symbol that
+// EntityArmorLordFireWave.s still references, and that file is not converted
+// yet. The header carries STAGE_NAME_EINIT for this instead, which costs the
+// other 24 stages nothing.
 EInit OVL_EXPORT(EInitInteractable) = {ANIMSET_DRA(0), 0, 0, 0, 0x005};
 EInit OVL_EXPORT(EInitUnkId13) = {ANIMSET_OVL(5), 0, 36, 0, 0x003};
 EInit OVL_EXPORT(EInitLockCamera) = {ANIMSET_DRA(2), 0, 72, 0, 0x05B};

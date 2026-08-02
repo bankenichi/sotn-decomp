@@ -34,6 +34,7 @@ import argparse
 import datetime as dt
 import json
 import os
+import platform
 import subprocess
 import sys
 from pathlib import Path
@@ -62,6 +63,8 @@ REPO = Path(os.environ.get("SOTN_REPO", Path(__file__).resolve().parents[1]))
 _DEFAULT_QUEUE = Path(os.path.expanduser("~/sotn-work/queue.jsonl"))
 QUEUE = Path(os.environ.get("SOTN_QUEUE", _DEFAULT_QUEUE))
 _LEGACY_QUEUE = REPO / "work" / "queue.jsonl"
+# Written only when THIS environment created its queue by migration.
+_FROM_LEGACY = QUEUE.with_suffix(".jsonl.from-legacy")
 
 
 def _migrate_legacy_queue() -> None:
@@ -76,6 +79,14 @@ def _migrate_legacy_queue() -> None:
 
     Deliberately never deletes the legacy file. It stays as a recovery point, and
     a half-finished migration must not be able to destroy the only copy.
+
+    READ-ONLY. A migrated copy is a SNAPSHOT of a stale in-repo file, not the
+    live queue, and the environments do not sync afterwards. Writing to one is
+    silent data loss: on 2026-08-02 nine verified matches were reported from the
+    Cowork sandbox, every call printed "updated", and not one reached the real
+    queue, because the sandbox had migrated its own 438-record copy from the
+    legacy file and was happily mutating that. The stamp written here is what
+    _require_queue_owner() later refuses to mutate.
     """
     if QUEUE.exists() and QUEUE.stat().st_size > 0:
         return
@@ -86,14 +97,36 @@ def _migrate_legacy_queue() -> None:
     try:
         tmp.write_bytes(_LEGACY_QUEUE.read_bytes())
         os.replace(tmp, QUEUE)
-        print(f"[scheduler] migrated queue out of the synced tree: "
-              f"{_LEGACY_QUEUE} -> {QUEUE} (legacy copy kept)", file=sys.stderr)
+        _FROM_LEGACY.write_text(
+            f"migrated from {_LEGACY_QUEUE} by pid {os.getpid()} on "
+            f"{platform.node()}\n")
+        print(f"[scheduler] migrated a READ-ONLY snapshot out of the synced "
+              f"tree: {_LEGACY_QUEUE} -> {QUEUE}. Mutating commands are "
+              f"refused here; run them where the live queue is.",
+              file=sys.stderr)
     finally:
         try:
             if tmp.exists():
                 tmp.unlink()
         except OSError:
             pass
+
+
+# Commands that write. Everything else may run against a migrated snapshot,
+# because a stale read is recoverable and a stale write is not.
+_MUTATING = {"init", "seed", "next", "report", "reclaim", "annotate", "prune"}
+
+
+def _require_queue_owner(cmd: str) -> None:
+    if cmd not in _MUTATING or not _FROM_LEGACY.exists():
+        return
+    sys.exit(
+        f"refusing to run '{cmd}': {QUEUE} is a read-only snapshot that this\n"
+        f"environment migrated from {_LEGACY_QUEUE}, not the live queue.\n"
+        f"  {_FROM_LEGACY.read_text().strip()}\n"
+        f"Writing here would report into a copy nobody reads. Run mutating\n"
+        f"commands through the MCP connector, or set SOTN_QUEUE to the live\n"
+        f"path. To claim ownership deliberately, delete {_FROM_LEGACY}.")
 
 
 _migrate_legacy_queue()
@@ -683,6 +716,9 @@ def main():
     prc.set_defaults(func=cmd_reclaim)
 
     args = p.parse_args()
+    # Before anything writes. sys.argv[1] is the subcommand name; argparse has
+    # already validated it by this point.
+    _require_queue_owner(sys.argv[1] if len(sys.argv) > 1 else "")
     args.func(args)
 
 
