@@ -57,12 +57,21 @@ def main() -> int:
         if not cond:
             failures.append(name)
 
-    # --- shimmable NOW must be deferred ------------------------------------
-    for stage, stem in (("rno0", "e_breakable"),):
-        d, why = wd.shim_gate({"src_rel": f"src/st/{stage}/{stem}.c"})
-        check(f"{stage}/{stem}: deferred rather than generated", d, why[:90])
-        check(f"{stage}/{stem}: reason names the shim include",
-              f'#include "../{stem}.h"' in why, why[:90])
+    # --- the stage-data obligation -----------------------------------------
+    #
+    # src/st/e_breakable.h defines NO data of its own, so shim_viable's
+    # blocker 4 stays quiet, yet it reads g_eBreakableAnimations,
+    # g_eBreakableHitboxes, g_eBreakableExplosionTypes, g_eBreakableanimSets
+    # and blend_modes. Every stage that shims it declares those `static` above
+    # the include, so they are .data belonging to e_breakable and the stage
+    # needs a '.data, e_breakable' segment. rno0 has only a `c` segment.
+    d, why = wd.shim_gate({"src_rel": "src/st/rno0/e_breakable.c"})
+    check("rno0/e_breakable: stage-data obligation blocks the shim", not d,
+          why[:110])
+    check("rno0/e_breakable: reason names the missing .data segment",
+          "'.data, e_breakable'" in why, why[:140])
+    check("rno0/e_breakable: reason cites a peer that proves it",
+          "src/st/" in why and "/e_breakable.c" in why, why[:140])
 
     # --- FALSE POSITIVES the size check must catch -------------------------
     #
@@ -149,9 +158,19 @@ def main() -> int:
         else:
             generated += n
     print(f"\n  population: {deferred} stubs deferred, {generated} still generated")
-    check("deferrals stay a small minority", deferred < generated * 0.10,
+    # ZERO is the correct answer today, and that is the finding, not a bug.
+    #
+    # The gate first reported 8 shimmable stubs. Every one was a false positive:
+    # 4 were different implementations (size divergence), 2 were psp targets the
+    # us oracle cannot verify, and the rest need stage data tables with no
+    # '.data, <stem>' segment to hold them. There are currently NO free shims.
+    #
+    # The gate is still live and will fire the moment a stage gains the missing
+    # segment. The bound below is what protects the fleet: if a future change
+    # makes this eager again, this fails long before the queue stalls.
+    check("no stub is falsely claimed shimmable", deferred == 0, str(deferred))
+    check("deferrals could never stall the fleet", deferred < generated * 0.10,
           f"{deferred} vs {generated}")
-    check("something is actually deferred", deferred > 0, str(deferred))
 
     print()
     if failures:

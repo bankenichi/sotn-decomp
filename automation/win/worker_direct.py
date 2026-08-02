@@ -2276,6 +2276,56 @@ def shim_size_divergence(stage: str, stem: str, idx: dict) -> str:
             f"segments and storage, never whether the code is the same")
 
 
+_STATIC_DEF_RX = re.compile(
+    r"^[ \t]*static\b[^;()\n]*?\b(\w+)\s*(?:\[[^\]]*\])?\s*=", re.M)
+
+
+def shim_needs_stage_data(stage: str, stem: str, idx: dict) -> str:
+    """Does shimming this header oblige the STAGE to supply data tables?
+
+    THE SECOND BLIND SPOT in shim_viable(). Its blocker 4 asks whether the
+    HEADER defines initialised file-scope data. Several shared headers define
+    none, yet still consume tables that each stage must define itself:
+
+        src/st/e_breakable.h reads g_eBreakableAnimations, g_eBreakableHitboxes,
+        g_eBreakableExplosionTypes, g_eBreakableanimSets and blend_modes, and
+        defines not one of them. Every stage that shims it declares its own
+        `static` tables above the #include.
+
+    Those tables are .data belonging to <stem>, so the stage needs a
+    '.data, <stem>' splat segment exactly as e_red_door did. rno0 has only
+    '[0x364E4, c, e_breakable]' and no data segment, so shimming it would emit
+    the tables into the unnamed blob and shift everything after them.
+
+    Detected from the PEERS rather than guessed: read the .c of stages that
+    already shim this header and see whether they define static file-scope data
+    before the include. If they must, so must this stage.
+
+    Returns "" when there is no obligation, otherwise the reason to block.
+    """
+    segs = (idx.get("splat_segments", {}).get(f"st{stage}")
+            or idx.get("bss_segments", {}).get(f"st{stage}") or {})
+    if stem in (segs.get("named_data") or {}):
+        return ""                      # already has its own .data segment
+    peers = idx.get("shared_impls", {}).get(stem, {}).get("shimmed_by", [])
+    for p in peers[:6]:                # a handful is plenty; these all agree
+        path = os.path.join(WIN_REPO, "src", "st", p, f"{stem}.c")
+        try:
+            with open(path, encoding="utf-8", errors="replace") as f:
+                text = f.read()
+        except OSError:
+            continue
+        names = _STATIC_DEF_RX.findall(text)
+        if names:
+            return (f"shimming {stem} obliges {stage} to define the stage data "
+                    f"tables the header consumes ({', '.join(sorted(set(names))[:4])}"
+                    f"...), as src/st/{p}/{stem}.c does, but {stage} has no "
+                    f"'.data, {stem}' splat segment to pin them. shim_viable() "
+                    f"misses this: it checks whether the HEADER defines data, "
+                    f"not whether the header REQUIRES the stage to")
+    return ""
+
+
 def shim_gate(ctx: dict) -> tuple[bool, str]:
     """Should this record be SHIMMED instead of generated? (P6)
 
@@ -2325,6 +2375,9 @@ def shim_gate(ctx: dict) -> tuple[bool, str]:
             diverged = shim_size_divergence(stage, stem, idx)
             if diverged:
                 return False, f"shared impl exists but blocked: {diverged}"
+            needs = shim_needs_stage_data(stage, stem, idx)
+            if needs:
+                return False, f"shared impl exists but blocked: {needs}"
             return True, (
                 f"src/st/{stem}.h is a shared implementation and {stage} has no "
                 f"blocker against using it ({why}). The correct fix is a shim, "

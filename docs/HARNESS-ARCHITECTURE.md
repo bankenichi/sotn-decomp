@@ -150,7 +150,11 @@ Measured over the 417 `INCLUDE_ASM` stubs in `src/st`:
 |---|---|---|
 | no shared implementation | 288 | generate, correct as-is |
 | shared impl exists, blocked | 121 | **annotate only** |
-| shimmable now, no blocker | 8 → **1** | **defer** |
+| shimmable now, no blocker | 8 → **0** | **defer** |
+
+**There are currently no free shims.** All 8 the gate first reported were false
+positives. That is the finding, not a bug: the gate stays live and fires the
+moment a stage gains the segment it is missing.
 
 ### shim_viable has a blind spot: it never asks if it is the same code
 
@@ -176,6 +180,19 @@ a naive check misses.
 `_psp` and `_saturn` paths are also out of scope: `shim_viable` reasons from
 `config/splat.us.*`, and the us oracle cannot verify a change to another build
 target, so any verdict about them is unfounded.
+
+### And a second blind spot: headers that oblige the STAGE to supply data
+
+`shim_viable`'s blocker 4 asks whether the *header* defines initialised
+file-scope data. `src/st/e_breakable.h` defines none — and still reads
+`g_eBreakableAnimations`, `g_eBreakableHitboxes`, `g_eBreakableExplosionTypes`,
+`g_eBreakableanimSets` and `blend_modes`. Every stage that shims it declares
+those `static` above the `#include`, so they are `.data` belonging to the stem
+and the stage needs a `.data, <stem>` segment. rno0 has only a `c` segment.
+
+`shim_needs_stage_data()` detects this from the **peers**, not from a guess: it
+reads the `.c` of stages that already shim the header and checks whether they
+must define static file-scope data. If they must, so must this stage.
 
 Deferring the blocked 121 as well would follow ROADMAP P6 literally and stall
 29% of the queue behind structural work that has no automated consumer. The
