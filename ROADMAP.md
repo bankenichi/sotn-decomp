@@ -122,7 +122,46 @@ rejection notes are in `src/st/rchi_psp/`.
 **Done when:** every BO6 stub with a `src/ric` twin has either matched or
 carries a note saying what the twin could not explain.
 
-## P3 — Segment rno0's `.data` and `.bss` in the splat config
+## P3 — (resolved 2026-08-01) rno0's `.bss` is segmented; four files shimmed
+
+The bss is fully attributed and segmented, and the mechanism is proven on real
+code four times over. `create_entity.c`, `giantbro_helpers.c` and
+`e_clock_room.c` are now shims, and `unk_4A320.c` was split out to match the
+upstream file boundary. Roughly 630 lines of private copy deleted, 81/81
+throughout.
+
+```yaml
+      - [0x53EB8, .bss, create_entity]      # 0x10
+      - [0x53EC8, .bss, bss]                # 0xC00 anonymous pad
+      - [0x54AC8, .bss, giantbro_helpers]   # 0x7C
+      - [0x54B44, bss]                      # 0x48, e_clock_room's, left as asm
+```
+
+The trailing 0x48 is e_clock_room's: `g_Statues` is at 0x801D4B48, confirmed by
+the shim resolving against it. Naming that segment would require
+`e_clock_room.c` to *define* all three symbols in C, two of which have no known
+purpose, for no gain. It is left as extracted assembly deliberately.
+
+`.data` is still unsegmented and does NOT need to be for any shim done so far:
+only `header`, `e_init` and `e_room_bg` contribute `.data`, and all three
+already have named segments. It blocks exactly one known case, tracked
+separately.
+
+### What made the shims tractable, and is now tooling
+
+- `automation/overlay_size_check.py` compares every function's map address
+  against `config/symbols.us.<ovl>.txt`. The first divergence names the
+  function AFTER the oversized one, and the delta is how many bytes wrong it
+  is. This replaced repeated 15k-token asm diffs with a one-second answer.
+  `<ovl>_BSS_START` equals `TEXT_END`, so a shifted bss with internally correct
+  symbols is a TEXT bug, not a segmentation one.
+- The worker prompt now recognises an inverted-castle overlay whose twin is a
+  first-castle file and lists the mirrorings to expect: sign-flipped position
+  offsets, swapped `posX` `++`/`--`, different tilemap indices, a different
+  `ANIMSET_OVL` bank, and `CEN_OPEN` -> `RCEN_OPEN` (+228 = 0xE4, so a
+  relocation differing by exactly 0xE4 is that, not a wrong symbol).
+
+## P3b — Segment rno0's `.data` (blocks only `e_red_door`)
 
 **Why:** this single change unblocks five of the seven remaining private
 implementations. It is the highest-leverage item on the list and also the

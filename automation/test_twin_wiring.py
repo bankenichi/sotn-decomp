@@ -103,6 +103,28 @@ def main() -> int:
     check("COLLIDING symbol with a wrong overlay stays silent",
           wd.twin_for("EntityBreakable", "nonsense/overlay") == "")
 
+    # --- inverted-castle hint -----------------------------------------------
+    # Fires only when the stub is a second-castle overlay AND its twin is not.
+    check("overlay parsing: src path -> overlay",
+          wd._overlay_of("src/st/no0/clock_room.c") == "no0",
+          wd._overlay_of("src/st/no0/clock_room.c"))
+    check("overlay parsing: non-overlay path is empty",
+          wd._overlay_of("src/dra/menu.c") == "")
+    check("rno0 is inverted", wd._is_inverted("st/rno0"))
+    check("no0 is not inverted", not wd._is_inverted("st/no0"))
+    check("bo6 is not inverted", not wd._is_inverted("boss/bo6"))
+    check("rbo3 is inverted", wd._is_inverted("boss/rbo3"))
+
+    rno0_stub = wd.twin_for("EntityBreakable", "st/rno0")
+    check("inverted hint fires for rno0 with a non-inverted twin",
+          "INVERTED CASTLE" in rno0_stub)
+    check("inverted hint names the 0xE4 castle-flag delta",
+          "0xE4" in rno0_stub)
+    check("inverted hint points at the shared header, not a copy",
+          "SHARED header" in rno0_stub)
+    check("no inverted hint for a first-castle overlay",
+          "INVERTED CASTLE" not in wd.twin_for("BO6_RicStepStand", "boss/bo6"))
+
     # --- shared implementations must be routed to a shim, not a copy --------
     bat = wd.twin_for("EntityBat", "st/rchi")
     check("shared-impl twin names the shim rule", "#include shim" in bat,

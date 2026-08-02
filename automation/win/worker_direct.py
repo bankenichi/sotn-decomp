@@ -1506,6 +1506,28 @@ def shared_implementation(function: str, src_rel: str) -> str:
 
 _TWINS: dict | None = None
 
+# Inverted-castle ("reverse") overlays. The second-castle stages are the same
+# rooms mirrored, and their code differs from the first castle's in a small,
+# repeating set of ways. Names are the splat overlay directory, so `st/rno0`
+# and `boss/rbo3` are inverted while `st/no0` and `boss/bo6` are not. Matching
+# on a leading `r` alone would misfire on `st/rcen` vs nothing, so keep it to a
+# check of the last path component starting with 'r' followed by a known first
+# castle name.
+_INVERTED = {
+    "rare", "rcat", "rcen", "rchi", "rdai", "rno0", "rno1", "rno2", "rno3",
+    "rno4", "rnz0", "rnz1", "rtop", "rwrp", "rbo0", "rbo3", "rbo5", "rlib",
+}
+
+
+def _overlay_of(src_path: str) -> str:
+    """`src/st/no0/clock_room.c` -> `no0`. Empty when it is not an overlay."""
+    parts = (src_path or "").replace("\\", "/").split("/")
+    return parts[2] if len(parts) > 3 and parts[0] == "src" else ""
+
+
+def _is_inverted(overlay: str) -> bool:
+    return (overlay or "").replace("\\", "/").split("/")[-1].lower() in _INVERTED
+
 
 def _load_twins() -> dict:
     """automation/twins.us.json, keyed "<overlay>/<symbol>".
@@ -1582,6 +1604,31 @@ def twin_for(function: str, overlay: str) -> str:
         for t in tokens:
             out.append(f"  similar symbols ({t['score']:.2f}): "
                        f"{t['file']}:{t['function']}")
+
+    # Inverted-castle hint. If this stub is in an R overlay and its twin is not,
+    # every divergence found so far has been the same handful of mirrorings.
+    # Six clock-room functions in rno0 differed from no0's ONLY in these ways,
+    # and knowing to look for them turned a blind search into a checklist.
+    if _is_inverted(overlay) and any(
+            not _is_inverted(_overlay_of(t.get("file", "")))
+            for t in names):
+        out.append(
+            "  NOTE: this is an INVERTED CASTLE overlay and the twin is not.\n"
+            "  Expect the body to be correct but MIRRORED. Every difference\n"
+            "  found so far has been one of:\n"
+            "    - a sign flip on a position offset (posY -= N becomes += N)\n"
+            "    - swapped ++/-- on posX between the two params branches\n"
+            "    - a different tilemap index for the same feature\n"
+            "    - a different overlay animset bank, ANIMSET_OVL(n)\n"
+            "    - the R-prefixed castle flag: CEN_OPEN becomes RCEN_OPEN,\n"
+            "      which is +228 (0xE4), so a relocation offset that differs by\n"
+            "      exactly 0xE4 is this and not a wrong symbol\n"
+            "  These belong in the SHARED header behind a stage guard, not in a\n"
+            "  private copy. Upstream parameterises heavily: e_collect.h has 120\n"
+            "  conditionals, e_bat.h 8 STAGE_IS references. Use\n"
+            "  `#ifdef STAGE_IS_<OVL>` for behaviour and\n"
+            "  `#ifndef X / #define X <default>` for constants, so the existing\n"
+            "  consumers keep their bytes.\n")
 
     out.append(
         "READ THE TWIN FIRST, THEN DIFF IT AGAINST THE ASSEMBLY BELOW.\n"
