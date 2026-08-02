@@ -84,23 +84,18 @@ RATE_LIMIT_BACKOFF = float(os.environ.get("RATE_LIMIT_BACKOFF", "20"))
 # stream and cannot function here. FUNC_BUDGET is the only remaining backstop
 # against a wedged generation, so keep it set.
 MODEL_BACKEND = os.environ.get("MODEL_BACKEND", "http").strip().lower()
-# NOT big-pickle. Measured across automation/logs on 2026-08-01:
+# The cli backend currently produces NOTHING on real prompts, and the cause is
+# NOT the model. See automation/opencode/ZEN-FREE-MODELS.md for the evidence.
 #
-#   big-pickle             16 runs,  7 empty   (44% dead)
-#   north-mini-code-free    4 runs,  0 empty
-#   nemotron-3-ultra-free   3 runs,  0 empty
-#   mimo-v2.5-free          2 runs,  0 empty
+# Short version: big-pickle and north-mini-code-free both return rc=0 with zero
+# bytes, or hit the timeout, on every prompt in the 6k-11k range that a real
+# function generates. A 27-character prompt answers instantly on both. Quota,
+# auth, agent resolution and stdout routing are all ruled out with evidence.
+# Prompt size is the only variable that tracks the failure and has not been
+# bisected yet.
 #
-# big-pickle is the ONLY model that returns rc=0 with zero bytes, and it does it
-# on nearly half its calls, each after burning 250-380s. It is not quota, not
-# auth, and not the CLI's output routing: a hand-run
-# `opencode run --model opencode/big-pickle --agent raw --auto "Reply with the
-# single word OK"` answers "OK" with rc=0. It fails specifically on the 6k-11k
-# character prompts that real functions produce, which is the only size that
-# matters here.
-#
-# Three empty responses cost ~15 minutes of wall clock and produce nothing, so a
-# 44% empty rate makes it worse than useless as a default.
+# Do not "fix" this by rotating models again; that was tried and reproduced the
+# failure identically.
 OPENCODE_MODEL = os.environ.get("OPENCODE_MODEL", "opencode/north-mini-code-free")
 # Optional: point at a running `opencode serve` to skip MCP cold-boot per call.
 OPENCODE_ATTACH = os.environ.get("OPENCODE_ATTACH", "").strip()

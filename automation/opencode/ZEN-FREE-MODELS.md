@@ -30,33 +30,60 @@ All at `https://opencode.ai/zen/v1/chat/completions`:
 | `north-mini-code-free` | Cohere-backed. **Current default.** |
 | `nemotron-3-ultra-free` | NVIDIA trial endpoints |
 
-### big-pickle returns nothing on real prompts
+### OPEN BUG: the cli backend returns nothing on real prompts
 
-Measured across `automation/logs` on 2026-08-01:
+**This is NOT model-specific.** An earlier version of this note blamed
+`big-pickle` on the strength of a per-model tally of empty responses. That tally
+was confounded: `big-pickle` simply had 16 runs to the others' 2-4, so it
+accumulated more visible failures. Switching the default to
+`north-mini-code-free` and relaunching reproduced the failure exactly:
 
-| model | runs | empty |
-|---|---|---|
-| `big-pickle` | 16 | **7** |
-| `north-mini-code-free` | 4 | 0 |
-| `nemotron-3-ultra-free` | 3 | 0 |
-| `mimo-v2.5-free` | 2 | 0 |
+```
+worker-oc-1  north-mini-code-free  11249 chars -> done in 103s: 0 chars
+                                   11373 chars -> done in  50s: 0 chars
+                                   11373 chars -> done in  48s: 0 chars
+                                   11373 chars -> timeout 382s  (x2)
+worker-oc-2  north-mini-code-free   9936/10060 chars -> timeout 382s (x4)
+worker-oc-3  north-mini-code-free   6089/6213  chars -> timeout 382s (x4)
+```
 
-It is the only model that exits `rc=0` having written zero bytes, and it does so
-on nearly half its calls, each after 250-380s. Three of those in a row is a
-quarter of an hour for nothing.
+Every call either exits `rc=0` with zero bytes or hits the 382s timeout. Twelve
+attempts, three functions, zero output.
 
-Three explanations were considered and all three are WRONG, so do not revisit
-them:
+Ruled out, with evidence. Do not revisit these:
 
-- **Not quota.** A throttled call does not run for 250s and exit 0.
-- **Not auth or config.** stderr shows `> raw · big-pickle`, so the agent and the
-  model both resolved.
-- **Not the CLI's stdout routing.** Run by hand it answers normally:
+- **Not quota.** A throttled call does not run 250s and exit 0, and it would not
+  affect two different models identically.
+- **Not auth or config.** stderr shows `> raw · north-mini-code-free`, so the
+  `raw` agent and the model both resolved.
+- **Not the CLI's stdout routing.** By hand it answers normally:
   `opencode run --model opencode/big-pickle --agent raw --auto "Reply with the
-  single word OK"` prints `OK`, `rc=0`.
+  single word OK"` prints `OK` with `rc=0`.
+- **Not the model.** Both `big-pickle` and `north-mini-code-free` fail the same
+  way on the same prompts.
 
-It fails specifically on the 6k-11k character prompts that real functions
-generate, which is the only prompt size that matters here.
+The one variable that tracks the failure is PROMPT SIZE. A 27-character prompt
+answers instantly; every prompt in the 6k-11k range that a real function
+generates returns nothing. The next step is to bisect on size alone, holding the
+model and agent fixed:
+
+```bash
+cd /mnt/c/Users/kenic/Documents/SOTN-Decomp
+for n in 500 2000 4000 6000 9000; do
+  p=$(python3 -c "print('Reply with the single word OK. ' + 'x'*$n)")
+  printf '%6s chars: ' "$n"
+  OPENCODE_CONFIG=automation/opencode/opencode.json \
+    timeout 120 opencode run --model opencode/north-mini-code-free \
+      --agent raw --auto "$p" </dev/null | head -c 40
+  echo "  rc=$?"
+done
+```
+
+If it breaks at a threshold, the fix is to shrink the prompt (the twin section
+and the m2c draft are the two largest blocks and the draft is the more
+expendable) or to pass the prompt on stdin rather than argv. If every size
+answers, the trigger is prompt CONTENT, and the next bisect is over the prompt
+sections rather than their length.
 
 These are time-limited promotions. If a model 404s, re-check
 <https://opencode.ai/docs/zen/> and refresh this list.
