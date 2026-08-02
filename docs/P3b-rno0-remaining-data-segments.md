@@ -1,0 +1,125 @@
+# rno0's last three shim blockers: `e_misc`, `e_collect`, `e_room_fg`
+
+Status: **analysed, not applied.** Every address below is derived from data in
+the repo, with its confidence stated. Blocked only on the fleet being paused,
+because applying needs `make extract` plus a full build.
+
+Worth 16 stubs, of which `e_misc` alone is 14.
+
+## Why `find_data_segment.py` refuses these three
+
+That tool locates a segment by taking a peer's bytes and searching for them.
+It works when the shared header's data is stage-independent, and it calibrates
+against a second peer before trusting a hit. For these three it correctly
+refuses:
+
+- `e_collect.h` has **79** preprocessor conditionals
+- `e_misc.h` has **6**
+- `e_room_fg.h` has none, yet peer bytes still differ
+
+So the bytes are stage-dependent and byte-matching cannot work. A different
+signal is needed.
+
+## The signal that does work: reference order
+
+splat emits a file's `.data` in the same order it emits that file's text. So
+sorting overlays' files by `c` segment address and reading which data addresses
+each one's assembly references reconstructs the `.data` layout.
+
+Collected from `%hi(D_us_8018xxxx)` across every `asm/us/st/rno0/nonmatchings/<stem>/*.s`:
+
+```
+c-seg     stem                    data references
+0x3bbec   e_collect               195c 1960 1970 1980 1990 19a0 19b0
+0x3e55c   e_misc                  19c0 19d0 19e0 19f8 1a10 1a14 1a1c 1a24 1a34 1a54
+0x408f8   e_background_pillars    1a74 1a84
+0x40c54   e_clock_room            1a94 .. 1af0
+0x457f0   e_particles             1cb8 1cc8 1d28          <- declared 0x1CB8
+0x46034   e_room_fg               1d4c
+0x46450   e_floor_trap            1dc4
+0x524c8   e_medusa_head           3354 .. 33c2            <- declared 0x3354
+```
+
+**The method is validated by two already-correct answers.** `e_particles` is
+declared at `0x1CB8` and `e_medusa_head` at `0x3354`; both equal the minimum of
+their own reference cluster, and both build at 81/81. A rule that reproduces two
+known segment starts can be believed on unknown ones.
+
+Note each file also references low addresses in the shared `EInit` region
+(`0x8f8`-`0xc00`). Those are other files' data and must be excluded; only the
+high cluster belongs to the file.
+
+## The trap: peer-majority size is WRONG for all three
+
+The obvious next step is to take the size most peers use. That gives the wrong
+answer every time here, and the ordering constraint catches it:
+
+| stem | start | peer-majority size | that would end at | next file's first ref | verdict |
+|---|---|---|---|---|---|
+| `e_collect` | 0x195C | 0x354 (16/27) | 0x1CB0 | 0x19C0 (`e_misc`) | **overlaps 5 files** |
+| `e_misc` | 0x19C0 | 0xB8 (14/27) | 0x1A78 | 0x1A74 (`e_background_pillars`) | **overlaps by 4** |
+| `e_room_fg` | 0x1D4C | 0x8C (26/27) | 0x1DD8 | 0x1DC4 (`e_floor_trap`) | **overlaps by 0x14** |
+
+In each case a MINORITY peer variant fits, which is consistent with these
+headers being heavily conditional:
+
+| stem | proposed | size | ends | fits a real peer variant? |
+|---|---|---|---|---|
+| `e_collect` | `[0x195C, .data, e_collect]` | 0x64 | 0x19C0 | yes, 4 peers use 0x64 |
+| `e_misc` | `[0x19C0, .data, e_misc]` | 0xB4 | 0x1A74 | yes, 2 peers use 0xB4, and it lands EXACTLY on the next reference |
+| `e_room_fg` | `[0x1D4C, .data, e_room_fg]` | 0x48 | 0x1D94 | yes, 1 peer, but leaves a 0x30 gap before 0x1DC4 |
+
+Confidence: `e_misc` **high** (exact landing on the next boundary), `e_collect`
+**high** (exact landing), `e_room_fg` **medium** (no size lands exactly; 0x78
+would, but no peer uses 0x78, so either 0x48 plus a gap is right or the header
+emits something this overlay does not reference).
+
+A gap is not by itself an error. `e_particles` is declared 0x80 and ends at
+0x1D38 while the next reference is at 0x1D4C, a 0x14 gap, and it builds clean.
+
+## Before building each one, run the pre-flight
+
+The `st_update` lesson: check for UNINITIALISED file-scope storage first, since
+that needs a `.bss, <stem>` segment or the storage is appended after all other
+bss and silently shifts the overlay.
+
+Checked already:
+
+- `e_misc.h` declares none. `.data` only.
+- `e_room_fg.h` declares none. `.data` only.
+- `e_collect.h` has one candidate line (`char* obtainedStr;`) which needs
+  confirming as function-local rather than file-scope before building.
+
+Also expect to NAME symbols. Every stem shimmed on 2026-08-02 needed at least
+one, and the linker names it precisely. `e_collect.c` in particular already
+carries several raw `extern u16 D_us_8018xxxx[]` declarations that the shared
+header will want under real names.
+
+## Order to apply, and why
+
+1. **`e_room_fg`** first. One stub, one data reference, no bss, no conditionals
+   in the header. It is the cheapest way to test the ordering method on an
+   unknown, and its medium confidence means it is the one most worth learning
+   from early.
+2. **`e_misc`** second. 14 stubs, the whole point of this exercise, and the
+   highest-confidence address of the three.
+3. **`e_collect`** last. 79 conditionals, and its own file has the most raw
+   `D_us_` externs to rename, so it is the most likely to need several
+   link-error rounds.
+
+## Acceptance criteria, per stem
+
+- `verify_build` reports **81/81**. Anything less reverts.
+- `automation/overlay_size_check.py` reports **0 shifted symbols**.
+- The stem's `INCLUDE_ASM` count drops to 0 and its queue records move to
+  `matched`.
+- No new raw `D_us_` name is introduced; anything the linker demands gets a real
+  name in `config/symbols.us.strno0.txt` or the owning `.c`.
+
+## If a build fails
+
+A link error is the GOOD outcome: it names the missing symbol and the file that
+wants it, which is how `g_ItemIconSlots` and `g_EInitDamageNum` were both found
+in one build each. A checksum failure is the harder one; run
+`overlay_size_check.py` first, and trust its section attribution now that it
+distinguishes bss-internal growth from text growth.

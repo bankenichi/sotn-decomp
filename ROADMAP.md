@@ -53,7 +53,32 @@ These are cheap, and skipping them is how a good tree quietly becomes a bad one.
 3. **Consult `shim_viable()` before hand-writing any shared-implementation
    file.** It is free and it has already been right six times out of six.
 
-## P1 — Reseed the queue against the post-merge set  *(staged, needs a connector restart)*
+## P1 — (resolved 2026-08-02) Queue reseeded; the two totals differ BY DESIGN
+
+**Reseed: done.** Re-running `queue_init` on 2026-08-02 reported `added 0
+records`, and it is additive with id-skipping, so every seed id is already in
+`/home/kenichi/sotn-work/queue.jsonl`. RCHI (14) and RDAI (18) are present. The
+"needs a connector restart" note in the old heading is stale: `queue_init` is in
+the live allowlist and the connector has been restarted since.
+
+**Reconciling the totals: the premise was wrong.** This entry asked to make
+`queue_stats` and the index agree. They cannot and should not:
+
+- `codebase_index.py` indexes from **`upstream/master`**, deliberately (see P0
+  item 2 and MATCHING-LESSONS §12). Its `unmatched` counts what UPSTREAM has
+  not matched: 334 after a rebuild on 2026-08-02.
+- `queue_stats` counts OUR work: 470 records, of which 155 are matched by us.
+
+So the numbers measure different populations and equality would be a bug, not a
+goal. What matters is the blind-spot check the entry actually cared about, and
+that one passes: every seeded function has a record.
+
+The index rebuild also surfaced a shim candidate this file had not recorded:
+`rno0/st_common` is blocked on a missing `.bss, st_common` segment. It carries
+no `INCLUDE_ASM` stubs today, so shimming it would delete a duplicated copy
+rather than match anything new.
+
+### Original entry
 
 `automation/seed.us.txt` is written and a `queue_init` action is added to the
 connector. It cannot be called until the connector is restarted, because the
@@ -377,9 +402,12 @@ behind structural work with no automated consumer. The test asserts both edges,
 because the failure modes are opposite: too eager starves the fleet, too lax
 brings the duplicates back.
 
-**Immediate follow-up:** those 8 stubs across `rno0/e_breakable`,
-`rno0/e_lock_camera`, `rchi/e_breakable` and `rchi_psp/e_breakable` are free
-matches sitting behind a three-line shim each.
+**RETRACTED.** An earlier version of this entry called those 8 stubs "free
+matches sitting behind a three-line shim each". Every one was a gate false
+positive: 4 were different implementations (size divergence up to 5.36x), 2
+were psp targets the us oracle cannot verify, and the rest need stage data
+tables with no `.data, <stem>` segment to hold them. The gate was hardened and
+now defers zero of them. See the size-divergence section below.
 
 **Relocation detector: DONE.** `automation/relocation_check.py`, 9 self-test
 cases. Diffs a built overlay against `disks/us/...` and reports whether every

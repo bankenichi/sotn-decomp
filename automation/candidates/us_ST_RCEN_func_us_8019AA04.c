@@ -1,6 +1,6 @@
 /* PERMUTER SEED -- compiled and linked, bytes differ.
    record : us:ST/RCEN:func_us_8019AA04
-   attempt: 3/4
+   attempt: 2/4
    model  : opencode/nemotron-3-ultra-free
    verdict: BUILT, CHECKSUM MISMATCH (compiled and linked; bytes differ) - permuter candidate:
 --- build tail ---
@@ -8,72 +8,52 @@
   ✅
    Do NOT apply this to the tree as-is; it does not match.
    It exists so the permuter has a compiling starting point. */
-void func_us_8019AA04(s16 arg0) {
-        s32 a2;
-        s32 v1;
-        s32 a1_2;
-        s32 posY_hi;
-        s32 v0_2;
-        s32 temp_v0_2;
-        s32 v1_2;
-        s32 v0_3;
-        s32 v0_4;
-        s32 a1_3;
+void func_us_8019AA04(s16 sfxId) {
+        s16 pan;
+        s32 dx_vol;
+        s32 dy;
+        s32 abs_dy;
+        s32 dy_vol;
+        s32 dist;
+        s32 volume;
     Entity* entity = g_CurrentEntity;
-    s32 posX_hi = entity->posX.i.hi;           // offset 2
-    s32 a1 = posX_hi - 0x80;                   // posX - 0x80
-    s32 v0 = a1;
-    if (a1 < 0) v0 = -a1;                      // abs(posX - 0x80)
-    v0 = v0 - 0x20;
-    a2 = v0 >> 5;
-    v1 = (s16)a2;
-    if (v1 >= 9) {
-        a2 = 8;
-    } else if (v1 < 0) {
-        a2 = 0;
-    }
-    if (a1 < 0) a2 = -a2;                      // apply original sign
+    
+    // Get high 16 bits of fixed-point position (16.16 format)
+    s16 posX_hi = entity->posX.i.hi;
+    s16 posY_hi = entity->posY.i.hi;
 
-    // Reload entity (matches reload at 1AA78)
-    entity = g_CurrentEntity;
-    a1_2 = v0 - 0x60;
-    // Wait, v0 at this point is (abs(posX-0x80) - 0x20) >> 5? No!
-    // At 1AA80: v0 = (abs(posX-0x80) - 0x20) >> 5? No!
-    // At 1AA2C: v0 = v0 - 0x20 (v0 was abs)
-    // 1AA30: v0 = v0 >> 5
-    // 1AA34: a2 = v0
-    // Then at 1AA80: lh v0, 6(v1) - loads posY.i.hi
-    // So a1 at 1AA80 is still the original a1? No, a1 was modified?
-    // At 1AA1C: a1 = v0 - 0x80 (v0 = posX_hi)
-    // a1 is never modified until 1AA80: addiu a1, v0, -0x60 where v0 is abs(posX-0x80) from 1AA74?
-    // At 1AA70: addu v0, a1, zero (a1 is posX-0x80)
-    // 1AA74: negu v0, v0 (v0 = -(posX-0x80) = 0x80-posX)
-    // So at 1AA80: a1 = v0 - 0x60 = (0x80-posX) - 0x60 = 0x20 - posX if posX<0x80? No
-    // v0 at 1AA74 is abs(posX_hi - 0x80)
-    // So a1 at 1AA80 = abs(posX_hi - 0x80) - 0x60
+    // --- Pan calculation (horizontal distance from 0x80) ---
+    s32 dx = posX_hi - 0x80;
+    s32 abs_dx = dx < 0 ? -dx : dx;
+    s32 pan_raw = (abs_dx - 0x20) >> 5;  // Divide by 32, arithmetic shift
+    
+    // Clamp to [0, 8]
+    if (pan_raw < 0) pan_raw = 0;
+    else if (pan_raw > 8) pan_raw = 8;
+    
+    // Apply sign based on original direction
+    pan = (dx < 0) ? -pan_raw : pan_raw;
 
-    posY_hi = entity->posY.i.hi;
-    v0_2 = posY_hi - 0x80;
-    if (v0_2 < 0) v0_2 = -v0_2;                // abs(posY - 0x80)
-    temp_v0_2 = v0_2 - 0x70;
-    v1_2 = a1_2;
-    if (temp_v0_2 > 0) {
-        v1_2 = a1_2 + temp_v0_2;               // abs(posX-0x80)-0x60 + abs(posY-0x80)-0x70
-    }
+    // --- Volume calculation (distance from 0x80,0x80 with deadzones) ---
+    dx_vol = abs_dx - 0x60;
+    
+    dy = posY_hi - 0x80;
+    abs_dy = dy < 0 ? -dy : dy;
+    dy_vol = abs_dy - 0x70;
 
-    // Sign extend v1_2 to 32-bit, check sign bit (bit 15)
-    v0_3 = v1_2 << 16;
-    if (v0_3 >= 0) {                           // v1_2 >= 0 as s16
-        v0_4 = v0_3 >> 17;                     // v1_2 >> 1 (arithmetic)
+    // Combined distance: dx_vol + max(dy_vol, 0)
+    dist = dx_vol;
+    if (dy_vol > 0) dist += dy_vol;
+
+    // Volume = 64 - dist/2 (if dist >= 0), else max volume 64
+    if (dist >= 0) {
+        volume = 0x40 - (dist >> 1);  // Arithmetic shift right 1
     } else {
-        v0_4 = 0;
+        volume = 0x40;
     }
 
-    a1_3 = 0x40 - v0_4;
-    if (a1_3 > 0) {
-        // Sign-extend arguments for call
-        s32 arg0_se = (s16)arg0;
-        s32 a2_se = (s16)a2;
-        g_api_PlaySfxVolPan(arg0_se, a1_3, a2_se);
+    // Play sound if audible
+    if (volume > 0) {
+        g_api_PlaySfxVolPan(sfxId, volume, pan);
     }
 }
