@@ -1504,6 +1504,97 @@ def shared_implementation(function: str, src_rel: str) -> str:
             "the shared header, not a private copy.\n")
 
 
+_TWINS: dict | None = None
+
+
+def _load_twins() -> dict:
+    """automation/twins.us.json, keyed "<overlay>/<symbol>".
+
+    Regenerate with `python3 automation/asm_twin_finder.py --record`. A missing
+    or stale file must never break a run, so every failure path here returns an
+    empty map and the prompt simply loses one section.
+    """
+    global _TWINS
+    if _TWINS is None:
+        path = os.path.join(WIN_REPO, "automation", "twins.us.json")
+        try:
+            with open(path, encoding="utf-8", errors="ignore") as f:
+                loaded = json.load(f).get("twins")
+            _TWINS = loaded if isinstance(loaded, dict) else {}
+        except (OSError, ValueError, AttributeError):
+            _TWINS = {}
+    return _TWINS
+
+
+def twin_for(function: str, overlay: str) -> str:
+    """Has this function already been written somewhere else in the tree?
+
+    174 of 335 unmatched stubs have a candidate, 145 of them by name alone, so
+    for most records this is the single most useful thing we can put in front
+    of a model. Without it the worker starts from raw assembly and an m2c draft
+    and rediscovers, at full token cost, that BO6_RicStepStand is RicStepStand.
+
+    Deliberately framed as evidence rather than an answer. Of the six BO6 ports
+    analysed by hand, FOUR diverged from their twin in a load-bearing way: a
+    threshold constant, an entity-slot window and loop count, a missing
+    flag-propagation block, a whole absent trailing branch. Telling a model
+    "here is the implementation" would convert those into confident wrong code
+    that only the build catches, so the wording orders a diff first.
+
+    Silent when the evidence is ambiguous. Symbols are NOT unique across
+    overlays -- EntityBreakable is stubbed in both st/rchi and st/rno0 -- so an
+    unqualified symbol with more than one candidate yields nothing rather than
+    a coin flip.
+    """
+    twins = _load_twins()
+    if not twins or not function:
+        return ""
+    entry = twins.get(f"{overlay}/{function}")
+    if entry is None:
+        hits = [v for k, v in twins.items() if k.rsplit("/", 1)[-1] == function]
+        if len(hits) != 1:
+            return ""
+        entry = hits[0]
+
+    names = entry.get("name_twins") or []
+    shapes = entry.get("shape_twins") or []
+    tokens = entry.get("token_twins") or []
+    if not (names or shapes or tokens):
+        return ""
+
+    # The stub's size is a cheap sanity check on every candidate below. Two
+    # stubs can share a name and therefore a candidate list while being
+    # different functions: st/rchi's EntityBreakable is 156 instructions and
+    # st/rno0's is 92, against the same eight same-named twins. A twin whose
+    # body cannot plausibly assemble to this many instructions is the wrong one.
+    n = entry.get("instructions")
+    size = f" (this stub is {n} instructions)" if n else ""
+    out = [f"\n=== A TWIN OF THIS FUNCTION ALREADY EXISTS IN THE TREE{size} ==="]
+    for t in names:
+        out.append(f"  same name: {t['file']}:{t['function']}")
+    for t in shapes:
+        same = "identical" if t.get("identical_constants") else "DIFFERENT"
+        out.append(f"  same instruction sequence: {t['overlay']}:{t['symbol']} "
+                   f"({same} constants)")
+    # Token hits are the weakest signal and get noisy fast, so they are only
+    # worth a model's attention when nothing stronger fired.
+    if not names and not shapes:
+        for t in tokens:
+            out.append(f"  similar symbols ({t['score']:.2f}): "
+                       f"{t['file']}:{t['function']}")
+
+    out.append(
+        "READ THE TWIN FIRST, THEN DIFF IT AGAINST THE ASSEMBLY BELOW.\n"
+        "It is a starting point, not the answer. Sibling overlays routinely\n"
+        "differ by one constant, one loop bound, or a whole missing block, and\n"
+        "four of the last six ports diverged in exactly that way. Copying past\n"
+        "a difference produces code that looks right and is not.\n"
+        "If the twin lives in src/st/<name>.h it is a SHARED implementation:\n"
+        "the answer there is a one-line #include shim, not a copy.\n"
+        "Globals differ between overlays. Resolve every symbol BY ADDRESS.\n")
+    return "\n".join(out)
+
+
 _ASM_WIDTH_TYPE = {
     "lb": "s8", "lbu": "u8", "sb": "u8",
     "lh": "s16", "lhu": "u16", "sh": "u16",
@@ -1763,8 +1854,13 @@ def build_prompt(rec: dict, ctx: dict, feedback: str = "") -> str:
     #   - existing functions to imitate (kills the "invented a new style" class)
     # Shared-implementation warning goes FIRST: if it fires, nothing else in
     # the prompt matters, because the right answer is not to generate at all.
+    # Shared-implementation warning first (if it fires, the answer is a shim
+    # and nothing else matters), then the twin, which for 174 of 335 stubs is
+    # the most useful context available and belongs above the raw assembly.
     entity_sec = (shared_implementation(rec.get("function", ""),
-                                        ctx.get("src_rel", "")) + entity_sec)
+                                        ctx.get("src_rel", ""))
+                  + twin_for(rec.get("function", ""), rec.get("overlay", ""))
+                  + entity_sec)
     entity_sec += resolve_raw_symbols(ctx.get("asm", ""))
     entity_sec += undeclared_symbols(ctx.get("asm", ""), decls)
     entity_sec += precedent_for(rec.get("function", ""), ctx.get("src_rel", ""))
