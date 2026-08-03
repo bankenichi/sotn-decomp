@@ -149,9 +149,10 @@ def _confirmed(confirm, what: str) -> None:
 #
 # Here there is no ceiling and the repo is local to WSL.
 #
-# All but one of these are read-only: they analyse and report, and none edits a
-# source file or builds. The exception is permuter_promote.py, which rewrites
-# base.c inside a nonmatchings/ work directory. That is deliberate and its
+# All but two of these are read-only: they analyse and report, and none edits a
+# source file or builds. The exceptions are permuter_promote.py, which rewrites
+# base.c inside a nonmatchings/ work directory, and permuter_supervisor.py,
+# which calls promote and starts/cancels permuter jobs. That is deliberate and its
 # blast radius is bounded three ways: it only ever touches nonmatchings/, which
 # holds permuter scratch and no shipped source; it copies the pristine seed to
 # base.c.orig before the first write and never overwrites that copy; and
@@ -188,6 +189,7 @@ ANALYSIS_SCRIPTS = {
     "test_permuter_seed.py",
     "permuter_stall.py",
     "permuter_promote.py",
+    "permuter_supervisor.py",
 }
 # Deliberately narrow: flags, numbers, and in-repo-looking relative paths.
 # No spaces, quotes, semicolons, redirects, or leading dashes-with-spaces, so

@@ -1,0 +1,119 @@
+#!/usr/bin/env bash
+# One entry point for every long-running SOTN harness process.
+#
+# WHY THIS EXISTS
+#   Every one of these was previously a remembered incantation. The permuter in
+#   particular defaults to ONE thread and never exits, so months of runs were
+#   single-threaded and had to be killed by hand; twice they were reported
+#   stopped while still running. Defaults belong in a file, not in a habit.
+#
+#   The `run-permuter`, `runfleet-cli`, `runfleet-llama` and `sotn-dash`
+#   commands are symlinks to this script. It dispatches on $0, so adding a new
+#   name means adding a symlink and a case, not a new copy of the argument
+#   handling.
+#
+# SAFETY
+#   set -euo pipefail, so a failed step stops the script instead of running the
+#   next one against a half-built state. Every stop path is idempotent: running
+#   `stop` twice is not an error and does not kill anything it did not start.
+set -euo pipefail
+
+REPO="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../.." && pwd)"
+cd "$REPO"
+
+PY="${SOTN_PYTHON:-$REPO/.venv/bin/python}"
+[ -x "$PY" ] || PY="$(command -v python3)"
+
+CMD="$(basename "$0")"
+VERB="${1:-}"
+shift || true
+
+usage() {
+    cat <<'EOF'
+SOTN harness process control.
+
+  run-permuter    start|stop|status|plan   supervised permuter over the queue
+  runfleet-cli    start|stop|status        OpenCode CLI worker fleet
+  runfleet-llama  start|stop|status        local llama worker fleet
+  sotn-dash       start|stop|status        localhost dashboard
+
+Defaults are the measured ones; override with flags after the verb.
+
+  run-permuter start --slots 3 --threads 4
+  runfleet-cli start --workers 2
+  sotn-dash start --port 8777
+
+`plan` and `status` never start or stop anything, so they are always safe.
+EOF
+}
+
+need_verb() {
+    case "$VERB" in
+        start|stop|status|plan) : ;;
+        ""|-h|--help|help) usage; exit 0 ;;
+        *) echo "unknown verb '$VERB' for $CMD" >&2; usage >&2; exit 2 ;;
+    esac
+}
+
+# Fleet control goes through commands_client so it shares ONE definition of
+# what a fleet is with the MCP connector. A second launcher here would drift
+# from that one, and the drift would only show up as workers nobody can stop.
+fleet() {
+    local backend="$1"; shift
+    local workers="${1:-}"
+    case "$VERB" in
+        start)
+            local n="${workers:-2}"
+            [[ "$n" =~ ^[0-9]+$ ]] || { echo "workers must be a number" >&2; exit 2; }
+            "$PY" - "$backend" "$n" <<'PY'
+import sys
+sys.path.insert(0, "automation/mcp")
+import commands_client as cc
+backend, n = sys.argv[1], int(sys.argv[2])
+print(cc.fleet_start(workers=n, backend=backend))
+PY
+            ;;
+        stop)
+            # hold=True reclaims the workers' queue records. A killed worker
+            # cannot release its own claim, so skipping this leaves records
+            # stuck in 'claimed' and invisible to every later run.
+            "$PY" -c "
+import sys; sys.path.insert(0,'automation/mcp')
+import commands_client as cc; print(cc.fleet_stop(hold=True))"
+            ;;
+        status)
+            "$PY" -c "
+import sys, json; sys.path.insert(0,'automation/mcp')
+import commands_client as cc; print(json.dumps(cc.fleet_status(tail=3), indent=2))"
+            ;;
+        plan) echo "plan is only meaningful for run-permuter" >&2; exit 2 ;;
+    esac
+}
+
+need_verb
+
+case "$CMD" in
+    run-permuter)
+        case "$VERB" in
+            start)  exec "$PY" automation/permuter_supervisor.py --run "$@" ;;
+            plan)   exec "$PY" automation/permuter_supervisor.py --plan "$@" ;;
+            stop)   exec "$PY" automation/permuter_supervisor.py --stop ;;
+            status) exec "$PY" automation/permuter_supervisor.py --status ;;
+        esac
+        ;;
+    runfleet-cli)   fleet cli  "${1:-}" ;;
+    runfleet-llama) fleet http "${1:-}" ;;
+    sotn-dash)
+        case "$VERB" in
+            start)  exec "$PY" automation/dashboard.py --serve "$@" ;;
+            stop)   exec "$PY" automation/dashboard.py --stop ;;
+            status) exec "$PY" automation/dashboard.py --status ;;
+            plan)   echo "plan is only meaningful for run-permuter" >&2; exit 2 ;;
+        esac
+        ;;
+    *)
+        echo "sotn-run must be invoked through one of its symlinks" >&2
+        usage >&2
+        exit 2
+        ;;
+esac

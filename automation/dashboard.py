@@ -1,0 +1,519 @@
+#!/usr/bin/env python3
+"""Localhost dashboard for the SOTN harness: queue, permuter, fleets.
+
+WHAT IT SHOWS
+    - live queue counts by status, straight from the scheduler queue
+    - one column per running permuter job: best score, iterations, whether it
+      is still improving, and the tail of its log
+    - one column per fleet worker: alive/dead and the tail of its log
+    - start/stop buttons for the supervised permuter and both fleets
+
+WHY A SERVER AND NOT A SCRIPT
+    A silent fleet and a stuck fleet look identical from a PID count, and a
+    permuter log is one line per iteration at ten per second, so reading it by
+    eye gives the wrong number. Both failure modes are invisible without
+    something that polls and summarises continuously.
+
+SAFETY, which is most of the design here
+    This process can start and stop jobs, so it is deliberately hard to reach
+    and impossible to talk into running something arbitrary:
+
+    1. Binds 127.0.0.1 only. Never 0.0.0.0. Not reachable off the machine.
+    2. Actions are a fixed dict of zero-argument callables. There is no command
+       string, no argv, no shell anywhere in the request path, so there is
+       nothing for a crafted request to inject into.
+    3. Mutating requests must be POST and must carry the token printed at
+       startup. A GET can never change state, which also means a stray browser
+       prefetch or a link in a page cannot stop your fleet.
+    4. The token is per-process and random. Restarting invalidates it.
+    5. Every stop path is idempotent and reclaims queue records, so pressing
+       stop twice is harmless and never leaves records stuck in 'claimed'.
+    6. Read endpoints never expose file contents outside the two known log
+       directories.
+
+Usage:
+    python3 automation/dashboard.py --serve [--port 8777]
+    python3 automation/dashboard.py --status
+    python3 automation/dashboard.py --stop
+    python3 automation/dashboard.py --self-test
+"""
+from __future__ import annotations
+
+import argparse
+import http.server
+import json
+import os
+import re
+import secrets
+import signal
+import socketserver
+import sys
+import threading
+import urllib.parse
+from collections import Counter
+from pathlib import Path
+
+REPO = Path(os.environ.get("SOTN_REPO", Path(__file__).resolve().parents[1]))
+QUEUE = Path(os.environ.get(
+    "SOTN_QUEUE", os.path.expanduser("~/sotn-work/queue.jsonl")))
+JOBS_DIR = Path(os.path.expanduser(
+    os.environ.get("SOTN_JOBS_DIR", "~/sotn-work/jobs")))
+FLEET_LOGS = REPO / "automation" / "logs"
+PIDFILE = Path(os.path.expanduser("~/sotn-work/dashboard.pid"))
+SUPERVISOR_STATE = Path(os.path.expanduser("~/sotn-work/supervisor.json"))
+
+sys.path.insert(0, str(REPO / "automation"))
+sys.path.insert(0, str(REPO / "automation" / "mcp"))
+
+TOKEN = secrets.token_urlsafe(16)
+TAIL_LINES = 20
+HOST = "127.0.0.1"          # never widen this
+
+
+# ------------------------------------------------------------------ reading
+
+def tail(path: Path, n: int = TAIL_LINES) -> list[str]:
+    """Last n lines, with the permuter's carriage-return padding stripped.
+
+    The permuter rewrites one status line in place using \\b and trailing
+    spaces, so a raw tail is mostly backspaces. Cleaning here rather than in
+    the browser keeps the payload small.
+    """
+    try:
+        raw = path.read_text(errors="ignore")
+    except OSError:
+        return []
+    lines = [re.sub(r"[\b\r]+", "", l).rstrip() for l in raw.splitlines()]
+    return [l for l in lines if l][-n:]
+
+
+def queue_counts() -> dict:
+    if not QUEUE.is_file():
+        return {"error": f"no queue at {QUEUE}"}
+    c = Counter()
+    for line in QUEUE.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            c[json.loads(line).get("status", "?")] += 1
+        except json.JSONDecodeError:
+            c["malformed"] += 1
+    return {"total": sum(c.values()), "by_status": dict(sorted(c.items()))}
+
+
+def permuter_panels() -> list[dict]:
+    import jobs
+    from permuter_stall import parse
+    out = []
+    for jid in jobs.running_jobs("permuter"):
+        log = JOBS_DIR / f"{jid}.log"
+        d = parse(log.read_text(errors="ignore")) if log.is_file() else {
+            "best": None, "iterations": 0, "since_improvement": 0,
+            "failures": 0}
+        fn = jid.split("-", 2)[2] if len(jid.split("-", 2)) == 3 else jid
+        out.append({"id": jid, "name": fn, "best": d["best"],
+                    "iterations": d["iterations"],
+                    "since": d["since_improvement"],
+                    "failures": d["failures"],
+                    "improving": d["since_improvement"] < 2000,
+                    "log": tail(log)})
+    return out
+
+
+def fleet_panels() -> list[dict]:
+    out = []
+    if not FLEET_LOGS.is_dir():
+        return out
+    try:
+        import commands_client as cc
+        alive = set(cc._fleet_pids_alive())
+    except Exception:
+        alive = set()
+    for p in sorted(FLEET_LOGS.glob("worker-*.log")):
+        out.append({"name": p.stem.replace("worker-", ""),
+                    "kind": "llama" if "-llama-" in p.name else "opencode",
+                    "log": tail(p)})
+    return [{**o, "workers_alive": len(alive)} for o in out]
+
+
+def snapshot() -> dict:
+    perm = permuter_panels()
+    sup = {}
+    if SUPERVISOR_STATE.is_file():
+        try:
+            sup = json.loads(SUPERVISOR_STATE.read_text())
+        except (OSError, json.JSONDecodeError):
+            sup = {}
+    return {"queue": queue_counts(), "permuter": perm,
+            "supervisor": sup, "fleet": fleet_panels()}
+
+
+# ------------------------------------------------------------------ actions
+# Zero-argument callables only. Nothing here takes user input, so no request
+# can widen what runs. Adding an action means editing this file.
+
+def _sup(*args: str) -> dict:
+    import subprocess
+    py = os.environ.get("SOTN_PYTHON", sys.executable)
+    r = subprocess.run([py, str(REPO / "automation" / "permuter_supervisor.py"),
+                        *args], cwd=str(REPO), capture_output=True, text=True,
+                       timeout=60)
+    return {"ok": r.returncode == 0, "out": (r.stdout or r.stderr)[-4000:]}
+
+
+def _sup_start() -> dict:
+    import subprocess
+    py = os.environ.get("SOTN_PYTHON", sys.executable)
+    # Detached: the supervisor outlives this request by design, and a request
+    # that waited for it would hold the single-threaded server open for hours.
+    subprocess.Popen(
+        [py, str(REPO / "automation" / "permuter_supervisor.py"), "--run"],
+        cwd=str(REPO), stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT,
+        start_new_session=True)
+    return {"ok": True, "out": "supervisor started (detached)"}
+
+
+def _fleet(backend: str, n: int):
+    def go() -> dict:
+        import commands_client as cc
+        return {"ok": True, "out": str(cc.fleet_start(workers=n,
+                                                      backend=backend))}
+    return go
+
+
+def _fleet_stop() -> dict:
+    import commands_client as cc
+    # hold=True always: a killed worker cannot release its queue claim.
+    return {"ok": True, "out": str(cc.fleet_stop(hold=True))}
+
+
+ACTIONS = {
+    "permuter_start": _sup_start,
+    "permuter_stop": lambda: _sup("--stop"),
+    "permuter_plan": lambda: _sup("--plan"),
+    "fleet_cli_start": _fleet("cli", 2),
+    "fleet_llama_start": _fleet("http", 2),
+    "fleet_stop": _fleet_stop,
+}
+
+
+# ------------------------------------------------------------------- server
+
+class Handler(http.server.BaseHTTPRequestHandler):
+    def log_message(self, *a):        # keep the console readable
+        pass
+
+    def _send(self, code: int, body: bytes, ctype: str) -> None:
+        self.send_response(code)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(len(body)))
+        # This page must never be framed or sniffed into something executable.
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("X-Frame-Options", "DENY")
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _json(self, obj, code=200):
+        self._send(code, json.dumps(obj).encode(), "application/json")
+
+    def do_GET(self):
+        path = urllib.parse.urlparse(self.path).path
+        if path in ("/", "/index.html"):
+            self._send(200, PAGE.replace("__TOKEN__", TOKEN).encode(),
+                       "text/html; charset=utf-8")
+        elif path == "/api/status":
+            self._json(snapshot())
+        else:
+            self._json({"error": "not found"}, 404)
+
+    def do_POST(self):
+        # State changes are POST-only and token-gated, so nothing a browser
+        # does on its own (prefetch, favicon, a link someone pastes) can reach
+        # them.
+        if self.headers.get("X-Token") != TOKEN:
+            self._json({"error": "bad or missing token"}, 403)
+            return
+        path = urllib.parse.urlparse(self.path).path
+        name = path[len("/api/action/"):] if path.startswith(
+            "/api/action/") else ""
+        fn = ACTIONS.get(name)
+        if fn is None:
+            self._json({"error": f"unknown action {name!r}"}, 404)
+            return
+        try:
+            self._json(fn())
+        except Exception as e:                       # never 500 silently
+            self._json({"ok": False, "out": f"{type(e).__name__}: {e}"}, 200)
+
+
+class Server(socketserver.ThreadingTCPServer):
+    allow_reuse_address = True
+    daemon_threads = True
+
+
+def serve(port: int) -> int:
+    PIDFILE.parent.mkdir(parents=True, exist_ok=True)
+    PIDFILE.write_text(f"{os.getpid()} {port} {TOKEN}\n")
+    with Server((HOST, port), Handler) as srv:
+        url = f"http://{HOST}:{port}/"
+        # flush=True because stdout is block-buffered whenever this is not a
+        # tty. Redirect `sotn-dash start` to a log without it and the URL and
+        # token sit in the buffer until the process exits, which is exactly
+        # when you no longer need them.
+        print(f"dashboard on {url}", flush=True)
+        print(f"token {TOKEN}  (embedded in the page; new one each restart)",
+              flush=True)
+        print("Ctrl-C, or: sotn-dash stop", flush=True)
+        try:
+            srv.serve_forever()
+        except KeyboardInterrupt:
+            print("\nstopping")
+        finally:
+            PIDFILE.unlink(missing_ok=True)
+    return 0
+
+
+def read_pidfile() -> tuple[int, int] | None:
+    try:
+        parts = PIDFILE.read_text().split()
+        return int(parts[0]), int(parts[1])
+    except (OSError, ValueError, IndexError):
+        return None
+
+
+def stop() -> int:
+    got = read_pidfile()
+    if not got:
+        print("no dashboard pidfile; nothing to stop")
+        return 0
+    pid, port = got
+    try:
+        os.kill(pid, signal.SIGTERM)
+        print(f"stopped dashboard pid {pid} (port {port})")
+    except ProcessLookupError:
+        print(f"pid {pid} was already gone")
+    PIDFILE.unlink(missing_ok=True)
+    return 0
+
+
+def status() -> int:
+    got = read_pidfile()
+    if not got:
+        print(json.dumps({"running": False}))
+        return 0
+    pid, port = got
+    try:
+        os.kill(pid, 0)
+        alive = True
+    except OSError:
+        alive = False
+    print(json.dumps({"running": alive, "pid": pid, "port": port,
+                      "url": f"http://{HOST}:{port}/"}, indent=2))
+    return 0
+
+
+PAGE = r"""<!doctype html><meta charset=utf-8>
+<title>SOTN harness</title>
+<style>
+:root{--bg:#12121a;--panel:#1b1b26;--line:#2e2e3d;--fg:#dcdce6;--dim:#8b8ba0;
+      --ok:#5ec27a;--warn:#d9a441;--bad:#d4635f;--accent:#7aa2f7}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);
+     font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace}
+header{display:flex;gap:16px;align-items:center;flex-wrap:wrap;
+       padding:10px 16px;border-bottom:1px solid var(--line);position:sticky;
+       top:0;background:var(--bg);z-index:2}
+h1{font-size:14px;margin:0;letter-spacing:.08em;text-transform:uppercase}
+button{background:var(--panel);color:var(--fg);border:1px solid var(--line);
+       border-radius:5px;padding:5px 11px;cursor:pointer;font:inherit}
+button:hover{border-color:var(--accent)}
+button[disabled]{opacity:.45;cursor:not-allowed}
+button.danger:hover{border-color:var(--bad);color:var(--bad)}
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.chip{background:var(--panel);border:1px solid var(--line);border-radius:999px;
+      padding:2px 10px}
+.chip b{color:var(--accent)}
+section{padding:12px 16px}
+h2{font-size:12px;color:var(--dim);margin:0 0 8px;letter-spacing:.1em;
+   text-transform:uppercase}
+.cols{display:grid;gap:12px;
+      grid-template-columns:repeat(auto-fill,minmax(320px,1fr))}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:7px;
+       overflow:hidden;display:flex;flex-direction:column}
+.phead{display:flex;justify-content:space-between;gap:8px;padding:7px 10px;
+       border-bottom:1px solid var(--line);align-items:center}
+.name{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.meta{color:var(--dim);font-size:11px;white-space:nowrap}
+.bar{height:3px;background:var(--line)}
+.bar>i{display:block;height:100%;background:var(--ok)}
+pre{margin:0;padding:8px 10px;max-height:230px;overflow:auto;font-size:11px;
+    color:var(--dim);white-space:pre-wrap;word-break:break-word}
+.ok{color:var(--ok)}.warn{color:var(--warn)}.bad{color:var(--bad)}
+#out{padding:8px 16px;color:var(--dim);border-top:1px solid var(--line);
+     white-space:pre-wrap;max-height:150px;overflow:auto}
+.empty{color:var(--dim);padding:6px 0}
+</style>
+<header>
+  <h1>SOTN harness</h1>
+  <div class=chips id=q></div>
+  <span style="flex:1"></span>
+  <button onclick="act('permuter_plan')">plan</button>
+  <button onclick="act('permuter_start')">start permuter</button>
+  <button class=danger onclick="confirmAct('permuter_stop','Stop all permuter jobs?')">stop permuter</button>
+  <button onclick="act('fleet_cli_start')">fleet cli</button>
+  <button onclick="act('fleet_llama_start')">fleet llama</button>
+  <button class=danger onclick="confirmAct('fleet_stop','Stop all fleet workers and reclaim their queue records?')">stop fleet</button>
+</header>
+<section><h2>Permuter</h2><div class=cols id=perm></div></section>
+<section><h2>Fleet</h2><div class=cols id=fleet></div></section>
+<div id=out></div>
+<script>
+const TOKEN="__TOKEN__";
+const el=(id)=>document.getElementById(id);
+const esc=(s)=>s.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+
+async function act(name){
+  // Buttons disable while in flight so a double click cannot start two fleets.
+  document.querySelectorAll('button').forEach(b=>b.disabled=true);
+  el('out').textContent='running '+name+' ...';
+  try{
+    const r=await fetch('/api/action/'+name,{method:'POST',
+      headers:{'X-Token':TOKEN}});
+    const j=await r.json();
+    el('out').textContent=(j.out||JSON.stringify(j)).trim();
+  }catch(e){ el('out').textContent='request failed: '+e; }
+  document.querySelectorAll('button').forEach(b=>b.disabled=false);
+  refresh();
+}
+function confirmAct(name,msg){ if(confirm(msg)) act(name); }
+
+function panel(title,meta,cls,lines,pct){
+  return `<div class=panel><div class=phead>
+     <span class=name>${esc(title)}</span>
+     <span class="meta ${cls}">${esc(meta)}</span></div>
+     ${pct!=null?`<div class=bar><i style="width:${pct}%"></i></div>`:''}
+     <pre>${esc(lines.join('\n'))||'(no output yet)'}</pre></div>`;
+}
+
+async function refresh(){
+  let s; try{ s=await (await fetch('/api/status')).json(); }catch(e){ return; }
+
+  const q=s.queue.by_status||{};
+  el('q').innerHTML = s.queue.error ? `<span class="chip bad">${esc(s.queue.error)}</span>`
+    : Object.entries(q).map(([k,v])=>`<span class=chip>${esc(k)} <b>${v}</b></span>`)
+        .join('') + `<span class=chip>total <b>${s.queue.total}</b></span>`;
+
+  el('perm').innerHTML = s.permuter.length ? s.permuter.map(p=>{
+    const cls = p.best===0 ? 'ok' : (p.improving ? '' : 'warn');
+    const meta = `best ${p.best==null?'-':p.best} · ${p.iterations} it`
+               + (p.improving?'':' · stalled')
+               + (p.failures?` · ${p.failures} rej`:'');
+    // Progress is "how far into the stall window", the only bounded quantity
+    // the permuter has. It is not progress toward a match; there is no such
+    // number, because the search is unbounded.
+    const pct = Math.min(100, Math.round(p.since/2000*100));
+    return panel(p.name, meta, cls, p.log, pct);
+  }).join('') : '<div class=empty>no permuter jobs running</div>';
+
+  el('fleet').innerHTML = s.fleet.length ? s.fleet.map(f=>
+      panel(f.name, f.kind, '', f.log)).join('')
+    : '<div class=empty>no fleet workers</div>';
+}
+refresh(); setInterval(refresh,3000);
+</script>
+"""
+
+
+def self_test() -> int:
+    import tempfile
+    fails = []
+
+    def ck(c, l):
+        print(("  ok   " if c else "  FAIL ") + l)
+        if not c:
+            fails.append(l)
+
+    global QUEUE
+    print("\nsafety invariants")
+    ck(HOST == "127.0.0.1", "binds loopback only, never 0.0.0.0")
+    ck(all(callable(v) for v in ACTIONS.values()),
+       "every action is a zero-argument callable, so no request supplies argv")
+    src = Path(__file__).read_text()
+    # Everything BEFORE self_test. The first version of this check searched the
+    # whole file and failed on the literal inside its own assertion, which is a
+    # neat demonstration of why a grep-style test has to exclude itself.
+    code = src[:src.index("def self_test")]
+    ck("shell=True" not in code, "no shell=True anywhere in the request path")
+    ck("os.system" not in code and "eval(" not in code,
+       "no os.system or eval in the request path either")
+    ck('self.headers.get("X-Token")' in src, "POST checks the token")
+    ck(src.index("def do_POST") > 0 and "X-Token" not in
+       src[src.index("def do_GET"):src.index("def do_POST")],
+       "GET does NOT require a token, because GET cannot change state")
+    ck("hold=True" in src, "fleet stop always reclaims queue records")
+    ck(len(TOKEN) >= 20, "token is long and random")
+
+    print("\ntail cleaning")
+    with tempfile.TemporaryDirectory() as td:
+        p = Path(td) / "x.log"
+        p.write_text("iteration 1, score = 70\b\b\b\b     \n"
+                     "\niteration 2, score = 0\r\n")
+        t = tail(p)
+        ck(t == ["iteration 1, score = 70", "iteration 2, score = 0"],
+           f"backspace padding and blank lines are stripped ({t})")
+        ck(tail(Path(td) / "missing.log") == [],
+           "a missing log gives an empty tail, not an exception")
+
+        print("\nqueue counting")
+        QUEUE = Path(td) / "q.jsonl"
+        QUEUE.write_text('{"status":"near"}\n{"status":"near"}\n'
+                         '{"status":"matched"}\nGARBAGE\n')
+        qc = queue_counts()
+        ck(qc["by_status"] == {"malformed": 1, "matched": 1, "near": 2},
+           f"counts by status and flags malformed lines ({qc['by_status']})")
+        ck(qc["total"] == 4, "total includes the malformed line")
+        QUEUE = Path(td) / "gone.jsonl"
+        ck("error" in queue_counts(), "a missing queue reports an error, not a crash")
+
+    print("\nthe page")
+    ck("__TOKEN__" in PAGE, "page carries a token placeholder")
+    ck("setInterval" in PAGE, "page refreshes itself")
+    ck("confirm(" in PAGE, "destructive buttons confirm first")
+    ck("b.disabled=true" in PAGE, "buttons disable in flight, so no double-start")
+    ck("esc(" in PAGE and "&lt;" in PAGE,
+       "log text is escaped before it reaches the DOM")
+
+    print()
+    if fails:
+        print(f"{len(fails)} FAILED")
+        for f in fails:
+            print("  - " + f)
+        return 1
+    print("all checks passed")
+    return 0
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--serve", action="store_true")
+    ap.add_argument("--stop", action="store_true")
+    ap.add_argument("--status", action="store_true")
+    ap.add_argument("--self-test", action="store_true")
+    ap.add_argument("--port", type=int, default=8777)
+    a = ap.parse_args()
+    if a.self_test:
+        return self_test()
+    if a.stop:
+        return stop()
+    if a.status:
+        return status()
+    if a.serve:
+        return serve(a.port)
+    ap.error("pass --serve, --stop, --status or --self-test")
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
