@@ -277,18 +277,32 @@ class TokenIndex:
         return out
 
 
-def include_asm_symbols() -> set[str]:
-    """Symbols still stubbed by an INCLUDE_ASM somewhere in src/.
+def include_asm_symbols() -> set[tuple[str, str]]:
+    """(asm_dir, symbol) pairs still stubbed by an INCLUDE_ASM somewhere in src/.
 
-    An .s file on disk does not mean the function is unmatched: the build
-    leaves the extracted assembly in place after a function is written in C.
-    The INCLUDE_ASM is the authority on what still needs work.
+    An .s file on disk does not mean the function is unmatched: the build leaves
+    the extracted assembly in place after a function is written in C. The
+    INCLUDE_ASM is the authority on what still needs work.
+
+    PATH-AWARE, and it has to be. This returned bare symbol NAMES until
+    2026-08-02, which made any .s file "live" as soon as some file anywhere
+    stubbed a function of the same name. When a `c` segment is split, splat
+    writes the moved functions into the new directory and leaves the old copies
+    behind, so four functions existed under BOTH
+    asm/us/st/rno0/nonmatchings/giantbro_helpers/ and .../unk_4A320/. Both
+    copies looked live, both produced a record keyed on overlay/symbol, and
+    --record died on its own uniqueness assertion. The twin corpus could not be
+    regenerated at all, and it had been stale since commit c614af465.
+
+    Pairing the directory with the symbol makes an orphaned copy exactly what it
+    is: assembly no INCLUDE_ASM points at.
     """
-    out = set()
-    pat = re.compile(r"INCLUDE_ASM\(\s*\"[^\"]*\"\s*,\s*(\w+)\s*\)")
+    out: set[tuple[str, str]] = set()
+    pat = re.compile(r"INCLUDE_ASM\(\s*\"([^\"]*)\"\s*,\s*(\w+)\s*\)")
     for path in SRC_ROOT.rglob("*.c"):
         try:
-            out.update(pat.findall(path.read_text(errors="ignore")))
+            for asm_rel, sym in pat.findall(path.read_text(errors="ignore")):
+                out.add((asm_rel.strip("/").split("/")[-1], sym))
         except OSError:
             continue
     return out
@@ -305,7 +319,11 @@ def analyse(only: str = "") -> list[dict]:
 
     still = include_asm_symbols()
     for stub in stubs:
-        stub.still_asm = stub.name in still
+        # Match on (containing directory, symbol). The directory is the last
+        # component of the INCLUDE_ASM path, and it is the stub .s file's own
+        # parent, so an orphaned copy left behind by a segment split does not
+        # inherit liveness from its live twin elsewhere.
+        stub.still_asm = (Path(stub.path).parent.name, stub.name) in still
 
     cfuncs = c_functions()
     cdocs = [c_tokens(body) for _, _, body in cfuncs]
@@ -394,6 +412,22 @@ KNOWN_LIMIT = {
 }
 
 
+
+def _retired(sym: str) -> bool:
+    """Has this symbol been matched, so it is no longer a stub to recover?
+
+    analyse() only walks nonmatchings/. When a function is matched its assembly
+    moves to matchings/, so it vanishes from `rows` and any fixture naming it
+    reports "stub not parsed" -- which reads like a parser regression and is
+    actually the project working as intended.
+
+    That is a rotting fixture, the same failure mode the review-gate test hit on
+    2026-08-02. A self-test whose cases expire as the work progresses will
+    eventually be silenced rather than read, so it has to tell the two apart.
+    """
+    return any(ASM_ROOT.rglob(f"matchings/**/{sym}.s"))
+
+
 def self_test() -> int:
     rows = {r["symbol"]: r for r in analyse()}
     failures = 0
@@ -403,6 +437,9 @@ def self_test() -> int:
     for sym, expected in MUST_RECOVER.items():
         row = rows.get(sym)
         if row is None:
+            if _retired(sym):
+                print(f"{sym:40} {expected:32} n/a: matched, no longer a stub")
+                continue
             print(f"{sym:40} {expected:32} FAIL: stub not parsed")
             failures += 1
             continue
@@ -422,6 +459,9 @@ def self_test() -> int:
     for sym, expected in KNOWN_LIMIT.items():
         row = rows.get(sym)
         if row is None:
+            if _retired(sym):
+                print(f"{sym:40} {'(matched, no longer a stub)':32} n/a")
+                continue
             print(f"{sym:40} {'':32} FAIL: stub not parsed")
             failures += 1
             continue
@@ -770,6 +810,12 @@ def main() -> int:
     ap.add_argument(
         "--all", action="store_true", help="include stubs already written in C"
     )
+    ap.add_argument(
+        "--diagnose-keys", action="store_true",
+        help="list the overlay/symbol keys that collide, and where each "
+             "duplicate came from. Use when --record aborts on its uniqueness "
+             "assertion.",
+    )
     a = ap.parse_args()
 
     if a.self_test:
@@ -782,6 +828,30 @@ def main() -> int:
             Path(a.json).write_text(json.dumps(rows, indent=2))
             print(f"\nwrote {a.json}")
         return 0
+
+    if a.diagnose_keys:
+        # Why the record could not be written. write_record() asserts that
+        # overlay/symbol is unique and, when it is not, the assertion says only
+        # that something collided -- which is the least useful half of the
+        # answer. This prints the colliding keys and the files each duplicate
+        # came from, which is what you actually need to fix it.
+        rows = [r for r in analyse() if r["still_asm"]]
+        cand = [r for r in rows
+                if r["name_twins"] or r["shape_twins"] or r["token_twins"]]
+        seen: dict[str, list] = {}
+        for r in cand:
+            seen.setdefault(f"{r['overlay']}/{r['symbol']}", []).append(r)
+        dupes = {k: v for k, v in seen.items() if len(v) > 1}
+        print(f"{len(rows)} unmatched stubs, {len(cand)} with candidates, "
+              f"{len(dupes)} colliding key(s)")
+        for k, v in sorted(dupes.items()):
+            print(f"\n  {k}  x{len(v)}")
+            for r in v:
+                bits = {kk: r.get(kk) for kk in
+                        ("src", "src_rel", "file", "asm", "asm_rel",
+                         "instructions") if r.get(kk) is not None}
+                print(f"     {bits}")
+        return 1 if dupes else 0
 
     if a.record:
         return write_record()
