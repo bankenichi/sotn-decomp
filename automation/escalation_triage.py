@@ -237,33 +237,98 @@ def declared_at(name: str) -> str | None:
     return _DECL_INDEX.get(name)
 
 
-def struct_members(limit_files: int = 400) -> dict[str, set[str]]:
-    """member name -> the struct/union tags that declare it.
+_ENTITY: list[tuple[int, str, str]] | None = None
+_EXT: set[str] | None = None
 
-    Used to answer the other half: when the model says `unk24' does not exist,
-    what DOES exist near there. Reported as evidence, never auto-applied.
+
+def entity_fields() -> list[tuple[int, str, str]]:
+    """(offset, type, name) for every field of Entity, from its own annotations.
+
+    include/game.h annotates Entity with real offsets (`/* 0x24 */ u16
+    zPriority;`), so this is ground truth rather than a guess about layout.
+
+    This replaced a resolver that indexed EVERY struct under include/ and
+    answered "which struct has a member called unk8" with
+    ['(anonymous)', 'Collider', 'PspUsbCamSetupVideoExParam']. PSP SDK camera
+    structs have nothing to do with this game; that output was noise wearing the
+    shape of evidence.
     """
-    out: dict[str, set[str]] = defaultdict(set)
-    tag_rx = re.compile(
-        r"\b(?:struct|union)\s+(\w+)?\s*\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}",
-        re.S)
-    mem_rx = re.compile(r"\b([A-Za-z_]\w*)\s*(?:\[[^\]]*\])?\s*;")
-    n = 0
-    for p in list((REPO / "include").rglob("*.h")):
-        if n >= limit_files:
-            break
-        n += 1
-        try:
-            text = p.read_text(errors="ignore")
-        except OSError:
-            continue
-        for m in tag_rx.finditer(text):
-            tag = m.group(1) or "(anonymous)"
-            for mem in mem_rx.findall(m.group(2)):
-                out[mem].add(tag)
-    return out
+    global _ENTITY
+    if _ENTITY is not None:
+        return _ENTITY
+    text = (REPO / "include" / "game.h").read_text(errors="ignore")
+    m = re.search(r"typedef struct Entity \{(.*?)\n\} Entity;", text, re.S)
+    out: list[tuple[int, str, str]] = []
+    if m:
+        for line in m.group(1).splitlines():
+            f = re.match(
+                r"\s*/\* (0x[0-9A-Fa-f]+) \*/\s+(.+?)\s+\*?(\w+)\s*(?:\[|;|:)",
+                line)
+            if f:
+                out.append((int(f.group(1), 16), f.group(2).strip(), f.group(3)))
+    _ENTITY = sorted(out)
+    return _ENTITY
 
 
+def ext_members() -> set[str]:
+    """The TOP-LEVEL member names of the Ext union in include/entity.h.
+
+    Ext is a union of ~341 per-entity structs, each named (`factory`,
+    `subweapon`, `orob`). A model that writes `self->ext.generic` has invented a
+    member; naming what really exists is the useful answer.
+    """
+    global _EXT
+    if _EXT is not None:
+        return _EXT
+    text = (REPO / "include" / "entity.h").read_text(errors="ignore")
+    try:
+        end = text.index("} Ext;")
+    except ValueError:
+        _EXT = set()
+        return _EXT
+    depth, i = 0, end
+    while i > 0:
+        i -= 1
+        if text[i] == "}":
+            depth += 1
+        elif text[i] == "{":
+            if depth == 0:
+                break
+            depth -= 1
+    _EXT = {n for _t, n in
+            re.findall(r"^\s*(\w+)\s+(\w+)\s*;\s*$", text[i + 1:end], re.M)}
+    return _EXT
+
+
+def resolve_entity_offset(name: str) -> str | None:
+    """`unk24' -> the Entity field really at 0x24, or the field containing it.
+
+    The name IS the evidence: splat and the models both spell an unknown field
+    as unk<HEX OFFSET>, so `unk24' is a claim about offset 0x24 and can be
+    checked against the annotated struct instead of guessed at.
+
+    Reports the CONTAINING field when the offset lands inside one. `unk29' is
+    not a field: 0x29 is the second byte of pfnUpdate at 0x28, and saying so is
+    far more useful than saying no such member exists.
+    """
+    m = re.fullmatch(r"unk([0-9A-Fa-f]{1,3})", name)
+    if not m:
+        return None
+    off = int(m.group(1), 16)
+    fields = entity_fields()
+    if not fields:
+        return None
+    for i, (o, ty, nm) in enumerate(fields):
+        if o == off:
+            return f"Entity+{off:#x} is `{nm}` ({ty})"
+        if o > off:
+            po, pty, pnm = fields[i - 1]
+            return (f"Entity+{off:#x} is INSIDE `{pnm}` ({pty}) which starts at "
+                    f"{po:#x}; there is no field at {off:#x}")
+    return None
+
+
+# ---------------------------------------------------------------------------
 # ---------------------------------------------------------------------------
 # queue access
 
@@ -311,6 +376,16 @@ def read_escalated() -> list[dict]:
     return out
 
 
+def _union_member_error(note: str, name: str) -> bool:
+    """Did GCC specifically say this name is not a UNION member?
+
+    Distinguishes `ext.generic' (a real union-member mistake) from a local
+    variable that merely failed to resolve for some other reason.
+    """
+    return bool(re.search(
+        r"union has no member named `" + re.escape(name) + r"'", note or ""))
+
+
 def _overlay_of(path_or_id: str) -> str:
     """The overlay a queue id or a repo path belongs to, lowercased."""
     t = path_or_id.lower().replace("\\", "/")
@@ -330,7 +405,7 @@ def _cross_overlay(rec_id: str, decl_path: str) -> bool:
 
 def triage(records: list[dict]) -> list[dict]:
     known = known_objects()
-    members = struct_members()
+    ext = ext_members()
     rows = []
     for rec in records:
         note = rec["note"]
@@ -338,6 +413,18 @@ def triage(records: list[dict]) -> list[dict]:
         bad = bad_identifiers(note)
         if cls == "symbol" and is_c89_declaration_error(note):
             cls = "c89"
+            # The identifiers here are LOCAL VARIABLES the parser rejected, not
+            # names that need resolving. Reporting "resolutions" for them
+            # invites someone to apply a rename that has nothing to do with the
+            # actual defect.
+            rows.append({
+                "id": rec["id"], "class": cls, "bad_identifiers": bad,
+                "resolvable": [], "unresolved": [],
+                "action": ("move every declaration to the top of its block; "
+                           "GCC 2.7 is C89. The names below are locals, not "
+                           "fields: " + ", ".join(bad[:6])),
+            })
+            continue
         fixes, unknowns = [], []
         for b in bad:
             # FIRST: does the name already exist somewhere in the tree?
@@ -385,10 +472,26 @@ def triage(records: list[dict]) -> list[dict]:
                               "why": "flat name whose head is a real object, "
                                      "and no declaration of it exists anywhere "
                                      "(UNVERIFIED: confirm against the asm)"})
-            elif b in members:
+            elif resolve_entity_offset(b):
                 fixes.append({"invented": b,
-                              "likely": f"member of {sorted(members[b])[:3]}",
-                              "why": "name exists, but not on the struct used"})
+                              "likely": resolve_entity_offset(b),
+                              "why": "unk<hex> names an OFFSET; resolved against "
+                                     "the annotated Entity in include/game.h"})
+            elif _union_member_error(note, b) and ext:
+                # ONLY when GCC actually said "union has no member named `b'".
+                #
+                # The first version fired on any unresolved name, and told a C89
+                # record that its local variable `distX' was not a member of the
+                # Ext union. That is a confident answer to a question nobody
+                # asked, and it is how a wrong fix gets applied.
+                sample = ", ".join(sorted(ext)[:6]) if ext else ""
+                fixes.append({
+                    "invented": b,
+                    "likely": f"not a member of the Ext union ({len(ext)} real "
+                              f"members, e.g. {sample}); pick the one for this "
+                              f"entity, or read the asm offsets",
+                    "why": "Ext is a union of per-entity structs, not a generic "
+                           "bag"})
             else:
                 unknowns.append(b)
         rows.append({
@@ -458,6 +561,29 @@ def self_test() -> int:
        "RIC_step is declared somewhere in the tree (it is real)")
     ck(declared_at("totally_made_up_identifier_xyz") is None,
        "an invented name is declared nowhere")
+
+    print("\nunk<hex> resolves against the ANNOTATED Entity, not any struct")
+    ck(len(entity_fields()) > 40,
+       f"Entity parsed from its offset annotations ({len(entity_fields())} fields)")
+    ck("zPriority" in (resolve_entity_offset("unk24") or ""),
+       "unk24 -> zPriority (the offset IS the evidence)")
+    ck("velocityX" in (resolve_entity_offset("unk8") or ""),
+       "unk8 -> velocityX")
+    ck("INSIDE" in (resolve_entity_offset("unk29") or ""),
+       "unk29 is reported as INSIDE pfnUpdate, not as a missing member")
+    ck(resolve_entity_offset("state") is None,
+       "a non-unk name yields nothing here (no guessing)")
+    ck(resolve_entity_offset("unkZZ") is None, "a non-hex suffix yields nothing")
+
+    print("\nExt is a union of per-entity structs, not a generic bag")
+    ck(len(ext_members()) > 300,
+       f"Ext top-level members parsed ({len(ext_members())})")
+    ck("generic" not in ext_members(), "`generic' is NOT an Ext member")
+    ck("subweapon" in ext_members() and "factory" in ext_members(),
+       "real Ext members are present")
+    # The noise this replaced: PSP SDK structs answering questions about Entity.
+    ck(not any("PspUsbCam" in m for m in ext_members()),
+       "no PSP SDK struct leaks into the Ext answer")
 
     print("\na declaration in another overlay is not evidence")
     ck(_cross_overlay("us:ST/RNO0:EntityBladeSoldierDeathParts",
