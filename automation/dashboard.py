@@ -462,6 +462,82 @@ ACTIONS = {
 }
 
 
+
+# ------------------------------------------------------------- diagnostics
+# One entry per button. Selected by INDEX, exactly like the model picker, so a
+# request can choose one of these and nothing else. The script name and its
+# arguments are fixed HERE, never taken from the client, which keeps the
+# "no argv from a request" property that the rest of this file relies on.
+#
+# Every entry is read-only. permuter_promote is deliberately ABSENT even though
+# it is allowlisted for run_analysis: it rewrites base.c, and a diagnostics tab
+# is a place to look at things, not to change them by accident.
+DIAGNOSTICS = [
+    # label,                    script,                     args,      note
+    ("Permuter plan", "permuter_supervisor.py", "--plan",
+     "what would run next, and why the rest would not"),
+    ("Permuter stalls", "permuter_stall.py", "--all",
+     "true minimum per run, and whether it is still learning"),
+    ("Fleet: empty responses", "empty_response_audit.py",
+     "--timing --by-prompt-size",
+     "dead rate per model, call timing, prompt-size correlation"),
+    ("Quality audit", "quality_audit.py", "",
+     "ILLEGAL names, invented symbols, magic numbers, duplicates"),
+    ("Review checks", "review_checks.py", "",
+     "what an upstream reviewer would reject"),
+    ("Provenance check", "provenance_check.py", "",
+     "does every matched function have evidence behind it"),
+    ("Declaration coverage", "decl_coverage.py", "",
+     "which todo functions have resolvable declarations"),
+    ("Shim sweep", "shim_sweep.py", "",
+     "stubs a shared header could retire"),
+    ("Twin finder", "asm_twin_finder.py", "",
+     "functions with a near-identical twin elsewhere"),
+    ("Relocation check", "relocation_check.py", "",
+     "symbols that moved and would silently break a match"),
+    ("Escalation triage", "escalation_triage.py", "",
+     "classify escalated records: harness, C89, symbol, or real"),
+    ("Codebase index", "codebase_index.py", "",
+     "rebuild the symbol/function index"),
+    ("Prompt compaction", "test_prompt_compaction.py", "",
+     "asm shrinks and no symbol is lost"),
+    ("Permuter settings", "test_permuter_settings.py", "",
+     "preserve_macros types are builtins, LOW/LOH absent"),
+    ("Connector surfaces", "test_connector_surfaces.py", "",
+     "REGISTRY and @mcp.tool() agree"),
+    ("Self-test: supervisor", "permuter_supervisor.py", "--self-test",
+     "the supervisor's own checks"),
+    ("Self-test: audit", "empty_response_audit.py", "--self-test",
+     "the audit parser's own checks"),
+]
+
+
+def run_diagnostic(index: int) -> dict:
+    """Run one allowlisted diagnostic and return its text output."""
+    import subprocess
+    if not 0 <= index < len(DIAGNOSTICS):
+        return {"ok": False, "out": f"no diagnostic {index}"}
+    label, script, args, _ = DIAGNOSTICS[index]
+    py = os.environ.get("SOTN_PYTHON", sys.executable)
+    argv = [py, str(REPO / "automation" / script)] + args.split()
+    t0 = time.time()
+    try:
+        r = subprocess.run(argv, cwd=str(REPO), capture_output=True,
+                           text=True, timeout=600)
+        out = (r.stdout or "") + (r.stderr or "")
+        # Truncate from the FRONT: these reports put their conclusion last.
+        if len(out) > 60000:
+            out = "... (earlier output trimmed) ...\n" + out[-60000:]
+        return {"ok": r.returncode == 0, "out": out.rstrip(),
+                "label": label, "secs": round(time.time() - t0, 1)}
+    except subprocess.TimeoutExpired:
+        return {"ok": False, "label": label,
+                "out": f"{script} exceeded 600s and was killed."}
+    except Exception as e:                                  # noqa: BLE001
+        return {"ok": False, "label": label,
+                "out": f"{type(e).__name__}: {e}"}
+
+
 # ------------------------------------------------------------------- server
 
 class Handler(http.server.BaseHTTPRequestHandler):
@@ -492,6 +568,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
                        "text/html; charset=utf-8")
         elif path == "/api/status":
             self._json(snapshot())
+        elif path == "/api/diagnostics":
+            self._json({"items": [{"label": l, "note": nt}
+                                  for l, _, _, nt in DIAGNOSTICS]})
         else:
             self._json({"error": "not found"}, 404)
 
@@ -503,6 +582,16 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self._json({"error": "bad or missing token"}, 403)
             return
         path = urllib.parse.urlparse(self.path).path
+        if path == "/api/diag":
+            try:
+                n = int(self.headers.get("Content-Length") or 0)
+                body = json.loads(self.rfile.read(n) or b"{}") if n else {}
+                idx = int(body.get("index", -1))
+            except (ValueError, json.JSONDecodeError, TypeError):
+                self._json({"ok": False, "out": "index must be an integer"})
+                return
+            self._json(run_diagnostic(idx))
+            return
         name = path[len("/api/action/"):] if path.startswith(
             "/api/action/") else ""
         fn = ACTIONS.get(name)
@@ -628,6 +717,22 @@ button.danger:hover{border-color:var(--bad);color:var(--bad)}
 .chip{background:var(--panel);border:1px solid var(--line);border-radius:999px;
       padding:2px 10px}
 .chip b{color:var(--accent)}
+.tabs{display:flex;gap:6px}
+.tabs button{padding:5px 14px}
+.tabs button.on{border-color:var(--accent);color:var(--accent)}
+/* Diagnostics is a single scrolling pane, not a split: its output is long and
+   wants the full width. */
+#pane_diag{flex:1 1 auto;min-height:0;overflow:auto;padding:12px 16px;
+           display:flex;flex-direction:column}
+.diaggrid{display:grid;gap:8px;flex:0 0 auto;
+          grid-template-columns:repeat(auto-fill,minmax(230px,1fr))}
+.diagbtn{text-align:left;padding:8px 10px;line-height:1.35}
+.diagbtn b{display:block;color:var(--fg)}
+.diagbtn span{color:var(--dim);font-size:10px}
+#diagout{margin-top:12px;flex:1 1 auto;min-height:0;overflow:auto;
+         background:var(--panel);border:1px solid var(--line);
+         border-radius:7px;padding:10px 12px;font-size:11px;
+         white-space:pre;color:var(--fg)}
 .ctl{display:flex;gap:8px;align-items:center;flex-wrap:wrap;flex:0 0 auto;
      padding-bottom:10px;margin-bottom:4px;border-bottom:1px solid var(--line)}
 .ctl label{color:var(--dim);display:flex;gap:4px;align-items:center;font-size:11px}
@@ -682,8 +787,13 @@ pre{margin:0;padding:8px 10px;flex:1 1 auto;min-height:0;overflow:auto;font-size
 <header>
   <h1>SOTN harness</h1>
   <div class=chips id=q></div>
+  <span style="flex:1"></span>
+  <div class=tabs>
+    <button id=tab_mon class=on onclick="showTab('mon')">monitor</button>
+    <button id=tab_diag onclick="showTab('diag')">diagnostics</button>
+  </div>
 </header>
-<div class=split>
+<div class=split id=pane_mon>
   <section>
     <h2>Permuter</h2>
     <div class=ctl>
@@ -717,6 +827,11 @@ pre{margin:0;padding:8px 10px;flex:1 1 auto;min-height:0;overflow:auto;font-size
     <div class=cols id=fleet></div>
   </section>
 </div>
+<section id=pane_diag style="display:none">
+  <h2>Diagnostics</h2>
+  <div class=diaggrid id=diagbtns></div>
+  <pre id=diagout>Pick a tool. Everything here is read-only.</pre>
+</section>
 <div id=out></div>
 <script>
 const TOKEN="__TOKEN__";
@@ -753,6 +868,38 @@ function fleetParams(){
   }
   return p;
 }
+function showTab(t){
+  el('pane_mon').style.display = t==='mon' ? '' : 'none';
+  el('pane_diag').style.display = t==='diag' ? '' : 'none';
+  el('tab_mon').className = t==='mon' ? 'on' : '';
+  el('tab_diag').className = t==='diag' ? 'on' : '';
+}
+
+let DIAGS=[];
+async function loadDiags(){
+  try{ DIAGS=(await (await fetch('/api/diagnostics')).json()).items; }
+  catch(e){ return; }
+  el('diagbtns').innerHTML = DIAGS.map((d,i)=>
+    `<button class=diagbtn onclick="runDiag(${i})">`+
+    `<b>${esc(d.label)}</b><span>${esc(d.note)}</span></button>`).join('');
+}
+
+async function runDiag(i){
+  const btns=[...document.querySelectorAll('.diagbtn')];
+  btns.forEach(b=>b.disabled=true);
+  el('diagout').textContent = 'running '+DIAGS[i].label+' ...';
+  try{
+    const r=await fetch('/api/diag',{method:'POST',
+      headers:{'X-Token':TOKEN,'Content-Type':'application/json'},
+      body:JSON.stringify({index:i})});
+    const j=await r.json();
+    el('diagout').textContent =
+      `${j.label||''}${j.secs!=null?'  ('+j.secs+'s)':''}`+
+      `${j.ok===false?'   [non-zero exit]':''}\n\n${j.out||'(no output)'}`;
+  }catch(e){ el('diagout').textContent='request failed: '+e; }
+  btns.forEach(b=>b.disabled=false);
+}
+
 function permParams(){return{slots:+el('p_slots').value,
   threads:+el('p_threads').value,stall:+el('p_stall').value,
   cycles:+el('p_cycles').value,
@@ -824,7 +971,7 @@ async function refresh(){
     : `<div class=empty>no live fleet workers${dead?` (${dead} stopped)`:''}</div>`;
 
 }
-renderWorkerRows();
+renderWorkerRows(); loadDiags();
 refresh(); setInterval(refresh,3000);
 </script>
 """
@@ -918,6 +1065,23 @@ def self_test() -> int:
            "status removes a pidfile whose process is gone, so it cannot keep "
            "reporting a server that does not exist")
 
+    print("\ndiagnostics are index-selected and read-only")
+    ck(all(len(d) == 4 for d in DIAGNOSTICS),
+       "every entry is (label, script, args, note)")
+    ck(not any(d[1] == "permuter_promote.py" for d in DIAGNOSTICS),
+       "the one WRITING tool is excluded; a diagnostics tab looks, it does not "
+       "change base.c by accident")
+    ck(run_diagnostic(-1)["ok"] is False
+       and run_diagnostic(len(DIAGNOSTICS))["ok"] is False,
+       "out-of-range indices are refused rather than clamped")
+    ck("index" in PAGE and "/api/diag" in PAGE,
+       "the page posts an index, never a script name")
+    src_diag = src[src.index("def run_diagnostic"):]
+    src_diag = src_diag[:src_diag.index("\n\n\n")]
+    ck("DIAGNOSTICS[index]" in src_diag,
+       "the script and its args come from the registry, not the request")
+    ck("shell=True" not in src_diag, "and it never uses a shell")
+
     print("\nthe page")
     ck("__TOKEN__" in PAGE, "page carries a token placeholder")
     ck("pid ${f.pid} · alive" in PAGE,
@@ -945,7 +1109,7 @@ def self_test() -> int:
     ck("best ever" in PAGE,
        "a run that has not yet beaten the dir's all-time best says so, instead "
        "of looking like the score went backwards")
-    ck("<div class=split>" in PAGE and "grid-template-columns:1fr 1fr" in PAGE,
+    ck("class=split" in PAGE and "grid-template-columns:1fr 1fr" in PAGE,
        "permuter and fleet are side-by-side columns")
     ck(PAGE.index("id=perm") < PAGE.index("id=fleet"),
        "permuter is the left column")
