@@ -722,12 +722,31 @@ def find_source(function: str, overlay: str | None = None):
                 if "_psp" in low or "/psp/" in low or "saturn" in low:
                     continue
                 try:
+                    # Scan the WHOLE FILE, not line by line.
+                    #
+                    # clang-format wraps a long INCLUDE_ASM across two lines:
+                    #
+                    #     INCLUDE_ASM(
+                    #         "boss/bo6/nonmatchings/us_3E79C", SomeLongName);
+                    #
+                    # RX_INC's \s* spans the newline happily, but only if it is
+                    # given the newline. Matching per-line meant neither half
+                    # matched, locate() returned None, and the worker escalated
+                    # the record as "INCLUDE_ASM stub not found" -- permanently,
+                    # since the name length never changes.
+                    #
+                    # Two BO6 records sat escalated this way. They were requeued
+                    # on 2026-08-02 after the regex was tested against the whole
+                    # file and appeared to match; that test exercised
+                    # apply_code's pattern, NOT this loop, and the fleet
+                    # re-escalated both within the hour. The line number is
+                    # derived from the match offset so the index is unchanged.
                     with open(full, errors="ignore") as f:
-                        for i, line in enumerate(f, 1):
-                            m = RX_INC.search(line)
-                            if m:
-                                _INDEX.setdefault(m.group(2), []).append(
-                                    (rel, i, m.group(1)))
+                        text = f.read()
+                    for m in RX_INC.finditer(text):
+                        line_no = text.count("\n", 0, m.start()) + 1
+                        _INDEX.setdefault(m.group(2), []).append(
+                            (rel, line_no, m.group(1)))
                 except OSError:
                     pass
     cands = _INDEX.get(function)
