@@ -146,6 +146,18 @@ def best_score(work: Path) -> int | None:
     return best
 
 
+def _why_skip(rec: dict, work) -> str:
+    """Reasons not to spend a slot on this record."""
+    notes = rec.get("notes", "") or ""
+    if MATCH_PENDING in notes:
+        # Already solved by an earlier run and waiting on a human build.
+        # Re-searching it would burn a slot on finished work.
+        return "permuter already scored 0; apply it and build"
+    if not work:
+        return "no work dir; will import from seed"
+    return ""
+
+
 def candidates(statuses: tuple[str, ...] = ("near",),
                check_tree: bool = True) -> list[dict]:
     """Queue records worth permuting, best-scoring first.
@@ -181,10 +193,11 @@ def candidates(statuses: tuple[str, ...] = ("near",),
             "workdir": str(work) if work else "",
             "score": best_score(work) if work else None,
             "seed": seed_from_notes(rec.get("notes", "")),
+            "notes": rec.get("notes", "") or "",
             # A record with no work dir is not dropped: --run imports one from
             # the seed named in its notes. --plan still reports it as blocked,
             # because planning must not write to src/.
-            "skip": "" if work else "no work dir; will import from seed",
+            "skip": _why_skip(rec, work),
         })
 
     runnable = [c for c in out if not c["skip"]]
@@ -281,6 +294,31 @@ def import_workdir(fn: str, seed_rel: str) -> tuple[Path | None, str]:
     if work is None:
         return None, f"import did not produce a work dir: {detail}"
     return work, ("imported" if ok else f"imported with warnings: {detail}")
+
+
+# Notes markers. Same pattern as worker_direct's DEFER_TOO_LARGE: the status
+# says "not now", the marker says WHY and makes the class findable later with a
+# grep. Without one, a deferred record is indistinguishable from every other
+# deferred record and nobody can ever undo the decision selectively.
+EXHAUSTED = "PERMUTER_EXHAUSTED"
+MATCH_PENDING = "PERMUTER_MATCH_PENDING_BUILD"
+
+
+def report(fn_id: str, status: str, notes: str) -> str:
+    """Record an outcome through scheduler.py, the single queue writer.
+
+    The supervisor did not write to the queue at all before, which meant a
+    function it had just retired stayed `near` and was picked again by the very
+    next plan. The loop could not terminate: three candidates, killed and
+    re-selected forever.
+    """
+    if not fn_id:
+        return "no record id"
+    r = subprocess.run(
+        [PYTHON, str(REPO / "automation" / "scheduler.py"), "report",
+         "--id", fn_id, "--status", status, "--notes", notes[:250]],
+        cwd=str(REPO), capture_output=True, text=True, timeout=60)
+    return (r.stdout or r.stderr).strip()
 
 
 def _jobs():
@@ -475,6 +513,15 @@ def supervise(slots: int, threads: int, stall: int, cycles: int,
                 slot["best"] = 0
                 print(f"[MATCH] {fn} scored 0. Output in {work}/output-0-1. "
                       f"Apply it and BUILD before believing it.")
+                # Stays `near`, because it is NOT matched until a build says so
+                # and only a human does that. The marker stops the next plan
+                # from spending a slot re-searching a function that is already
+                # solved and merely waiting to be applied.
+                print("  queue: " + report(
+                    slot.get("id", ""), "near",
+                    f"{MATCH_PENDING}: permuter scored 0. Output at "
+                    f"{work}/output-0-1/source.c. Apply it and run make_build; "
+                    f"a permuter zero is necessary but not sufficient."))
                 done.append(slot)
                 del active[jid]
                 continue
@@ -492,6 +539,11 @@ def supervise(slots: int, threads: int, stall: int, cycles: int,
                                   f"best {d['best']}")
                 print(f"[cap] {fn}: {slot['result']}. Best output is promoted "
                       f"and kept; re-derive from the asm to go further.")
+                print("  queue: " + report(
+                    slot.get("id", ""), "deferred",
+                    f"{EXHAUSTED}: hit the {max_iters}-iteration cap at best "
+                    f"{d['best']}. Seed is promoted; re-derive from the asm, "
+                    f"then set this back to near."))
                 done.append(slot)
                 del active[jid]
                 continue
@@ -516,6 +568,13 @@ def supervise(slots: int, threads: int, stall: int, cycles: int,
                     + ("" if improved else "; no better output to promote"))
                 print(f"[retire] {fn}: {slot['result']}. The permuter mutates "
                       f"expressions only, so re-derive this one from the asm.")
+                print("  queue: " + report(
+                    slot.get("id", ""), "deferred",
+                    f"{EXHAUSTED}: best {d['best']} after {d['iterations']} "
+                    f"iterations, {slot['cycles']} promotion(s), no improvement "
+                    f"for {d['since_improvement']}. The permuter mutates "
+                    f"expressions only; re-derive from the asm, then set this "
+                    f"back to near."))
                 done.append(slot)
                 del active[jid]
 
@@ -809,6 +868,29 @@ def self_test() -> int:
        "seed")
     ck(body.index("promote(work)") < body.index("start_job"),
        "and it promotes BEFORE the job starts, not after")
+
+    print("\nthe loop can terminate: outcomes are written back to the queue")
+    src_sup = Path(__file__).read_text()
+    i = src_sup.index("def supervise")
+    sup = src_sup[i:src_sup.index("\ndef _write_state")]
+    ck(sup.count("report(") >= 3,
+       "retire, cap and match each record an outcome; without this a retired "
+       "function stays `near` and the very next plan picks it again")
+    ck('"deferred"' in sup,
+       "exhausted candidates go to deferred, which is excluded from `near`")
+    ck(EXHAUSTED in src_sup and MATCH_PENDING in src_sup,
+       "each carries a findable marker, so the decision can be undone "
+       "selectively later")
+
+    print("\na solved-but-unbuilt function is not re-searched")
+    ck(_why_skip({"notes": f"x {MATCH_PENDING} y"}, Path(".")) != "",
+       "a record already at score 0 is skipped rather than given a slot")
+    ck("apply it and build" in _why_skip({"notes": MATCH_PENDING}, Path(".")),
+       "and the reason says what the human must do")
+    ck(_why_skip({"notes": "ordinary near record"}, Path(".")) == "",
+       "an ordinary near record is still runnable")
+    ck(_why_skip({"notes": ""}, None) == "no work dir; will import from seed",
+       "the missing-work-dir reason still works")
 
     print("\nread_log works for a RUNNING job, not just a finished one")
     # The bug this guards: jobs.status() only includes a "log" key once the job
