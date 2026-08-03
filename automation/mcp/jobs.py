@@ -104,12 +104,31 @@ def _read_meta(job_id: str) -> dict | None:
 
 
 def _alive(pid: int) -> bool:
-    """Is the process group still running?
+    """Is the process actually running, as opposed to merely existing?
 
-    os.kill(pid, 0) raises ProcessLookupError when it is gone and
-    PermissionError when it exists but is not ours; the latter still means
-    alive. On WSL this is a real Linux /proc, so it is reliable.
+    os.kill(pid, 0) is NOT sufficient. A process that has been killed but not
+    yet reaped stays in the process table as a zombie, and signalling a zombie
+    succeeds, so this returned True forever for jobs that were long dead.
+
+    That is what made cancelled permuter jobs keep appearing in the dashboard:
+    cancel() SIGTERMs the group, the permuter exits, nothing wait()s for it
+    because the launcher is detached, and the job is reported running from then
+    on. Reproduced directly: after SIGTERM the child's /proc state is 'Z' and
+    os.kill(pid, 0) still succeeds.
+
+    So read the state from /proc and treat Z (zombie) and X (dead) as gone.
+    Falls back to the signal probe only where /proc is unavailable.
     """
+    if pid <= 0:
+        return False
+    try:
+        # Field 3 of /proc/<pid>/stat, after the comm field, which may itself
+        # contain spaces or parentheses -- hence the rsplit on ") ".
+        stat = (Path("/proc") / str(pid) / "stat").read_text()
+        state = stat.rsplit(") ", 1)[1].split(None, 1)[0]
+        return state not in ("Z", "X", "x")
+    except (OSError, IndexError):
+        pass
     try:
         os.kill(pid, 0)
         return True
@@ -298,7 +317,24 @@ def cancel(job_id: str) -> dict:
         return {"job_id": job_id, "cancelled": False, "error": "no such job"}
     pid = int(meta.get("pid", -1))
     try:
-        os.killpg(os.getpgid(pid), signal.SIGTERM)
+        pgid = os.getpgid(pid)
+        os.killpg(pgid, signal.SIGTERM)
     except (ProcessLookupError, PermissionError, OSError) as e:
         return {"job_id": job_id, "cancelled": False, "error": str(e)}
-    return {"job_id": job_id, "cancelled": True}
+
+    # Escalate. The permuter is multiprocess and does not always die on the
+    # first TERM; leaving a survivor means the work dir stays busy and the next
+    # supervisor correctly refuses to touch it, which looks like a start button
+    # that does nothing.
+    killed_hard = False
+    for _ in range(20):                       # up to ~2s
+        time.sleep(0.1)
+        if not _alive(pid):
+            break
+    else:
+        try:
+            os.killpg(pgid, signal.SIGKILL)
+            killed_hard = True
+        except OSError:
+            pass
+    return {"job_id": job_id, "cancelled": True, "sigkill": killed_hard}

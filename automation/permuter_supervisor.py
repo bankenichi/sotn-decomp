@@ -516,22 +516,34 @@ def _supervisor_pids() -> list[int]:
     The cmdline check keeps a recycled pid from being killed. Same reasoning as
     commands_client's worker check: a pid file alone is a claim, not evidence.
     """
-    out = []
+    cands: set[int] = set()
     try:
-        raw = PIDS.read_text().split()
+        cands |= {int(t) for t in PIDS.read_text().split() if t.isdigit()}
     except OSError:
-        return out
-    for tok in raw:
-        if not tok.isdigit():
-            continue
-        pid = int(tok)
+        pass
+
+    # ALSO scan /proc. The pidfile only knows about supervisors started after
+    # it was introduced, so relying on it alone reported "0 supervisor(s)
+    # stopped" while two were plainly running and restarting their jobs. A
+    # registry is a convenience; the process table is the truth.
+    try:
+        for d in Path("/proc").iterdir():
+            if d.name.isdigit():
+                cands.add(int(d.name))
+    except OSError:
+        pass
+
+    out = []
+    for pid in sorted(cands):
         if pid == os.getpid():
             continue
         try:
             cmd = (Path("/proc") / str(pid) / "cmdline").read_bytes()
         except OSError:
             continue
-        if b"permuter_supervisor.py" in cmd:
+        # Must be a supervisor RUN, not a --stop or --plan invocation, or a
+        # `run-permuter stop` would kill itself mid-stop.
+        if b"permuter_supervisor.py" in cmd and b"--run" in cmd:
             out.append(pid)
     return out
 
@@ -725,6 +737,19 @@ def self_test() -> int:
     ck(not any(x.isdigit() and len(x) > 4 for x in b),
        f"no pid fragments leak into the slug list ({b})")
     globals()["_jobs"] = real
+
+    print("\nsupervisor discovery does not depend on the pidfile")
+    src_sup = Path(__file__).read_text()
+    i = src_sup.index("def _supervisor_pids")
+    body = src_sup[i:src_sup.index("\ndef ", i + 1)]
+    ck("Path(\"/proc\").iterdir()" in body,
+       "it scans /proc, so supervisors started before the pidfile existed are "
+       "still found")
+    ck('b"--run" in cmd' in body,
+       "and it only matches --run, so `--stop` does not kill itself")
+    me = already_busy  # keep the name referenced
+    ck(os.getpid() not in _supervisor_pids(),
+       "the calling process is never in its own kill list")
 
     print("\nlong-running output must not be block-buffered")
     src = Path(__file__).read_text()
