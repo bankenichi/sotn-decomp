@@ -440,7 +440,81 @@ INCLUDE_ASM("boss/bo6/nonmatchings/us_39144", BO6_RicEntityFactory);
 
 INCLUDE_ASM("boss/bo6/nonmatchings/us_39144", func_us_801BC2F0);
 
-INCLUDE_ASM("boss/bo6/nonmatchings/us_39144", func_us_801BC3E0);
+extern s16 RIC_posX_i_hi;    /* 0x800762DA, symbols.us.bobo6.txt */
+extern s16 RIC_posY_i_hi;    /* 0x800762DE */
+extern u16 RIC_facingLeft;   /* 0x800762EC */
+extern s16 RIC_animCurFrame; /* 0x8007632E */
+extern EInit D_us_80180448;  /* src/boss/bo6/e_init.c:53 */
+
+// Richter (BO6): the hitbox entity that tracks RIC during the flame-step
+// swing. It mirrors RIC's position and facing every frame, and mirrors its own
+// hit result back into g_Ric + 0x394 (PlayerState.unk44, game.h:1976) so the
+// player state machine sees the hit.
+//
+// Flat RIC_* externs rather than RIC.<field>, per the rule recorded at
+// src/boss/bo6/richter.c:133: each access here emits its own lui/%lo pair, so
+// these are scalar externs, not members reached from a hoisted base.
+//
+// THE SHAPE HERE IS LOAD-BEARING. Two things look like noise and are not.
+// Both were tested by removing them, and both removals break the match:
+//
+//   - `new_var` aliases `entity` for a subset of the stores. GCC 2.7 keeps the
+//     alias in a second register; writing `entity` throughout re-loads it.
+//   - `new_var2` reads entity->step BETWEEN the posX and posY stores. Moving
+//     that read anywhere else, including one line up, changes the schedule.
+//
+// Measured: removing the aliasing and hoisting the step read to the top scores
+// 780 against this function's target. Hoisting only the step read and keeping
+// everything else scores in the 400s. Do not tidy this without re-checking:
+//     python3 automation/permuter_promote.py --dir nonmatchings/func_us_801BC3E0
+//
+// The permuter's own 0-scoring output ALSO carried a `volatile int pad`, and
+// that one is not kept here. It made the frame 0x20 where the target is 0x18.
+// The permuter compiles this function alone and scored it 0 regardless, so its
+// zero is necessary but not sufficient: the frame only revealed itself in a
+// real overlay build. Every body instruction was already identical at that
+// point, so asm_diff pointed straight at the eight bytes. Trust the build, not
+// the permuter, for anything touching the frame.
+void func_us_801BC3E0(Entity* entity) {
+    u16 step;
+    u16 new_var2;
+    Entity* new_var;
+
+    if (RIC_step != 0x1B) {
+        DestroyEntity(entity);
+        return;
+    }
+    entity->posX.i.hi = RIC_posX_i_hi;
+    new_var2 = entity->step;
+    do {
+        entity->posY.i.hi = RIC_posY_i_hi;
+    } while (0);
+    step = new_var2;
+    entity->facingLeft = RIC_facingLeft;
+    new_var = entity;
+    if (step == 0) {
+        InitializeEntity(&D_us_80180448);
+        new_var->flags = 0x18000000;
+        entity->hitboxOffX = 0x14;
+        entity->hitboxHeight = 9;
+        new_var->hitboxWidth = 9;
+        new_var->step = 1;
+    }
+    if (RIC_animCurFrame == 0x8C) {
+        entity->hitboxOffY = 0;
+    }
+    if (RIC_animCurFrame == 0x8D) {
+        entity->hitboxOffY = 0xC;
+    }
+    if (new_var->hitFlags != 0) {
+        u16* ric_flag = (u16*)(((char*)(&g_Ric)) + 0x394);
+        *ric_flag |= 0x80;
+    } else {
+        u16* ric_flag = (u16*)(((char*)(&g_Ric)) + 0x394);
+        *ric_flag &= 0xFF7F;
+    }
+    entity->hitFlags = 0;
+}
 
 INCLUDE_ASM("boss/bo6/nonmatchings/us_39144", func_us_801BC4F8);
 

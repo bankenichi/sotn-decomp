@@ -147,9 +147,21 @@ def _confirmed(confirm, what: str) -> None:
 # extra command after it blew the limit. That accounted for most of the 40
 # sandbox timeouts in one day, each one costing a full re-run.
 #
-# Here there is no ceiling and the repo is local to WSL. Every script listed is
-# read-only by design (they analyse and report; none edit sources or build), so
-# exposing them costs nothing in blast radius.
+# Here there is no ceiling and the repo is local to WSL.
+#
+# All but one of these are read-only: they analyse and report, and none edits a
+# source file or builds. The exception is permuter_promote.py, which rewrites
+# base.c inside a nonmatchings/ work directory. That is deliberate and its
+# blast radius is bounded three ways: it only ever touches nonmatchings/, which
+# holds permuter scratch and no shipped source; it copies the pristine seed to
+# base.c.orig before the first write and never overwrites that copy; and
+# --revert restores it. Nothing under src/, include/ or config/ is reachable
+# from it.
+#
+# If another writing script is ever added here, say so in this comment. A
+# blanket "these are all read-only" that has quietly stopped being true is
+# worse than no comment, because it is the thing a reviewer trusts instead of
+# checking.
 ANALYSIS_SCRIPTS = {
     "asm_twin_finder.py",
     "codebase_index.py",
@@ -175,6 +187,7 @@ ANALYSIS_SCRIPTS = {
     "test_stub_locate.py",
     "test_permuter_seed.py",
     "permuter_stall.py",
+    "permuter_promote.py",
 }
 # Deliberately narrow: flags, numbers, and in-repo-looking relative paths.
 # No spaces, quotes, semicolons, redirects, or leading dashes-with-spaces, so
