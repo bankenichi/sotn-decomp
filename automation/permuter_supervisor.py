@@ -338,6 +338,8 @@ def already_busy() -> list[str]:
 def supervise(slots: int, threads: int, stall: int, cycles: int,
               statuses: tuple[str, ...], once: bool = False) -> int:
     jobs = _jobs()
+    _CFG.update({"stall": stall, "slots": slots, "threads": threads,
+                 "cycles": cycles})
     all_c = candidates(statuses)
     busy = already_busy()
     for c in all_c:
@@ -460,12 +462,19 @@ def supervise(slots: int, threads: int, stall: int, cycles: int,
     return 0
 
 
+_CFG: dict = {}
+
+
 def _write_state(active: dict, done: list) -> None:
     """Publish state for the dashboard. Best effort: never kill the run."""
     try:
         STATE.parent.mkdir(parents=True, exist_ok=True)
         STATE.write_text(json.dumps({
             "updated": time.time(),
+            # Published so the dashboard can label "stalled" using the SAME
+            # threshold this loop acts on. Two definitions of stalled is how a
+            # job ends up badged stalled with nothing happening to it.
+            **_CFG,
             "active": [{"function": s["function"], "job": s["job"],
                         "cycles": s["cycles"], "workdir": s["workdir"]}
                        for s in active.values()],

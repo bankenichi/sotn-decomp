@@ -190,22 +190,57 @@ class _EmptyOutput(RuntimeError):
     """opencode returned rc=0 with no output. Transient; retry the call."""
 
 
+# Prepended to the final retry after repeated empty output. Deliberately the
+# same instruction as _force_code's system message: a model that has burned
+# several minutes and emitted nothing has usually reasoned itself into a corner,
+# and asking it politely to be brief does not work. The thinking has to be shut
+# off, not discouraged. Observed 2026-07-21 on the http backend, where a salvage
+# pass produced 32000 characters of reasoning and no C at all.
+_CLI_FORCE_PREFIX = (
+    "You are a C code emitter. You do not explain. You do not analyse.\n"
+    "Your ENTIRE reply must be one C function definition and nothing else.\n"
+    "No prose before it. No commentary after it. No markdown fences.\n"
+    "Begin your reply with the return type.\n\n"
+)
+
+
 def _opencode_run(prompt: str, timeout: float | None = None) -> str:
-    """Retry wrapper. Empty output is transient, so do not waste the attempt."""
+    """Retry wrapper. Empty output is transient, so do not waste the attempt.
+
+    The LAST retry changes the prompt instead of repeating it. Retrying an
+    identical prompt against a model that has already returned rc=0 with zero
+    bytes several times is the definition of expecting a different result, and
+    it is what the cli fleet was doing: five identical calls at 48-382s each,
+    then a hard failure, per function.
+
+    The streaming salvage in _force_code cannot help here -- it fires from the
+    degeneration detector, and `opencode run` gives no stream to watch (see
+    worker_direct.py:1213). So the cli backend gets its own last-ditch attempt
+    with thinking suppressed, which is the part of _force_code that actually
+    does the work.
+    """
     deadline = None if timeout is None else time.time() + timeout
     last = None
     for n in range(1, RATE_LIMIT_RETRIES + 1):
         left = None if deadline is None else deadline - time.time()
         if left is not None and left <= 15:
             break
+        final = (n == RATE_LIMIT_RETRIES)
         try:
-            return _opencode_run_once(prompt, timeout=left)
+            text = _opencode_run_once(
+                (_CLI_FORCE_PREFIX + prompt) if final else prompt, timeout=left)
+            if final:
+                print("  ++ force-code retry produced "
+                      f"{len(text)} chars", flush=True)
+            return text
         except _EmptyOutput as e:
             last = e
-            print(f"  !! empty response ({n}/{RATE_LIMIT_RETRIES}): {e}",
+            tag = " (force-code retry)" if final else ""
+            print(f"  !! empty response ({n}/{RATE_LIMIT_RETRIES}){tag}: {e}",
                   flush=True)
             time.sleep(5)
-    raise RuntimeError(f"opencode returned empty output repeatedly: {last}")
+    raise RuntimeError(f"opencode returned empty output repeatedly, including "
+                       f"a force-code retry: {last}")
 
 
 def _opencode_run_once(prompt: str, timeout: float | None = None) -> str:

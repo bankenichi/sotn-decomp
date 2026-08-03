@@ -78,6 +78,27 @@ os.environ.setdefault("SOTN_CMD_DRYRUN", "0")
 # pycparser. We are already running under the right interpreter, so say so.
 os.environ.setdefault("SOTN_PYTHON", sys.executable)
 
+# Model choices for the cli fleet, as an INDEX into this list rather than a
+# free-text model id. The action registry takes integers only, so a request can
+# pick one of these and nothing else -- no arbitrary string reaches an argv.
+#
+# Contents follow the operational rule in automation/opencode/ZEN-FREE-MODELS.md:
+# only deepseek-v4-flash-free, nemotron-3-ultra-free and mimo-v2.5-free produce
+# real C. The others return rc=0 with an empty body and burn account-wide quota
+# doing it, so they are deliberately absent rather than listed and discouraged.
+#
+# The last entry is the bake-off shape: a comma-separated list assigns one model
+# per worker round-robin, which is how you compare hit rates in a single fleet
+# instead of guessing which model is failing.
+CLI_MODELS = [
+    ("deepseek-v4-flash-free", "opencode/deepseek-v4-flash-free"),
+    ("nemotron-3-ultra-free", "opencode/nemotron-3-ultra-free"),
+    ("mimo-v2.5-free", "opencode/mimo-v2.5-free"),
+    ("mixed (one per worker)",
+     "opencode/deepseek-v4-flash-free,opencode/nemotron-3-ultra-free,"
+     "opencode/mimo-v2.5-free"),
+]
+
 TOKEN = secrets.token_urlsafe(16)
 TAIL_LINES = 20
 HOST = "127.0.0.1"          # never widen this
@@ -116,8 +137,21 @@ def queue_counts() -> dict:
 
 
 def permuter_panels() -> list[dict]:
+    """Panels for running permuter jobs.
+
+    The "stalled" badge uses the SUPERVISOR's threshold, read from its state
+    file, not a number of the dashboard's own. They disagreed before: the UI
+    called a job stalled at 2000 iterations while the supervisor only acts at
+    2500, so jobs sat there labelled stalled with nothing happening to them and
+    the UI looked broken when it was merely using a different definition.
+    """
     import jobs
     from permuter_stall import parse
+    stall = 2500
+    try:
+        stall = int(json.loads(SUPERVISOR_STATE.read_text()).get("stall", 2500))
+    except (OSError, json.JSONDecodeError, ValueError, TypeError):
+        pass
     out = []
     for jid in jobs.running_jobs("permuter"):
         log = JOBS_DIR / f"{jid}.log"
@@ -129,7 +163,8 @@ def permuter_panels() -> list[dict]:
                     "iterations": d["iterations"],
                     "since": d["since_improvement"],
                     "failures": d["failures"],
-                    "improving": d["since_improvement"] < 2000,
+                    "improving": d["since_improvement"] < stall,
+                    "stall_at": stall,
                     "log": tail(log)})
     return out
 
@@ -241,7 +276,7 @@ def snapshot() -> dict:
 ACTION_PARAMS: dict[str, dict[str, tuple[int, int]]] = {
     "permuter_start": {"slots": (1, 8), "threads": (1, 16),
                        "stall": (500, 50000), "cycles": (1, 8)},
-    "fleet_cli_start": {"workers": (1, 8)},
+    "fleet_cli_start": {"workers": (1, 8), "model": (0, len(CLI_MODELS) - 1)},
     "fleet_llama_start": {"workers": (1, 8)},
 }
 
@@ -320,10 +355,13 @@ def _sup_start(slots: int = 3, threads: int = 4,
 
 
 def _fleet(backend: str, default_n: int):
-    def go(workers: int = default_n) -> dict:
+    def go(workers: int = default_n, model: int = 0) -> dict:
         import commands_client as cc
+        kw = {}
+        if backend == "cli":
+            kw["opencode_model"] = CLI_MODELS[model][1]
         return {"ok": True, "out": str(cc.fleet_start(workers=workers,
-                                                      backend=backend))}
+                                                      backend=backend, **kw))}
     return go
 
 
@@ -389,7 +427,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
         path = urllib.parse.urlparse(self.path).path
         if path in ("/", "/index.html"):
-            self._send(200, PAGE.replace("__TOKEN__", TOKEN).encode(),
+            opts = "".join(
+                f'<option value="{i}">{name}</option>'
+                for i, (name, _) in enumerate(CLI_MODELS))
+            self._send(200, PAGE.replace("__TOKEN__", TOKEN)
+                       .replace("__MODELS__", opts).encode(),
                        "text/html; charset=utf-8")
         elif path == "/api/status":
             self._json(snapshot())
@@ -539,12 +581,18 @@ button.danger:hover{border-color:var(--bad);color:var(--bad)}
 /* Two top-level columns: permuter on the left, fleet on the right. Each
    column scrolls independently so a chatty fleet cannot push the permuter
    panels off screen, which is the whole reason for splitting them. */
+/* Full height minus header and the status bar, so nothing lands below the
+   fold and the page never scrolls. The status bar is a fixed-height flex item
+   rather than page content for the same reason. */
+body{height:100vh;display:flex;flex-direction:column;overflow:hidden}
+header{flex:0 0 auto}
 .split{display:grid;gap:0;grid-template-columns:1fr 1fr;
-       height:calc(100vh - 58px)}
+       flex:1 1 auto;min-height:0}
 .split>section{padding:12px 16px;overflow:hidden;min-width:0;
                display:flex;flex-direction:column}
 .split>section+section{border-left:1px solid var(--line)}
-@media(max-width:900px){.split{grid-template-columns:1fr;height:auto}
+@media(max-width:900px){body{height:auto;overflow:auto}
+  .split{grid-template-columns:1fr}
   .split>section+section{border-left:0;border-top:1px solid var(--line)}}
 h2{font-size:12px;color:var(--dim);margin:0 0 8px;letter-spacing:.1em;
    text-transform:uppercase;flex:0 0 auto}
@@ -565,8 +613,9 @@ h2{font-size:12px;color:var(--dim);margin:0 0 8px;letter-spacing:.1em;
 pre{margin:0;padding:8px 10px;flex:1 1 auto;min-height:0;overflow:auto;font-size:11px;
     color:var(--dim);white-space:pre-wrap;word-break:break-word}
 .ok{color:var(--ok)}.warn{color:var(--warn)}.bad{color:var(--bad)}
-#out{padding:8px 16px;color:var(--dim);border-top:1px solid var(--line);
-     white-space:pre-wrap;max-height:150px;overflow:auto}
+#out{flex:0 0 auto;padding:8px 16px;color:var(--dim);
+     border-top:1px solid var(--line);white-space:pre-wrap;
+     max-height:22vh;overflow:auto}
 .empty{color:var(--dim);padding:6px 0}
 </style>
 <header>
@@ -592,12 +641,13 @@ pre{margin:0;padding:8px 10px;flex:1 1 auto;min-height:0;overflow:auto;font-size
     <div class=ctl>
       <label>workers <input id=f_workers type=number value=2 min=1 max=8></label>
       <label>backend
-        <select id=f_backend>
+        <select id=f_backend onchange="el('f_model').disabled=this.value!=='fleet_cli_start'">
           <option value=fleet_cli_start>opencode cli</option>
           <option value=fleet_llama_start>local llama</option>
         </select>
       </label>
-      <button onclick="act(el('f_backend').value,{workers:+el('f_workers').value})">start</button>
+      <label>model <select id=f_model>__MODELS__</select></label>
+      <button onclick="act(el('f_backend').value,fleetParams())">start</button>
       <button class=danger onclick="confirmAct('fleet_stop','Stop all fleet workers and reclaim their queue records?')">stop</button>
     </div>
     <div id=hold style="margin-bottom:8px"></div>
@@ -611,6 +661,13 @@ const TOKEN="__TOKEN__";
 const el=(id)=>document.getElementById(id);
 const esc=(s)=>s.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
 
+function fleetParams(){
+  const p={workers:+el('f_workers').value};
+  // model is only meaningful for the cli backend; sending it to llama would be
+  // rejected as an unknown parameter, which is correct but unhelpful.
+  if(el('f_backend').value==='fleet_cli_start') p.model=+el('f_model').value;
+  return p;
+}
 function permParams(){return{slots:+el('p_slots').value,
   threads:+el('p_threads').value,stall:+el('p_stall').value,
   cycles:+el('p_cycles').value};}
@@ -782,6 +839,15 @@ def self_test() -> int:
        "but the number hidden is still reported, so nothing is concealed")
     ck("grid-auto-rows:1fr" in PAGE,
        "panels share the column height instead of overflowing it")
+    ck("body{height:100vh" in PAGE and "overflow:hidden" in PAGE,
+       "the page is exactly one viewport tall, so the status bar cannot push "
+       "content below the fold")
+    ck("__MODELS__" in PAGE, "the page has a model-options placeholder")
+    ck(len(CLI_MODELS) == 4 and "," in CLI_MODELS[-1][1],
+       "three single models plus one comma-separated mixture")
+    ck(not any("big-pickle" in m or "north-mini" in m or "ling-3" in m
+               or "laguna" in m or "hy3" in m for _, m in CLI_MODELS),
+       "no model from the documented do-not-use list is selectable")
     ck("<div class=split>" in PAGE and "grid-template-columns:1fr 1fr" in PAGE,
        "permuter and fleet are side-by-side columns")
     ck(PAGE.index("id=perm") < PAGE.index("id=fleet"),
