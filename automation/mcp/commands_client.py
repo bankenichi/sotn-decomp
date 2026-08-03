@@ -649,6 +649,14 @@ def start_job(action: str, **kwargs) -> dict:
     argv = build_argv(action, **kwargs)
     if DRYRUN:
         return {"action": action, "argv": argv, "dry_run": True, "started": False}
+    # The permuter owns its work_dir and shares nothing: it compiles into that
+    # directory, never writes build/, and never runs make. So N seeds can be
+    # searched at once, and serialising them wasted the most valuable pool the
+    # project has. Everything else stays exclusive -- concurrent `make build`s
+    # share one build directory and produce artifacts matching nothing.
+    if action == "permuter":
+        return _jobs.start(action, argv, cwd=str(REPO), exclusive=False,
+                           slug=Path(kwargs.get("work_dir", "")).name)
     return _jobs.start(action, argv, cwd=str(REPO))
 
 

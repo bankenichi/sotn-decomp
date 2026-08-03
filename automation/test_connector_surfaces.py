@@ -132,6 +132,34 @@ def main() -> int:
     for act in ("permuter", "run_analysis"):
         check(act in body, f"job_start still handles {act}")
 
+    print("\npermuter jobs run concurrently, builds do not")
+    # The permuter takes a work_dir, compiles into it alone, and never touches
+    # build/ or runs make -- so N seeds share nothing and serialising them
+    # wasted the near pool, which is the most valuable pool the project has.
+    # `make build` is the opposite: two of them share one build directory and
+    # produce artifacts matching nothing. Both properties are asserted, because
+    # relaxing the wrong one is silent corruption.
+    cc_src = (MCP / "commands_client.py").read_text()
+    i2 = cc_src.find("def start_job(")
+    j2 = cc_src.find("\ndef ", i2 + 1)          # end of start_job, not a fixed slice
+    sjb = cc_src[i2:j2]
+    check('if action == "permuter"' in sjb and "exclusive=False" in sjb,
+          "permuter starts with exclusive=False")
+    check("slug=" in sjb, "permuter passes a slug so ids stay unique")
+    # The fallthrough must still be the plain exclusive call. Asserted by
+    # presence of the bare line rather than by where a slice happens to end.
+    check("return _jobs.start(action, argv, cwd=str(REPO))\n" in sjb,
+          "every other action still uses the exclusive default")
+    check(sjb.index('if action == "permuter"')
+          < sjb.index("return _jobs.start(action, argv, cwd=str(REPO))\n"),
+          "the permuter branch is checked BEFORE the exclusive fallthrough")
+    jobs_src = (MCP / "jobs.py").read_text()
+    check("exclusive: bool = True" in jobs_src,
+          "jobs.start still DEFAULTS to exclusive")
+    check("slug: str = \"\"" in jobs_src, "jobs.start accepts a slug")
+    check("_paths(job_id)[0].exists()" in jobs_src,
+          "job ids are bumped on collision, so two runs cannot share a log")
+
     print("\npush remains unparameterised")
     import inspect
     sig = inspect.signature(cc.REGISTRY["git_push"])

@@ -142,13 +142,25 @@ def running_jobs(action: str | None = None) -> list[str]:
 
 
 def start(action: str, argv: list[str], cwd: str,
-          exclusive: bool = True) -> dict:
+          exclusive: bool = True, slug: str = "") -> dict:
     """Spawn `argv` detached and return immediately with a job id.
 
     `exclusive` refuses to launch when another job of the same action is still
     running. Two concurrent `make build`s share one build directory and would
     interleave writes, producing artifacts that match nothing and a checksum
     failure with no cause. Refusing is always better than racing.
+
+    It is NOT right for every action, though. The permuter takes a work_dir,
+    compiles into that directory alone, and never touches build/ or invokes
+    make -- so N permuter runs on N different seeds share nothing. Serialising
+    them was a real cost: the near pool is the most valuable pool the project
+    has, and only one seed could be searched at a time. Callers that own their
+    own workspace pass exclusive=False.
+
+    `slug` disambiguates the job id. The id was action+HHMMSS+pid, which is not
+    unique once several jobs of one action can start in the same second from the
+    same connector process; the second would silently overwrite the first's
+    metadata and log.
     """
     JOBS_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -160,7 +172,16 @@ def start(action: str, argv: list[str], cwd: str,
                     "hint": f"poll job_status('{busy[0]}') instead of starting "
                             f"another {action}"}
 
+    safe = re.sub(r"[^A-Za-z0-9_.-]+", "_", slug).strip("_")[:40]
     job_id = f"{action}-{time.strftime('%H%M%S')}-{os.getpid()}"
+    if safe:
+        job_id += f"-{safe}"
+    # Even with a slug, two runs on the same seed in the same second would
+    # collide. Cheap insurance: bump until the metadata path is free.
+    n = 0
+    while _paths(job_id)[0].exists() and not _paths(job_id)[2].exists():
+        n += 1
+        job_id = f"{job_id.rsplit('~', 1)[0]}~{n}"
     meta_p, log_p, done_p = _paths(job_id)
     for p in (log_p, done_p):
         try:
