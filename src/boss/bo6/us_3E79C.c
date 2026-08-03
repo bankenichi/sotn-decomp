@@ -519,7 +519,61 @@ void OVL_EXPORT(RicEntitySubwpnCross)(Entity* self) {
     self->flags &= ~FLAG_DEAD;
 }
 
-INCLUDE_ASM("boss/bo6/nonmatchings/us_3E79C", func_us_801C488C);
+// Richter (BO6): a single falling ember. Step 0 allocates one GT4 primitive,
+// jitters the spawn point inside a 16x16 box around the parent, and seeds a
+// downward velocity; every later step just falls and re-projects, destroying
+// itself when func_us_801BB5BC reports it has left the screen.
+//
+// SHAPE WARNING, same class as func_us_801BC3E0 in us_39144.c. `new_var`,
+// `new_var2` and the reuse of `idx` as the constant 4 are all load-bearing:
+// they pin which values live in registers across the rand() calls. The
+// `(long long)` cast on the posX store is likewise not decoration. This body
+// is what scored 0; tidying it will not.
+//
+// Reached that score by promoting the permuter seed twice, 220 -> 70 -> 0.
+// For contrast, the same function had previously run 170,002 iterations from
+// the unpromoted base and never got below 220. Re-check with:
+//     python3 automation/permuter_promote.py --dir nonmatchings/func_us_801C488C
+void func_us_801C488C(Entity* entity) {
+    int new_var;
+    Primitive* prim;
+    s32 idx;
+    int new_var2;
+
+    if (entity->step == 0) {
+        idx = g_api.AllocPrimitives(PRIM_GT4, 1);
+        entity->primIndex = (s32)idx;
+        if (idx != -1) {
+            entity->flags = 0x08800000;
+            new_var2 = 0xF;
+            entity->velocityY = 0x8000;
+            entity->posX.i.hi =
+                (long long)((entity->posX.i.hi - 8) + (rand() & new_var2));
+            idx = 4;
+            entity->posY.i.hi = (entity->posY.i.hi - idx) + (rand() & new_var2);
+            prim = &g_PrimBuf[entity->primIndex];
+            prim->clut = 0x1B0;
+            prim->tpage = 0x1A;
+            prim->b0 = 0;
+            prim->b1 = 0;
+            new_var = entity->zPriority + idx;
+            prim->drawMode = 0x31;
+            prim->priority = new_var;
+            func_us_801BB5BC(prim, (s16)entity->posX.i.hi,
+                             (s16)entity->posY.i.hi);
+            entity->step++;
+            return;
+        }
+        DestroyEntity(entity);
+        return;
+    }
+    entity->posY.val += entity->velocityY;
+    prim = &g_PrimBuf[entity->primIndex];
+    if (func_us_801BB5BC(prim, (s16)entity->posX.i.hi,
+                         (s16)entity->posY.i.hi) != 0) {
+        DestroyEntity(entity);
+    }
+}
 
 INCLUDE_ASM("boss/bo6/nonmatchings/us_3E79C", BO6_RicEntitySubwpnCrossTrail);
 
