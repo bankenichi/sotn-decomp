@@ -82,6 +82,35 @@ _NO_MEMBER = re.compile(
 _PARSE_ERR = re.compile(r"parse error before `([A-Za-z_]\w*)'")
 
 
+def is_c89_declaration_error(note: str) -> bool:
+    """Is this the C89 declaration-after-statement error, wearing a disguise?
+
+    GCC 2.7 is C89: every declaration must precede every statement in a block.
+    When a model emits `s16 distX = ...;` after a statement, GCC does NOT say
+    "declarations must come first". It says:
+
+        parse error before `distX'
+        `distX' undeclared (first use this function)
+
+    which reads exactly like a wrong field name, and gets triaged as one. The
+    tell is that the SAME identifier appears in both messages and is declared
+    nowhere in the tree -- a real-but-misnamed symbol would exist somewhere.
+
+    This matters because the two fixes are unrelated. A field-name problem needs
+    the assembly read; this needs the declarations moved to the top of the
+    block, which is mechanical and needs no analysis at all.
+    """
+    parsed = set(_PARSE_ERR.findall(note or ""))
+    if not parsed:
+        return False
+    undecl = set(_UNDECLARED.findall(note or ""))
+    # The identifier that broke the parse is also reported undeclared, or the
+    # declaration it belonged to is: either way the block is mixing the two.
+    if not (parsed & undecl) and not undecl:
+        return False
+    return all(declared_at(n) is None for n in parsed)
+
+
 def classify(note: str) -> str:
     for name, rx in _CLASSES:
         if rx.search(note or ""):
@@ -147,6 +176,65 @@ def known_objects() -> set[str]:
     # externs and so are invisible to the pattern above.
     out.update({"RIC", "PLAYER", "g_Ric", "g_Player", "g_CurrentEntity"})
     return out
+
+
+_DECL_INDEX: dict[str, str] | None = None
+
+
+def _build_decl_index() -> dict[str, str]:
+    """symbol -> "path:line" for every file-scope declaration in the tree.
+
+    Built ONCE and cached. The first version re-scanned src/ and include/ for
+    each identifier, which is O(tree x names) over a slow mount and did not
+    finish inside a 45s call. One pass with one regex is the same answer.
+
+    Matches `extern <type> name;` and file-scope `<type> name =`, anchored at
+    column 0 so a local variable inside a function body cannot register as a
+    declaration.
+    """
+    idx: dict[str, str] = {}
+    rx = re.compile(
+        r"^(?:extern\s+)?[A-Za-z_][\w\s\*]*?\b([A-Za-z_]\w*)\s*"
+        r"(?:\[[^\]]*\])?\s*(?:=[^=]|;)", re.M)
+    for root in ("include", "src"):
+        base = REPO / root
+        if not base.is_dir():
+            continue
+        for p in base.rglob("*.[ch]"):
+            low = str(p).lower()
+            if "_psp" in low or "saturn" in low or "/psp/" in low:
+                continue
+            try:
+                text = p.read_text(errors="ignore")
+            except OSError:
+                continue
+            rel = p.relative_to(REPO).as_posix()
+            for m in rx.finditer(text):
+                name = m.group(1)
+                if name not in idx:
+                    idx[name] = f"{rel}:{text.count(chr(10), 0, m.start()) + 1}"
+    return idx
+
+
+def declared_at(name: str) -> str | None:
+    """Where the tree already declares this symbol, if anywhere.
+
+    THE question to ask before proposing any rename: is the identifier the
+    compiler rejected actually REAL somewhere else? If it is, the record failed
+    for want of a declaration in one file, and renaming would silently change
+    what the function does.
+
+    This check was missing from the first version and it produced a confidently
+    wrong answer on the very first real record. BO6_CheckHighJumpInput failed on
+    `RIC_step' undeclared, and both this tool and a subagent proposed rewriting
+    it to RIC.step. But `extern u16 RIC_step;' is declared at
+    src/boss/bo6/us_39144.c:15. The symbol is real; it is simply not declared in
+    richter.c where the new function lives. The fix is one extern line.
+    """
+    global _DECL_INDEX
+    if _DECL_INDEX is None:
+        _DECL_INDEX = _build_decl_index()
+    return _DECL_INDEX.get(name)
 
 
 def struct_members(limit_files: int = 400) -> dict[str, set[str]]:
@@ -231,12 +319,39 @@ def triage(records: list[dict]) -> list[dict]:
         note = rec["note"]
         cls = classify(note)
         bad = bad_identifiers(note)
+        if cls == "symbol" and is_c89_declaration_error(note):
+            cls = "c89"
         fixes, unknowns = [], []
         for b in bad:
+            # FIRST: does the name already exist somewhere in the tree?
+            #
+            # This check has to come before any rewrite suggestion, and leaving
+            # it out produced a confidently wrong answer on the very first real
+            # record. BO6_CheckHighJumpInput failed on `RIC_step' undeclared,
+            # and both this tool and a subagent proposed rewriting it to
+            # RIC.step. But `extern u16 RIC_step;' is declared at
+            # src/boss/bo6/us_39144.c:15 -- the symbol is real, it is simply not
+            # declared in richter.c where the new function lives.
+            #
+            # The correct fix is one extern line. Rewriting to a struct path
+            # would have compiled and produced DIFFERENT CODE, which is the
+            # failure this whole pipeline exists to avoid: plausible beats
+            # verified right up until the bytes disagree.
+            where = declared_at(b)
+            if where:
+                fixes.append({
+                    "invented": b,
+                    "likely": f"already declared at {where}; add that "
+                              f"declaration to this file",
+                    "why": "symbol EXISTS elsewhere, so this is a missing "
+                           "declaration, not a wrong name"})
+                continue
             path = suggest_struct_path(b, known)
             if path:
                 fixes.append({"invented": b, "likely": path,
-                              "why": "flat name whose head is a real object"})
+                              "why": "flat name whose head is a real object, "
+                                     "and no declaration of it exists anywhere "
+                                     "(UNVERIFIED: confirm against the asm)"})
             elif b in members:
                 fixes.append({"invented": b,
                               "likely": f"member of {sorted(members[b])[:3]}",
@@ -251,6 +366,8 @@ def triage(records: list[dict]) -> list[dict]:
                 "nocode": "requeue as todo; the note says nothing about the code",
                 "symbol": ("requeue with the mapping below as feedback"
                            if fixes else "needs a human: names not resolvable"),
+                "c89": ("move every declaration to the top of its block; "
+                        "GCC 2.7 is C89 and this is NOT a wrong field name"),
                 "real": "needs a strong model or a human",
             }.get(cls, "read it"),
         })
@@ -301,6 +418,26 @@ def self_test() -> int:
     ck("RIC_step" in got, "undeclared names extracted")
     ck("randomIndex" in got, "parse-error names extracted")
     ck(got.count("unk24") == 1, "duplicates collapsed (GCC repeats them)")
+
+    print("\nan existing symbol is a MISSING DECLARATION, never a rename")
+    # The check that was missing, and the record that proved it.
+    ck(declared_at("RIC_step") is not None,
+       "RIC_step is declared somewhere in the tree (it is real)")
+    ck(declared_at("totally_made_up_identifier_xyz") is None,
+       "an invented name is declared nowhere")
+
+    print("\nC89 declaration-after-statement is not a field-name problem")
+    c89 = ("BUILD FAILED: us_3E79C.c:1070: parse error before `swapTarget' "
+           "us_3E79C.c:1074: `swapTarget' undeclared (first use this function)")
+    ck(is_c89_declaration_error(c89),
+       "parse-error + undeclared on an unknown name is the C89 error")
+    ck(classify(c89) == "symbol",
+       "  classify() alone still calls it symbol (triage promotes it)")
+    notc89 = "BUILD FAILED: richter.c:25: `RIC_step' undeclared"
+    ck(not is_c89_declaration_error(notc89),
+       "a real-but-undeclared symbol is NOT the C89 error")
+    ck(not is_c89_declaration_error("attempt 4 timed out"),
+       "a note with no parse error is not the C89 error")
 
     print("\nflat-name resolution, and its guard")
     known = {"RIC", "PLAYER"}
@@ -365,11 +502,12 @@ def main() -> int:
 
     counts = Counter(r["class"] for r in rows)
     print(f"{len(rows)} escalated record(s)\n")
-    for cls in ("harness", "nocode", "symbol", "real", "unknown"):
+    for cls in ("harness", "nocode", "c89", "symbol", "real", "unknown"):
         if counts.get(cls):
             print(f"  {cls:8} {counts[cls]:3d}")
     print()
-    free = counts.get("harness", 0) + counts.get("nocode", 0)
+    free = (counts.get("harness", 0) + counts.get("nocode", 0)
+            + counts.get("c89", 0))
     print(f"{free} of {len(rows)} are NOT decompilation problems and can be "
           f"requeued without spending a single model call.\n")
     print("=" * 78)
