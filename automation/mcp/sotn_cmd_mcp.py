@@ -135,9 +135,32 @@ def asm_diff(symbol: str, version: str = "us", overlay: str = "dra",
 
 
 @mcp.tool()
-def permuter(work_dir: str, timeout: int = 1800) -> dict:
-    """Run decomp-permuter on an in-repo work directory (created by permuter_import)."""
-    return cc.run("permuter", timeout=timeout, work_dir=work_dir)
+def permuter(work_dir: str, threads: int = 4, stop_on_zero: bool = True,
+             better_only: bool = True, algorithm: str = "",
+             timeout: int = 1800) -> dict:
+    """Run decomp-permuter on an in-repo work directory (from permuter_import).
+
+    Prefer job_start(action="permuter", work_dir=...) -- the search is unbounded
+    and will outlive any synchronous call. Permuter jobs are NOT exclusive, so
+    several seeds can be searched at once.
+
+    threads (-j): the permuter is multithreaded and DEFAULTS TO ONE. Every run
+    before 2026-08-03 was single-threaded, including a 141,000-iteration search
+    that held one core for two and a half hours. Capped at 16, and keep it
+    modest while a fleet is running.
+
+    stop_on_zero: without it a run that finds a match keeps searching, so the
+    job never finishes and nothing downstream sees the win.
+
+    better_only: log only improvements. The default emits a line per iteration
+    at roughly ten per second, which is how a stall analysis ends up parsing
+    141k lines to recover a single number.
+
+    algorithm: difflib (default) or levenshtein. Worth A/B-ing on a seed that
+    has plateaued, since they score differently."""
+    return cc.run("permuter", timeout=timeout, work_dir=work_dir,
+                  threads=threads, stop_on_zero=stop_on_zero,
+                  better_only=better_only, algorithm=algorithm)
 
 
 @mcp.tool()
@@ -320,7 +343,9 @@ def queue_init(from_file: str = "automation/seed.us.txt", timeout: int = 120) ->
 
 @mcp.tool()
 def job_start(action: str, version: str = "us", script: str = "",
-              args: str = "", work_dir: str = "") -> dict:
+              args: str = "", work_dir: str = "", threads: int = 4,
+              stop_on_zero: bool = True, better_only: bool = True,
+              algorithm: str = "") -> dict:
     """Start a long command in the background and return a job id immediately.
 
     USE THIS INSTEAD OF make_build. A synchronous build outlives the MCP
@@ -356,7 +381,9 @@ def job_start(action: str, version: str = "us", script: str = "",
             raise ValueError(
                 "permuter needs work_dir=, e.g. "
                 "nonmatchings/<function> (create it with permuter_import)")
-        kw = {"work_dir": work_dir}
+        kw = {"work_dir": work_dir, "threads": threads,
+              "stop_on_zero": stop_on_zero, "better_only": better_only,
+              "algorithm": algorithm}
     else:
         kw = {"version": version}
     return cc.start_job(action, **kw)

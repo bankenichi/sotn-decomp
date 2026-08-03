@@ -121,6 +121,10 @@ def _cfg_value(value: str) -> str:
     return v
 
 
+def _bad_algo(a):
+    raise Rejected("algorithm must be difflib or levenshtein")
+
+
 def _bad_mode(mode):
     raise Rejected(f"reset mode must be one of {sorted(_RESET_MODES)}")
 
@@ -170,6 +174,7 @@ ANALYSIS_SCRIPTS = {
     "escalation_triage.py",
     "test_stub_locate.py",
     "test_permuter_seed.py",
+    "permuter_stall.py",
 }
 # Deliberately narrow: flags, numbers, and in-repo-looking relative paths.
 # No spaces, quotes, semicolons, redirects, or leading dashes-with-spaces, so
@@ -277,8 +282,30 @@ REGISTRY = {
         + ["--version", _v(version), "--overlay", _ov(overlay), _sym(symbol)]
     ),
     # decomp-permuter
-    "permuter": lambda work_dir: [PYTHON, "tools/decomp-permuter/permuter.py",
-                                  _inrepo(work_dir, must_be_dir=True)],
+    # decomp-permuter. Every one of these flags was defaulted away until
+    # 2026-08-03, and the defaults are bad for this project:
+    #
+    #   -j            the permuter is MULTITHREADED and defaults to ONE thread.
+    #                 Five seeds were searched for hours on one core each.
+    #   --stop-on-zero  without it a run that FINDS a match keeps going, so the
+    #                 job never ends and nothing downstream notices the win.
+    #   --better-only  the log was one line per iteration at ~10/second, which
+    #                 is what made the stall analysis parse 141k lines to find
+    #                 one number. Only improvements are interesting.
+    #   --algorithm   difflib is the default; levenshtein scores differently and
+    #                 is worth A/B-ing on a stalled seed.
+    #
+    # threads is capped: this box also runs a 4-worker fleet and a build, and
+    # oversubscribing turns a background search into a foreground stall.
+    "permuter": lambda work_dir, threads=4, stop_on_zero=True,
+                       better_only=True, algorithm="": (
+        [PYTHON, "tools/decomp-permuter/permuter.py",
+         "-j", _count(threads, 1, 16)]
+        + (["--stop-on-zero"] if stop_on_zero else [])
+        + (["--better-only"] if better_only else [])
+        + (["--algorithm", algorithm] if algorithm in ("difflib", "levenshtein")
+           else [] if not algorithm else _bad_algo(algorithm))
+        + [_inrepo(work_dir, must_be_dir=True)]),
     "permuter_import": lambda c_file, asm_file: [
         PYTHON, "tools/decomp-permuter/import.py",
         _inrepo(c_file), _inrepo(asm_file)],

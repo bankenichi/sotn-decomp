@@ -5,3 +5,37 @@ asm_prelude_file = "include/main.inc"
 
 [decompme.compilers]
 "mipsel-linux-gnu-cpp" = "psyq4.0"
+
+# Macros the permuter should keep INTACT instead of expanding.
+#
+# Without this table every import printed "Preserving no macros", and the
+# permuter saw FIX(0.5) as ((s32)((0.5) * 65536.0)). Two costs:
+#   1. Output quality. The permuter emits what it mutated, so a match came back
+#      with the expansion inlined -- which automation/quality_audit.py then
+#      flags as a magic number. Preserving the macro keeps the idiom.
+#   2. Search space. default_weights.toml sets perm_temp_for_expr = 100, the
+#      single heaviest weight, so the permuter spends its budget hoisting parts
+#      of an expression into temporaries. Every one of those attempts on a
+#      constant-folding macro is wasted work.
+#
+# Each key is a regex (anchored by import.py as ^(?:key)$) and each value is the
+# C type of the result. import.py emits `<type> <NAME>();` -- K&R, no parameter
+# list -- so arity does not matter and COLOR16's four arguments are fine.
+#
+# LOW and LOH are DELIBERATELY ABSENT. A preserved macro becomes a function
+# call, and a function call cannot be an assignment target. Measured over
+# src/**/*.{c,h}: LOW is written to 921 times and LOH 253 times, e.g.
+# `LOW(entity->posX) = ...`. Preserving either would turn every one of those
+# into `LOW(...) = x`, which is not valid C. No other macro in this list is
+# ever an assignment target -- all 11 were checked, and the other nine are
+# rvalue-only.
+[preserve_macros]
+"FIX" = "s32"          # ((s32)((x) * 65536.0))   fixed-point literal
+"FLT" = "s32"          # ((s32)((x) * 4096.0))
+"ROT" = "s32"          # ((s32)(FLT(x) / 360))
+"FLT_TO_I" = "s32"     # ((s32)(x) >> 12)
+"LEN" = "s32"          # sizeof(x) / sizeof(*(x)), folds at compile time
+"CH" = "s32"           # ((x) - 0x20), character-table index
+"_S" = "s32"           # identity; marks a sound id, so worth keeping visible
+"COLOR16" = "u16"      # (r) + ((g) << 5) + ((b) << 10) + ((a) << 15)
+"PAL_FLAG" = "u16"     # ((x) | PAL_UNK_FLAG)

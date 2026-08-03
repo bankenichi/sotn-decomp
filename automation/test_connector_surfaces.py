@@ -120,11 +120,16 @@ def main() -> int:
     import inspect as _i
     src_mcp = (MCP / "sotn_cmd_mcp.py").read_text()
     i = src_mcp.find("def job_start(")
-    body = src_mcp[i:i + 2000]
+    body = src_mcp[i:src_mcp.find("\n@mcp.tool()", i)]   # whole function
     check("work_dir" in src_mcp[i:src_mcp.find(")", i)],
           "job_start accepts work_dir")
-    check('kw = {"work_dir": work_dir}' in body,
+    check('"work_dir": work_dir' in body,
           "job_start forwards work_dir for the permuter")
+    # The permuter tuning must reach the argv too, or -j silently stays at the
+    # library default of ONE thread -- which is what every run did until
+    # 2026-08-03.
+    for k in ("threads", "stop_on_zero", "better_only", "algorithm"):
+        check(f'"{k}": {k}' in body, f"job_start forwards {k} to the permuter")
     # The regression: `elif action != "permuter"` left kw empty, so
     # cc.start_job("permuter") raised on the missing positional.
     check('elif action != "permuter"' not in body,
