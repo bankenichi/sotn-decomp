@@ -82,21 +82,25 @@ os.environ.setdefault("SOTN_PYTHON", sys.executable)
 # free-text model id. The action registry takes integers only, so a request can
 # pick one of these and nothing else -- no arbitrary string reaches an argv.
 #
-# Contents follow the operational rule in automation/opencode/ZEN-FREE-MODELS.md:
-# only deepseek-v4-flash-free, nemotron-3-ultra-free and mimo-v2.5-free produce
-# real C. The others return rc=0 with an empty body and burn account-wide quota
-# doing it, so they are deliberately absent rather than listed and discouraged.
+# EVERY model `opencode models opencode` lists, so any of them can be retested.
 #
-# The last entry is the bake-off shape: a comma-separated list assigns one model
-# per worker round-robin, which is how you compare hit rates in a single fleet
-# instead of guessing which model is failing.
+# The three marked (empty) and (broken) are the documented do-not-use set from
+# ZEN-FREE-MODELS.md. They are selectable rather than hidden because the
+# evidence against them is small-sample and this project has already reversed
+# one model verdict: the file's own "Not the model" conclusion was retracted
+# after a proper bake-off. Labelling beats hiding -- you can still pick one on
+# purpose, and the label says what to expect.
+#
+# Order is worst-known last, so the default (index 0) stays a working model.
 CLI_MODELS = [
     ("deepseek-v4-flash-free", "opencode/deepseek-v4-flash-free"),
     ("nemotron-3-ultra-free", "opencode/nemotron-3-ultra-free"),
     ("mimo-v2.5-free", "opencode/mimo-v2.5-free"),
-    ("mixed (one per worker)",
-     "opencode/deepseek-v4-flash-free,opencode/nemotron-3-ultra-free,"
-     "opencode/mimo-v2.5-free"),
+    ("big-pickle (empty)", "opencode/big-pickle"),
+    ("hy3-free (broken)", "opencode/hy3-free"),
+    ("north-mini-code-free (roleplay)", "opencode/north-mini-code-free"),
+    ("ling-3.0-flash-free (empty)", "opencode/ling-3.0-flash-free"),
+    ("laguna-s-2.1-free (empty)", "opencode/laguna-s-2.1-free"),
 ]
 
 TOKEN = secrets.token_urlsafe(16)
@@ -276,8 +280,15 @@ def snapshot() -> dict:
 ACTION_PARAMS: dict[str, dict[str, tuple[int, int]]] = {
     "permuter_start": {"slots": (1, 8), "threads": (1, 16),
                        "stall": (500, 50000), "cycles": (1, 8)},
-    "fleet_cli_start": {"workers": (1, 8), "model": (0, len(CLI_MODELS) - 1)},
+    "fleet_cli_start": {"workers": (1, 8)},
     "fleet_llama_start": {"workers": (1, 8)},
+}
+
+
+# Parameters that are a LIST of integers rather than one. Kept separate so the
+# scalar path stays trivially auditable: name -> (item_min, item_max, max_len).
+ACTION_LIST_PARAMS: dict[str, dict[str, tuple[int, int, int]]] = {
+    "fleet_cli_start": {"models": (0, len(CLI_MODELS) - 1, 8)},
 }
 
 
@@ -286,8 +297,27 @@ def validate_params(action: str, raw: dict) -> tuple[dict, str]:
     not silently dropped: a knob that appears to work and does nothing is the
     failure mode this whole session has been about."""
     spec = ACTION_PARAMS.get(action, {})
+    lspec = ACTION_LIST_PARAMS.get(action, {})
     clean = {}
     for k, v in (raw or {}).items():
+        if k in lspec:
+            lo, hi, maxlen = lspec[k]
+            if not isinstance(v, list):
+                return {}, f"{k} must be a list, got {type(v).__name__}"
+            if not v or len(v) > maxlen:
+                return {}, f"{k} must have 1 to {maxlen} entries, got {len(v)}"
+            out = []
+            for item in v:
+                try:
+                    n = int(item)
+                except (TypeError, ValueError):
+                    return {}, f"{k} entries must be integers, got {item!r}"
+                if not lo <= n <= hi:
+                    return {}, (f"{k} entries must be between {lo} and {hi}, "
+                                f"got {n}")
+                out.append(n)
+            clean[k] = out
+            continue
         if k not in spec:
             return {}, f"unknown parameter {k!r} for {action}"
         try:
@@ -355,11 +385,17 @@ def _sup_start(slots: int = 3, threads: int = 4,
 
 
 def _fleet(backend: str, default_n: int):
-    def go(workers: int = default_n, model: int = 0) -> dict:
+    def go(workers: int = default_n, models: list | None = None) -> dict:
         import commands_client as cc
         kw = {}
         if backend == "cli":
-            kw["opencode_model"] = CLI_MODELS[model][1]
+            # fleet_start assigns a comma-separated list round-robin, one model
+            # per worker. Passing exactly `workers` entries therefore gives each
+            # worker its own model, which is the bake-off shape: same fleet,
+            # same functions, one variable.
+            idx = models or [0]
+            idx = (idx * workers)[:workers]      # pad by repeat if short
+            kw["opencode_model"] = ",".join(CLI_MODELS[i][1] for i in idx)
         return {"ok": True, "out": str(cc.fleet_start(workers=workers,
                                                       backend=backend, **kw))}
     return go
@@ -639,17 +675,18 @@ pre{margin:0;padding:8px 10px;flex:1 1 auto;min-height:0;overflow:auto;font-size
   <section>
     <h2>Fleet</h2>
     <div class=ctl>
-      <label>workers <input id=f_workers type=number value=2 min=1 max=8></label>
+      <label>workers <input id=f_workers type=number value=2 min=1 max=8
+                            oninput="renderWorkerRows()"></label>
       <label>backend
-        <select id=f_backend onchange="el('f_model').disabled=this.value!=='fleet_cli_start'">
+        <select id=f_backend onchange="renderWorkerRows()">
           <option value=fleet_cli_start>opencode cli</option>
           <option value=fleet_llama_start>local llama</option>
         </select>
       </label>
-      <label>model <select id=f_model>__MODELS__</select></label>
       <button onclick="act(el('f_backend').value,fleetParams())">start</button>
       <button class=danger onclick="confirmAct('fleet_stop','Stop all fleet workers and reclaim their queue records?')">stop</button>
     </div>
+    <div class=ctl id=f_rows></div>
     <div id=hold style="margin-bottom:8px"></div>
     <div id=deadnote class=empty style="padding:0 0 6px"></div>
     <div class=cols id=fleet></div>
@@ -661,11 +698,34 @@ const TOKEN="__TOKEN__";
 const el=(id)=>document.getElementById(id);
 const esc=(s)=>s.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
 
+const MODEL_OPTS='__MODELS__';
+
+function renderWorkerRows(){
+  // One row per worker, so a 4-worker fleet is four explicit model choices
+  // rather than one setting applied four times. That is what makes a bake-off
+  // possible: same fleet, same functions, one variable per worker.
+  const n=Math.max(1,Math.min(8,+el('f_workers').value||1));
+  const cli=el('f_backend').value==='fleet_cli_start';
+  const box=el('f_rows');
+  if(!cli){ box.innerHTML='<span class=empty>llama workers take no per-worker model</span>'; return; }
+  // Preserve existing choices when the count changes, so nudging workers from
+  // 2 to 3 does not silently reset the two you already picked.
+  const prev=[...box.querySelectorAll('select')].map(s=>s.value);
+  let h='';
+  for(let i=0;i<n;i++){
+    h+=`<label>w${i+1} <select class=wmodel>${MODEL_OPTS}</select></label>`;
+  }
+  box.innerHTML=h;
+  box.querySelectorAll('select').forEach((s,i)=>{ if(prev[i]!==undefined) s.value=prev[i]; });
+}
+
 function fleetParams(){
   const p={workers:+el('f_workers').value};
-  // model is only meaningful for the cli backend; sending it to llama would be
+  // models is only meaningful for the cli backend; sending it to llama would be
   // rejected as an unknown parameter, which is correct but unhelpful.
-  if(el('f_backend').value==='fleet_cli_start') p.model=+el('f_model').value;
+  if(el('f_backend').value==='fleet_cli_start'){
+    p.models=[...el('f_rows').querySelectorAll('select')].map(s=>+s.value);
+  }
   return p;
 }
 function permParams(){return{slots:+el('p_slots').value,
@@ -736,6 +796,7 @@ async function refresh(){
   el('deadnote').textContent = (live.length && dead)
     ? `${dead} stopped worker(s) hidden` : '';
 }
+renderWorkerRows();
 refresh(); setInterval(refresh,3000);
 </script>
 """
@@ -843,11 +904,15 @@ def self_test() -> int:
        "the page is exactly one viewport tall, so the status bar cannot push "
        "content below the fold")
     ck("__MODELS__" in PAGE, "the page has a model-options placeholder")
-    ck(len(CLI_MODELS) == 4 and "," in CLI_MODELS[-1][1],
-       "three single models plus one comma-separated mixture")
-    ck(not any("big-pickle" in m or "north-mini" in m or "ling-3" in m
-               or "laguna" in m or "hy3" in m for _, m in CLI_MODELS),
-       "no model from the documented do-not-use list is selectable")
+    ck(len(CLI_MODELS) == 8, f"every Zen model is selectable ({len(CLI_MODELS)})")
+    ck(all("," not in m for _, m in CLI_MODELS),
+       "each entry is ONE model; mixing is now per-worker, not a preset")
+    ck("(empty)" in CLI_MODELS[3][0] or "(broken)" in CLI_MODELS[4][0],
+       "known-bad models are labelled rather than hidden")
+    ck(all(x not in CLI_MODELS[0][0] for x in ("empty", "broken", "roleplay")),
+       "index 0, the default, is a working model")
+    ck("renderWorkerRows" in PAGE and "class=wmodel" in PAGE,
+       "the page renders one model row per worker")
     ck("<div class=split>" in PAGE and "grid-template-columns:1fr 1fr" in PAGE,
        "permuter and fleet are side-by-side columns")
     ck(PAGE.index("id=perm") < PAGE.index("id=fleet"),
