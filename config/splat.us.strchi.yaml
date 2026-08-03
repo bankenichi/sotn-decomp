@@ -46,6 +46,10 @@ segments:
       - [0x6C8, data]
       - [0x6F8, .data, e_lock_camera]
       - [0x778, data]
+      # e_bat, shimmed 2026-08-02. bat_anim_fly and bat_anim_drop are 28 bytes
+      # each; rchi's assembly names them D_us_801808C4 and D_us_801808E0, which
+      # are 0x1C apart, and 0x8C4 + 0x38 lands exactly on st_update at 0x8FC.
+      - [0x8C4, .data, e_bat]         # 0x38
       - [0x8FC, .data, st_update]
       - [0x948, .data, collision]
       - [0xD08, .data, e_red_door]
