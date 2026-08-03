@@ -772,7 +772,8 @@ def candidate_path(rec: dict) -> str:
     return os.path.join(WIN_REPO, "automation", "candidates", f"{slug}.c")
 
 
-def save_candidate(rec: dict, code: str, attempt: int, detail: str) -> str:
+def save_candidate(rec: dict, code: str, attempt: int, detail: str,
+                   ctx: dict | None = None) -> str:
     """Preserve C that COMPILED AND LINKED but produced the wrong bytes.
 
     This is the single most valuable artifact the worker produces short of a
@@ -789,6 +790,31 @@ def save_candidate(rec: dict, code: str, attempt: int, detail: str) -> str:
     seeds, live or archived, so the permuter had nothing to run on and P2 sat
     blocked. Every one of those had to be regenerated from scratch.
 
+    THE SEED MUST BE SELF-CONTAINED, which is why `ctx` is taken and
+    virtual_apply() is used. A seed is only useful if decomp-permuter's
+    import.py can compile it, and import.py compiles the file it is handed --
+    nothing else. Writing the model's bare function body produced seeds that
+    could not be imported at all:
+
+      - the rcen seed failed with "syntax error in base.c ... before `arg0'"
+        because there was no #include, so s32/Entity/g_CurrentEntity were
+        undefined types to the parser;
+      - the bo6 func_us_801BC3E0 seed failed with "`RIC_step' undeclared"
+        because that extern lives elsewhere in us_39144.c, outside the body.
+
+    Both had to be reconstructed by hand: stage a file in the overlay directory
+    so the quoted #include resolves, import, then delete it. That is the work
+    this function exists to make unnecessary.
+
+    virtual_apply() returns the WHOLE target file with the stub replaced by the
+    candidate, so the seed carries every include and every file-scope
+    declaration the body depends on, and compiles exactly as the real build
+    does. It is the same substitution apply_code() performs, so the seed is a
+    faithful record of what was actually built and measured.
+
+    Falls back to the bare body when ctx is absent or the substitution fails --
+    an incomplete seed still beats none, and the banner says which it is.
+
     Returns the repo-relative path, or "" on failure. Never raises: losing the
     seed is bad, but failing the attempt over a filesystem hiccup is worse.
     """
@@ -796,16 +822,27 @@ def save_candidate(rec: dict, code: str, attempt: int, detail: str) -> str:
         path = candidate_path(rec)
         os.makedirs(os.path.dirname(path), exist_ok=True)
         model = OPENCODE_MODEL if MODEL_BACKEND == "cli" else LLAMA_MODEL
+        payload, kind = code, "FUNCTION BODY ONLY"
+        if ctx:
+            try:
+                whole = virtual_apply(ctx, rec["function"], code)
+                if whole:
+                    payload, kind = whole, "WHOLE FILE (directly importable)"
+            except Exception as e:                       # never lose the seed
+                print(f"  !! seed fell back to the bare body: {e}", flush=True)
         with open(path, "w", encoding="utf-8") as f:
             f.write(f"/* PERMUTER SEED -- compiled and linked, bytes differ.\n"
                     f"   record : {rec['id']}\n"
                     f"   attempt: {attempt}/{MAX_ATTEMPTS}\n"
                     f"   model  : {model}\n"
                     f"   verdict: {detail[:160]}\n"
+                    f"   content: {kind}\n"
+                    f"   import : python3 tools/decomp-permuter/import.py "
+                    f"<this file> {asm_rel_path(rec, ctx.get('asm_rel', '')) if ctx else '<asm>'}\n"
                     f"   Do NOT apply this to the tree as-is; it does not match.\n"
                     f"   It exists so the permuter has a compiling starting"
                     f" point. */\n")
-            f.write(code)
+            f.write(payload)
         return os.path.relpath(path, WIN_REPO).replace("\\", "/")
     except OSError as e:
         print(f"  !! could not save permuter seed: {e}", flush=True)
@@ -3130,7 +3167,7 @@ def process_one(dry: bool = False) -> bool:
                 # A later compiling attempt overwrites an earlier one on
                 # purpose: retries carry asm-differ feedback the first attempt
                 # never had, so the last one to compile is the closest.
-                seed_path = save_candidate(rec, code, attempt, detail) or seed_path
+                seed_path = save_candidate(rec, code, attempt, detail, ctx) or seed_path
                 if seed_path:
                     print(f"  -> permuter seed saved: {seed_path}", flush=True)
                 with Status("asm-differ (collecting feedback)"):

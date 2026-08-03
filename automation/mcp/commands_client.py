@@ -169,6 +169,7 @@ ANALYSIS_SCRIPTS = {
     "test_build_attribution.py",
     "escalation_triage.py",
     "test_stub_locate.py",
+    "test_permuter_seed.py",
 }
 # Deliberately narrow: flags, numbers, and in-repo-looking relative paths.
 # No spaces, quotes, semicolons, redirects, or leading dashes-with-spaces, so
