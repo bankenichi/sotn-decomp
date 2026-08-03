@@ -1,6 +1,12 @@
 # Matches globally
 ctx.c
 ctx.c.m2c
+# Per-worker m2ctx output. m2ctx.py writes ONE hardcoded ctx.c, so every
+# fleet worker raced on it; each worker now gets ctx.<WORKER_NAME>.c. The
+# two exact names above did not cover those, and 38k lines of generated
+# context were committed on 2026-08-02 before anyone noticed.
+ctx.*.c
+ctx.*.c.m2c
 sotn_calltree.txt
 __pycache__
 .idea/

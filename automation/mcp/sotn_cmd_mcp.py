@@ -651,6 +651,19 @@ def git_config_set(key: str, value: str, timeout: int = 60) -> dict:
 
 
 @mcp.tool()
+def git_rm_cached(path: str, confirm: bool = False, timeout: int = 120) -> dict:
+    """`git rm --cached -r <path>`: stop tracking a path, keep it on disk.
+
+    Requires confirm=True. Use after adding something to .gitignore that was
+    already committed, because .gitignore alone never untracks anything.
+
+    Deliberately --cached and never a plain rm: the files this is for are
+    usually being written by a running fleet, and deleting them from disk would
+    break a worker mid-attempt."""
+    return cc.run("git_rm_cached", timeout=timeout, path=path, confirm=confirm)
+
+
+@mcp.tool()
 def git_add(path: str, timeout: int = 120) -> dict:
     """Stage ONE path. Use git_add_all to stage everything."""
     return cc.run("git_add", timeout=timeout, path=path)

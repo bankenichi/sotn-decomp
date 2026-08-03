@@ -379,6 +379,20 @@ REGISTRY = {
     "git_config_set": lambda key, value: (
         ["git", "config", _cfg_key(key), _cfg_value(value)]),
     "git_add": lambda path: ["git", "add", "--", _inrepo(path, must_exist=False)],
+    # Untrack a path WITHOUT deleting it from disk.
+    #
+    # The gap this fills: .gitignore does not untrack anything already committed,
+    # and on 2026-08-02 four workers' generated ctx.<name>.c files (38k lines)
+    # were committed because the ignore rules listed two exact filenames rather
+    # than a pattern. Fixing the pattern was not enough; the files had to come
+    # out of the index, and there was no allowlisted way to do it.
+    #
+    # --cached is the whole point: the fleet is usually still writing these
+    # files, so removing them from disk would break a running worker.
+    "git_rm_cached": lambda path, confirm=False: (
+        _confirmed(confirm, "git rm --cached")
+        or ["git", "rm", "--cached", "-r", "--",
+            _inrepo(path, must_exist=False)]),
     "git_commit_amend": lambda message="", reset_author=False: (
         ["git", "commit", "--amend"]
         + (["--reset-author"] if reset_author else [])
