@@ -453,6 +453,9 @@ def _fleet_clear_hold() -> dict:
 
 ACTIONS = {
     "permuter_start": _sup_start,
+    # Writes to src/ (transiently, under the fleet's build lock), so it lives
+    # with the permuter controls and NOT on the read-only diagnostics tab.
+    "permuter_import": lambda: _sup("--import-seeds"),
     "fleet_clear_hold": _fleet_clear_hold,
     "permuter_stop": lambda: _sup("--stop"),
     "permuter_plan": lambda: _sup("--plan"),
@@ -803,6 +806,7 @@ pre{margin:0;padding:8px 10px;flex:1 1 auto;min-height:0;overflow:auto;font-size
       <label>cycles <input id=p_cycles type=number value=4 min=1 max=8></label>
       <label>max it <input id=p_maxit type=number value=50000 min=1000 max=500000 step=5000></label>
       <button onclick="act('permuter_plan')">plan</button>
+      <button onclick="confirmAct('permuter_import','Import work dirs for candidates that lack one? This briefly writes a seed into src/ under the fleet build lock, then restores it.')">import seeds</button>
       <button onclick="act('permuter_start',permParams())">start</button>
       <button class=danger onclick="confirmAct('permuter_stop','Stop all permuter jobs?')">stop</button>
     </div>

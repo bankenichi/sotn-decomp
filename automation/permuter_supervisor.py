@@ -236,7 +236,20 @@ def seed_from_notes(notes: str) -> str:
     return m.group(1) if m else ""
 
 
-def import_workdir(fn: str, seed_rel: str) -> tuple[Path | None, str]:
+def _build_lock():
+    """A factory for the SAME lock the fleet workers use.
+
+    Resolved from this file's location rather than the REPO global, because
+    REPO is overridable by env and by tests, and a lock that can be pointed
+    somewhere else is not a lock.
+    """
+    here = Path(__file__).resolve().parent          # automation/
+    sys.path.insert(0, str(here / "win"))
+    from worker_direct import BuildLock             # type: ignore
+    return lambda: BuildLock(str(here / ".build.lock"))
+
+
+def import_workdir(fn: str, seed_rel: str, lock=None) -> tuple[Path | None, str]:
     """Create a permuter work dir for `fn` by staging its seed into src/.
 
     permuter_import compiles the file it is given, so the function has to be
@@ -289,6 +302,29 @@ def import_workdir(fn: str, seed_rel: str) -> tuple[Path | None, str]:
                      if not l.startswith("// ==="))
 
     import commands_client as cc
+
+    # TAKE THE BUILD LOCK. This function writes to a real src/ file, and fleet
+    # workers do the same under automation/.build.lock (worker_direct.py:3228)
+    # around apply -> build -> restore. Without the lock there are two ways to
+    # corrupt the tree, and the second one is silent:
+    #
+    #   1. A worker has its candidate applied and is building. We overwrite the
+    #      file with a seed, so the worker's build compiles OUR code and returns
+    #      a verdict about a function it never tested.
+    #
+    #   2. Worse: we snapshot the file WHILE the worker's candidate is applied,
+    #      then restore that snapshot in our finally. The worker's unverified
+    #      candidate is now permanently in src/, and nothing reports it.
+    #
+    # Same lock, same path, so we serialise against every worker rather than
+    # inventing a second, weaker exclusion.
+    with (lock or _build_lock())():
+        return _import_locked(path, original, m, body, asm_rel, fn, cc)
+
+
+def _import_locked(path: Path, original: str, m, body: str, asm_rel: str,
+                   fn: str, cc) -> tuple[Path | None, str]:
+    """The staged import itself. Split out so the lock scope is obvious."""
     try:
         path.write_text(original[:m.start()] + body + original[m.end():])
         r = cc.run("permuter_import", timeout=300,
@@ -830,14 +866,16 @@ def self_test() -> int:
         (t / "src" / "x.c").write_text(before)
         seedf = t / "seed.c"
         seedf.write_text("void fn_q(void) {}\n")
-        w, msg = import_workdir("fn_q", "seed.c")
+        import contextlib as _ctx
+        nolock = lambda: _ctx.nullcontext()
+        w, msg = import_workdir("fn_q", "seed.c", lock=nolock)
         ck((t / "src" / "x.c").read_text() == before,
            "src file is byte-identical after a failed import")
         ck(w is None, f"a failed import returns no work dir ({msg})")
-        w2, msg2 = import_workdir("fn_missing", "seed.c")
+        w2, msg2 = import_workdir("fn_missing", "seed.c", lock=nolock)
         ck(w2 is None and "no INCLUDE_ASM stub" in msg2,
            "a function with no stub is reported clearly")
-        w3, msg3 = import_workdir("fn_q", "nope.c")
+        w3, msg3 = import_workdir("fn_q", "nope.c", lock=nolock)
         ck(w3 is None and "seed not found" in msg3,
            "a missing seed is reported clearly")
         REPO = old_repo
@@ -880,6 +918,22 @@ def self_test() -> int:
        "seed")
     ck(body.index("promote(work)") < body.index("start_job"),
        "and it promotes BEFORE the job starts, not after")
+
+    print("\nthe staged import is serialised against the fleet")
+    # It writes to a REAL src/ file while workers do the same under
+    # automation/.build.lock. Unlocked, a worker's build can compile our seed,
+    # or our restore can leave the worker's unverified candidate in the tree.
+    src_sup = Path(__file__).read_text()
+    i = src_sup.index("def import_workdir")
+    body_iw = src_sup[i:src_sup.index("\ndef _import_locked")]
+    ck("lock or _build_lock()" in body_iw,
+       "import_workdir takes a lock around the staged write")
+    ck("BuildLock" in src_sup and ".build.lock" in src_sup,
+       "and it is the SAME lock the workers use, not a second weaker one")
+    lf = _build_lock()
+    ck(callable(lf) and type(lf()).__name__ == "BuildLock",
+       "the DEFAULT really resolves to BuildLock, so production always locks "
+       "even though the test injects a null lock for speed")
 
     print("\nwrapped INCLUDE_ASM stubs are found")
     # Against the REAL tree: this is a formatting artefact, so a fixture would
@@ -1008,6 +1062,9 @@ def main() -> int:
     ap.add_argument("--status", action="store_true")
     ap.add_argument("--stop", action="store_true")
     ap.add_argument("--self-test", action="store_true")
+    ap.add_argument("--import-seeds", action="store_true",
+                    help="import work dirs for candidates that lack one, "
+                         "then stop; starts no jobs")
     ap.add_argument("--log", action="store_true",
                     help="print the detached supervisor's own log")
     ap.add_argument("--slots", type=int, default=DEF_SLOTS)
@@ -1032,6 +1089,26 @@ def main() -> int:
 
     if a.self_test:
         return self_test()
+    if a.import_seeds:
+        statuses = tuple(x.strip() for x in a.status_filter.split(",")
+                         if x.strip())
+        bad = check_statuses(statuses)
+        if bad:
+            print(bad, file=sys.stderr)
+            return 2
+        n = 0
+        for c in candidates(statuses):
+            if not c["skip"].startswith("no work dir"):
+                continue
+            if not c["seed"]:
+                print(f"[skip] {c['function']}: no seed= in its queue notes")
+                continue
+            work, msg = import_workdir(c["function"], c["seed"])
+            print(f"[import] {c['function']}: {msg}")
+            n += work is not None
+        print(f"\n{n} work dir(s) imported. Nothing was started; press "
+              f"start to search them.")
+        return 0
     if a.log:
         if not LOG.is_file():
             print(f"no supervisor log at {LOG}")
