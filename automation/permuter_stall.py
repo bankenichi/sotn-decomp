@@ -44,6 +44,7 @@ from pathlib import Path
 
 JOBS_DIR = Path(os.path.expanduser(
     os.environ.get("SOTN_JOBS_DIR", "~/sotn-work/jobs")))
+REPO_SRC = Path(__file__).resolve().parent.parent / "src"
 
 _ITER = re.compile(r"iteration (\d+)")
 _SCORE = re.compile(r"score = (\d+)")
@@ -104,12 +105,69 @@ def verdict(st: dict) -> tuple[str, str]:
             f"ago; still making progress")
 
 
-def report(name: str, st: dict) -> None:
+_SRC_CACHE: list[tuple[str, str]] = []
+
+
+def _src_files() -> list[tuple[str, str]]:
+    """Every src/*.c read once, as (path, text).
+
+    Read once because the repo lives on a Windows mount that is slow enough to
+    matter: rglob-plus-read over src/ takes tens of seconds, and doing it per
+    function turned a three-assertion self-test into a timeout. --all needs the
+    same index for every log it reports on.
+    """
+    if not _SRC_CACHE:
+        for p in sorted(Path(REPO_SRC).rglob("*.c")):
+            _SRC_CACHE.append((str(p), p.read_text(errors="ignore")))
+    return _SRC_CACHE
+
+
+def workdir_state(fn: str) -> tuple[str, str]:
+    """Is `fn` still an INCLUDE_ASM stub, or is the work dir a phantom?
+
+    A permuter work dir outlives the thing it was made for. Nothing deletes it
+    when the function lands, so a directory that was real work in the morning is
+    stale scratch by the afternoon, and it looks exactly the same either way.
+
+    On 2026-08-03 five of nine work dirs were for functions already defined in
+    src/ with no INCLUDE_ASM anywhere. Two of them were in a batch of four that
+    had been running for minutes. func_us_801AD2F0 sat at score 10 and looked
+    like the most promising seed in the set; it was in fact finished, matched,
+    and shipped, and its target.o was stale enough to report 10 instead of 0.
+    "Nearly matched" and "matched a while ago" are indistinguishable from the
+    score alone, which is why this checks the tree instead.
+    """
+    stub = re.compile(rf"INCLUDE_ASM\([^)]*,\s*{re.escape(fn)}\s*\)")
+    defn = re.compile(rf"^[A-Za-z_][\w \*]*\b{re.escape(fn)}\s*\([^;]*\)\s*\{{",
+                      re.M)
+    where = ""
+    found_def = False
+    for p, t in _src_files():
+        if stub.search(t):
+            return ("stub", p)
+        if not found_def and defn.search(t):
+            found_def, where = True, p
+    if found_def:
+        return ("phantom", where)
+    return ("unknown", "")
+
+
+def report(name: str, st: dict, fn: str = "") -> None:
     v, why = verdict(st)
     print(f"\n{name}")
     print(f"  iterations {st['iterations']:>8}   best {st['best']}"
           f"   last improved at {st['best_at']}"
           + (f"   failures {st['failures']}" if st["failures"] else ""))
+    if fn:
+        state, where = workdir_state(fn)
+        if state == "phantom":
+            print(f"  PHANTOM: {fn} is already defined at {where} with no "
+                  f"INCLUDE_ASM. This work dir is stale scratch and any score "
+                  f"it reports is meaningless. Cancel it and delete the dir.")
+            return
+        if state == "unknown":
+            print(f"  WARNING: {fn} is neither an INCLUDE_ASM stub nor a "
+                  f"definition in src/. The name may be stale.")
     print(f"  {v}: {why}")
 
 
@@ -145,6 +203,32 @@ def self_test() -> int:
         for i in range(1, 3001))
     ck(verdict(parse(bad))[0] == "UNPERTURBABLE",
        "heavy mutation rejection is called out separately from a plain stall")
+
+    print("\nphantom detection, against the REAL tree")
+    # Deliberately not fixtures. The failure this guards against is the tree
+    # moving on while a work dir does not, so the test has to read the tree.
+    state, where = workdir_state("func_us_801AD2F0")
+    ck(state == "phantom",
+       f"a function defined in src/ with no INCLUDE_ASM is a phantom "
+       f"({state}, {where})")
+    state, _ = workdir_state("func_us_801B6520")
+    ck(state == "stub",
+       f"a function that is still an INCLUDE_ASM stub is real work ({state})")
+    state, _ = workdir_state("func_us_notARealSymbolAnywhere")
+    ck(state == "unknown", f"an invented name is 'unknown', not 'stub' ({state})")
+
+    print("\na phantom report suppresses the score verdict")
+    import io
+    import contextlib
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        report("x", parse("iteration 9000, 0 errors, score = 10"),
+               "func_us_801AD2F0")
+    out = buf.getvalue()
+    ck("PHANTOM" in out, "the phantom is called out")
+    ck("STALLED" not in out and "searching" not in out,
+       "and no score verdict is printed next to it, because a phantom's score "
+       "means nothing")
 
     print("\na stall verdict never advises waiting")
     ck("re-derive" in verdict(st)[1].lower(),
@@ -191,7 +275,13 @@ def main() -> int:
         except OSError as e:
             print(f"\n{p.name}\n  cannot read: {e}")
             continue
-        report(p.stem.replace("permuter-", ""), st)
+        stem = p.stem.replace("permuter-", "")
+        # log stems look like <hhmmss>-<pid>-<fn>; older ones have no fn at all
+        parts = stem.split("-", 2)
+        fn = parts[2] if len(parts) == 3 else ""
+        # work dirs get a -2 suffix when a name repeats; the function does not
+        fn = re.sub(r"-\d+$", "", fn)
+        report(stem, st, fn)
         if verdict(st)[0] in ("STALLED", "UNPERTURBABLE"):
             stalled += 1
     if stalled:
