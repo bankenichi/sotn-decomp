@@ -138,22 +138,34 @@ def fleet_panels() -> list[dict]:
     worker is dead but not which, so you still have to go and diff the pid list
     against the logs by hand.
 
-    Each worker writes automation/logs/worker-<tag>-<n>.pid for itself on
-    startup, so log and pid share a stem and the mapping is exact. It is not
-    positional and not derived from launch order, both of which drift the moment
-    one worker dies and is not restarted.
+    The mapping is by name, not by launch order, which drifts the moment one
+    worker dies and is not restarted. See the comment below on why the log and
+    pid filenames do not actually share a stem.
     """
     out = []
     if not FLEET_LOGS.is_dir():
         return out
     for p in sorted(FLEET_LOGS.glob("worker-*.log")):
+        # The log and the pid file do NOT share a stem. fleet_start names the
+        # log worker-<tag>-<n>.log but exports WORKER_NAME=fleet-<tag>-<n>, and
+        # the worker writes worker-<WORKER_NAME>.pid. So the pid file is
+        # worker-fleet-<tag>-<n>.pid, with "fleet-" in the middle.
+        #
+        # Assuming a shared stem is why every panel read "pid -": the lookup
+        # was for a filename that has never existed. Both spellings are tried
+        # so this keeps working if the naming is ever unified.
+        stem = p.stem                       # worker-<tag>-<n>
+        rest = stem[len("worker-"):]
         pid = None
-        pidfile = p.with_suffix(".pid")
-        try:
-            t = pidfile.read_text().strip()
-            pid = int(t) if t.isdigit() else None
-        except (OSError, ValueError):
-            pid = None
+        for cand in (FLEET_LOGS / f"worker-fleet-{rest}.pid",
+                     FLEET_LOGS / f"{stem}.pid"):
+            try:
+                t = cand.read_text().strip()
+            except OSError:
+                continue
+            if t.isdigit():
+                pid = int(t)
+                break
         out.append({"name": p.stem.replace("worker-", ""),
                     "kind": "llama" if "-llama-" in p.name else "opencode",
                     "pid": pid,
@@ -197,7 +209,19 @@ def snapshot() -> dict:
         dry = bool(cc.DRYRUN)
     except Exception:
         dry = None
+    # fleet_stop writes a HOLD file and fleet_start refuses while it exists.
+    # That is a good safeguard and a terrible silent one: every press of the
+    # fleet button returns "held" into a status line that is easy to miss,
+    # while the panels sit unchanged and look like nothing happened.
+    hold = REPO / "automation" / "logs" / "FLEET_HOLD"
+    held = ""
+    if hold.is_file():
+        try:
+            held = hold.read_text(errors="ignore").strip() or "on hold"
+        except OSError:
+            held = "on hold"
     return {"queue": queue_counts(), "permuter": perm, "dryrun": dry,
+            "fleet_hold": held,
             "supervisor": sup, "fleet": fleet_panels()}
 
 
@@ -269,8 +293,32 @@ def _fleet_stop() -> dict:
     return {"ok": True, "out": str(cc.fleet_stop(hold=True))}
 
 
+def _fleet_clear_hold() -> dict:
+    """Remove the HOLD that fleet_stop leaves behind.
+
+    fleet_stop writes automation/logs/FLEET_HOLD and fleet_start refuses while
+    it exists. That is deliberate: an unattended caller must not silently
+    restart a fleet a human stopped. A human pressing this button IS the
+    deliberate override the safeguard asks for, so it is exposed as its own
+    action rather than folded into start -- clearing the hold and starting stay
+    two separate, visible decisions.
+    """
+    hold = REPO / "automation" / "logs" / "FLEET_HOLD"
+    if not hold.is_file():
+        return {"ok": True, "out": "no hold in place"}
+    why = ""
+    try:
+        why = hold.read_text(errors="ignore").strip()
+        hold.unlink()
+    except OSError as e:
+        return {"ok": False, "out": f"could not clear hold: {e}"}
+    return {"ok": True, "out": f"hold cleared (was: {why}). "
+                               f"Press a fleet start button now."}
+
+
 ACTIONS = {
     "permuter_start": _sup_start,
+    "fleet_clear_hold": _fleet_clear_hold,
     "permuter_stop": lambda: _sup("--stop"),
     "permuter_plan": lambda: _sup("--plan"),
     "fleet_cli_start": _fleet("cli", 2),
@@ -469,7 +517,7 @@ pre{margin:0;padding:8px 10px;max-height:300px;overflow:auto;font-size:11px;
 </header>
 <div class=split>
   <section><h2>Permuter</h2><div class=cols id=perm></div></section>
-  <section><h2>Fleet</h2><div class=cols id=fleet></div></section>
+  <section><h2>Fleet</h2><div id=hold style="margin-bottom:8px"></div><div class=cols id=fleet></div></section>
 </div>
 <div id=out></div>
 <script>
@@ -506,6 +554,11 @@ async function refresh(){
   const q=s.queue.by_status||{};
   // A silent dry-run is how the fleet buttons "did nothing" for an afternoon.
   const dry = s.dryrun ? '<span class="chip bad">DRY RUN &mdash; nothing will actually launch</span>' : '';
+  // The hold is the single most common reason a fleet start "does nothing".
+  el('hold').innerHTML = s.fleet_hold
+    ? `<span class="chip bad">FLEET ON HOLD &mdash; ${esc(s.fleet_hold)}</span>`
+      + ` <button onclick="act('fleet_clear_hold')">clear hold</button>`
+    : '';
   el('q').innerHTML = dry + (s.queue.error ? `<span class="chip bad">${esc(s.queue.error)}</span>`
     : Object.entries(q).map(([k,v])=>`<span class=chip>${esc(k)} <b>${v}</b></span>`)
         .join('') + `<span class=chip>total <b>${s.queue.total}</b></span>`);

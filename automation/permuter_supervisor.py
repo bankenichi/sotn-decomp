@@ -300,10 +300,43 @@ def read_log(job_id: str) -> dict:
 
 # ----------------------------------------------------------------- the loop
 
+def already_busy() -> list[str]:
+    """Work dirs that a permuter job is ALREADY searching.
+
+    Starting a second supervisor while one is running used to spawn duplicate
+    jobs on the same work dirs. Both then write output-* into the same
+    directory and promote the same base.c underneath each other, and the
+    duplicates die almost immediately -- which from the UI looks exactly like
+    "the start button did nothing".
+
+    Observed 2026-08-03: pressing start while supervisor pid 6941 was running
+    produced permuter-143902-* jobs that went straight to state 'done'.
+    """
+    jobs = _jobs()
+    busy = []
+    for jid in jobs.running_jobs("permuter"):
+        # Job ids are <action>-<hhmmss>-<pid>-<workdir slug>, and running_jobs
+        # returns the WHOLE id including the action prefix. Splitting on 2
+        # instead of 3 yields "6941-func_us_8019AA04-2" -- a string that never
+        # equals a work dir name, so the guard silently matched nothing and the
+        # supervisor started duplicates anyway. Off-by-one in a field index
+        # fails exactly like having no guard at all.
+        parts = jid.split("-", 3)
+        if len(parts) == 4:
+            busy.append(parts[3])
+    return busy
+
+
 def supervise(slots: int, threads: int, stall: int, cycles: int,
               statuses: tuple[str, ...], once: bool = False) -> int:
     jobs = _jobs()
     all_c = candidates(statuses)
+    busy = already_busy()
+    for c in all_c:
+        slug = Path(c["workdir"]).name if c["workdir"] else ""
+        if slug and slug in busy:
+            c["skip"] = (f"already being permuted by a running job; "
+                         f"stop it first (run-permuter stop)")
     pending = [c for c in all_c if not c["skip"]]
 
     # Import anything that only lacks a work dir. Done here and not in
@@ -323,8 +356,20 @@ def supervise(slots: int, threads: int, stall: int, cycles: int,
 
     pending.sort(key=lambda c: (c["score"] is None, c["score"] or 0))
     if not pending:
+        blocked = [c for c in all_c if "already being permuted" in c["skip"]]
+        if blocked:
+            print(f"NOTHING STARTED: all {len(blocked)} candidate(s) are "
+                  f"already being permuted by jobs that are still running:")
+            for c in blocked:
+                print(f"  {c['function']}")
+            print("Run `run-permuter stop` first, or let the existing "
+                  "supervisor finish. Starting a second one would duplicate "
+                  "jobs on the same work dirs and both would fail.")
+            return 1
         print("nothing to permute; every candidate is matched, phantom, or "
               "has no work dir")
+        for c in all_c:
+            print(f"  {c['function']}: {c['skip']}")
         return 0
 
     print(f"{len(pending)} candidate(s), {slots} slot(s), {threads} threads each")
@@ -570,6 +615,22 @@ def self_test() -> int:
                          'NOT JSON\n\n')
         ck(len(candidates(check_tree=False)) == 1,
            "one good record survives a garbage line")
+
+    print("\nbusy-workdir parsing (guards against duplicate supervisors)")
+    import types
+    fake = types.SimpleNamespace(running_jobs=lambda a: [
+        "permuter-141610-6941-func_us_8019AA04-2",
+        "permuter-143902-55599-func_us_801B8E80",
+        "make_build-110820-9159"])
+    real = globals()["_jobs"]
+    globals()["_jobs"] = lambda: fake
+    b = already_busy()
+    ck("func_us_8019AA04-2" in b,
+       f"the -2 work dir slug survives the split ({b})")
+    ck("func_us_801B8E80" in b, "a plain slug is parsed too")
+    ck(not any(x.isdigit() and len(x) > 4 for x in b),
+       f"no pid fragments leak into the slug list ({b})")
+    globals()["_jobs"] = real
 
     print("\nlong-running output must not be block-buffered")
     src = Path(__file__).read_text()
