@@ -320,7 +320,7 @@ def queue_init(from_file: str = "automation/seed.us.txt", timeout: int = 120) ->
 
 @mcp.tool()
 def job_start(action: str, version: str = "us", script: str = "",
-              args: str = "") -> dict:
+              args: str = "", work_dir: str = "") -> dict:
     """Start a long command in the background and return a job id immediately.
 
     USE THIS INSTEAD OF make_build. A synchronous build outlives the MCP
@@ -342,7 +342,22 @@ def job_start(action: str, version: str = "us", script: str = "",
     kw = {}
     if action == "run_analysis":
         kw = {"script": script, "args": args}
-    elif action != "permuter":
+    elif action == "permuter":
+        # permuter takes a work_dir, not a version. This branch used to pass
+        # NOTHING, so `permuter` was advertised as a job action while being
+        # impossible to start as one: cc.start_job() raised on the missing
+        # positional every time. Found 2026-08-02, when the permuter was first
+        # needed as a background job alongside a running fleet.
+        #
+        # It matters because the permuter is the one long job that MUST be
+        # backgrounded. It searches indefinitely by design, so a synchronous
+        # call cannot terminate before the MCP transport does.
+        if not work_dir:
+            raise ValueError(
+                "permuter needs work_dir=, e.g. "
+                "nonmatchings/<function> (create it with permuter_import)")
+        kw = {"work_dir": work_dir}
+    else:
         kw = {"version": version}
     return cc.start_job(action, **kw)
 

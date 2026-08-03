@@ -97,6 +97,22 @@ def main() -> int:
         except cc.Rejected:
             check(True, f"{act} refuses without confirm=True")
 
+    print("\njob_start forwards the arguments each action needs")
+    import inspect as _i
+    src_mcp = (MCP / "sotn_cmd_mcp.py").read_text()
+    i = src_mcp.find("def job_start(")
+    body = src_mcp[i:i + 2000]
+    check("work_dir" in src_mcp[i:src_mcp.find(")", i)],
+          "job_start accepts work_dir")
+    check('kw = {"work_dir": work_dir}' in body,
+          "job_start forwards work_dir for the permuter")
+    # The regression: `elif action != "permuter"` left kw empty, so
+    # cc.start_job("permuter") raised on the missing positional.
+    check('elif action != "permuter"' not in body,
+          "the branch that silently dropped permuter's argument is gone")
+    for act in ("permuter", "run_analysis"):
+        check(act in body, f"job_start still handles {act}")
+
     print("\npush remains unparameterised")
     import inspect
     sig = inspect.signature(cc.REGISTRY["git_push"])
