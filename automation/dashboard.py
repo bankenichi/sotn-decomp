@@ -541,6 +541,73 @@ def run_diagnostic(index: int) -> dict:
                 "out": f"{type(e).__name__}: {e}"}
 
 
+
+# ------------------------------------------------------------------ build
+# Build actions, index-selected like everything else. These are the ONLY
+# entries in this file that can change build artefacts, so they live in their
+# own registry and their own tab rather than being mixed in with diagnostics.
+#
+# `make build` is the one that matters and it is EXCLUSIVE: two concurrent
+# builds share one output directory and produce artefacts matching nothing. It
+# therefore runs under the same automation/.build.lock the fleet and the
+# supervisor use, so pressing it during a fleet run waits rather than corrupts.
+BUILD_ACTIONS = [
+    ("Build us", "build", "us",
+     "make build VERSION=us, the 81/81 checksum gate"),
+    ("Verify only", "verify", "us",
+     "re-check artefact hashes without rebuilding"),
+    ("Clean us", "clean", "us",
+     "make clean VERSION=us"),
+    ("Reports", "reports", "",
+     "duplicates report plus function-finder"),
+    ("Function finder", "function_finder", "",
+     "decomp status, file lists, call graphs"),
+]
+
+
+def run_build(index: int) -> dict:
+    """Run one build action under the shared build lock."""
+    import subprocess
+    if not 0 <= index < len(BUILD_ACTIONS):
+        return {"ok": False, "out": f"no build action {index}"}
+    label, kind, version, _ = BUILD_ACTIONS[index]
+    sys.path.insert(0, str(REPO / "automation" / "win"))
+    try:
+        from worker_direct import BuildLock                  # type: ignore
+        lock = lambda: BuildLock(str(REPO / "automation" / ".build.lock"))
+    except Exception:                                        # noqa: BLE001
+        # Refuse rather than build unlocked. An unlocked build racing a worker
+        # is exactly what the lock exists to prevent.
+        return {"ok": False, "label": label,
+                "out": "could not acquire the build lock; refusing to build"}
+
+    cmds = {
+        "build": ["make", "build", f"VERSION={version}"],
+        "clean": ["make", "clean", f"VERSION={version}"],
+        "reports": ["make", "reports"],
+        "function_finder": ["make", "function-finder"],
+    }
+    t0 = time.time()
+    if kind == "verify":
+        argv = ["sha1sum", "-c", f"config/check.{version}.sha"]
+    else:
+        argv = cmds[kind]
+    try:
+        with lock():
+            r = subprocess.run(argv, cwd=str(REPO), capture_output=True,
+                               text=True, timeout=3600)
+        out = ((r.stdout or "") + (r.stderr or "")).rstrip()
+        if len(out) > 60000:
+            out = "... (earlier output trimmed) ...\n" + out[-60000:]
+        return {"ok": r.returncode == 0, "out": out, "label": label,
+                "secs": round(time.time() - t0, 1)}
+    except subprocess.TimeoutExpired:
+        return {"ok": False, "label": label,
+                "out": f"{label} exceeded 3600s and was killed."}
+    except Exception as e:                                   # noqa: BLE001
+        return {"ok": False, "label": label, "out": f"{type(e).__name__}: {e}"}
+
+
 # ------------------------------------------------------------------- server
 
 class Handler(http.server.BaseHTTPRequestHandler):
@@ -571,6 +638,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
                        "text/html; charset=utf-8")
         elif path == "/api/status":
             self._json(snapshot())
+        elif path == "/api/buildactions":
+            self._json({"items": [{"label": l, "note": nt}
+                                  for l, _, _, nt in BUILD_ACTIONS]})
         elif path == "/api/diagnostics":
             self._json({"items": [{"label": l, "note": nt}
                                   for l, _, _, nt in DIAGNOSTICS]})
@@ -585,7 +655,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self._json({"error": "bad or missing token"}, 403)
             return
         path = urllib.parse.urlparse(self.path).path
-        if path == "/api/diag":
+        if path in ("/api/diag", "/api/build"):
+            runner = run_diagnostic if path == "/api/diag" else run_build
             try:
                 n = int(self.headers.get("Content-Length") or 0)
                 body = json.loads(self.rfile.read(n) or b"{}") if n else {}
@@ -593,7 +664,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             except (ValueError, json.JSONDecodeError, TypeError):
                 self._json({"ok": False, "out": "index must be an integer"})
                 return
-            self._json(run_diagnostic(idx))
+            self._json(runner(idx))
             return
         name = path[len("/api/action/"):] if path.startswith(
             "/api/action/") else ""
@@ -794,6 +865,7 @@ pre{margin:0;padding:8px 10px;flex:1 1 auto;min-height:0;overflow:auto;font-size
   <div class=tabs>
     <button id=tab_mon class=on onclick="showTab('mon')">monitor</button>
     <button id=tab_diag onclick="showTab('diag')">diagnostics</button>
+    <button id=tab_build onclick="showTab('build')">build</button>
   </div>
 </header>
 <div class=split id=pane_mon>
@@ -836,6 +908,11 @@ pre{margin:0;padding:8px 10px;flex:1 1 auto;min-height:0;overflow:auto;font-size
   <div class=diaggrid id=diagbtns></div>
   <pre id=diagout>Pick a tool. Everything here is read-only.</pre>
 </section>
+<section id=pane_build style="display:none">
+  <h2>Build</h2>
+  <div class=diaggrid id=buildbtns></div>
+  <pre id=buildout>These change build artefacts. Each runs under the same lock the fleet and supervisor use, so pressing one during a fleet run waits rather than corrupts.</pre>
+</section>
 <div id=out></div>
 <script>
 const TOKEN="__TOKEN__";
@@ -873,10 +950,10 @@ function fleetParams(){
   return p;
 }
 function showTab(t){
-  el('pane_mon').style.display = t==='mon' ? '' : 'none';
-  el('pane_diag').style.display = t==='diag' ? '' : 'none';
-  el('tab_mon').className = t==='mon' ? 'on' : '';
-  el('tab_diag').className = t==='diag' ? 'on' : '';
+  for(const k of ['mon','diag','build']){
+    el('pane_'+k).style.display = t===k ? '' : 'none';
+    el('tab_'+k).className = t===k ? 'on' : '';
+  }
 }
 
 let DIAGS=[];
@@ -886,6 +963,33 @@ async function loadDiags(){
   el('diagbtns').innerHTML = DIAGS.map((d,i)=>
     `<button class=diagbtn onclick="runDiag(${i})">`+
     `<b>${esc(d.label)}</b><span>${esc(d.note)}</span></button>`).join('');
+}
+
+async function loadBuilds(){
+  try{ BUILDS=(await (await fetch('/api/buildactions')).json()).items; }
+  catch(e){ return; }
+  el('buildbtns').innerHTML = BUILDS.map((d,i)=>
+    `<button class=diagbtn onclick="runBuild(${i})">`+
+    `<b>${esc(d.label)}</b><span>${esc(d.note)}</span></button>`).join('');
+}
+let BUILDS=[];
+
+async function runBuild(i){
+  if(!confirm('Run "'+BUILDS[i].label+'"? This changes build artefacts and '+
+              'takes the build lock.')) return;
+  const btns=[...document.querySelectorAll('#buildbtns .diagbtn')];
+  btns.forEach(b=>b.disabled=true);
+  el('buildout').textContent='running '+BUILDS[i].label+' ... (a full build is ~70s)';
+  try{
+    const r=await fetch('/api/build',{method:'POST',
+      headers:{'X-Token':TOKEN,'Content-Type':'application/json'},
+      body:JSON.stringify({index:i})});
+    const j=await r.json();
+    el('buildout').textContent =
+      `${j.label||''}${j.secs!=null?'  ('+j.secs+'s)':''}`+
+      `${j.ok===false?'   [FAILED]':'   [ok]'}\n\n${j.out||'(no output)'}`;
+  }catch(e){ el('buildout').textContent='request failed: '+e; }
+  btns.forEach(b=>b.disabled=false);
 }
 
 async function runDiag(i){
@@ -975,7 +1079,7 @@ async function refresh(){
     : `<div class=empty>no live fleet workers${dead?` (${dead} stopped)`:''}</div>`;
 
 }
-renderWorkerRows(); loadDiags();
+renderWorkerRows(); loadDiags(); loadBuilds();
 refresh(); setInterval(refresh,3000);
 </script>
 """
@@ -1085,6 +1189,22 @@ def self_test() -> int:
     ck("DIAGNOSTICS[index]" in src_diag,
        "the script and its args come from the registry, not the request")
     ck("shell=True" not in src_diag, "and it never uses a shell")
+
+    print("\nbuild actions are separated from diagnostics")
+    ck(all(len(b) == 4 for b in BUILD_ACTIONS),
+       "every build entry is (label, kind, version, note)")
+    ck(run_build(-1)["ok"] is False and run_build(99)["ok"] is False,
+       "out-of-range build indices are refused")
+    rb = src[src.index("def run_build"):]
+    rb = rb[:rb.index("\n\n\n")]
+    ck("BuildLock" in rb and ".build.lock" in rb,
+       "a build takes the SAME lock the fleet and supervisor use")
+    ck("refusing to build" in rb,
+       "and REFUSES to build at all if it cannot get the lock, rather than "
+       "racing a worker")
+    ck("shell=True" not in rb, "no shell in the build path")
+    ck("pane_build" in PAGE and "runBuild" in PAGE, "the build tab renders")
+    ck("confirm(" in PAGE, "build buttons confirm first")
 
     print("\nthe page")
     ck("__TOKEN__" in PAGE, "page carries a token placeholder")
