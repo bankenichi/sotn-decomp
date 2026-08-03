@@ -72,19 +72,29 @@ segments:
       # EntityRedDoor.s independently references D_us_80181454.
       - [0x1454, .data, e_red_door]   # 0x18
       - [0x146C, data]
-      # e_misc is NOT shimmable here either, for the same reason as e_room_fg
-      # below. Its .data start IS 0x19C0 (the minimum address its own assembly
-      # references, by the rule validated on e_particles and e_medusa_head), but
-      # measured 2026-08-02 the shared header emits 0xB8 while rno0's slot is
-      # 0xB4: declaring 0xB4 left the build 0x4 short, and declaring 0xB8 made
-      # e_background_pillars' assembly lose D_us_80181A74, which lands in that
-      # last word. rno0's variant is 4 bytes smaller than any the header can
-      # produce. Worth 14 stubs, so worth revisiting if e_misc.h ever gains a
-      # matching conditional, but it is a header change, not a config change.
-      # Both located by automation/find_data_segment.py and calibrated against
-      # peers whose configs already declare the address. Neither header
-      # declares uninitialised storage, so unlike st_update these need no
-      # matching .bss segment; that was checked before building.
+      # e_misc, shimmed 2026-08-02. Start 0x19C0 is the minimum data address its
+      # own assembly references, by the rule validated on e_particles and
+      # e_medusa_head. End 0x1A74 is confirmed by a symbol: D_us_80181A74 is
+      # e_background_pillars', so the boundary is not inferred, it is named.
+      #
+      # RETRACTION. The note that stood here said rno0's 0xB4 was "4 bytes
+      # smaller than any variant the header can produce" and called this a
+      # header change rather than a config change. That was wrong, and it
+      # ring-fenced 14 stubs as impossible for a day.
+      #
+      # cat and lib also declare 0xB4, and both plain-shim e_misc.h with no
+      # extra defines, which alone disproves "no variant can produce it". The
+      # mechanism is g_QuadIndices2 at e_misc.h:790: it emits a trailing `0, 0`
+      # (two s16, exactly the 4 bytes in question) unless the stage is in an
+      # exclusion list that already contained NZ0, NO1, CHI, ST0, LIB and CAT.
+      # rno0 belongs in that list and has been added to it.
+      #
+      # The lesson is that "the majority size" is not "the only size". Both cat
+      # and lib were visible in the same table that produced the wrong
+      # conclusion; the size histogram was read for its mode instead of for its
+      # variants.
+      - [0x19C0, .data, e_misc]          # 0xB4
+      - [0x1A74, data]
       - [0x1CB8, .data, e_particles]     # 0x80
       - [0x1D38, data]
       # e_hammer / e_gurkha / e_blade, shimmed 2026-08-02 once the shared

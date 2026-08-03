@@ -792,8 +792,14 @@ static s16 g_QuadIndices2[] = {
     1, 2, 4, 5, //top right quad
     3, 4, 6, 7, //bottom left quad
     4, 5, 7, 8, //bottom right quad
+// RNO0 added 2026-08-02. Its e_misc .data slot is 0x19C0..0x1A74 = 0xB4, the
+// same size cat and lib produce, and the 4-byte difference from the 0xB8
+// majority is exactly this trailing pair. The end of the slot is confirmed by
+// D_us_80181A74 belonging to e_background_pillars, so this is not a guess at a
+// boundary. Adding rno0 here changes no other stage by a byte.
 #if (!defined(STAGE_IS_NZ0) && !defined(STAGE_IS_NO1) &&                        \
     !defined(STAGE_IS_CHI) && STAGE != STAGE_ST0 && !defined(STAGE_IS_LIB) && !defined(STAGE_IS_CAT) && \
+    !defined(STAGE_IS_RNO0) && \
     !defined(BOSS_IS_BO0)) || (defined(BOSS_IS_BO0) && !defined(VERSION_PSP))
     0, 0,
 #endif
