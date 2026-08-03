@@ -28,6 +28,54 @@ CMD="$(basename "$0")"
 VERB="${1:-}"
 shift || true
 
+# Every command resolves the repo from its OWN location via readlink -f, then
+# cds there. That is what makes them work from any directory: you never have to
+# be in the repo, and $PWD is never consulted. The only thing installation adds
+# is putting the names on PATH.
+COMMANDS=(run-permuter runfleet-cli runfleet-llama sotn-dash)
+SELF="$(readlink -f "${BASH_SOURCE[0]}")"
+
+install_cmds() {
+    local bindir="${1:-$HOME/.local/bin}"
+    mkdir -p "$bindir"
+    local n
+    for n in "${COMMANDS[@]}"; do
+        ln -sfn "$SELF" "$bindir/$n"
+        echo "  $bindir/$n -> $SELF"
+    done
+    echo
+    case ":$PATH:" in
+        *":$bindir:"*)
+            echo "$bindir is already on PATH. Open a new shell or run:"
+            echo "  hash -r"
+            echo "Then '${COMMANDS[0]} plan' works from anywhere."
+            ;;
+        *)
+            local line="export PATH=\"$bindir:\$PATH\""
+            echo "$bindir is NOT on PATH yet. Add it:"
+            echo "  echo '$line' >> ~/.bashrc && exec bash"
+            echo
+            echo "Or re-run with --add-path to append that line for you."
+            ;;
+    esac
+}
+
+uninstall_cmds() {
+    local bindir="${1:-$HOME/.local/bin}"
+    local n
+    for n in "${COMMANDS[@]}"; do
+        # Only remove a symlink that points at THIS script. Refusing to touch
+        # anything else means a name collision with some other tool of the same
+        # name cannot be silently deleted by an uninstall.
+        if [ -L "$bindir/$n" ] && [ "$(readlink -f "$bindir/$n")" = "$SELF" ]; then
+            rm -f "$bindir/$n"
+            echo "  removed $bindir/$n"
+        elif [ -e "$bindir/$n" ]; then
+            echo "  SKIPPED $bindir/$n (not our symlink; left alone)"
+        fi
+    done
+}
+
 usage() {
     cat <<'EOF'
 SOTN harness process control.
@@ -48,6 +96,9 @@ EOF
 }
 
 need_verb() {
+    # sotn-run under its real name is the installer and has its own verbs, so
+    # it is exempt from the start/stop/status/plan set.
+    [ "$CMD" = "sotn-run" ] && return 0
     case "$VERB" in
         start|stop|status|plan) : ;;
         ""|-h|--help|help) usage; exit 0 ;;
@@ -111,9 +162,55 @@ case "$CMD" in
             plan)   echo "plan is only meaningful for run-permuter" >&2; exit 2 ;;
         esac
         ;;
+    sotn-run)
+        # Invoked by its real name: the installer entry point. This is the one
+        # command you run with a full path, exactly once.
+        case "$VERB" in
+            install)
+                bindir="$HOME/.local/bin"
+                add_path=0
+                while [ $# -gt 0 ]; do
+                    case "$1" in
+                        --bindir) bindir="$2"; shift 2 ;;
+                        --add-path) add_path=1; shift ;;
+                        *) echo "unknown option '$1'" >&2; exit 2 ;;
+                    esac
+                done
+                echo "installing SOTN commands into $bindir"
+                install_cmds "$bindir"
+                if [ "$add_path" = 1 ]; then
+                    line="export PATH=\"$bindir:\$PATH\""
+                    if grep -qxF "$line" "$HOME/.bashrc" 2>/dev/null; then
+                        echo "~/.bashrc already has that line; not adding it twice"
+                    else
+                        printf '\n# SOTN harness commands\n%s\n' "$line" >> "$HOME/.bashrc"
+                        echo "appended to ~/.bashrc; run: exec bash"
+                    fi
+                fi
+                ;;
+            uninstall)
+                bindir="${1:-$HOME/.local/bin}"   # VERB was already shifted off
+                echo "removing SOTN commands from $bindir"
+                uninstall_cmds "$bindir"
+                ;;
+            *)
+                cat <<EOF
+sotn-run is the installer for the SOTN harness commands.
+
+  sotn-run install [--bindir DIR] [--add-path]
+  sotn-run uninstall [DIR]
+
+Default DIR is ~/.local/bin. After installing, these work from ANY directory:
+
+  ${COMMANDS[*]}
+EOF
+                [ "$VERB" = "" ] && exit 0 || exit 2
+                ;;
+        esac
+        ;;
     *)
-        echo "sotn-run must be invoked through one of its symlinks" >&2
-        usage >&2
+        echo "unknown command name '$CMD'" >&2
+        echo "run 'sotn-run install' to create the command symlinks" >&2
         exit 2
         ;;
 esac

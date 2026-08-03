@@ -163,11 +163,11 @@ def candidates(statuses: tuple[str, ...] = ("near",),
             "id": rec.get("id", ""),
             "workdir": str(work) if work else "",
             "score": best_score(work) if work else None,
-            # A record with no work dir is still a candidate: permuter_import
-            # can build one from the seed named in its notes. Flagging it here
-            # rather than silently dropping it keeps the plan honest about what
-            # it cannot start yet.
-            "skip": "" if work else "no work dir; run permuter_import first",
+            "seed": seed_from_notes(rec.get("notes", "")),
+            # A record with no work dir is not dropped: --run imports one from
+            # the seed named in its notes. --plan still reports it as blocked,
+            # because planning must not write to src/.
+            "skip": "" if work else "no work dir; will import from seed",
         })
 
     runnable = [c for c in out if not c["skip"]]
@@ -179,6 +179,92 @@ def candidates(statuses: tuple[str, ...] = ("near",),
 
 
 # ---------------------------------------------------------------------- jobs
+
+# Queue statuses the permuter can actually consume.
+#
+# The permuter mutates an EXISTING, COMPILING function. `near` records compiled
+# and produced wrong bytes, which is exactly that precondition. A `todo` record
+# has no C at all, so pointing the supervisor at `todo` would import nothing,
+# find nothing, and burn a slot per record discovering it. Refusing is better
+# than a flag that silently does nothing useful.
+USABLE_STATUSES = {"near", "escalated"}
+
+
+def check_statuses(statuses: tuple[str, ...]) -> str:
+    bad = [s for s in statuses if s not in USABLE_STATUSES]
+    if not bad:
+        return ""
+    return (f"refusing status(es) {', '.join(bad)}: the permuter needs a "
+            f"function that already compiles, so only "
+            f"{'/'.join(sorted(USABLE_STATUSES))} records are usable. "
+            f"A 'todo' record has no C to mutate.")
+
+
+def seed_from_notes(notes: str) -> str:
+    """The `seed=...` path a worker recorded when it filed a near miss."""
+    m = re.search(r"seed=(\S+\.c)", notes or "")
+    return m.group(1) if m else ""
+
+
+def import_workdir(fn: str, seed_rel: str) -> tuple[Path | None, str]:
+    """Create a permuter work dir for `fn` by staging its seed into src/.
+
+    permuter_import compiles the file it is given, so the function has to be
+    real C in its real source file with its real includes. The seed on disk is
+    only a body. This stages the body over the INCLUDE_ASM stub, imports, and
+    then puts the file back.
+
+    The restore is in a finally and reads from an in-memory copy taken before
+    any write, so an exception, a failed import or a crash mid-import all leave
+    the tree exactly as found. That matters more than the feature: this is the
+    only part of the harness that edits src/ without a human looking at it.
+
+    Also note this is the ONLY path that picks up [preserve_macros] from
+    config/permuter_settings.toml, because macro preservation happens at import
+    and nowhere else. Existing work dirs cannot gain it without re-importing,
+    which would discard their promoted seeds.
+    """
+    seed = REPO / seed_rel
+    if not seed.is_file():
+        return None, f"seed not found: {seed_rel}"
+
+    stub = re.compile(rf'INCLUDE_ASM\("([^"]+)",\s*{re.escape(fn)}\);')
+    target = None
+    for p in (REPO / "src").rglob("*.c"):
+        text = p.read_text(errors="ignore")
+        m = stub.search(text)
+        if m:
+            target = (p, text, m)
+            break
+    if target is None:
+        return None, f"no INCLUDE_ASM stub for {fn} in src/"
+
+    path, original, m = target
+    asm_rel = m.group(1)
+    body = seed.read_text(errors="ignore")
+    # Strip any banner the candidate saver added; it is prose, not C.
+    body = "\n".join(l for l in body.splitlines()
+                     if not l.startswith("// ==="))
+
+    import commands_client as cc
+    try:
+        path.write_text(original[:m.start()] + body + original[m.end():])
+        r = cc.run("permuter_import", timeout=300,
+                   c_file=str(path.relative_to(REPO)),
+                   asm_file=f"asm/us/{asm_rel}/{fn}.s")
+        ok = r.get("returncode") == 0
+        detail = (r.get("stdout") or r.get("stderr") or "")[-300:]
+    except Exception as e:                                # noqa: BLE001
+        ok, detail = False, f"{type(e).__name__}: {e}"
+    finally:
+        # Unconditional. The tree must look untouched whatever happened above.
+        path.write_text(original)
+
+    work = workdir_for(fn)
+    if work is None:
+        return None, f"import did not produce a work dir: {detail}"
+    return work, ("imported" if ok else f"imported with warnings: {detail}")
+
 
 def _jobs():
     import jobs
@@ -217,7 +303,25 @@ def read_log(job_id: str) -> dict:
 def supervise(slots: int, threads: int, stall: int, cycles: int,
               statuses: tuple[str, ...], once: bool = False) -> int:
     jobs = _jobs()
-    pending = [c for c in candidates(statuses) if not c["skip"]]
+    all_c = candidates(statuses)
+    pending = [c for c in all_c if not c["skip"]]
+
+    # Import anything that only lacks a work dir. Done here and not in
+    # candidates() because this writes to src/ (transiently) and --plan must
+    # stay read-only.
+    for c in all_c:
+        if not c["skip"].startswith("no work dir"):
+            continue
+        if not c["seed"]:
+            print(f"[skip] {c['function']}: no seed= in its queue notes")
+            continue
+        work, msg = import_workdir(c["function"], c["seed"])
+        print(f"[import] {c['function']}: {msg}")
+        if work is not None:
+            pending.append({**c, "workdir": str(work),
+                            "score": best_score(work), "skip": ""})
+
+    pending.sort(key=lambda c: (c["score"] is None, c["score"] or 0))
     if not pending:
         print("nothing to permute; every candidate is matched, phantom, or "
               "has no work dir")
@@ -409,8 +513,50 @@ def self_test() -> int:
         blocked = [c for c in cs if c["skip"]]
         ck([c["function"] for c in blocked] == ["fn_e"],
            "a record with no work dir is reported, not silently dropped")
-        ck("permuter_import" in blocked[0]["skip"],
-           "and it says what to do about it")
+        ck("import from seed" in blocked[0]["skip"],
+           "and says it will be imported rather than dropped")
+
+        print("\nseed path extraction from queue notes")
+        ck(seed_from_notes("compiled, byte mismatch; permuter candidate. "
+                           "seed=automation/candidates/us_X.c BUILT")
+           == "automation/candidates/us_X.c", "pulls seed= out of a real note")
+        ck(seed_from_notes("no seed here") == "", "absent seed yields empty")
+        ck(seed_from_notes(None) == "", "a None note does not raise")
+
+        print("\nstatus filter refuses what the permuter cannot use")
+        ck(check_statuses(("near",)) == "", "near is accepted")
+        ck(check_statuses(("near", "escalated")) == "", "escalated is accepted")
+        bad = check_statuses(("todo",))
+        ck(bad != "" and "todo" in bad, "todo is refused by name")
+        ck("already compiles" in bad, "and the refusal explains why")
+
+        print("\nimport restores src/ even when the import fails")
+        # The guarantee that matters: whatever happens between the write and
+        # the restore, the file on disk ends up byte-identical to before.
+        src_dir = t / "srcfake"
+        (src_dir).mkdir()
+        f = src_dir / "x.c"
+        before = 'INCLUDE_ASM("boss/bo6/nonmatchings/x", fn_q);\n'
+        f.write_text(before)
+        import types
+        global REPO
+        old_repo = REPO
+        REPO = t
+        (t / "src").mkdir(exist_ok=True)
+        (t / "src" / "x.c").write_text(before)
+        seedf = t / "seed.c"
+        seedf.write_text("void fn_q(void) {}\n")
+        w, msg = import_workdir("fn_q", "seed.c")
+        ck((t / "src" / "x.c").read_text() == before,
+           "src file is byte-identical after a failed import")
+        ck(w is None, f"a failed import returns no work dir ({msg})")
+        w2, msg2 = import_workdir("fn_missing", "seed.c")
+        ck(w2 is None and "no INCLUDE_ASM stub" in msg2,
+           "a function with no stub is reported clearly")
+        w3, msg3 = import_workdir("fn_q", "nope.c")
+        ck(w3 is None and "seed not found" in msg3,
+           "a missing seed is reported clearly")
+        REPO = old_repo
 
         print("\nempty queue")
         QUEUE.write_text("")
@@ -481,6 +627,10 @@ def main() -> int:
         return show_status()
 
     statuses = tuple(s.strip() for s in a.status_filter.split(",") if s.strip())
+    bad = check_statuses(statuses)
+    if bad:
+        print(bad, file=sys.stderr)
+        return 2
 
     if a.plan:
         cs = candidates(statuses)

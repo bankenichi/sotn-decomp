@@ -8,11 +8,35 @@ that had already been matched.
 
 ---
 
-## 1. Quick start
+## 1. Install, once
 
 ```bash
-export PATH="$PWD/automation/bin:$PATH"    # once, or add to ~/.bashrc
+/mnt/c/Users/kenic/Documents/SOTN-Decomp/automation/bin/sotn-run install --add-path
+exec bash
+```
 
+That symlinks the four commands into `~/.local/bin` and appends the `PATH` line
+to `~/.bashrc` if it is not already there. `--bindir DIR` puts them somewhere
+else. `sotn-run uninstall` removes them again, and it only ever removes a
+symlink that points back at `sotn-run`, so a same-named tool of yours is left
+alone.
+
+This is the only time you name a path. Afterwards every command works from any
+directory, including `/`:
+
+```bash
+cd /              # or anywhere at all
+run-permuter plan
+sotn-dash start
+```
+
+Each command resolves the repo from its **own** location with `readlink -f` and
+`cd`s there itself. `$PWD` is never consulted, so there is nothing to navigate
+to and no `SOTN_REPO` to export.
+
+## 2. Quick start
+
+```bash
 run-permuter plan          # what would run, and why the rest would not
 run-permuter start         # supervised, self-terminating
 run-permuter status
@@ -34,7 +58,7 @@ of the argument handling.
 
 ---
 
-## 2. The permuter supervisor
+## 3. The permuter supervisor
 
 `automation/permuter_supervisor.py`
 
@@ -85,7 +109,7 @@ tree instead.
 
 ---
 
-## 3. Supporting tools
+## 4. Supporting tools
 
 | Tool | Does |
 |---|---|
@@ -109,7 +133,7 @@ Measured effect, `func_us_801C488C`:
 
 ---
 
-## 4. The dashboard
+## 5. The dashboard
 
 `automation/dashboard.py`, served by `sotn-dash start`.
 
@@ -120,7 +144,7 @@ Single HTML file, stdlib `http.server`, no npm and no build step.
 - **Header** live queue counts by status, straight from the scheduler queue
 - **Permuter** one column per running job: best score, iteration count,
   rejection count, stalled/improving, and the last 20 log lines
-- **Fleet** one column per worker log, last 20 lines, with the alive count
+- **Fleet** one column per worker: its own pid, alive/DEAD, last 20 lines
 
 Polls `/api/status` every 3 seconds.
 
@@ -168,7 +192,7 @@ wrong token, unknown action name).
 
 ---
 
-## 5. Testing criteria
+## 6. Testing criteria
 
 Any change to these files must keep all of the following true.
 
@@ -208,16 +232,25 @@ Any change to these files must keep all of the following true.
 
 ---
 
-## 6. Known gaps
+## 7. Closed gaps and remaining limits
 
-- The supervisor cannot create a work dir. A `near` record whose seed has never
-  been imported is listed as blocked with `permuter_import` named as the fix,
-  rather than being imported automatically.
-- `preserve_macros` in `config/permuter_settings.toml` only takes effect on
-  **import**. Re-importing an existing work dir would reset its promoted seed,
-  so it is not done automatically. Current seeds use none of the nine preserved
-  macros, so nothing is lost today.
-- The dashboard's fleet panel lists worker logs and a total alive count, but
-  does not map an individual log to an individual PID.
-- `--status-filter` accepts any queue status. Pointing it at `todo` will queue
-  functions with no compiling C, which the permuter cannot use.
+All four gaps listed when this was first written are now closed.
+
+| Was | Now |
+|---|---|
+| Supervisor could not create a work dir | `--run` imports one from the `seed=` path in the record's notes. The source file is restored from an in-memory copy in a `finally`, so a failed or crashed import leaves the tree byte-identical. `--plan` still reports these as blocked, because planning must not write to `src/`. |
+| `preserve_macros` unreachable | The import path above is the only place macro preservation can apply, and it now runs automatically. Every newly imported work dir gets it. |
+| Fleet panel showed a fleet-wide alive count | One pid per panel, read from `worker-<tag>-<n>.pid`, which shares a stem with the log so the mapping is exact rather than positional. Dead workers name themselves. |
+| `--status-filter` accepted any status | Refuses anything outside `near`/`escalated` and says why. A `todo` record has no compiling C, so the permuter has nothing to mutate. |
+
+Real limits that remain, none of them bugs:
+
+- **Existing work dirs cannot gain preserved macros** without re-importing, and
+  re-importing resets a promoted seed. Current seeds use none of the nine
+  preserved macros, so nothing is lost today; that stops being true the first
+  time a `FIX`/`FLT`/`ROT`-heavy function reaches `near`.
+- **The supervisor never applies a match or builds.** Deliberate. A permuter
+  zero is necessary but not sufficient.
+- **`pid_is_worker` matches on `worker_direct.py` in the cmdline**, the same
+  test `commands_client` uses. Kept identical on purpose: two definitions of
+  "alive" would let the UI show a worker that `fleet_stop` cannot reap.

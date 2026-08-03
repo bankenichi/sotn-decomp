@@ -122,19 +122,57 @@ def permuter_panels() -> list[dict]:
 
 
 def fleet_panels() -> list[dict]:
+    """One panel per worker, each with ITS OWN pid and alive state.
+
+    The first version showed a fleet-wide alive count on every panel, which is
+    worse than showing nothing: four panels each reading "3 alive" tells you a
+    worker is dead but not which, so you still have to go and diff the pid list
+    against the logs by hand.
+
+    Each worker writes automation/logs/worker-<tag>-<n>.pid for itself on
+    startup, so log and pid share a stem and the mapping is exact. It is not
+    positional and not derived from launch order, both of which drift the moment
+    one worker dies and is not restarted.
+    """
     out = []
     if not FLEET_LOGS.is_dir():
         return out
-    try:
-        import commands_client as cc
-        alive = set(cc._fleet_pids_alive())
-    except Exception:
-        alive = set()
     for p in sorted(FLEET_LOGS.glob("worker-*.log")):
+        pid = None
+        pidfile = p.with_suffix(".pid")
+        try:
+            t = pidfile.read_text().strip()
+            pid = int(t) if t.isdigit() else None
+        except (OSError, ValueError):
+            pid = None
         out.append({"name": p.stem.replace("worker-", ""),
                     "kind": "llama" if "-llama-" in p.name else "opencode",
+                    "pid": pid,
+                    "alive": pid_is_worker(pid),
                     "log": tail(p)})
-    return [{**o, "workers_alive": len(alive)} for o in out]
+    return out
+
+
+def pid_is_worker(pid: int | None) -> bool:
+    """Alive AND actually a worker, not a recycled pid.
+
+    Checking /proc existence alone would call any process that inherited the
+    number a live worker. The cmdline check is the same one commands_client
+    uses, kept consistent on purpose: two different definitions of "alive"
+    across the dashboard and the launcher is how you get a worker the UI shows
+    as running that fleet_stop will not reap.
+    """
+    if not pid:
+        return False
+    proc = Path("/proc") / str(pid)
+    if not proc.exists():
+        return False
+    try:
+        text = (proc / "cmdline").read_bytes().replace(b"\0", b" ").decode(
+            "utf-8", errors="replace")
+    except OSError:
+        return False
+    return "worker_direct.py" in text and "python" in text
 
 
 def snapshot() -> dict:
@@ -255,6 +293,11 @@ class Server(socketserver.ThreadingTCPServer):
 def serve(port: int) -> int:
     PIDFILE.parent.mkdir(parents=True, exist_ok=True)
     PIDFILE.write_text(f"{os.getpid()} {port} {TOKEN}\n")
+    # Without this, SIGTERM (which is what `sotn-dash stop` and any kill
+    # sends) tears the process down without running the finally below, leaving
+    # a pidfile behind that makes `status` report a server that is gone.
+    signal.signal(signal.SIGTERM, lambda *_: (_ for _ in ()).throw(
+        KeyboardInterrupt()))
     with Server((HOST, port), Handler) as srv:
         url = f"http://{HOST}:{port}/"
         # flush=True because stdout is block-buffered whenever this is not a
@@ -308,8 +351,15 @@ def status() -> int:
         alive = True
     except OSError:
         alive = False
+    if not alive:
+        # Self-heal: a pidfile for a process that no longer exists is worse
+        # than no pidfile, because every later `status` repeats the same wrong
+        # answer and `stop` has nothing to kill.
+        PIDFILE.unlink(missing_ok=True)
     print(json.dumps({"running": alive, "pid": pid, "port": port,
-                      "url": f"http://{HOST}:{port}/"}, indent=2))
+                      "url": f"http://{HOST}:{port}/",
+                      **({} if alive else
+                         {"note": "stale pidfile removed"})}, indent=2))
     return 0
 
 
@@ -416,9 +466,11 @@ async function refresh(){
     return panel(p.name, meta, cls, p.log, pct);
   }).join('') : '<div class=empty>no permuter jobs running</div>';
 
-  el('fleet').innerHTML = s.fleet.length ? s.fleet.map(f=>
-      panel(f.name, f.kind, '', f.log)).join('')
-    : '<div class=empty>no fleet workers</div>';
+  el('fleet').innerHTML = s.fleet.length ? s.fleet.map(f=>{
+    // Per worker, not fleet-wide. A dead worker names itself here.
+    const meta = `${f.kind} · pid ${f.pid??'-'} · ${f.alive?'alive':'DEAD'}`;
+    return panel(f.name, meta, f.alive?'ok':'bad', f.log);
+  }).join('') : '<div class=empty>no fleet workers</div>';
 }
 refresh(); setInterval(refresh,3000);
 </script>
@@ -476,8 +528,47 @@ def self_test() -> int:
         QUEUE = Path(td) / "gone.jsonl"
         ck("error" in queue_counts(), "a missing queue reports an error, not a crash")
 
+    print("\nper-worker pid mapping")
+    global FLEET_LOGS
+    with tempfile.TemporaryDirectory() as td:
+        FLEET_LOGS = Path(td)
+        (FLEET_LOGS / "worker-oc-1.log").write_text("hello\n")
+        (FLEET_LOGS / "worker-oc-1.pid").write_text(f"{os.getpid()}\n")
+        (FLEET_LOGS / "worker-llama-2.log").write_text("hi\n")
+        (FLEET_LOGS / "worker-llama-2.pid").write_text("999999\n")
+        (FLEET_LOGS / "worker-oc-3.log").write_text("no pidfile\n")
+        fp = {f["name"]: f for f in fleet_panels()}
+        ck(set(fp) == {"oc-1", "llama-2", "oc-3"},
+           f"one panel per worker log ({sorted(fp)})")
+        ck(fp["oc-1"]["pid"] == os.getpid(),
+           "each panel carries its OWN pid, not a fleet-wide count")
+        ck(fp["llama-2"]["pid"] == 999999 and not fp["llama-2"]["alive"],
+           "a pid that is gone reports alive=False")
+        ck(fp["oc-3"]["pid"] is None and not fp["oc-3"]["alive"],
+           "a log with no pidfile degrades to pid None, not an exception")
+        ck(fp["llama-2"]["kind"] == "llama" and fp["oc-1"]["kind"] == "opencode",
+           "backend is read from the log name")
+        # This process is alive but is NOT worker_direct.py, so a bare /proc
+        # existence check would wrongly call it a live worker.
+        ck(fp["oc-1"]["alive"] is False,
+           "a live non-worker pid is not counted as a worker (cmdline checked)")
+        ck(pid_is_worker(None) is False and pid_is_worker(0) is False,
+           "None and 0 are not workers")
+
+    print("\nstale pidfile self-heals")
+    global PIDFILE
+    with tempfile.TemporaryDirectory() as td:
+        PIDFILE = Path(td) / "dash.pid"
+        PIDFILE.write_text("999999 8777 tok\n")
+        status()
+        ck(not PIDFILE.exists(),
+           "status removes a pidfile whose process is gone, so it cannot keep "
+           "reporting a server that does not exist")
+
     print("\nthe page")
     ck("__TOKEN__" in PAGE, "page carries a token placeholder")
+    ck("f.alive?'alive':'DEAD'" in PAGE,
+       "the page renders per-worker alive state")
     ck("setInterval" in PAGE, "page refreshes itself")
     ck("confirm(" in PAGE, "destructive buttons confirm first")
     ck("b.disabled=true" in PAGE, "buttons disable in flight, so no double-start")
