@@ -14,7 +14,45 @@ static void BO6_CheckBladeDashInput() {
     }
 }
 
-INCLUDE_ASM("boss/bo6/nonmatchings/richter", BO6_CheckHighJumpInput);
+// BO6_CheckHighJumpInput's two RIC_ scalars must be declared BEFORE this
+// point. RIC_velocityY is declared further down at its other use site, which is
+// after this function, so it is repeated here rather than moved: moving it
+// would reorder declarations that other functions already depend on.
+//
+// Both are FLAT externs, not RIC.step / RIC.velocityY, and the assembly says
+// so: BO6_CheckHighJumpInput.s builds its own lui/%lo pair for each
+// (`lui $a0, %hi(RIC_step)` / `lhu $a0, %lo(RIC_step)($a0)`), which is the
+// signature this file already documents at the RicStepStandInAir comment as
+// marking a plain scalar global rather than a struct member. lhu is a 16-bit
+// unsigned load, hence u16.
+extern u16 RIC_step;
+extern s32 RIC_velocityY;
+
+/* BO6: when the player is in a step that allows a high jump (steps 1/3/4, or
+   step 5 while falling faster than 1.0 px/frame) and the jump button was just
+   tapped, hand off to func_us_801BA050 to perform the high jump. */
+// Takes NO argument. The jal's delay slot is a bare nop and nothing
+// sets up $a0; the register merely still holds RIC_step from the test
+// at the top of the function. Declaring a parameter and passing
+// RIC_step made GCC re-emit the lui/lhu pair to load it, which is
+// exactly the 8 bytes (2 instructions) the overlay came out long by.
+extern void func_us_801BA050(void);
+
+void BO6_CheckHighJumpInput(void) {
+    /* Step gates: 3, 1, 4 always qualify; step 5 only qualifies when falling
+       fast (0x10000 = 1.0 in fixed point, so > 1.0 px/frame downward). */
+    if (RIC_step == 3 || RIC_step == 1 ||
+        (RIC_step == 5 && RIC_velocityY > 0x10000) ||
+        RIC_step == 4)
+    {
+        /* unk46: a lock flag that must be clear so the jump cannot re-fire;
+           padTapped bit 1 (0x2) is the jump-button tap. */
+        if (g_Ric.unk46 == 0 && (g_Ric.padTapped & 2)) {
+            func_us_801BA050();
+        }
+    }
+}
+
 
 INCLUDE_ASM("boss/bo6/nonmatchings/richter", BO6_RicMain);
 
