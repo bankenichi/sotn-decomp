@@ -21,6 +21,8 @@ INCLUDE_ASM("st/rno0/nonmatchings/unk_4A320", func_801CE120);
 // See func_801CE228 below for the matching out-of-bounds write: unkB0 and
 // unkB4 are each only 2 elements, but this loop runs 4 times, so the last
 // two iterations spill unkB0 writes into unkB4 (and unkB4 out past the end).
+// Verbatim copy of func_801CE1E8 in src/st/no2/4966C.c.
+// Kept in sync by hand: this file cannot include that header.
 void func_801CE1E8(s32 step) {
     s32 i;
     g_CurrentEntity->step = step;
@@ -33,6 +35,8 @@ void func_801CE1E8(s32 step) {
     }
 }
 
+// Verbatim copy of func_801CE228 in src/st/no2/4966C.c.
+// Kept in sync by hand: this file cannot include that header.
 void func_801CE228() {
     s32 i;
     // BUG: Array out of bounds writing. Possible explanation:

@@ -822,6 +822,64 @@ def overlay_artifact(rec: dict) -> str:
     return f"build/{rec['build']}/{leaf}"
 
 
+def build_error_is_ours(out: str, rec: dict) -> bool:
+    """Does this build failure actually implicate the record under work?
+
+    A C edit inside one overlay cannot break another overlay's link. So when the
+    captured diagnostics mention only some other overlay's artifacts, the tree
+    was dirty and the candidate was never really tested.
+
+    Conservative on purpose: ANY of the function name, the record's source file,
+    its overlay leaf, or a generic (non-overlay) compiler diagnostic counts as
+    ours. Returning True on an ambiguous failure just preserves the old
+    behaviour; returning False wrongly would hide a real defect, which is the
+    expensive direction.
+    """
+    if not out:
+        return True
+    low = out.lower()
+    fn = rec.get("function", "")
+    if fn and fn.lower() in low:
+        return True
+    leaf = rec.get("overlay", "").split("/")[-1].lower()
+    if leaf and leaf in low:
+        return True
+    src = (rec.get("src_rel") or "").lower()
+    if src and src in low:
+        return True
+
+    # From here on the output does not name us. That is NOT yet enough: it must
+    # positively name someone ELSE before we disown the failure. Requiring
+    # positive evidence is what keeps the asymmetry right -- a bare
+    # "make: *** Error 1" or "ninja: build stopped" names nobody, so it stays
+    # ours and behaves exactly as before this guard existed.
+    foreign = False
+
+    # A diagnostic inside ANOTHER overlay's source directory, i.e.
+    # src/{st,boss,servant}/<stage>/... where <stage> is not our leaf. Shared
+    # headers like src/st/st_common.h have no <stage> component and are
+    # deliberately NOT foreign: we may well have broken one.
+    for m in re.finditer(r"([\w./\\-]+\.[ch]):\d+:", out):
+        parts = m.group(1).replace("\\", "/").lower().split("/")
+        if len(parts) >= 4 and parts[0] == "src" and \
+                parts[1] in ("st", "boss", "servant"):
+            if parts[2] != leaf:
+                foreign = True
+            else:
+                return True          # our own overlay: definitely ours
+        else:
+            return True              # shared, include/, src/main: could be ours
+
+    # A failed link or artifact belonging to another overlay.
+    for m in re.finditer(r"(?:FAILED:|-o)\s+build/\w+/(\S+)", out):
+        art = m.group(1).lower()
+        if leaf and leaf in art:
+            return True
+        foreign = True
+
+    return not foreign
+
+
 def audit_artifact_mapping(version: str = "us") -> list[str]:
     """Every overlay whose artifact name is absent from the oracle.
 
@@ -2729,6 +2787,22 @@ def build_and_check(rec: dict) -> tuple[bool, str]:
         st.update("compiled" if rc == 0 else
                   "BUILD FAILED" if really_broken else
                   "compiled, checksum differs")
+    if really_broken and not build_error_is_ours(out, rec):
+        # The build broke, but nothing in the diagnostics names our file or our
+        # overlay. A C edit inside one overlay cannot break another overlay's
+        # link, so this is a dirty tree (a concurrent worker mid-apply, or a
+        # stale artifact), not a defect in this candidate.
+        #
+        # Escalating on it is worse than useless: the record is retired with a
+        # note full of some other overlay's linker output and never judged on
+        # its merits again. Audit 2026-08-02 found NINE records escalated this
+        # way, all quoting stnp3, stnz0 or weapon0 failures for functions in
+        # bo0, bo6 and rno0. Report it as a retryable condition instead.
+        st.update("build dirty, not ours")
+        return False, ("BUILD DIRTY: the build failed but no diagnostic names "
+                       f"{rec['function']}, its source file, or overlay "
+                       f"{rec['overlay']}. Treating as a dirty tree, not a "
+                       "defect in this candidate.\n" + out.strip()[-800:])
     if really_broken:
         return False, "BUILD FAILED:\n" + out.strip()[-1500:]
     if rc != 0:

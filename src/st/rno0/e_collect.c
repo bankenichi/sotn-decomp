@@ -60,6 +60,8 @@ extern s16 D_us_80181990[];          // g_RelicOrbTextBg2EY
 extern s16 D_us_801819A0[];          // g_RelicOrbSparkleX
 extern s16 D_us_801819B0[];          // g_RelicOrbSparkleY
 
+// Verbatim copy of PrizeDropFall in src/st/e_collect.h.
+// Kept in sync by hand: this file cannot include that header.
 static void PrizeDropFall(void) {
     if (g_CurrentEntity->velocityY >= 0) {
         g_CurrentEntity->ext.equipItemDrop.fallSpeed +=
@@ -78,6 +80,8 @@ static void PrizeDropFall(void) {
     }
 }
 
+// Verbatim copy of PrizeDropFall2 in src/st/e_collect.h.
+// Kept in sync by hand: this file cannot include that header.
 static void PrizeDropFall2(u16 arg0) {
     Collider collider;
 
@@ -194,6 +198,8 @@ void CollectHeartVessel(void) {
     DestroyEntity(g_CurrentEntity);
 }
 
+// Verbatim copy of CollectLifeVessel in src/st/e_collect.h.
+// Kept in sync by hand: this file cannot include that header.
 static void CollectLifeVessel(void) {
     g_api.PlaySfx(SFX_HEART_PICKUP);
     g_api.func_800FE044(LIFE_VESSEL_INCREASE, 0x8000);
@@ -466,6 +472,8 @@ void EntityExplosion(Entity* entity) {
     }
 }
 
+// Verbatim copy of BlinkItem in src/st/e_collect.h.
+// Kept in sync by hand: this file cannot include that header.
 static void BlinkItem(Entity* self, u16 timer) {
     Primitive* prim;
     s32 temp;
@@ -641,6 +649,8 @@ void EntityEquipItemDrop(Entity* self) {
     }
 }
 
+// Verbatim copy of BlitChar in src/st/blit_char.h.
+// Kept in sync by hand: this file cannot include that header.
 char* BlitChar(char* str, u16* xOffset, u8* pix, u16 stride) {
     const u16 DOUBLE_SPACE = 0x8140;
     const u16 RIGHT_DOUBLE_QUOTATION_MARK = 0x8168;
@@ -751,6 +761,8 @@ INCLUDE_RODATA("st/rno0/nonmatchings/e_collect", D_us_801B5BA0);
 INCLUDE_ASM("st/rno0/nonmatchings/e_collect", EntityRelicOrb);
 
 // params: Local index of this drop
+// Verbatim copy of EntityHeartDrop in src/st/e_collect.h.
+// Kept in sync by hand: this file cannot include that header.
 void EntityHeartDrop(Entity* self) {
     u16 index;
     u8 value;

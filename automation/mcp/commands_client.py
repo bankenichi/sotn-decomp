@@ -166,6 +166,7 @@ ANALYSIS_SCRIPTS = {
     "test_shim_sweep.py",
     "test_queue_owner.py",
     "test_connector_surfaces.py",
+    "test_build_attribution.py",
 }
 # Deliberately narrow: flags, numbers, and in-repo-looking relative paths.
 # No spaces, quotes, semicolons, redirects, or leading dashes-with-spaces, so

@@ -4,6 +4,8 @@
 INCLUDE_ASM("st/rno0/nonmatchings/e_clock_room", func_us_801CCAAC_from_no0);
 
 // Opens/closes the two birdcage doors based on the clock's minute reading
+// Verbatim copy of UpdateBirdcages in src/st/no0/clock_room.c.
+// Kept in sync by hand: this file cannot include that header.
 void UpdateBirdcages(Entity* self, u32 timerMinutes) {
     // self + 7 is birdcage door 1
     self += 7;
@@ -23,6 +25,8 @@ void UpdateBirdcages(Entity* self, u32 timerMinutes) {
 }
 
 // Updates the minute and hour hand rotation angles from the room timer
+// Verbatim copy of UpdateClockHands in src/st/no0/clock_room.c.
+// Kept in sync by hand: this file cannot include that header.
 void UpdateClockHands(Entity* self, PlayerStatus* status) {
     // self + 5 is the minute hand
     self += 5;

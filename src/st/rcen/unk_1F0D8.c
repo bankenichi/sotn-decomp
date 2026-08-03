@@ -12,6 +12,8 @@ INCLUDE_ASM("st/rcen/nonmatchings/unk_1F0D8", func_us_8019F9C0);
 extern EInit g_EInitCommon;
 
 // Initializes entity animation/priority on first step, mirroring func_us_801B4148 in bo0/no2_bg
+// Verbatim copy of func_us_801B4148 in src/st/no2_bg.h.
+// Kept in sync by hand: this file cannot include that header.
 void func_us_801B4148_from_bo0(Entity* self) {
     if (self->step == 0) {
         InitializeEntity(g_EInitCommon);

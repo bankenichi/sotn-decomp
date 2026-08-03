@@ -20,6 +20,8 @@ INCLUDE_ASM("st/rno0/nonmatchings/e_gorgon", func_us_801CF380);
 // across the translation-unit boundary, so this needs external linkage until
 // those are decompiled. A source-level grep does not show this: the callers
 // are assembly, not C.
+// Verbatim copy of func_801CDC80 in src/st/approach_s16.h.
+// Kept in sync by hand: this file cannot include that header.
 bool StepTowards(s16* val, s32 target, s32 step) {
     if (abs(*val - target) < step) {
         *val = target;

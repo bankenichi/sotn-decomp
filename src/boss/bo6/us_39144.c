@@ -86,6 +86,8 @@ void DecelerateY(s32 deceleration) {
 //   0x800762EC    -> g_Entities[64] + 0x14, which is RIC.facingLeft; the
 //                    splat symbol RIC_facingLeft in symbols.us.bobo6.txt
 //                    names the same address.
+// Verbatim copy of CheckMoveDirection in src/boss/rbo5/unk_44954.c.
+// Kept in sync by hand: this file cannot include that header.
 s32 BO6_RicCheckFacing(void) {
     if (g_Ric.unk44 & 2) {
         return 0;
