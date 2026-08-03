@@ -631,6 +631,10 @@ button.danger:hover{border-color:var(--bad);color:var(--bad)}
 .ctl{display:flex;gap:8px;align-items:center;flex-wrap:wrap;flex:0 0 auto;
      padding-bottom:10px;margin-bottom:4px;border-bottom:1px solid var(--line)}
 .ctl label{color:var(--dim);display:flex;gap:4px;align-items:center;font-size:11px}
+/* Per-worker model pickers sit in the SAME row as the fleet controls. They
+   were on their own line below, which cost a full row of vertical space in a
+   column whose whole job is showing worker logs. */
+#f_rows{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .ctl input,.ctl select{background:var(--bg);color:var(--fg);
      border:1px solid var(--line);border-radius:4px;padding:3px 5px;
      font:inherit;font-size:11px;width:64px}
@@ -707,10 +711,9 @@ pre{margin:0;padding:8px 10px;flex:1 1 auto;min-height:0;overflow:auto;font-size
       </label>
       <button onclick="act(el('f_backend').value,fleetParams())">start</button>
       <button class=danger onclick="confirmAct('fleet_stop','Stop all fleet workers and reclaim their queue records?')">stop</button>
+      <span id=f_rows></span>
     </div>
-    <div class=ctl id=f_rows></div>
     <div id=hold style="margin-bottom:8px"></div>
-    <div id=deadnote class=empty style="padding:0 0 6px"></div>
     <div class=cols id=fleet></div>
   </section>
 </div>
@@ -814,13 +817,12 @@ async function refresh(){
   // actually working. The count of hidden ones is still reported, so this
   // hides clutter without hiding information.
   const live = s.fleet.filter(f=>f.alive);
-  const dead = s.fleet.length - live.length;
+  const dead = s.fleet.length - live.length;   // only used in the empty state
   el('fleet').innerHTML = live.length ? live.map(f=>
       panel(f.name, `${f.kind} · pid ${f.pid} · alive`, 'ok', f.log)
     ).join('')
     : `<div class=empty>no live fleet workers${dead?` (${dead} stopped)`:''}</div>`;
-  el('deadnote').textContent = (live.length && dead)
-    ? `${dead} stopped worker(s) hidden` : '';
+
 }
 renderWorkerRows();
 refresh(); setInterval(refresh,3000);
@@ -922,8 +924,8 @@ def self_test() -> int:
        "live workers show their own pid")
     ck("s.fleet.filter(f=>f.alive)" in PAGE,
        "dead workers are filtered out of the fleet column")
-    ck("stopped worker(s) hidden" in PAGE,
-       "but the number hidden is still reported, so nothing is concealed")
+    ck("no live fleet workers" in PAGE,
+       "the empty state still says whether stopped workers exist")
     ck("grid-auto-rows:1fr" in PAGE,
        "panels share the column height instead of overflowing it")
     ck("body{height:100vh" in PAGE and "overflow:hidden" in PAGE,
