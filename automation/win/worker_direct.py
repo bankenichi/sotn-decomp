@@ -1019,6 +1019,55 @@ def audit_artifact_mapping(version: str = "us") -> list[str]:
 
 # ---- context preparation (all mechanical, harness-side) ----------------------
 
+# The `/* fileoff vaddr encoding */` triple splat puts on every instruction.
+_ASM_PREFIX = re.compile(
+    r"^\s*/\* [0-9A-Fa-f]+ [0-9A-Fa-f]+ [0-9A-Fa-f]+ \*/\s*", re.M)
+
+
+def compact_asm(text: str) -> str:
+    """Strip addressing noise from a splat .s file.
+
+    Every instruction line carries `/* 4B2DC 801CB2DC C8FFBD27 */` -- file
+    offset, virtual address and the raw encoding -- plus column padding to
+    align the operands. None of it helps write C. The model needs the opcodes
+    and the operands; where the instruction lives in the ROM is irrelevant to
+    the source that produced it.
+
+    Measured over 372 asm files: a MEDIAN 62% smaller, and 67% on
+    BO6_RicEntitySubwpnStopwatchCircle (13,660 -> 4,485 chars). That matters
+    because prompt size is the strongest predictor of a dead call we have:
+    0% dead under 5k chars, 61% at 5-10k, 83% at 10-20k.
+
+    Safe with respect to everything downstream. resolve_raw_symbols matches
+    `D_us_XXXXXXXX` and undeclared_symbols matches `%hi(...)/%lo(...)`; both
+    appear in OPERANDS, never in the stripped prefix. Removing the prefix also
+    removes a source of false positives, since it is full of bare hex.
+
+    Second-order benefit: with the asm this much smaller, MAX_ASM_CHARS covers
+    roughly three times as much real function, so far fewer prompts are
+    truncated mid-function -- which used to produce confident C for the half
+    the model was shown.
+    """
+    t = _ASM_PREFIX.sub("  ", text)
+    t = re.sub(r"[ \t]{2,}", " ", t)       # collapse operand alignment padding
+    t = re.sub(r"[ \t]+$", "", t, flags=re.M)
+    t = re.sub(r"\n{3,}", "\n\n", t)
+    return t
+
+
+def compact_draft(text: str) -> str:
+    """Trim m2c's output without losing its structure.
+
+    m2c emits a `? ` placeholder comment block and generous blank lines. The
+    draft is explicitly labelled "rough, fix the types" in the prompt, so its
+    value is the control flow, not its formatting.
+    """
+    t = re.sub(r"^\s*//.*$", "", text, flags=re.M)   # m2c's own commentary
+    t = re.sub(r"[ \t]+$", "", t, flags=re.M)
+    t = re.sub(r"\n{3,}", "\n\n", t)
+    return t.strip()
+
+
 def prepare(rec: dict, located) -> dict:
     src_rel, lineno, asm_rel = located
     asm_file = asm_rel_path(rec, asm_rel)
@@ -1029,7 +1078,7 @@ def prepare(rec: dict, located) -> dict:
     asm_full = 0
     p = win_path(asm_file)
     if os.path.exists(p):
-        _raw = open(p, errors="ignore").read()
+        _raw = compact_asm(open(p, errors="ignore").read())
         asm_full = len(_raw)
         asm_text = _raw[:MAX_ASM_CHARS]
         if asm_full > MAX_ASM_CHARS:
@@ -1078,7 +1127,7 @@ def prepare(rec: dict, located) -> dict:
         # retry without the context, which is the usual cause of m2c errors
         rc, draft = wsl(f"python3 tools/m2c/m2c.py --target mipsel-gcc-c "
                         f"-f {fn} {asm_file}", timeout=300)
-    draft = draft.strip()[:MAX_CTX_CHARS]
+    draft = compact_draft(draft)[:MAX_CTX_CHARS]
     decls = lookup_declarations(extract_asm_symbols(asm_text, exclude=fn))
     print(f"[prep] draft: {len(draft)} chars, asm: {len(asm_text)} chars, "
           f"decls: {len(decls)}")
