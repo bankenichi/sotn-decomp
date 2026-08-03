@@ -490,9 +490,24 @@ initialiser byte signature in the overlay binary, and validate the technique
 against a peer overlay whose answer is already in a config file before trusting
 it. See `docs/P3b-rno0-red-door-plan.md`.
 
-Not blocked on data placement, and NOT shimmable: `e_lock_camera` (0.36x its
-peers' text) and `e_breakable` (obliges rno0 to supply stage data tables).
-`e_blade`, `e_gurkha` and `e_hammer` have no shared implementation at all.
+**RETRACTED 2026-08-02.** This paragraph read: "Not blocked on data placement,
+and NOT shimmable: `e_lock_camera` (0.36x its peers' text) and `e_breakable`
+(obliges rno0 to supply stage data tables). `e_blade`, `e_gurkha` and
+`e_hammer` have no shared implementation at all." Every clause except the
+`e_breakable` one was wrong, and all three are now shimmed:
+
+- `e_lock_camera` shimmed. The 0.36x figure came from comparing it against the
+  wrong header's peers; it implements `entity_lock_camera.h`, which 20 stages
+  shim from a file of a different name.
+- `e_blade`, `e_gurkha`, `e_hammer` shimmed, 7 functions matched. They always
+  had shared implementations. `shimmed_by` matched headers to stages by
+  FILENAME, so any header shimmed from a differently-named file reported zero
+  shimmers and looked unused. Fixed in `codebase_index.py`.
+- `e_breakable` is the one that still stands, and for the stated reason: rno0
+  must supply its own data tables. Its tables have since been recovered from
+  the binary, so the remaining blocker is the text, not the data. rno0's
+  `e_breakable` is 0x170 against no0's 0x150, rno3's 0x148 and the 14-stage
+  majority 0x134, making it a fourth code variant the header has no branch for.
 
 ### Finding the .data addresses is now a tool
 

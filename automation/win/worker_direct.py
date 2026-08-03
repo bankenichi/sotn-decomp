@@ -3140,6 +3140,25 @@ def main() -> int:
     if not os.path.isdir(WIN_REPO):
         print(f"repo not found: {WIN_REPO}", file=sys.stderr); return 1
 
+    # Artifact-name sanity, on every start.
+    #
+    # This used to be a function with ZERO call sites: it was written as a
+    # diagnostic and then never wired in, which is the worst of both worlds,
+    # because the defect it detects is already silent. An overlay whose artifact
+    # name is missing from the oracle is not "failing", it is permanently
+    # unmatchable, and every attempt on it looks like an ordinary hash mismatch.
+    # A check nobody runs cannot catch that; found by audit 2026-08-02.
+    #
+    # Read-only, a few milliseconds, and it warns rather than exits: a stale
+    # entry here must not be able to stop a fleet that is otherwise fine.
+    try:
+        _bad = audit_artifact_mapping()
+        for _line in _bad:
+            print(f"[worker] WARNING unmatchable overlay: {_line}",
+                  file=sys.stderr)
+    except OSError as e:
+        print(f"[worker] artifact audit skipped: {e}", file=sys.stderr)
+
     if a.cmd == "preflight":
         # Machine-readable so the connector can gate a fleet launch on it.
         try:

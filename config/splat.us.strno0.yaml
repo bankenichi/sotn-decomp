@@ -71,7 +71,19 @@ segments:
       # declares, so the method was validated against a known answer first.
       # EntityRedDoor.s independently references D_us_80181454.
       - [0x1454, .data, e_red_door]   # 0x18
-      - [0x146C, data]
+      # st_common.h's g_SineTable: 256 s16 entries = 0x200, the only real data
+      # the header emits (D_80180A94 above it is inside a comment block). All 27
+      # peers declare this segment; rno0 did not, because it carried a private
+      # 713-line copy of st_common with `extern s16 g_SineTable[]` instead.
+      #
+      # Verified three ways, not inferred: the nine leading halfwords at 0x146C
+      # are 0x0000 0x0065 0x00C9 0x012D 0x0191 0x01F5 0x0259 0x02BC 0x031F,
+      # byte-identical to the header's initialiser; the size is exactly the
+      # 0x200 by which the overlay overran when the shim was first tried without
+      # this segment; and 0x146C + 0x200 = 0x166C leaves e_collect 0x166C..0x19C0
+      # = 0x354, which is precisely the size 16 peers declare for e_collect.
+      - [0x146C, .data, st_common]       # 0x200
+      - [0x166C, data]
       # e_misc, shimmed 2026-08-02. Start 0x19C0 is the minimum data address its
       # own assembly references, by the rule validated on e_particles and
       # e_medusa_head. End 0x1A74 is confirmed by a symbol: D_us_80181A74 is

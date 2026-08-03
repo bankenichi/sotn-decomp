@@ -53,27 +53,59 @@ Tried `e_room_fg` and `e_misc` end to end. Both fail the same way, and the
 reason is not placement, so no amount of segment work fixes it:
 
 **rno0's data slot is SMALLER than the shared header can emit.**
+*(FALSE for both rows. The table is kept as the record of what was measured;
+see the retraction below it for what each measurement actually meant. In both
+cases the slot was measured from the wrong starting address or compared against
+the wrong variant, not genuinely too small.)*
 
 | stem | header emits | rno0's slot | short by | evidence |
 |---|---|---|---|---|
 | `e_room_fg` | 0x8C | 0x78 | 0x14 | declaring 0x48 shifted the build +0x44 (= 0x8C-0x48); declaring 0x8C orphaned `D_us_80181DC4`/`D_us_80181DD4`, which `e_floor_trap` and `e_thornweed_corpseweed` reference |
 | `e_misc` | 0xB8 | 0xB4 | 0x04 | declaring 0xB4 left the build 0x4 short; declaring 0xB8 orphaned `D_us_80181A74`, which `e_background_pillars` references |
 
-`e_room_fg`'s is exactly one `ObjInit` entry: the header emits 0x14 of anim
-tables plus SIX entries of 0x14 each; rno0 has five. And `e_room_fg.h` has ZERO
-preprocessor conditionals, so it cannot produce a five-entry variant for anyone.
+**BOTH CLAIMS BELOW ARE RETRACTED (2026-08-02). Both files are now shimmed.**
+The original text is kept because the reasoning errors are more instructive than
+the conclusions were.
 
-`e_misc.h` does have 6 conditionals, so a per-stage size was plausible there,
-but none of them yields 0xB4 for rno0.
+> `e_room_fg`'s is exactly one `ObjInit` entry: the header emits 0x14 of anim
+> tables plus SIX entries of 0x14 each; rno0 has five. And `e_room_fg.h` has
+> ZERO preprocessor conditionals, so it cannot produce a five-entry variant for
+> anyone.
+>
+> `e_misc.h` does have 6 conditionals, so a per-stage size was plausible there,
+> but none of them yields 0xB4 for rno0.
+>
+> Both would need the SHARED HEADER parameterised, which changes a file 23 and
+> 27 stages respectively depend on. [...] not worth one stub for `e_room_fg`.
 
-Both would need the SHARED HEADER parameterised, which changes a file 23 and 27
-stages respectively depend on. That is a different and much riskier task than
-adding a splat segment, and it is not worth one stub for `e_room_fg`. It may be
-worth revisiting for `e_misc` at 14 stubs, but as a header change, not a config
-change.
+What actually happened:
 
-`e_collect` was not attempted: it has 79 conditionals and the most raw `D_us_`
-externs, so it is strictly harder than the two that already failed.
+- **`e_room_fg` needed no header change at all.** 0x78 is SIX `ObjInit` entries
+  (6 * 0x14), not five. It was measured from `D_us_80181D4C`, where the
+  `ObjInit` array starts, but the header declares the five 4-byte anim tables
+  FIRST, so the file's data begins 0x14 earlier at 0x1D38 -- an address the
+  config already carried as a raw `data` segment. 0x1D38..0x1DC4 = 0x8C, the
+  size all 18 declaring peers use. The companion claim that `e_floor_trap` and
+  `e_thornweed_corpseweed` reference addresses "inside" that range was an
+  off-by-one: 0x1DC4 is the exclusive end.
+- **`e_misc` needed a one-line change to an EXISTING conditional.** `cat` and
+  `lib` also declare 0xB4 and both plain-shim the header, which by itself
+  disproves "none of them yields 0xB4". The mechanism is `g_QuadIndices2`,
+  which emits a trailing `0, 0` unless the stage is in an exclusion list that
+  already held NZ0, NO1, CHI, ST0, LIB and CAT. rno0 joined it. 14 stubs.
+
+Two general lessons, both cheap to apply:
+
+1. **A segment starts at the first thing the FILE emits, not the first thing its
+   code names.** Every wrong size here came from measuring at a referenced
+   symbol rather than at the start of the file's data.
+2. **Read a size histogram for its variants, not its mode.** `cat` and `lib`
+   were visible in the same table that produced the wrong conclusion.
+
+`e_collect` was not attempted here and remains the hard one: 79 conditionals and
+the most raw `D_us_` externs. It was later attempted and reverted with evidence
+that rno0's `EntityRelicOrb` is a genuinely different variant; see its queue
+record.
 
 **What survives from this analysis:** the START rule is correct and is now
 proven three times (`e_particles` 0x1CB8, `e_medusa_head` 0x3354, and the
