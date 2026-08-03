@@ -18,6 +18,54 @@ Two things WERE missing and have been added:
   retries on 429 and 5xx with linear backoff, honouring `Retry-After`.
   Tunable via `RATE_LIMIT_RETRIES` (default 5) and `RATE_LIMIT_BACKOFF` (default 20s).
 
+## Is it concurrency throttling? No, on three independent checks
+
+A reasonable hypothesis: Zen free is unauthenticated, so maybe it throttles
+concurrent streams and our timeouts are really queueing. Checked 2026-08-03.
+
+**1. We have never been rate-limited, once.** Zero occurrences of `429`,
+`rate limit`, `FreeUsageLimitError`, `usage exceeded` or `too many requests`
+across every worker log and archive. A throttled call says so; ours just
+return empty or run the clock out.
+
+**2. We are already an "official client".** earendil-works/pi#2824 documents
+that the Zen backend distinguishes clients by header: without
+`x-opencode-client: cli` and friends, requests are treated as anonymous and get
+`fallbackValue` limits instead of `dailyRequests`. That issue is about a THIRD
+PARTY tool missing those headers. We shell out to the real `opencode run`
+binary, so we send them by construction. This is a bug we do not have.
+
+**3. Dead rate does not rise with worker count.** If concurrency were the
+cause, more workers would mean more dead calls. The opposite:
+
+| workers | calls | dead% |
+|---|---|---|
+| 3 | 25 | 72% |
+| 4 | 110 | 71% |
+| **13** | 24 | **50%** |
+
+The 13-worker run has the LOWEST dead rate. That is confounded by date and
+model mix, so it does not prove concurrency helps -- but it rules out
+concurrency as the driver, because the effect points the wrong way.
+
+### What the same data does support
+
+Comparing two 4-worker runs on the SAME day, differing only in prompt size:
+
+| run | workers | prompt | dead% |
+|---|---|---|---|
+| 20260803-165330 | 4 | uncompacted | **76%** |
+| current | 4 | compacted | **44%** |
+
+Concurrency held constant, prompt size cut by ~60%, dead rate down 32 points.
+Small sample (18 calls) and worth re-checking as the archive fills, but it is
+the same direction as the prompt-size correlation and the only variable that
+changed.
+
+Rate limits on Zen ARE real and are reported even on paid models
+(anomalyco/opencode#13318), so this may still bite later. It is simply not
+what is happening to us now.
+
 ## RETRACTION 2026-08-03: three "do not use" verdicts were wrong
 
 `empty_response_audit.py` over 20 logs and 123 calls, with logs now archived
