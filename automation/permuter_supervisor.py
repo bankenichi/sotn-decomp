@@ -16,9 +16,12 @@ WHAT IT REPLACES
           -> when one hits zero, bank it and stop that slot
         -> exit when nothing is left
 
-    That is what this does. It does NOT apply matches to the tree or build:
-    a permuter zero is necessary but not sufficient (see the frame bug in
-    src/boss/bo6/us_39144.c), so landing a match stays a human decision.
+    On a score of 0 it also APPLIES the seed and BUILDS it (--no-apply opts
+    out). A permuter zero is necessary but not sufficient -- func_us_801BC3E0
+    scored 0 and then failed the real build at 80/81 over an eight-byte stack
+    frame -- so the build is what decides, and anything short of green is
+    reverted. See land_match for the verdict taxonomy and for how a
+    pre-existing broken tree is kept from being blamed on the seed.
 
 WHY IT SELF-TERMINATES
     The permuter never exits on its own. Every previous run had to be killed,
@@ -42,6 +45,8 @@ Usage:
     python3 automation/permuter_supervisor.py --run
     python3 automation/permuter_supervisor.py --run --slots 3 --threads 4
     python3 automation/permuter_supervisor.py --status        # one JSON blob
+    python3 automation/permuter_supervisor.py --run --no-apply # find, do not land
+    python3 automation/permuter_supervisor.py --import-seeds   # import only
     python3 automation/permuter_supervisor.py --stop          # cancel everything
     python3 automation/permuter_supervisor.py --self-test
 """
@@ -369,6 +374,144 @@ def report(fn_id: str, status: str, notes: str) -> str:
     return (r.stdout or r.stderr).strip()
 
 
+
+# ------------------------------------------------------- landing a match
+
+def find_stub(fn: str) -> tuple[Path, str, object] | None:
+    """(src file, asm path, regex match) for fn's INCLUDE_ASM stub."""
+    stub = re.compile(
+        rf'INCLUDE_ASM\(\s*"([^"]+)"\s*,\s*{re.escape(fn)}\s*\)\s*;')
+    for p in (REPO / "src").rglob("*.c"):
+        text = p.read_text(errors="ignore")
+        m = stub.search(text)
+        if m:
+            return p, m.group(1), m
+    return None
+
+
+def extract_function(text: str, fn: str) -> str:
+    """The complete definition of fn, from its return type to its closing brace.
+
+    The permuter's source.c is the whole preprocessed translation unit, so the
+    function has to be cut out of ~4000 lines of expanded headers. Brace
+    counting rather than a regex, because a regex cannot find a matching brace.
+    """
+    m = re.search(
+        rf"^[A-Za-z_][\w \*]*\b{re.escape(fn)}\s*\([^;{{]*\)\s*\{{",
+        text, re.M)
+    if not m:
+        return ""
+    depth = 0
+    seen = False
+    for i in range(m.start(), len(text)):
+        c = text[i]
+        if c == "{":
+            depth += 1
+            seen = True
+        elif c == "}":
+            depth -= 1
+            if seen and depth == 0:
+                return text[m.start():i + 1]
+    return ""
+
+
+def classify_build_failure(detail: str) -> str:
+    """Turn build_and_check's text into a verdict the caller can act on.
+
+    The three failures need different responses and conflating them is how a
+    function gets the wrong status:
+
+      CHECKSUM MISMATCH -- it compiled, the bytes differ. Exactly the
+        func_us_801BC3E0 case: scored 0 in isolation, frame was 0x20 vs 0x18.
+        The seed is still good permuter work, so the record stays `near`.
+
+      COMPILE ERROR -- the seed references something the real file does not
+        declare. The permuter cannot fix that; it mutates expressions, it does
+        not add externs. Needs a human, so the record is deferred with the
+        error attached.
+
+      DIRTY -- the build failed without naming a diagnostic. Not a verdict
+        about anything.
+    """
+    if "CHECKSUM MISMATCH" in detail:
+        return "CHECKSUM MISMATCH: " + detail[:400]
+    if "BUILD DIRTY" in detail:
+        return "DIRTY: " + detail[:400]
+    if "BUILD FAILED" in detail:
+        return "COMPILE ERROR: " + detail[:600]
+    return "UNKNOWN: " + detail[:400]
+
+
+def land_match(work: Path, fn: str, build: str = "us",
+               lock=None) -> tuple[bool, str]:
+    """Apply a score-0 seed to src/, BUILD it, and revert unless it is green.
+
+    A permuter zero is necessary but NOT sufficient. func_us_801BC3E0 scored 0
+    and then failed the real build at 80/81, because a `volatile int pad` made
+    its stack frame 0x20 where the target was 0x18. The permuter compiles one
+    function in isolation; only a full build knows whether the overlay still
+    checksums. So this ALWAYS builds, and reverts on anything short of green.
+
+    Concurrency: it takes the same automation/.build.lock the fleet workers
+    hold around apply -> build -> restore, so a running fleet is serialised
+    against rather than stopped. Stopping the fleet would be heavier and no
+    safer: the lock is what the workers actually respect, and killing them
+    mid-generation would waste the calls in flight and strand their claims.
+
+    Reverting is unconditional on failure and uses apply_code's own returned
+    original, which it journals BEFORE writing, so a crash mid-build is
+    recoverable by the existing journal replay.
+    """
+    out0 = work / "output-0-1" / "source.c"
+    if not out0.is_file():
+        return False, f"no output-0-1/source.c in {work.name}"
+    body = extract_function(out0.read_text(errors="ignore"), fn)
+    if not body:
+        return False, f"could not extract {fn} from the score-0 source"
+
+    found = find_stub(fn)
+    if not found:
+        return False, (f"no INCLUDE_ASM stub for {fn} in src/; it may already "
+                       f"be applied")
+    path, asm_rel, _ = found
+    ctx = {"src_rel": str(path.relative_to(REPO)), "asm_rel": asm_rel}
+
+    sys.path.insert(0, str(Path(__file__).resolve().parent / "win"))
+    import worker_direct as wd                              # type: ignore
+
+    original = None
+    with (lock or _build_lock())():
+        try:
+            original = wd.apply_code(ctx, fn, body)
+            ok, detail = wd.build_and_check({"build": build})
+            if ok:
+                return True, "GREEN: " + detail
+
+            # Revert FIRST. A failed build must leave the tree exactly as found
+            # before anything else is attempted.
+            path.write_text(original, newline="")
+
+            # Then ask whether the failure was even OURS. If the reverted tree
+            # is also red, something was broken before we touched it -- a
+            # worker mid-apply, a bad commit, a stale artifact -- and blaming
+            # this seed would file a wrong verdict against a function that may
+            # be perfectly good. worker_direct learned this the hard way and
+            # has build_error_is_ours for the same reason.
+            ok2, _ = wd.build_and_check({"build": build})
+            if not ok2:
+                return False, ("TREE ALREADY BROKEN: the build fails with the "
+                               "seed REVERTED too, so this failure is not "
+                               "attributable to " + fn + ". Nothing recorded.")
+            return False, classify_build_failure(detail)
+        except Exception as e:                              # noqa: BLE001
+            if original is not None:
+                try:
+                    path.write_text(original, newline="")
+                except OSError:
+                    pass
+            return False, f"{type(e).__name__}: {e}"
+
+
 def _jobs():
     import jobs
     return jobs
@@ -474,7 +617,8 @@ def already_busy() -> list[str]:
 
 def supervise(slots: int, threads: int, stall: int, cycles: int,
               statuses: tuple[str, ...], once: bool = False,
-              max_iters: int = DEF_MAX_ITERS) -> int:
+              max_iters: int = DEF_MAX_ITERS,
+              apply_matches: bool = True) -> int:
     jobs = _jobs()
     _register_pid()
     _CFG.update({"stall": stall, "slots": slots, "threads": threads,
@@ -559,6 +703,37 @@ def supervise(slots: int, threads: int, stall: int, cycles: int,
                 promote(work)
                 slot["result"] = "MATCH"
                 slot["best"] = 0
+                if apply_matches:
+                    good, why = land_match(work, fn)
+                    if good:
+                        slot["result"] = "MATCHED AND BUILT"
+                        print(f"[LANDED] {fn}: {why}")
+                        print("  queue: " + report(
+                            slot.get("id", ""), "matched",
+                            f"permuter match, applied and built green. {why}"))
+                        done.append(slot)
+                        del active[jid]
+                        continue
+                    print(f"[revert] {fn}: tree restored. {why[:300]}")
+                    if why.startswith("TREE ALREADY BROKEN"):
+                        # Say nothing to the queue. The failure is not this
+                        # function's and a status change would be a lie.
+                        slot["result"] = "build was already broken; unrecorded"
+                    elif why.startswith("COMPILE ERROR"):
+                        slot["result"] = "scored 0 but does not compile in situ"
+                        print("  queue: " + report(
+                            slot.get("id", ""), "deferred",
+                            f"{EXHAUSTED}: permuter scored 0 but the seed does "
+                            f"not compile in its real file. Needs declarations "
+                            f"a human must add; the permuter cannot. {why[:120]}"))
+                    else:
+                        # Compiled, bytes differ. Still permuter work.
+                        slot["result"] = "scored 0 but bytes differ in the build"
+                        print("  queue: " + report(
+                            slot.get("id", ""), "near",
+                            f"permuter scored 0 in isolation but the overlay "
+                            f"checksum still differs; seed at {work}. "
+                            f"Keep searching. {why[:120]}"))
                 print(f"[MATCH] {fn} scored 0. Output in {work}/output-0-1. "
                       f"Apply it and BUILD before believing it.")
                 # Stays `near`, because it is NOT matched until a build says so
@@ -919,6 +1094,68 @@ def self_test() -> int:
     ck(body.index("promote(work)") < body.index("start_job"),
        "and it promotes BEFORE the job starts, not after")
 
+    import contextlib as _ctx
+    src_sup = Path(__file__).read_text()
+    print("\nextracting a function from a permuter source.c")
+    tu = ("typedef int s32;\n\nstatic int other(void) { return 1; }\n\n"
+          "void my_fn(s32 a) {\n  if (a) {\n    a--;\n  }\n}\n\n"
+          "void after(void) {}\n")
+    got = extract_function(tu, "my_fn")
+    ck(got.startswith("void my_fn(s32 a)") and got.endswith("}"),
+       "cuts from the return type to the matching brace")
+    ck("static int other" not in got and "void after" not in got,
+       "and takes NEITHER neighbour, which brace counting gets right and a "
+       "regex cannot")
+    ck(got.count("{") == got.count("}") == 2, "braces balance")
+    ck(extract_function(tu, "nope") == "", "a missing function yields empty")
+
+    print("\nlanding a match ALWAYS builds, and reverts unless green")
+    i = src_sup.index("def land_match")
+    lm = src_sup[i:src_sup.index("\ndef _jobs")]
+    ck("build_and_check" in lm,
+       "it runs the real build; a permuter zero is not sufficient on its own")
+    ck(lm.count("write_text(original") >= 2,
+       "it reverts on a red build AND on an exception")
+    ck("except Exception" in lm, "an exception cannot leave the tree modified")
+    ck("lock or _build_lock()" in lm,
+       "and the whole apply/build/revert happens under the fleet's lock")
+    ck(lm.index("build_and_check") < lm.index("return True"),
+       "there is no path that returns success without having built")
+
+    print("\nbuild verdicts are classified, not lumped together")
+    ck(classify_build_failure("BUILT, CHECKSUM MISMATCH (bytes differ)")
+       .startswith("CHECKSUM MISMATCH"),
+       "compiled-but-different is its own verdict; the record stays `near`")
+    ck(classify_build_failure("BUILD FAILED:\n x.c:9: undeclared")
+       .startswith("COMPILE ERROR"),
+       "a compile error is distinct; the permuter cannot add an extern")
+    ck(classify_build_failure("BUILD DIRTY: no diagnostic").startswith("DIRTY"),
+       "a dirty build is not a verdict about the function")
+    ck(classify_build_failure("something else").startswith("UNKNOWN"),
+       "an unrecognised failure is not silently treated as a mismatch")
+
+    print("\na pre-existing broken tree is not blamed on the seed")
+    lm2 = src_sup[src_sup.index("def land_match"):]
+    lm2 = lm2[:lm2.index("\ndef _jobs")]
+    ck("TREE ALREADY BROKEN" in lm2,
+       "after a red build it rebuilds the REVERTED tree to see whose fault it "
+       "was")
+    ck(lm2.index("write_text(original") < lm2.index("ok2"),
+       "and it reverts BEFORE that second build, so the check is honest")
+    sup2 = src_sup[src_sup.index("def supervise"):]
+    ck("TREE ALREADY BROKEN" in sup2 and "unrecorded" in sup2,
+       "that case records NOTHING to the queue rather than filing a wrong "
+       "status")
+
+    print("\na missing score-0 output is refused, not guessed at")
+    import tempfile as _tf2
+    with _tf2.TemporaryDirectory() as td2:
+        w = Path(td2) / "fn_none"
+        w.mkdir()
+        okk, why = land_match(w, "fn_none", lock=lambda: _ctx.nullcontext())
+        ck(okk is False and "no output-0-1" in why,
+           f"refuses when there is no score-0 seed ({why})")
+
     print("\nthe staged import is serialised against the fleet")
     # It writes to a REAL src/ file while workers do the same under
     # automation/.build.lock. Unlocked, a worker's build can compile our seed,
@@ -1073,6 +1310,8 @@ def main() -> int:
     ap.add_argument("--cycles", type=int, default=DEF_CYCLES)
     ap.add_argument("--max-iters", type=int, default=DEF_MAX_ITERS,
                     help="hard per-job iteration ceiling")
+    ap.add_argument("--no-apply", action="store_true",
+                    help="find matches but do not apply or build them")
     ap.add_argument("--status-filter", default="near",
                     help="comma-separated queue statuses to draw from")
     a = ap.parse_args()
@@ -1142,7 +1381,8 @@ def main() -> int:
 
     if a.run:
         return supervise(a.slots, a.threads, a.stall, a.cycles, statuses,
-                         max_iters=a.max_iters)
+                         max_iters=a.max_iters,
+                         apply_matches=not a.no_apply)
 
     ap.error("pass one of --plan, --run, --status, --stop, --self-test")
 
