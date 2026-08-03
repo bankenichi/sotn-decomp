@@ -24,6 +24,14 @@ cd "$REPO"
 PY="${SOTN_PYTHON:-$REPO/.venv/bin/python}"
 [ -x "$PY" ] || PY="$(command -v python3)"
 
+# EXPORT it. commands_client builds the permuter argv with
+# os.environ.get("SOTN_PYTHON", "python3"), so an unexported PY means the
+# permuter runs under system python3 -- which has no pycparser, so every job
+# dies instantly with ModuleNotFoundError and the supervisor reports
+# "job ended (done), best None". Computing the right interpreter and then not
+# passing it on is indistinguishable from not computing it at all.
+export SOTN_PYTHON="$PY"
+
 # commands_client fails CLOSED: with SOTN_CMD_DRYRUN unset it assumes dry-run,
 # so a fleet start reports what it "would" launch and launches nothing. That is
 # the right default for a library that something else might import by accident,

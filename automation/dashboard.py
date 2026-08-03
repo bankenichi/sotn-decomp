@@ -73,6 +73,10 @@ sys.path.insert(0, str(REPO / "automation" / "mcp"))
 # preview mode. This MUST happen before commands_client is imported anywhere,
 # because it reads the variable once at import time.
 os.environ.setdefault("SOTN_CMD_DRYRUN", "0")
+# Same reason: anything we spawn (supervisor -> permuter) resolves its
+# interpreter from SOTN_PYTHON, defaulting to bare "python3" which lacks
+# pycparser. We are already running under the right interpreter, so say so.
+os.environ.setdefault("SOTN_PYTHON", sys.executable)
 
 TOKEN = secrets.token_urlsafe(16)
 TAIL_LINES = 20
@@ -229,6 +233,39 @@ def snapshot() -> dict:
 # Zero-argument callables only. Nothing here takes user input, so no request
 # can widen what runs. Adding an action means editing this file.
 
+# Parameters each action accepts: name -> (min, max). INTEGERS ONLY, from a
+# fixed key set, range-checked server-side. This is what keeps the earlier
+# "no argv injection" property intact now that the UI has knobs: a request can
+# choose a NUMBER inside a range, never a string, a flag, or a path. Anything
+# else is rejected before an action is called.
+ACTION_PARAMS: dict[str, dict[str, tuple[int, int]]] = {
+    "permuter_start": {"slots": (1, 8), "threads": (1, 16),
+                       "stall": (500, 50000), "cycles": (1, 8)},
+    "fleet_cli_start": {"workers": (1, 8)},
+    "fleet_llama_start": {"workers": (1, 8)},
+}
+
+
+def validate_params(action: str, raw: dict) -> tuple[dict, str]:
+    """(clean kwargs, error). Unknown keys and out-of-range values are errors,
+    not silently dropped: a knob that appears to work and does nothing is the
+    failure mode this whole session has been about."""
+    spec = ACTION_PARAMS.get(action, {})
+    clean = {}
+    for k, v in (raw or {}).items():
+        if k not in spec:
+            return {}, f"unknown parameter {k!r} for {action}"
+        try:
+            n = int(v)
+        except (TypeError, ValueError):
+            return {}, f"{k} must be an integer, got {v!r}"
+        lo, hi = spec[k]
+        if not lo <= n <= hi:
+            return {}, f"{k} must be between {lo} and {hi}, got {n}"
+        clean[k] = n
+    return clean, ""
+
+
 def _sup(*args: str) -> dict:
     import subprocess
     py = os.environ.get("SOTN_PYTHON", sys.executable)
@@ -241,7 +278,8 @@ def _sup(*args: str) -> dict:
 SUP_LOG = Path(os.path.expanduser("~/sotn-work/supervisor.log"))
 
 
-def _sup_start() -> dict:
+def _sup_start(slots: int = 3, threads: int = 4,
+               stall: int = 2500, cycles: int = 4) -> dict:
     """Start the supervisor detached, then CHECK it actually survived.
 
     The first version sent output to DEVNULL and returned {"ok": True}
@@ -258,7 +296,9 @@ def _sup_start() -> dict:
     SUP_LOG.parent.mkdir(parents=True, exist_ok=True)
     logf = open(SUP_LOG, "w")
     proc = subprocess.Popen(
-        [py, str(REPO / "automation" / "permuter_supervisor.py"), "--run"],
+        [py, str(REPO / "automation" / "permuter_supervisor.py"), "--run",
+         "--slots", str(slots), "--threads", str(threads),
+         "--stall", str(stall), "--cycles", str(cycles)],
         cwd=str(REPO), stdout=logf, stderr=subprocess.STDOUT,
         start_new_session=True)
     # Long enough for an immediate failure or an empty candidate list to show,
@@ -279,10 +319,10 @@ def _sup_start() -> dict:
                     f"It did NOT start any jobs.\n{out}").rstrip()}
 
 
-def _fleet(backend: str, n: int):
-    def go() -> dict:
+def _fleet(backend: str, default_n: int):
+    def go(workers: int = default_n) -> dict:
         import commands_client as cc
-        return {"ok": True, "out": str(cc.fleet_start(workers=n,
+        return {"ok": True, "out": str(cc.fleet_start(workers=workers,
                                                       backend=backend))}
     return go
 
@@ -370,8 +410,22 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if fn is None:
             self._json({"error": f"unknown action {name!r}"}, 404)
             return
+        raw = {}
         try:
-            self._json(fn())
+            n = int(self.headers.get("Content-Length") or 0)
+            if 0 < n <= 4096:
+                raw = json.loads(self.rfile.read(n) or b"{}")
+            if not isinstance(raw, dict):
+                raw = {}
+        except (ValueError, json.JSONDecodeError):
+            self._json({"ok": False, "out": "body must be a JSON object"}, 200)
+            return
+        kw, err = validate_params(name, raw)
+        if err:
+            self._json({"ok": False, "out": err}, 200)
+            return
+        try:
+            self._json(fn(**kw))
         except Exception as e:                       # never 500 silently
             self._json({"ok": False, "out": f"{type(e).__name__}: {e}"}, 200)
 
@@ -475,20 +529,31 @@ button.danger:hover{border-color:var(--bad);color:var(--bad)}
 .chip{background:var(--panel);border:1px solid var(--line);border-radius:999px;
       padding:2px 10px}
 .chip b{color:var(--accent)}
+.ctl{display:flex;gap:8px;align-items:center;flex-wrap:wrap;flex:0 0 auto;
+     padding-bottom:10px;margin-bottom:4px;border-bottom:1px solid var(--line)}
+.ctl label{color:var(--dim);display:flex;gap:4px;align-items:center;font-size:11px}
+.ctl input,.ctl select{background:var(--bg);color:var(--fg);
+     border:1px solid var(--line);border-radius:4px;padding:3px 5px;
+     font:inherit;font-size:11px;width:64px}
+.ctl select{width:auto}
 /* Two top-level columns: permuter on the left, fleet on the right. Each
    column scrolls independently so a chatty fleet cannot push the permuter
    panels off screen, which is the whole reason for splitting them. */
 .split{display:grid;gap:0;grid-template-columns:1fr 1fr;
        height:calc(100vh - 58px)}
-.split>section{padding:12px 16px;overflow:auto;min-width:0}
+.split>section{padding:12px 16px;overflow:hidden;min-width:0;
+               display:flex;flex-direction:column}
 .split>section+section{border-left:1px solid var(--line)}
 @media(max-width:900px){.split{grid-template-columns:1fr;height:auto}
   .split>section+section{border-left:0;border-top:1px solid var(--line)}}
 h2{font-size:12px;color:var(--dim);margin:0 0 8px;letter-spacing:.1em;
-   text-transform:uppercase;position:sticky;top:0;background:var(--bg);
-   padding:4px 0;z-index:1}
-/* Panels stack vertically inside their column. */
-.cols{display:grid;gap:12px;grid-template-columns:1fr}
+   text-transform:uppercase;flex:0 0 auto}
+/* Panels share the column height equally. auto-rows would let one long log
+   push the rest below the fold; 1fr per row means N live workers each get 1/N
+   of the column and nothing needs page scrolling to be seen. */
+.cols{display:grid;gap:12px;grid-template-columns:1fr;
+      grid-auto-rows:1fr;height:100%;min-height:0}
+.panel{min-height:0}
 .panel{background:var(--panel);border:1px solid var(--line);border-radius:7px;
        overflow:hidden;display:flex;flex-direction:column}
 .phead{display:flex;justify-content:space-between;gap:8px;padding:7px 10px;
@@ -497,7 +562,7 @@ h2{font-size:12px;color:var(--dim);margin:0 0 8px;letter-spacing:.1em;
 .meta{color:var(--dim);font-size:11px;white-space:nowrap}
 .bar{height:3px;background:var(--line)}
 .bar>i{display:block;height:100%;background:var(--ok)}
-pre{margin:0;padding:8px 10px;max-height:300px;overflow:auto;font-size:11px;
+pre{margin:0;padding:8px 10px;flex:1 1 auto;min-height:0;overflow:auto;font-size:11px;
     color:var(--dim);white-space:pre-wrap;word-break:break-word}
 .ok{color:var(--ok)}.warn{color:var(--warn)}.bad{color:var(--bad)}
 #out{padding:8px 16px;color:var(--dim);border-top:1px solid var(--line);
@@ -507,17 +572,38 @@ pre{margin:0;padding:8px 10px;max-height:300px;overflow:auto;font-size:11px;
 <header>
   <h1>SOTN harness</h1>
   <div class=chips id=q></div>
-  <span style="flex:1"></span>
-  <button onclick="act('permuter_plan')">plan</button>
-  <button onclick="act('permuter_start')">start permuter</button>
-  <button class=danger onclick="confirmAct('permuter_stop','Stop all permuter jobs?')">stop permuter</button>
-  <button onclick="act('fleet_cli_start')">fleet cli</button>
-  <button onclick="act('fleet_llama_start')">fleet llama</button>
-  <button class=danger onclick="confirmAct('fleet_stop','Stop all fleet workers and reclaim their queue records?')">stop fleet</button>
 </header>
 <div class=split>
-  <section><h2>Permuter</h2><div class=cols id=perm></div></section>
-  <section><h2>Fleet</h2><div id=hold style="margin-bottom:8px"></div><div class=cols id=fleet></div></section>
+  <section>
+    <h2>Permuter</h2>
+    <div class=ctl>
+      <label>slots <input id=p_slots type=number value=3 min=1 max=8></label>
+      <label>threads <input id=p_threads type=number value=4 min=1 max=16></label>
+      <label>stall <input id=p_stall type=number value=2500 min=500 max=50000 step=500></label>
+      <label>cycles <input id=p_cycles type=number value=4 min=1 max=8></label>
+      <button onclick="act('permuter_plan')">plan</button>
+      <button onclick="act('permuter_start',permParams())">start</button>
+      <button class=danger onclick="confirmAct('permuter_stop','Stop all permuter jobs?')">stop</button>
+    </div>
+    <div class=cols id=perm></div>
+  </section>
+  <section>
+    <h2>Fleet</h2>
+    <div class=ctl>
+      <label>workers <input id=f_workers type=number value=2 min=1 max=8></label>
+      <label>backend
+        <select id=f_backend>
+          <option value=fleet_cli_start>opencode cli</option>
+          <option value=fleet_llama_start>local llama</option>
+        </select>
+      </label>
+      <button onclick="act(el('f_backend').value,{workers:+el('f_workers').value})">start</button>
+      <button class=danger onclick="confirmAct('fleet_stop','Stop all fleet workers and reclaim their queue records?')">stop</button>
+    </div>
+    <div id=hold style="margin-bottom:8px"></div>
+    <div id=deadnote class=empty style="padding:0 0 6px"></div>
+    <div class=cols id=fleet></div>
+  </section>
 </div>
 <div id=out></div>
 <script>
@@ -525,20 +611,25 @@ const TOKEN="__TOKEN__";
 const el=(id)=>document.getElementById(id);
 const esc=(s)=>s.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
 
-async function act(name){
+function permParams(){return{slots:+el('p_slots').value,
+  threads:+el('p_threads').value,stall:+el('p_stall').value,
+  cycles:+el('p_cycles').value};}
+
+async function act(name,params){
   // Buttons disable while in flight so a double click cannot start two fleets.
   document.querySelectorAll('button').forEach(b=>b.disabled=true);
   el('out').textContent='running '+name+' ...';
   try{
     const r=await fetch('/api/action/'+name,{method:'POST',
-      headers:{'X-Token':TOKEN}});
+      headers:{'X-Token':TOKEN,'Content-Type':'application/json'},
+      body:JSON.stringify(params||{})});
     const j=await r.json();
     el('out').textContent=(j.out||JSON.stringify(j)).trim();
   }catch(e){ el('out').textContent='request failed: '+e; }
   document.querySelectorAll('button').forEach(b=>b.disabled=false);
   refresh();
 }
-function confirmAct(name,msg){ if(confirm(msg)) act(name); }
+function confirmAct(name,msg,params){ if(confirm(msg)) act(name,params); }
 
 function panel(title,meta,cls,lines,pct){
   return `<div class=panel><div class=phead>
@@ -575,11 +666,18 @@ async function refresh(){
     return panel(p.name, meta, cls, p.log, pct);
   }).join('') : '<div class=empty>no permuter jobs running</div>';
 
-  el('fleet').innerHTML = s.fleet.length ? s.fleet.map(f=>{
-    // Per worker, not fleet-wide. A dead worker names itself here.
-    const meta = `${f.kind} · pid ${f.pid??'-'} · ${f.alive?'alive':'DEAD'}`;
-    return panel(f.name, meta, f.alive?'ok':'bad', f.log);
-  }).join('') : '<div class=empty>no fleet workers</div>';
+  // Only live workers. Dead ones are logs from a previous run and their
+  // presence is pure noise: four DEAD panels crowd out the two that are
+  // actually working. The count of hidden ones is still reported, so this
+  // hides clutter without hiding information.
+  const live = s.fleet.filter(f=>f.alive);
+  const dead = s.fleet.length - live.length;
+  el('fleet').innerHTML = live.length ? live.map(f=>
+      panel(f.name, `${f.kind} · pid ${f.pid} · alive`, 'ok', f.log)
+    ).join('')
+    : `<div class=empty>no live fleet workers${dead?` (${dead} stopped)`:''}</div>`;
+  el('deadnote').textContent = (live.length && dead)
+    ? `${dead} stopped worker(s) hidden` : '';
 }
 refresh(); setInterval(refresh,3000);
 </script>
@@ -676,8 +774,14 @@ def self_test() -> int:
 
     print("\nthe page")
     ck("__TOKEN__" in PAGE, "page carries a token placeholder")
-    ck("f.alive?'alive':'DEAD'" in PAGE,
-       "the page renders per-worker alive state")
+    ck("pid ${f.pid} · alive" in PAGE,
+       "live workers show their own pid")
+    ck("s.fleet.filter(f=>f.alive)" in PAGE,
+       "dead workers are filtered out of the fleet column")
+    ck("stopped worker(s) hidden" in PAGE,
+       "but the number hidden is still reported, so nothing is concealed")
+    ck("grid-auto-rows:1fr" in PAGE,
+       "panels share the column height instead of overflowing it")
     ck("<div class=split>" in PAGE and "grid-template-columns:1fr 1fr" in PAGE,
        "permuter and fleet are side-by-side columns")
     ck(PAGE.index("id=perm") < PAGE.index("id=fleet"),

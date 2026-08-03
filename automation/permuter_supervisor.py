@@ -61,7 +61,15 @@ QUEUE = Path(os.environ.get(
     "SOTN_QUEUE", os.path.expanduser("~/sotn-work/queue.jsonl")))
 WORKROOT = REPO / "nonmatchings"
 STATE = Path(os.path.expanduser("~/sotn-work/supervisor.json"))
+# Written by dashboard.py when it launches us detached. Exposed via --log
+# because a detached supervisor that fails leaves no other trace: the caller
+# sees "started" and the permuter column sees no jobs, with the reason in a
+# file nothing reads.
+LOG = Path(os.path.expanduser("~/sotn-work/supervisor.log"))
 PYTHON = os.environ.get("SOTN_PYTHON", sys.executable)
+# Propagate, so permuter jobs started via commands_client use this interpreter
+# rather than falling back to a bare "python3" without pycparser.
+os.environ.setdefault("SOTN_PYTHON", PYTHON)
 
 sys.path.insert(0, str(REPO / "automation"))
 sys.path.insert(0, str(REPO / "automation" / "mcp"))
@@ -662,6 +670,8 @@ def main() -> int:
     ap.add_argument("--status", action="store_true")
     ap.add_argument("--stop", action="store_true")
     ap.add_argument("--self-test", action="store_true")
+    ap.add_argument("--log", action="store_true",
+                    help="print the detached supervisor's own log")
     ap.add_argument("--slots", type=int, default=DEF_SLOTS)
     ap.add_argument("--threads", type=int, default=DEF_THREADS)
     ap.add_argument("--stall", type=int, default=DEF_STALL)
@@ -682,6 +692,12 @@ def main() -> int:
 
     if a.self_test:
         return self_test()
+    if a.log:
+        if not LOG.is_file():
+            print(f"no supervisor log at {LOG}")
+            return 0
+        print(LOG.read_text(errors="ignore"))
+        return 0
     if a.stop:
         return stop_all()
     if a.status:
