@@ -162,8 +162,27 @@ def permuter_panels() -> list[dict]:
         d = parse(log.read_text(errors="ignore")) if log.is_file() else {
             "best": None, "iterations": 0, "since_improvement": 0,
             "failures": 0}
-        fn = jid.split("-", 2)[2] if len(jid.split("-", 2)) == 3 else jid
+        parts = jid.split("-", 3)
+        fn = parts[3] if len(parts) == 4 else jid
+        # All-time best for the WORK DIR, not just this run. Without it the
+        # panel reads as a regression whenever a fresh run has not yet beaten a
+        # score an earlier run already banked: BO6_AguneaShuffleParams showed
+        # "best 20" while output-10-1 sat on disk. The run number is honest but
+        # incomplete, and incomplete looked like lost work.
+        alltime = None
+        try:
+            wd = REPO / "nonmatchings" / fn
+            if wd.is_dir():
+                for c in wd.iterdir():
+                    mm = re.fullmatch(r"output-(\d+)-\d+", c.name)
+                    if mm and (c / "source.c").is_file():
+                        v = int(mm.group(1))
+                        if alltime is None or v < alltime:
+                            alltime = v
+        except OSError:
+            pass
         out.append({"id": jid, "name": fn, "best": d["best"],
+                    "alltime": alltime,
                     "iterations": d["iterations"],
                     "since": d["since_improvement"],
                     "failures": d["failures"],
@@ -773,7 +792,10 @@ async function refresh(){
 
   el('perm').innerHTML = s.permuter.length ? s.permuter.map(p=>{
     const cls = p.best===0 ? 'ok' : (p.improving ? '' : 'warn');
-    const meta = `best ${p.best==null?'-':p.best} · ${p.iterations} it`
+    // Show the run's best AND the dir's all-time best when they differ, so a
+    // fresh run that has not yet caught up does not read as lost progress.
+    const at = (p.alltime!=null && p.alltime!==p.best) ? ` (best ever ${p.alltime})` : '';
+    const meta = `run ${p.best==null?'-':p.best}${at} · ${p.iterations} it`
                + (p.improving?'':' · stalled')
                + (p.failures?` · ${p.failures} rej`:'');
     // Progress is "how far into the stall window", the only bounded quantity
@@ -913,6 +935,9 @@ def self_test() -> int:
        "index 0, the default, is a working model")
     ck("renderWorkerRows" in PAGE and "class=wmodel" in PAGE,
        "the page renders one model row per worker")
+    ck("best ever" in PAGE,
+       "a run that has not yet beaten the dir's all-time best says so, instead "
+       "of looking like the score went backwards")
     ck("<div class=split>" in PAGE and "grid-template-columns:1fr 1fr" in PAGE,
        "permuter and fleet are side-by-side columns")
     ck(PAGE.index("id=perm") < PAGE.index("id=fleet"),

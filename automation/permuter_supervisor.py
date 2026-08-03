@@ -283,6 +283,26 @@ def _jobs():
 
 
 def start_one(work: Path, threads: int) -> str:
+    """Promote to the best known seed, THEN start.
+
+    permuter.py only ever reads base.c, so a run begins wherever base.c happens
+    to be. Promotion used to happen only on stall or on a match, which meant a
+    fresh start could begin from a seed WORSE than one already sitting in the
+    work dir:
+
+      BO6_AguneaShuffleParams  output-10-1 on disk, base.c never promoted
+                               -> every restart threw the 10 away
+      func_us_8019AA04-2       output-885 on disk, base.c promoted at 1100
+                               -> searching from a seed 215 points worse
+
+    Both look like the score going backwards, and effectively it is: the work
+    was not lost from disk, but every restart discarded it. Promoting here makes
+    a run monotonic by construction -- it can never start from worse than the
+    best output the dir has ever produced.
+    """
+    msg = promote(work)
+    if msg.startswith("promoted"):
+        print(f"[seed] {msg}")
     import commands_client as cc
     r = cc.start_job("permuter", work_dir=str(work.relative_to(REPO)),
                      threads=threads)
@@ -442,6 +462,8 @@ def supervise(slots: int, threads: int, stall: int, cycles: int,
                 improved = msg.startswith("promoted")
                 if improved and slot["cycles"] + 1 < cycles:
                     slot["cycles"] += 1
+                    # start_one promotes again; that is a no-op here because we
+                    # just promoted, and promote() refuses a non-improvement.
                     njid = start_one(work, threads)
                     print(f"[cycle {slot['cycles']}] {fn} stalled at "
                           f"{d['best']}; {msg} -> {njid}")
@@ -737,6 +759,16 @@ def self_test() -> int:
     ck(not any(x.isdigit() and len(x) > 4 for x in b),
        f"no pid fragments leak into the slug list ({b})")
     globals()["_jobs"] = real
+
+    print("\na run never starts from a worse seed than the best on disk")
+    src_sup = Path(__file__).read_text()
+    i = src_sup.index("def start_one")
+    body = src_sup[i:src_sup.index("\ndef ", i + 1)]
+    ck("promote(work)" in body,
+       "start_one promotes before starting, so base.c is always the best known "
+       "seed")
+    ck(body.index("promote(work)") < body.index("start_job"),
+       "and it promotes BEFORE the job starts, not after")
 
     print("\nsupervisor discovery does not depend on the pidfile")
     src_sup = Path(__file__).read_text()
