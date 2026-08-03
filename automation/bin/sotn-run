@@ -88,7 +88,7 @@ SOTN harness process control.
 Defaults are the measured ones; override with flags after the verb.
 
   run-permuter start --slots 3 --threads 4
-  runfleet-cli start --workers 2
+  runfleet-cli start 2            # or: --workers 2
   sotn-dash start --port 8777
 
 `plan` and `status` never start or stop anything, so they are always safe.
@@ -111,11 +111,23 @@ need_verb() {
 # from that one, and the drift would only show up as workers nobody can stop.
 fleet() {
     local backend="$1"; shift
-    local workers="${1:-}"
+    # Accept BOTH `runfleet-cli start 2` and `runfleet-cli start --workers 2`.
+    # The usage text documented the flag form while the code only took the
+    # positional, so the documented command failed with "workers must be a
+    # number". Taking both is cheaper than picking one and being wrong again.
+    local workers=""
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --workers) workers="${2:-}"; shift 2 ;;
+            --workers=*) workers="${1#*=}"; shift ;;
+            "") shift ;;
+            *) workers="$1"; shift ;;
+        esac
+    done
     case "$VERB" in
         start)
             local n="${workers:-2}"
-            [[ "$n" =~ ^[0-9]+$ ]] || { echo "workers must be a number" >&2; exit 2; }
+            [[ "$n" =~ ^[0-9]+$ ]] || { echo "workers must be a number, got '$n'" >&2; exit 2; }
             "$PY" - "$backend" "$n" <<'PY'
 import sys
 sys.path.insert(0, "automation/mcp")
@@ -152,8 +164,8 @@ case "$CMD" in
             status) exec "$PY" automation/permuter_supervisor.py --status ;;
         esac
         ;;
-    runfleet-cli)   fleet cli  "${1:-}" ;;
-    runfleet-llama) fleet http "${1:-}" ;;
+    runfleet-cli)   fleet cli  "$@" ;;
+    runfleet-llama) fleet http "$@" ;;
     sotn-dash)
         case "$VERB" in
             start)  exec "$PY" automation/dashboard.py --serve "$@" ;;
