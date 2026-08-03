@@ -9657,7 +9657,19 @@ void BO6_RicStepStandInAir(void) {
         g_Ric.unk44 = 0;
     }
 }
-;
+extern s16 RIC_animCurFrame;
+void BO6_RicStepEnableFlameWhip(void) {
+    if (RIC_animCurFrame == 0xB5 && RIC_poseTimer == 1) {
+        BO6_RicCreateEntFactoryFromEntity(g_CurrentEntity, 0x23, 0);
+        g_api_PlaySfx(0x62F);
+    }
+    if (RIC_poseTimer < 0) {
+        BO6_RicSetStand(0);
+        g_Ric.unk46 = 0;
+        BO6_RicCreateEntFactoryFromEntity(g_CurrentEntity, 0x450021, 0);
+        g_Ric.timers[0] = 0x800;
+    }
+}
 extern void BO6_RicSetStand(s32);
 extern s16 RIC_poseTimer;
 void BO6_RicStepHydrostorm(void) {
@@ -9675,6 +9687,24 @@ void BO6_RicStepGenericSubwpnCrash(void) {
 ;
 ;
 ;
-;
+void BO6_RicStepBladeDash(void) {
+    DecelerateX(0x1C00);
+    if (RIC_poseTimer < 0) {
+        g_Ric.unk46 = 0;
+        BO6_RicSetStand(0);
+        return;
+    }
+    if ((u16)RIC_pose >= 0x12U && !(g_Ric.vram_flag & 1)) {
+        g_Ric.unk46 = 0;
+        BO6_RicSetFall();
+        return;
+    }
+    if ((g_GameTimer & 3) == 0 && (u16)RIC_pose < 0x12U && (g_Ric.vram_flag & 1)) {
+        BO6_RicCreateEntFactoryFromEntity(g_CurrentEntity, 0x20018, 0);
+    }
+    if (*(s32 *)&RIC_pose == 0x10012 && (g_Ric.vram_flag & 1)) {
+        BO6_RicCreateEntFactoryFromEntity(g_CurrentEntity, 0, 0);
+    }
+}
 ;
 ;

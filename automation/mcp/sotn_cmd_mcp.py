@@ -534,9 +534,6 @@ def _assert_registry_is_exposed() -> None:
         print(f"registry/tool cross-check skipped: {exc!r}", file=sys.stderr)
 
 
-if __name__ == "__main__":
-    _assert_registry_is_exposed()
-    mcp.run()  # stdio transport, as expected by Claude Desktop
 
 
 # ---------------------------------------------------------------------------
@@ -759,3 +756,21 @@ def git_clean(path: str, confirm: bool = False, timeout: int = 300) -> dict:
     Scoped to a path and never -x, so it cannot reach ignored build output or
     the venv. Untracked files have no git copy: once removed they are gone."""
     return cc.run("git_clean", timeout=timeout, path=path, confirm=confirm)
+
+
+# ---------------------------------------------------------------------------
+# ENTRY POINT MUST BE LAST.
+#
+# mcp.run() serves forever, so ANY @mcp.tool() defined below this block is never
+# executed and never registered. On 2026-08-02 this guard sat in the middle of
+# the file and 25 git tools were appended after it: `commands` listed all of
+# them, `mcp_tools` listed none, and the connector had to be restarted twice.
+#
+# The parity test greps the SOURCE, so it happily passed. It now also asserts
+# that no tool is defined after this block, which is the property that actually
+# matters. Keep this at the bottom of the file.
+# ---------------------------------------------------------------------------
+
+if __name__ == "__main__":
+    _assert_registry_is_exposed()
+    mcp.run()  # stdio transport, as expected by Claude Desktop

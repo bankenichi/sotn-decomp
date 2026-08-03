@@ -149,7 +149,28 @@ void BO6_RicStepStandInAir(void) {
     }
 }
 
-INCLUDE_ASM("boss/bo6/nonmatchings/richter", BO6_RicStepEnableFlameWhip);
+/* BO6_RicStepEnableFlameWhip: BO6 (Richter) flame-whip entry step.
+ * When the anim frame hits the flame-swing pose (0xB5) with poseTimer at 1,
+ * spawn the whip entity and play its unleash SFX. Once the pose timer goes
+ * negative (abort / animation end), drop back to the standing pose and kick
+ * the dash-recovery timer. */
+extern s16 RIC_animCurFrame; /* 0x8007632E -- flame-step swing frame */
+
+void BO6_RicStepEnableFlameWhip(void) {
+    /* Both comparisons branch to the shared end on failure, so && is exact. */
+    if (RIC_animCurFrame == 0xB5 && RIC_poseTimer == 1) {
+        BO6_RicCreateEntFactoryFromEntity(g_CurrentEntity, 0x23, 0); /* whip entity */
+        g_api_PlaySfx(0x62F);
+    }
+
+    /* poseTimer < 0 -> leave the flame step and reset its state. */
+    if (RIC_poseTimer < 0) {
+        BO6_RicSetStand(0);
+        g_Ric.unk46 = 0;                 /* g_Ric + 0x396: step state latch */
+        BO6_RicCreateEntFactoryFromEntity(g_CurrentEntity, 0x450021, 0);
+        g_Ric.timers[0] = 0x800;         /* g_Ric + 0x330: dash-timer reload */
+    }
+}
 
 extern void BO6_RicSetStand(s32);
 extern s16 RIC_poseTimer;
@@ -174,7 +195,37 @@ INCLUDE_ASM("boss/bo6/nonmatchings/richter", BO6_RicStepSlide);
 
 INCLUDE_ASM("boss/bo6/nonmatchings/richter", BO6_RicStepSlideKick);
 
-INCLUDE_ASM("boss/bo6/nonmatchings/richter", BO6_RicStepBladeDash);
+#include "bo6.h"
+
+/*
+ * BO6 version of Ric's dashing idle-step: the overlay's twin of RicStepBladeDash.
+ * Keeps welding Ric to the sabre dash, decays the forward velocity, and every
+ * 4 ticks while in the 0x20018 costume it spawns a slide-dust burst.
+ */
+void BO6_RicStepBladeDash(void) {
+    DecelerateX(0x1C00); /* drag the dash velocity down so the squeal skid stops */
+
+    if (RIC_poseTimer < 0) {                /* idle pose expired -> stand back up */
+        g_Ric.unk46 = 0;                    /* offset 0x396: clear the dash-hold flag */
+        BO6_RicSetStand(0);
+        return;
+    }
+    /* if we are no longer in the dash pose range and are not flagged airborne */
+    if ((u16)RIC_pose >= 0x12U && !(g_Ric.vram_flag & 1)) {
+        g_Ric.unk46 = 0;                    /* offset 0x396 */
+        BO6_RicSetFall();
+        return;
+    }
+    /* while the dash pose is active, seed a smoke entity every 4 game ticks */
+    if ((g_GameTimer & 3) == 0 && (u16)RIC_pose < 0x12U && (g_Ric.vram_flag & 1)) {
+        BO6_RicCreateEntFactoryFromEntity(g_CurrentEntity, 0x20018, 0);
+    }
+    /* final slash end: read pose as a word so entity factory id 0 fires exactly
+     * once when the pose counter has been pushed into the 0x10012 delta */
+    if (*(s32 *)&RIC_pose == 0x10012 && (g_Ric.vram_flag & 1)) {
+        BO6_RicCreateEntFactoryFromEntity(g_CurrentEntity, 0, 0);
+    }
+}
 
 INCLUDE_ASM("boss/bo6/nonmatchings/richter", func_us_801B8E80);
 

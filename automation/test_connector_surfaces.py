@@ -97,6 +97,25 @@ def main() -> int:
         except cc.Rejected:
             check(True, f"{act} refuses without confirm=True")
 
+    print("\nno tool is defined after mcp.run(), which would never register it")
+    # THE failure this missed. mcp.run() serves forever, so a tool defined below
+    # the __main__ guard is never executed and never registered -- while a
+    # source-grepping test like this one sees it and passes. On 2026-08-02
+    # exactly that happened: 25 git tools were appended after the guard,
+    # `commands` listed all of them, `mcp_tools` listed none, and it cost two
+    # connector restarts to find. Grepping the source is not enough; the ORDER
+    # is the property that matters.
+    src_order = (MCP / "sotn_cmd_mcp.py").read_text()
+    guard = src_order.find('if __name__ == "__main__":')
+    check(guard != -1, "the __main__ guard exists")
+    after = src_order[guard:]
+    orphans = re.findall(r"@mcp\.tool\(\)\s*\ndef\s+(\w+)", after)
+    check(not orphans,
+          f"no @mcp.tool() is defined after mcp.run() (unreachable: {orphans})")
+    last_tool = src_order.rfind("@mcp.tool()")
+    check(last_tool < guard,
+          "the entry point is the LAST thing in the file")
+
     print("\njob_start forwards the arguments each action needs")
     import inspect as _i
     src_mcp = (MCP / "sotn_cmd_mcp.py").read_text()
