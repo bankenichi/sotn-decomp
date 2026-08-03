@@ -258,7 +258,19 @@ def import_workdir(fn: str, seed_rel: str) -> tuple[Path | None, str]:
     if not seed.is_file():
         return None, f"seed not found: {seed_rel}"
 
-    stub = re.compile(rf'INCLUDE_ASM\("([^"]+)",\s*{re.escape(fn)}\);')
+    # Whitespace-tolerant on BOTH sides of the opening paren and the comma.
+    # clang-format wraps a stub whose name is long enough:
+    #
+    #     INCLUDE_ASM(
+    #         "boss/bo6/nonmatchings/us_3E79C", BO6_RicEntitySubwpnStopwatchCircle);
+    #
+    # A regex requiring `INCLUDE_ASM("` adjacent never matched those, so the
+    # importer reported "no INCLUDE_ASM stub in src/" for a stub that is plainly
+    # there. Six stubs were invisible this way, all in src/boss/bo6/us_3E79C.c
+    # and all with names long enough to trigger the wrap -- which is why the
+    # affected set looked arbitrary rather than like a formatting artefact.
+    stub = re.compile(
+        rf'INCLUDE_ASM\(\s*"([^"]+)"\s*,\s*{re.escape(fn)}\s*\)\s*;')
     target = None
     for p in (REPO / "src").rglob("*.c"):
         text = p.read_text(errors="ignore")
@@ -868,6 +880,28 @@ def self_test() -> int:
        "seed")
     ck(body.index("promote(work)") < body.index("start_job"),
        "and it promotes BEFORE the job starts, not after")
+
+    print("\nwrapped INCLUDE_ASM stubs are found")
+    # Against the REAL tree: this is a formatting artefact, so a fixture would
+    # not rot the way the source does.
+    real = REPO / "src" / "boss" / "bo6" / "us_3E79C.c"
+    if real.is_file():
+        txt = real.read_text(errors="ignore")
+        wrapped_fn = "BO6_RicEntitySubwpnStopwatchCircle"
+        rx = re.compile(
+            rf'INCLUDE_ASM\(\s*"([^"]+)"\s*,\s*{re.escape(wrapped_fn)}\s*\)\s*;')
+        m = rx.search(txt)
+        ck(m is not None,
+           f"a stub wrapped across two lines by clang-format is matched")
+        ck(bool(m) and m.group(1) == "boss/bo6/nonmatchings/us_3E79C",
+           "and its asm path is captured correctly")
+        tight = re.compile(
+            rf'INCLUDE_ASM\("([^"]+)",\s*{re.escape(wrapped_fn)}\);')
+        ck(tight.search(txt) is None,
+           "while the old adjacent-paren regex does NOT match it, which is the "
+           "bug this guards")
+    else:
+        print("  ~~ src/boss/bo6/us_3E79C.c missing; wrap check skipped")
 
     print("\nthe loop can terminate: outcomes are written back to the queue")
     src_sup = Path(__file__).read_text()
