@@ -120,7 +120,18 @@ it. Everything downstream inherits that blind spot.
 **Done when:** `queue_stats` totals match the index, and RCHI/RDAI functions
 appear in `queue_list`.
 
-## P2 — Run the permuter against the escalated pool  *(open)*
+## P2 — Run the permuter against the escalated pool  *(open, but mis-scoped)*
+
+**The premise is wrong, measured 2026-08-03.** The permuter needs an
+ALREADY-COMPILING function, and `escalated` is mostly code that does not
+compile. The records that actually suit it are `near`, and there are now 4
+saved seeds in `automation/candidates/` (only one of which has been imported).
+Re-read this entry as "run the permuter against the NEAR pool".
+
+First real run: 16,630 iterations on `func_us_8019AA04`, 0 errors, score floor
+1720 never beaten. No match. The permuter mutates expressions and cannot
+restructure control flow, so a persistent floor suggests the seed is the wrong
+shape rather than nearly right.
 
 **The pool is now 12, not 34** (2026-08-02): 11 records were requeued as false
 escalations — nine quoting build failures in overlays they never touched, two
@@ -448,7 +459,34 @@ Two things it found immediately, both about the harness rather than the game:
   `4ea14c8B54B8526e...`. A case-sensitive hash compare reported CHI as failing
   while `shasum -c` and `verify_build` both passed it. Casefold both sides.
 
-**Still open from this entry:** tier 2/3 consumers for `escalated` (item 2).
+**RESOLVED 2026-08-03: tier 2 exists.** `automation/escalation_triage.py`
+(39 self-tests) reads the escalated pool, classifies it, and resolves what is
+mechanical. The pool was never homogeneous; it splits five ways with five
+different correct actions:
+
+| class | what it means | action |
+|---|---|---|
+| `harness` | the harness could not do its job | fix it, requeue |
+| `nocode` | no candidate was produced at all | requeue, free |
+| `c89` | declaration after a statement under GCC 2.7 | move declarations up |
+| `symbol` | an identifier the model invented | resolve, then requeue |
+| `real` | a genuine decompilation problem | a human or a strong model |
+
+On the live pool that was **11 of 18 needing no model call**, and applying it
+took escalated from 18 to 6 in one pass, with `BO6_CheckHighJumpInput` matching
+outright.
+
+Two rules the tool enforces, both learned by getting them wrong first:
+
+- **A symbol that EXISTS elsewhere is a missing declaration, never a rename.**
+  `RIC_step` is declared in `us_39144.c`; the rename to `RIC.step` that the tool
+  and a subagent both first proposed would have compiled and produced different
+  code.
+- **A declaration in another overlay is not evidence.** Raw `D_us_` names are
+  overlay-local, so the same spelling in `rbo5` is a different object.
+
+Tier 3 (an automated consumer for what is left) is still open, but the residue
+is now 6 records rather than 18, and each carries a named reason.
 
 ### 2026-08-02 result: four stems shimmed, 7 functions matched
 
