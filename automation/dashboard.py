@@ -298,7 +298,8 @@ def snapshot() -> dict:
 # else is rejected before an action is called.
 ACTION_PARAMS: dict[str, dict[str, tuple[int, int]]] = {
     "permuter_start": {"slots": (1, 8), "threads": (1, 16),
-                       "stall": (500, 50000), "cycles": (1, 8)},
+                       "stall": (500, 50000), "cycles": (1, 8),
+                       "max_iters": (1000, 500000)},
     "fleet_cli_start": {"workers": (1, 8)},
     "fleet_llama_start": {"workers": (1, 8)},
 }
@@ -362,8 +363,8 @@ def _sup(*args: str) -> dict:
 SUP_LOG = Path(os.path.expanduser("~/sotn-work/supervisor.log"))
 
 
-def _sup_start(slots: int = 3, threads: int = 4,
-               stall: int = 2500, cycles: int = 4) -> dict:
+def _sup_start(slots: int = 3, threads: int = 4, stall: int = 2500,
+               cycles: int = 4, max_iters: int = 50000) -> dict:
     """Start the supervisor detached, then CHECK it actually survived.
 
     The first version sent output to DEVNULL and returned {"ok": True}
@@ -382,7 +383,8 @@ def _sup_start(slots: int = 3, threads: int = 4,
     proc = subprocess.Popen(
         [py, str(REPO / "automation" / "permuter_supervisor.py"), "--run",
          "--slots", str(slots), "--threads", str(threads),
-         "--stall", str(stall), "--cycles", str(cycles)],
+         "--stall", str(stall), "--cycles", str(cycles),
+         "--max-iters", str(max_iters)],
         cwd=str(REPO), stdout=logf, stderr=subprocess.STDOUT,
         start_new_session=True)
     # Long enough for an immediate failure or an empty candidate list to show,
@@ -685,6 +687,7 @@ pre{margin:0;padding:8px 10px;flex:1 1 auto;min-height:0;overflow:auto;font-size
       <label>threads <input id=p_threads type=number value=4 min=1 max=16></label>
       <label>stall <input id=p_stall type=number value=2500 min=500 max=50000 step=500></label>
       <label>cycles <input id=p_cycles type=number value=4 min=1 max=8></label>
+      <label>max it <input id=p_maxit type=number value=50000 min=1000 max=500000 step=5000></label>
       <button onclick="act('permuter_plan')">plan</button>
       <button onclick="act('permuter_start',permParams())">start</button>
       <button class=danger onclick="confirmAct('permuter_stop','Stop all permuter jobs?')">stop</button>
@@ -749,7 +752,8 @@ function fleetParams(){
 }
 function permParams(){return{slots:+el('p_slots').value,
   threads:+el('p_threads').value,stall:+el('p_stall').value,
-  cycles:+el('p_cycles').value};}
+  cycles:+el('p_cycles').value,
+  max_iters:+el('p_maxit').value};}
 
 async function act(name,params){
   // Buttons disable while in flight so a double click cannot start two fleets.

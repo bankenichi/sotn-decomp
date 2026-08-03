@@ -91,6 +91,12 @@ DEF_SLOTS = 3
 DEF_THREADS = 4
 DEF_STALL = 2500
 DEF_CYCLES = 4
+# Hard ceiling per job. There was NO such cap before, which is why a run reached
+# 170,002 iterations: the stall check was the only brake and it was broken (see
+# read_log). A cap is a second, independent brake that does not depend on
+# parsing anything correctly -- the one number the supervisor can always trust
+# is how far the run has gone.
+DEF_MAX_ITERS = 50000
 POLL_S = 20
 
 
@@ -316,11 +322,33 @@ def promote(work: Path) -> str:
     return (r.stdout or r.stderr).strip()
 
 
+JOBS_DIR = Path(os.path.expanduser(
+    os.environ.get("SOTN_JOBS_DIR", "~/sotn-work/jobs")))
+
+
 def read_log(job_id: str) -> dict:
+    """Parse a job's log, whether or not the job has finished.
+
+    The log path is CONSTRUCTED, not read out of jobs.status(). status() only
+    includes a "log" key once the job is done (jobs.py, the state == "done"
+    branch); a running job's response has no such key. read_log used to do
+    st.get("log", ""), so for every RUNNING job it got "", found no file, and
+    returned the zero fallback -- since_improvement = 0, forever.
+
+    The effect was that the supervisor could never see a stall on a live job.
+    It never cycled, never promoted, never retired, and only ever reacted when
+    a job ended by itself. Two jobs sat stalled for 20,907 and 32,059
+    iterations with the supervisor polling them every 20 seconds and reading
+    zeros each time.
+
+    The dashboard had it right all along -- it builds JOBS_DIR / f"{jid}.log"
+    directly, which is why its panels showed live scores the supervisor was
+    blind to. That disagreement was the evidence.
+    """
     from permuter_stall import parse
     jobs = _jobs()
     st = jobs.status(job_id, wait_s=0, tail_lines=1)
-    log = Path(st.get("log", ""))
+    log = Path(st.get("log") or (JOBS_DIR / f"{job_id}.log"))
     if not log.is_file():
         return {"state": st.get("state", "?"), "best": None,
                 "iterations": 0, "since_improvement": 0, "failures": 0}
@@ -359,11 +387,12 @@ def already_busy() -> list[str]:
 
 
 def supervise(slots: int, threads: int, stall: int, cycles: int,
-              statuses: tuple[str, ...], once: bool = False) -> int:
+              statuses: tuple[str, ...], once: bool = False,
+              max_iters: int = DEF_MAX_ITERS) -> int:
     jobs = _jobs()
     _register_pid()
     _CFG.update({"stall": stall, "slots": slots, "threads": threads,
-                 "cycles": cycles})
+                 "cycles": cycles, "max_iters": max_iters})
     all_c = candidates(statuses)
     busy = already_busy()
     for c in all_c:
@@ -452,6 +481,17 @@ def supervise(slots: int, threads: int, stall: int, cycles: int,
 
             if d["state"] not in ("running",):
                 slot["result"] = f"job ended ({d['state']}), best {d['best']}"
+                done.append(slot)
+                del active[jid]
+                continue
+
+            if d["iterations"] >= max_iters:
+                jobs.cancel(jid)
+                promote(work)
+                slot["result"] = (f"hit the {max_iters}-iteration cap at "
+                                  f"best {d['best']}")
+                print(f"[cap] {fn}: {slot['result']}. Best output is promoted "
+                      f"and kept; re-derive from the asm to go further.")
                 done.append(slot)
                 del active[jid]
                 continue
@@ -770,6 +810,45 @@ def self_test() -> int:
     ck(body.index("promote(work)") < body.index("start_job"),
        "and it promotes BEFORE the job starts, not after")
 
+    print("\nread_log works for a RUNNING job, not just a finished one")
+    # The bug this guards: jobs.status() only includes a "log" key once the job
+    # is done, so relying on it made the supervisor blind to every live job.
+    import tempfile as _tf, types as _ty
+    with _tf.TemporaryDirectory() as td:
+        global JOBS_DIR
+        old_jd = JOBS_DIR
+        JOBS_DIR = Path(td)
+        (JOBS_DIR / "permuter-1-2-fn_x.log").write_text(
+            "\n".join(f"iteration {i}, 0 errors, score = "
+                       f"{900 if i < 100 else 400}" for i in range(1, 6001)))
+        fake = _ty.SimpleNamespace(
+            # exactly what jobs.status() returns while RUNNING: no "log" key
+            status=lambda j, wait_s=0, tail_lines=1: {"state": "running"},
+            running_jobs=lambda a: [])
+        real = globals()["_jobs"]
+        globals()["_jobs"] = lambda: fake
+        d = read_log("permuter-1-2-fn_x")
+        ck(d["best"] == 400,
+           f"a running job's score is read ({d['best']}), not defaulted to None")
+        ck(d["since_improvement"] > 5000,
+           f"and its stall is measurable ({d['since_improvement']}), which is "
+           f"what lets the supervisor act on a live job")
+        globals()["_jobs"] = real
+        JOBS_DIR = old_jd
+
+    print("\nan iteration cap exists as a second, independent brake")
+    src_sup = Path(__file__).read_text()
+    ck("DEF_MAX_ITERS" in src_sup and "max_iters" in src_sup,
+       "there is a hard per-job iteration ceiling")
+    ck(DEF_MAX_ITERS <= 50000,
+       f"and it is not so high as to be theoretical ({DEF_MAX_ITERS})")
+    i = src_sup.index("def supervise")
+    sup_body = src_sup[i:src_sup.index("\ndef ", i + 1)]
+    ck(sup_body.index('d["iterations"] >= max_iters')
+       < sup_body.index('d["since_improvement"] >= stall'),
+       "the cap is checked BEFORE the stall rule, so a job cannot outrun it "
+       "by appearing to still improve")
+
     print("\nsupervisor discovery does not depend on the pidfile")
     src_sup = Path(__file__).read_text()
     i = src_sup.index("def _supervisor_pids")
@@ -819,6 +898,8 @@ def main() -> int:
     ap.add_argument("--threads", type=int, default=DEF_THREADS)
     ap.add_argument("--stall", type=int, default=DEF_STALL)
     ap.add_argument("--cycles", type=int, default=DEF_CYCLES)
+    ap.add_argument("--max-iters", type=int, default=DEF_MAX_ITERS,
+                    help="hard per-job iteration ceiling")
     ap.add_argument("--status-filter", default="near",
                     help="comma-separated queue statuses to draw from")
     a = ap.parse_args()
@@ -867,7 +948,8 @@ def main() -> int:
         return 0
 
     if a.run:
-        return supervise(a.slots, a.threads, a.stall, a.cycles, statuses)
+        return supervise(a.slots, a.threads, a.stall, a.cycles, statuses,
+                         max_iters=a.max_iters)
 
     ap.error("pass one of --plan, --run, --status, --stop, --self-test")
 
