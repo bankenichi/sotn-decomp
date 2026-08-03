@@ -470,10 +470,30 @@ DEFER_SHIMMABLE = "SHIM_INSTEAD_OF_GENERATE"
 # char prompts). Against the shared 900s budget that left 191s per attempt, so
 # attempts were timing out roughly as often as they finished.
 #
-# 1800s keeps four real attempts on the cli backend (~382s each). Raise it
-# rather than cutting MAX_ATTEMPTS: retries are the only consumer of asm-differ
-# feedback, so trading them away makes every attempt a blind first attempt.
-_DEFAULT_FUNC_BUDGET = "1800" if MODEL_BACKEND == "cli" else "900"
+# 1800s was chosen in July to keep four real attempts of ~382s each. Measured
+# again on 2026-08-03 over 108 cli calls, that ceiling is far too generous:
+#
+#   productive calls   n=24   median  70s   p75 122s   p90 249s   max 374s
+#   dead calls         n=84   median 347s   p90 382s   max 382s
+#
+# Productive work finishes FAST and dead work runs the clock out. Almost every
+# dead call sat at the 382s ceiling, so the ceiling was buying nothing but the
+# right to wait. Simulating tighter caps over those same calls:
+#
+#   180s -> loses  4/24 good calls, saves 165m of dead time
+#   240s -> loses  4/24 good calls, saves 109m
+#   300s -> loses  2/24 good calls, saves  58m
+#
+# 900s here gives ~191s per attempt, which covers p75 of productive calls and
+# cuts roughly 160 of the 375 wasted minutes. The good calls it does cut are
+# not lost work: a function with no candidate is requeued to `todo` and retried
+# later, so the cost is a retry rather than a function.
+#
+# Raise FUNC_BUDGET rather than cutting MAX_ATTEMPTS: retries are the only
+# consumer of asm-differ feedback, so trading them away makes every attempt a
+# blind first attempt.
+_DEFAULT_FUNC_BUDGET = os.environ.get(
+    "FUNC_BUDGET", "900" if MODEL_BACKEND == "cli" else "900")
 FUNC_BUDGET = float(os.environ.get("FUNC_BUDGET", _DEFAULT_FUNC_BUDGET))
 # Per-ATTEMPT ceiling, derived from the function budget so the retries actually
 # happen. Without it a single attempt consumed the whole 900s (observed

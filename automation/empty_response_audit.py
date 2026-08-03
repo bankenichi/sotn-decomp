@@ -157,6 +157,40 @@ def by_prompt_size(calls: list) -> None:
           "correlation here means something new.")
 
 
+def timing(calls: list) -> None:
+    """How long a call takes, split by whether it produced anything.
+
+    This is the number a timeout should be set from. The two populations are
+    almost disjoint: productive work finishes fast, dead work runs the clock
+    out, so a cap placed between them costs little and saves a lot.
+    """
+    import statistics as stat
+    prod = sorted(c["secs"] for c in calls if c["outcome"] == "produced")
+    dead = sorted(c["secs"] for c in calls
+                  if c["outcome"] in ("empty", "timeout"))
+    if not prod or not dead:
+        print("\nnot enough completed calls to time")
+        return
+
+    def pct(v, p):
+        return v[min(len(v) - 1, int(len(v) * p))]
+
+    print(f"\n{'':10} {'n':>4} {'min':>6} {'median':>7} {'p75':>6} "
+          f"{'p90':>6} {'max':>6}")
+    for name, v in (("produced", prod), ("dead", dead)):
+        print(f"{name:10} {len(v):4d} {min(v):5d}s {int(stat.median(v)):6d}s "
+              f"{pct(v, .75):5d}s {pct(v, .90):5d}s {max(v):5d}s")
+
+    print("\nwhat a tighter per-attempt cap would cost and save")
+    print(f"{'cap':>6} {'good calls lost':>17} {'dead time saved':>17}")
+    for cap in (60, 90, 120, 150, 180, 240, 300, 382):
+        lost = sum(1 for x in prod if x > cap)
+        saved = sum(max(0, x - cap) for x in dead) / 60.0
+        print(f"{cap:5d}s {lost:8d}/{len(prod):<8} {saved:15.1f}m")
+    print("\nA cut good call is not a lost function: with no candidate the "
+          "record is requeued to `todo` and retried, so the cost is a retry.")
+
+
 def self_test() -> int:
     import tempfile
     fails = []
@@ -221,6 +255,9 @@ def main() -> int:
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--by-prompt-size", action="store_true")
+    ap.add_argument("--timing", action="store_true",
+                    help="duration split by productive vs dead, and what a "
+                         "tighter cap would cost")
     ap.add_argument("--self-test", action="store_true")
     a = ap.parse_args()
     if a.self_test:
@@ -230,6 +267,8 @@ def main() -> int:
     report(stats, calls, requeues, len(paths))
     if a.by_prompt_size:
         by_prompt_size(calls)
+    if a.timing:
+        timing(calls)
     return 0
 
 

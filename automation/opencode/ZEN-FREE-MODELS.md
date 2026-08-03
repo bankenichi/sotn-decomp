@@ -18,6 +18,60 @@ Two things WERE missing and have been added:
   retries on 429 and 5xx with linear backoff, honouring `Retry-After`.
   Tunable via `RATE_LIMIT_RETRIES` (default 5) and `RATE_LIMIT_BACKOFF` (default 20s).
 
+## RETRACTION 2026-08-03: three "do not use" verdicts were wrong
+
+`empty_response_audit.py` over 20 logs and 123 calls, with logs now archived
+rather than deleted:
+
+| model | calls | empty | timeout | ok | dead% |
+|---|---|---|---|---|---|
+| ling-3.0-flash-free | 32 | 20 | 0 | **10** | 62% |
+| mimo-v2.5-free | 29 | 12 | 7 | 7 | 66% |
+| nemotron-3-ultra-free | 25 | 2 | 16 | 4 | 72% |
+| north-mini-code-free | 19 | 3 | 9 | **2** | 63% |
+| deepseek-v4-flash-free | 10 | 5 | 4 | **0** | 90% |
+| laguna-s-2.1-free | 8 | 0 | 6 | **1** | 75% |
+
+**`ling-3.0-flash-free` is the best model measured**, not a do-not-use model.
+Ten real generations, zero timeouts, and the fastest productive median at 68s.
+This file called it "New 2026-08; rc=0 with 0 chars" on the strength of a
+handful of calls. `laguna-s-2.1-free` and `north-mini-code-free` also produce C.
+
+Meanwhile **`deepseek-v4-flash-free`, the model this file tells you to run, is
+the worst in the set**: 10 calls, zero successes, 90% dead.
+
+That is now three model verdicts overturned by counting, all from the same
+mistake: a small sample repeated until it sounded like a fact. The operational
+rule below is left in place as a record but should not be followed; run
+`empty_response_audit.py` and use the table it prints.
+
+## Timing: the real lever is the timeout, not the model
+
+| | n | min | median | p75 | p90 | max |
+|---|---|---|---|---|---|---|
+| produced | 24 | 30s | **70s** | 122s | 249s | 374s |
+| dead | 86 | 48s | **347s** | 382s | 382s | 382s |
+
+The two populations barely overlap. Productive work finishes fast; dead work
+runs the clock out, and almost every dead call sat exactly at the 382s ceiling.
+
+| cap | good calls lost | dead time saved |
+|---|---|---|
+| 120s | 6/24 | 226m |
+| 180s | 4/24 | 168m |
+| 300s | 2/24 | 59m |
+
+`FUNC_BUDGET` on the cli backend is now **900s** (was 1800s), giving ~191s per
+attempt instead of 382s. That covers p75 of productive calls and removes roughly
+160 of the 383 wasted minutes. A cut good call is not a lost function: a record
+with no candidate is requeued to `todo` and retried, so the cost is a retry.
+
+Refresh all of this with:
+
+```
+run_analysis(script="empty_response_audit.py", args="--timing --by-prompt-size")
+```
+
 ## Measured waste, 2026-08-03
 
 Run `python3 automation/empty_response_audit.py --by-prompt-size` to refresh.

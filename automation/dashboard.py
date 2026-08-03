@@ -82,25 +82,25 @@ os.environ.setdefault("SOTN_PYTHON", sys.executable)
 # free-text model id. The action registry takes integers only, so a request can
 # pick one of these and nothing else -- no arbitrary string reaches an argv.
 #
-# EVERY model `opencode models opencode` lists, so any of them can be retested.
+# Labels carry MEASURED dead-rate from empty_response_audit.py, not folklore.
+# Refresh them by re-running it; do not hand-edit from memory.
 #
-# The three marked (empty) and (broken) are the documented do-not-use set from
-# ZEN-FREE-MODELS.md. They are selectable rather than hidden because the
-# evidence against them is small-sample and this project has already reversed
-# one model verdict: the file's own "Not the model" conclusion was retracted
-# after a proper bake-off. Labelling beats hiding -- you can still pick one on
-# purpose, and the label says what to expect.
-#
-# Order is worst-known last, so the default (index 0) stays a working model.
+# RETRACTION 2026-08-03: ling-3.0-flash-free was labelled "(empty)" here on the
+# strength of ZEN-FREE-MODELS.md calling it a do-not-use model. Over 32 calls it
+# produced 10 real generations at a median of 68s, the FASTEST productive time
+# of any model measured, and zero timeouts. laguna-s-2.1-free also produced C.
+# That is the second time a model verdict in this project has been overturned by
+# actually counting, and both times the wrong verdict came from a small sample
+# repeated as fact. Prefer the number to the label.
 CLI_MODELS = [
-    ("deepseek-v4-flash-free", "opencode/deepseek-v4-flash-free"),
-    ("nemotron-3-ultra-free", "opencode/nemotron-3-ultra-free"),
-    ("mimo-v2.5-free", "opencode/mimo-v2.5-free"),
-    ("big-pickle (empty)", "opencode/big-pickle"),
-    ("hy3-free (broken)", "opencode/hy3-free"),
-    ("north-mini-code-free (roleplay)", "opencode/north-mini-code-free"),
-    ("ling-3.0-flash-free (empty)", "opencode/ling-3.0-flash-free"),
-    ("laguna-s-2.1-free (empty)", "opencode/laguna-s-2.1-free"),
+    ("ling-3.0-flash-free  62% dead, 68s med", "opencode/ling-3.0-flash-free"),
+    ("north-mini-code-free  63% dead", "opencode/north-mini-code-free"),
+    ("mimo-v2.5-free  66% dead", "opencode/mimo-v2.5-free"),
+    ("nemotron-3-ultra-free  72% dead", "opencode/nemotron-3-ultra-free"),
+    ("laguna-s-2.1-free  75% dead, thin data", "opencode/laguna-s-2.1-free"),
+    ("deepseek-v4-flash-free  90% dead", "opencode/deepseek-v4-flash-free"),
+    ("big-pickle  untested recently", "opencode/big-pickle"),
+    ("hy3-free  untested recently", "opencode/hy3-free"),
 ]
 
 TOKEN = secrets.token_urlsafe(16)
@@ -935,10 +935,11 @@ def self_test() -> int:
     ck(len(CLI_MODELS) == 8, f"every Zen model is selectable ({len(CLI_MODELS)})")
     ck(all("," not in m for _, m in CLI_MODELS),
        "each entry is ONE model; mixing is now per-worker, not a preset")
-    ck("(empty)" in CLI_MODELS[3][0] or "(broken)" in CLI_MODELS[4][0],
-       "known-bad models are labelled rather than hidden")
-    ck(all(x not in CLI_MODELS[0][0] for x in ("empty", "broken", "roleplay")),
-       "index 0, the default, is a working model")
+    ck(any("% dead" in n for n, _ in CLI_MODELS),
+       "labels carry a measured dead-rate rather than a folklore verdict")
+    ck("ling-3.0-flash-free" in CLI_MODELS[0][0],
+       "the default is the model with the best measured record, not the one "
+       "an out-of-date doc recommends")
     ck("renderWorkerRows" in PAGE and "class=wmodel" in PAGE,
        "the page renders one model row per worker")
     ck("best ever" in PAGE,
