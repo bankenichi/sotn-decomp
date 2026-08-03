@@ -311,6 +311,23 @@ def read_escalated() -> list[dict]:
     return out
 
 
+def _overlay_of(path_or_id: str) -> str:
+    """The overlay a queue id or a repo path belongs to, lowercased."""
+    t = path_or_id.lower().replace("\\", "/")
+    m = re.search(r"src/(?:st|boss|servant)/([a-z0-9_]+)/", t)
+    if m:
+        return m.group(1)
+    m = re.search(r"us:(?:st|boss|servant)/([a-z0-9_]+):", t)
+    if m:
+        return m.group(1)
+    return ""
+
+
+def _cross_overlay(rec_id: str, decl_path: str) -> bool:
+    a, b = _overlay_of(rec_id), _overlay_of(decl_path)
+    return bool(a and b and a != b)
+
+
 def triage(records: list[dict]) -> list[dict]:
     known = known_objects()
     members = struct_members()
@@ -338,6 +355,22 @@ def triage(records: list[dict]) -> list[dict]:
             # failure this whole pipeline exists to avoid: plausible beats
             # verified right up until the bytes disagree.
             where = declared_at(b)
+            # A declaration in ANOTHER overlay is not evidence.
+            #
+            # Overlays have separate address spaces, so a raw-address name like
+            # D_us_8018206C means a different object in rbo5 than it does in
+            # rno0. The first live run proposed exactly that: it told an rno0
+            # record to adopt a declaration from src/boss/rbo5/. Following it
+            # would have bound the function to an unrelated address.
+            #
+            # Same-overlay hits stay trustworthy: RIC_step in bo6 pointing at
+            # another bo6 file is the real missing-declaration case.
+            if where and _cross_overlay(rec["id"], where):
+                unknowns.append(
+                    f"{b} (only declared in another overlay at {where}; "
+                    f"raw-address names are overlay-local, so this is NOT the "
+                    f"same object -- resolve it from this overlay's asm)")
+                continue
             if where:
                 fixes.append({
                     "invented": b,
@@ -425,6 +458,18 @@ def self_test() -> int:
        "RIC_step is declared somewhere in the tree (it is real)")
     ck(declared_at("totally_made_up_identifier_xyz") is None,
        "an invented name is declared nowhere")
+
+    print("\na declaration in another overlay is not evidence")
+    ck(_cross_overlay("us:ST/RNO0:EntityBladeSoldierDeathParts",
+                      "src/boss/rbo5/unk_4648C.c:3976"),
+       "rno0 record vs an rbo5 declaration is cross-overlay")
+    ck(not _cross_overlay("us:BOSS/BO6:BO6_CheckHighJumpInput",
+                          "src/boss/bo6/us_39144.c:15"),
+       "bo6 record vs a bo6 declaration is NOT cross-overlay")
+    ck(not _cross_overlay("us:ST/RNO0:func_801C7884", "src/st/e_collect.h:12"),
+       "a shared src/st header belongs to no overlay, so it is not cross")
+    ck(_overlay_of("src/st/rno0/e_misc.c") == "rno0", "overlay parsed from path")
+    ck(_overlay_of("us:BOSS/BO0:func_x") == "bo0", "overlay parsed from queue id")
 
     print("\nC89 declaration-after-statement is not a field-name problem")
     c89 = ("BUILD FAILED: us_3E79C.c:1070: parse error before `swapTarget' "
