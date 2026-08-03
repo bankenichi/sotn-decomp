@@ -425,6 +425,12 @@ def self_test() -> int:
         ck(len(candidates(check_tree=False)) == 1,
            "one good record survives a garbage line")
 
+    print("\nlong-running output must not be block-buffered")
+    src = Path(__file__).read_text()
+    ck("line_buffering=True" in src,
+       "stdout is line-buffered, so the job log fills as the run proceeds "
+       "rather than all at once when it exits")
+
     print("\ndefaults are the measured ones")
     ck(DEF_THREADS > 1, "threads default is not 1 (the library default is)")
     ck(DEF_SLOTS < 4, "slots leave headroom for the exclusive build")
@@ -456,6 +462,16 @@ def main() -> int:
     ap.add_argument("--status-filter", default="near",
                     help="comma-separated queue statuses to draw from")
     a = ap.parse_args()
+
+    # Line-buffer stdout. This process runs for hours with its output
+    # redirected to a job log, and Python block-buffers whenever stdout is not
+    # a tty: without this the log stays EMPTY until the run ends, which is
+    # precisely when you no longer need to watch it. The same bug bit
+    # dashboard.py's startup banner an hour earlier.
+    try:
+        sys.stdout.reconfigure(line_buffering=True)
+    except (AttributeError, ValueError):     # pragma: no cover
+        pass
 
     if a.self_test:
         return self_test()
