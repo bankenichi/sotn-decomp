@@ -1,6 +1,6 @@
 # Roadmap
 
-State as of 2026-08-01. Companion to `ORCHESTRATOR.md` (how to dispatch) and
+State as of 2026-08-02. Companion to `ORCHESTRATOR.md` (how to dispatch) and
 `MATCHING-LESSONS.md` (what has already gone wrong and why).
 
 This fork is not preparing a pull request. Upstream has been offered the fork to
@@ -16,29 +16,35 @@ impossible twice.
 |---|---|
 | Oracle | **81/81** (was 77/77 before the upstream merge added RCHI and RDAI) |
 | Baseline | merged to `upstream/master` @ `f6bfa379`, 2026-08-01 |
-| Queue | 134 matched, 34 escalated, 27 deferred, 243 todo |
+| Queue | **181 matched**, 12 escalated, 27 deferred, 249 todo (470 total) |
 | Index sees | 370 unmatched US functions, data symbols excluded |
-| Our private impls in rno0 | 9 found, 2 resolved, 7 blocked on splat config |
+| Our private impls in rno0 | 9 found, **8 resolved**; only `e_breakable` left, and it is a code variant not a config gap |
 | Manual review | all 142 defined functions read, 2026-08-01; 15 defects fixed |
-| Provenance | 124 authored; 79 (64%) are copies, 74 shimmable, 4 should become shared headers |
-| Twins | 174 of 335 unmatched stubs have a candidate already in the tree; 145 by name |
+| Provenance | 60 authored; verbatim down from ~51% to **28.3%** — the duplicates were deleted by shimming, not annotated |
+| Twins | **152 of 307** unmatched stubs have a candidate; 120 by name (corpus regenerated 2026-08-02 after a key collision had frozen it since `c614af465`) |
 | Twin audit | 30321 matched pairs cross-checked; 10 of ours are private copies of shared code |
 
-The queue and the index disagree (304 vs 370) because upstream's merge added 32
-unmatched functions in RCHI and RDAI that the queue has never seen. Reconciling
-that is P1 below.
+The queue and the index count DIFFERENT POPULATIONS and are supposed to
+disagree: the index counts what upstream has not matched, the queue counts our
+work. P1 below records why treating that gap as a defect was the wrong premise.
 
 ### Where the remaining work is
 
+Measured from the tree on 2026-08-02, ports excluded — **286 stubs**:
+
 ```
-ST/RNO0  115    BOSS/BO6  98    BOSS/BO0  66    MAIN   2
-ST/RCEN   19    ST/RDAI   18    ST/RCHI   14    ST/MAD 3
+BOSS/BO6  90    ST/RNO0  70    BOSS/BO0  65
+ST/RCEN   20    ST/RDAI  18    ST/RCHI   14
+ST/MAD     3    SERVANT/FNAME 3   ST/SEL 1   MAIN 2
 ```
 
-These are SEED counts, i.e. what was queued, and they drift as work lands. The
-`MAIN 36` here read 36 until 2026-08-02 when the audit measured 2 actual
-`INCLUDE_ASM` stubs under `src/main`; corrected. Re-derive from the tree rather
-than trusting this block:
+BO6 is now the largest single pool, and it is also the most tractable: 16 of its
+stubs have a named `src/ric` twin recorded in the queue. See P2b.
+
+The block above is now measured from the tree rather than from the seed file,
+which is the right source: seed counts drift as work lands, and the `MAIN` row
+read 36 until an audit found 2 actual `INCLUDE_ASM` stubs under `src/main`.
+Re-derive rather than trusting any figure here:
 
 ```
 grep -rc INCLUDE_ASM src/<area>/*.c
@@ -114,7 +120,13 @@ it. Everything downstream inherits that blind spot.
 **Done when:** `queue_stats` totals match the index, and RCHI/RDAI functions
 appear in `queue_list`.
 
-## P2 — Run the permuter against the 34 escalated
+## P2 — Run the permuter against the escalated pool  *(open)*
+
+**The pool is now 12, not 34** (2026-08-02): 11 records were requeued as false
+escalations — nine quoting build failures in overlays they never touched, two
+claiming a missing `INCLUDE_ASM` that clang-format had merely wrapped onto two
+lines. The worker now reports `BUILD DIRTY` rather than escalating when no
+diagnostic names its own overlay, so the pool should stay honest from here.
 
 **Why:** the permuter is free, it has never been run against this pool, and
 escalated records are by definition the ones that got close. Spending model
@@ -483,6 +495,26 @@ e_misc 14   collision 2   st_update 2   e_medusa_head 2
 e_collect 1   e_particles 1   e_room_fg 1        = 23 stubs
 ```
 
+**CLOSED 2026-08-02: six of the seven are shimmed, 22 of the 23 stubs matched.**
+`collision`, `st_update`, `e_medusa_head`, `e_particles`, `e_misc` and
+`e_room_fg` are all done, each at 81/81 with 0 shifted symbols.
+
+Two of them were not actually blocked on a segment, which is worth recording
+because the diagnosis was confidently wrong both times:
+
+- `e_room_fg` needed **no header change and no new measurement** — its data
+  simply began 0x14 earlier than recorded, at an address this config already
+  carried as raw `data`. The recorded slot had been measured from the first
+  symbol its code NAMES rather than the first thing the FILE emits.
+- `e_misc` needed a one-line addition to an *existing* conditional. The note
+  claiming no variant could produce rno0's 0xB4 was refuted by `cat` and `lib`,
+  both of which produce exactly that and both of which plain-shim the header.
+
+`e_collect` is the one left, and it is no longer a data problem: rno0's
+`EntityRelicOrb` is a different code variant. Copying the shared body left the
+overlay 0x94 short, and at +290 instructions the original loads from
+`D_us_8018195C` where the shared body materialises the constant `0xBFF`.
+
 This is what P3b originally meant by "unblocks five of the seven remaining
 private implementations". The `e_red_door` work resolved the first of them and,
 more usefully, established the method: locate the `static` array by its
@@ -610,7 +642,12 @@ only valid when BSS_START itself is wrong. Here BSS_START was correct and the
 growth was *inside* bss, so the message pointed at the wrong section. The check
 should say so; see the follow-up task.
 
-**Not a clean rename, which is why it is still open.** rno0's trailing region is
+**RESOLVED 2026-08-02** — the carve below was done and the config now reads
+`[0x54B44, bss]` (0x8: `D_us_801D4B44` + `g_Statues`) followed by
+`[0x54B4C, .bss, st_update]` (0x40). 81/81, 0 shifted symbols. The original
+concern, kept because the reasoning is the reusable part:
+
+**Not a clean rename.** rno0's trailing region is
 0x48 while the shim emits 0x40, and `g_Statues` sits at `0x801D4B48`, four bytes
 into it. So st_update's storage cannot simply take that region; the 0x40 has to
 be carved from the right place, most likely out of the `STATIC_PAD_BSS(0xC00)`
