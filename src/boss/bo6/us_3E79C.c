@@ -1144,7 +1144,43 @@ void func_us_801CA340(Entity* self) {
 
 INCLUDE_ASM("boss/bo6/nonmatchings/us_3E79C", BO6_GetAguneaLightningAngle);
 
-INCLUDE_ASM("boss/bo6/nonmatchings/us_3E79C", BO6_AguneaShuffleParams);
+// Richter (BO6): Fisher-Yates shuffle of the Agunea lightning parameter array,
+// walking DOWNWARD from the last element and swapping each with a uniformly
+// chosen index. `rand() % bufSize` samples the whole array rather than the
+// unshuffled prefix, so this is the biased variant, which is what the assembly
+// does and not something to "fix".
+//
+// SHAPE WARNING, same class as func_us_801BC3E0 and func_us_801C488C.
+// new_var/new_var2/new_var3 pin which pointers live in which registers across
+// the rand() call, and `buf - (-i)` is not the same to GCC 2.7 as `buf + i`.
+// This exact body scores 0; it was reached by promoting the seed to a
+// score-10 base and letting the supervisor search from there. Re-check any
+// tidying with:
+//     python3 automation/permuter_promote.py --dir nonmatchings/BO6_AguneaShuffleParams
+void BO6_AguneaShuffleParams(s32 bufSize, s32* buf) {
+    s32* new_var2;
+    s32* new_var3;
+    s32* new_var;
+    s32 i = bufSize - 1;
+
+    if (i > 0) {
+        s32* current = buf - (-i);
+        do {
+            s32 temp;
+            s32* randPtr;
+
+            new_var = &(*current);
+            i--;
+            new_var3 = buf - (-(rand() % bufSize));
+            temp = *new_var;
+            new_var2 = new_var3;
+            randPtr = new_var2;
+            *current = *randPtr;
+            current--;
+            *randPtr = temp;
+        } while (i > 0);
+    }
+}
 
 INCLUDE_ASM("boss/bo6/nonmatchings/us_3E79C", BO6_RicEntityAguneaLightning);
 
