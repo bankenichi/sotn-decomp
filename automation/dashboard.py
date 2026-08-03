@@ -49,6 +49,7 @@ import signal
 import socketserver
 import sys
 import threading
+import time
 import urllib.parse
 from collections import Counter
 from pathlib import Path
@@ -64,6 +65,14 @@ SUPERVISOR_STATE = Path(os.path.expanduser("~/sotn-work/supervisor.json"))
 
 sys.path.insert(0, str(REPO / "automation"))
 sys.path.insert(0, str(REPO / "automation" / "mcp"))
+
+# commands_client fails CLOSED: unset SOTN_CMD_DRYRUN means dry-run, so
+# fleet_start would report what it "would" launch and launch nothing. Pressing
+# a button is an explicit request to run, so opt in -- but only if the operator
+# has not already chosen, so `SOTN_CMD_DRYRUN=1 sotn-dash start` stays a safe
+# preview mode. This MUST happen before commands_client is imported anywhere,
+# because it reads the variable once at import time.
+os.environ.setdefault("SOTN_CMD_DRYRUN", "0")
 
 TOKEN = secrets.token_urlsafe(16)
 TAIL_LINES = 20
@@ -183,7 +192,12 @@ def snapshot() -> dict:
             sup = json.loads(SUPERVISOR_STATE.read_text())
         except (OSError, json.JSONDecodeError):
             sup = {}
-    return {"queue": queue_counts(), "permuter": perm,
+    try:
+        import commands_client as cc
+        dry = bool(cc.DRYRUN)
+    except Exception:
+        dry = None
+    return {"queue": queue_counts(), "permuter": perm, "dryrun": dry,
             "supervisor": sup, "fleet": fleet_panels()}
 
 
@@ -200,16 +214,45 @@ def _sup(*args: str) -> dict:
     return {"ok": r.returncode == 0, "out": (r.stdout or r.stderr)[-4000:]}
 
 
+SUP_LOG = Path(os.path.expanduser("~/sotn-work/supervisor.log"))
+
+
 def _sup_start() -> dict:
+    """Start the supervisor detached, then CHECK it actually survived.
+
+    The first version sent output to DEVNULL and returned {"ok": True}
+    unconditionally. A supervisor that exited immediately -- because there were
+    no runnable candidates, or because it raised on import -- produced exactly
+    the same cheerful message as one that started work, and its reason went to
+    /dev/null. That is the "the button does nothing" bug: it was not doing
+    nothing, it was failing invisibly and reporting success.
+
+    So: keep the output, wait briefly, and report what actually happened.
+    """
     import subprocess
     py = os.environ.get("SOTN_PYTHON", sys.executable)
-    # Detached: the supervisor outlives this request by design, and a request
-    # that waited for it would hold the single-threaded server open for hours.
-    subprocess.Popen(
+    SUP_LOG.parent.mkdir(parents=True, exist_ok=True)
+    logf = open(SUP_LOG, "w")
+    proc = subprocess.Popen(
         [py, str(REPO / "automation" / "permuter_supervisor.py"), "--run"],
-        cwd=str(REPO), stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT,
+        cwd=str(REPO), stdout=logf, stderr=subprocess.STDOUT,
         start_new_session=True)
-    return {"ok": True, "out": "supervisor started (detached)"}
+    # Long enough for an immediate failure or an empty candidate list to show,
+    # short enough not to hold the request open. A healthy supervisor is still
+    # running after this and keeps going.
+    time.sleep(2.5)
+    rc = proc.poll()
+    out = ""
+    try:
+        out = SUP_LOG.read_text(errors="ignore")[-3000:]
+    except OSError:
+        pass
+    if rc is None:
+        return {"ok": True,
+                "out": f"supervisor running (pid {proc.pid})\n{out}".rstrip()}
+    return {"ok": False,
+            "out": (f"supervisor exited immediately with code {rc}. "
+                    f"It did NOT start any jobs.\n{out}").rstrip()}
 
 
 def _fleet(backend: str, n: int):
@@ -384,11 +427,20 @@ button.danger:hover{border-color:var(--bad);color:var(--bad)}
 .chip{background:var(--panel);border:1px solid var(--line);border-radius:999px;
       padding:2px 10px}
 .chip b{color:var(--accent)}
-section{padding:12px 16px}
+/* Two top-level columns: permuter on the left, fleet on the right. Each
+   column scrolls independently so a chatty fleet cannot push the permuter
+   panels off screen, which is the whole reason for splitting them. */
+.split{display:grid;gap:0;grid-template-columns:1fr 1fr;
+       height:calc(100vh - 58px)}
+.split>section{padding:12px 16px;overflow:auto;min-width:0}
+.split>section+section{border-left:1px solid var(--line)}
+@media(max-width:900px){.split{grid-template-columns:1fr;height:auto}
+  .split>section+section{border-left:0;border-top:1px solid var(--line)}}
 h2{font-size:12px;color:var(--dim);margin:0 0 8px;letter-spacing:.1em;
-   text-transform:uppercase}
-.cols{display:grid;gap:12px;
-      grid-template-columns:repeat(auto-fill,minmax(320px,1fr))}
+   text-transform:uppercase;position:sticky;top:0;background:var(--bg);
+   padding:4px 0;z-index:1}
+/* Panels stack vertically inside their column. */
+.cols{display:grid;gap:12px;grid-template-columns:1fr}
 .panel{background:var(--panel);border:1px solid var(--line);border-radius:7px;
        overflow:hidden;display:flex;flex-direction:column}
 .phead{display:flex;justify-content:space-between;gap:8px;padding:7px 10px;
@@ -397,7 +449,7 @@ h2{font-size:12px;color:var(--dim);margin:0 0 8px;letter-spacing:.1em;
 .meta{color:var(--dim);font-size:11px;white-space:nowrap}
 .bar{height:3px;background:var(--line)}
 .bar>i{display:block;height:100%;background:var(--ok)}
-pre{margin:0;padding:8px 10px;max-height:230px;overflow:auto;font-size:11px;
+pre{margin:0;padding:8px 10px;max-height:300px;overflow:auto;font-size:11px;
     color:var(--dim);white-space:pre-wrap;word-break:break-word}
 .ok{color:var(--ok)}.warn{color:var(--warn)}.bad{color:var(--bad)}
 #out{padding:8px 16px;color:var(--dim);border-top:1px solid var(--line);
@@ -415,8 +467,10 @@ pre{margin:0;padding:8px 10px;max-height:230px;overflow:auto;font-size:11px;
   <button onclick="act('fleet_llama_start')">fleet llama</button>
   <button class=danger onclick="confirmAct('fleet_stop','Stop all fleet workers and reclaim their queue records?')">stop fleet</button>
 </header>
-<section><h2>Permuter</h2><div class=cols id=perm></div></section>
-<section><h2>Fleet</h2><div class=cols id=fleet></div></section>
+<div class=split>
+  <section><h2>Permuter</h2><div class=cols id=perm></div></section>
+  <section><h2>Fleet</h2><div class=cols id=fleet></div></section>
+</div>
 <div id=out></div>
 <script>
 const TOKEN="__TOKEN__";
@@ -450,9 +504,11 @@ async function refresh(){
   let s; try{ s=await (await fetch('/api/status')).json(); }catch(e){ return; }
 
   const q=s.queue.by_status||{};
-  el('q').innerHTML = s.queue.error ? `<span class="chip bad">${esc(s.queue.error)}</span>`
+  // A silent dry-run is how the fleet buttons "did nothing" for an afternoon.
+  const dry = s.dryrun ? '<span class="chip bad">DRY RUN &mdash; nothing will actually launch</span>' : '';
+  el('q').innerHTML = dry + (s.queue.error ? `<span class="chip bad">${esc(s.queue.error)}</span>`
     : Object.entries(q).map(([k,v])=>`<span class=chip>${esc(k)} <b>${v}</b></span>`)
-        .join('') + `<span class=chip>total <b>${s.queue.total}</b></span>`;
+        .join('') + `<span class=chip>total <b>${s.queue.total}</b></span>`);
 
   el('perm').innerHTML = s.permuter.length ? s.permuter.map(p=>{
     const cls = p.best===0 ? 'ok' : (p.improving ? '' : 'warn');
@@ -569,6 +625,21 @@ def self_test() -> int:
     ck("__TOKEN__" in PAGE, "page carries a token placeholder")
     ck("f.alive?'alive':'DEAD'" in PAGE,
        "the page renders per-worker alive state")
+    ck("<div class=split>" in PAGE and "grid-template-columns:1fr 1fr" in PAGE,
+       "permuter and fleet are side-by-side columns")
+    ck(PAGE.index("id=perm") < PAGE.index("id=fleet"),
+       "permuter is the left column")
+    ck("s.dryrun ?" in PAGE,
+       "a dry run is announced in the header, never silent")
+
+    print("\ndry run must not be silently on")
+    import commands_client as cc
+    ck(os.environ.get("SOTN_CMD_DRYRUN") == "0",
+       "the dashboard opts in to live mode before importing commands_client")
+    ck(cc.DRYRUN is False,
+       "so commands_client is live, not reporting what it 'would' do")
+    ck(snapshot().get("dryrun") is False,
+       "and /api/status exposes the state so the UI can show it")
     ck("setInterval" in PAGE, "page refreshes itself")
     ck("confirm(" in PAGE, "destructive buttons confirm first")
     ck("b.disabled=true" in PAGE, "buttons disable in flight, so no double-start")

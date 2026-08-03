@@ -24,6 +24,17 @@ cd "$REPO"
 PY="${SOTN_PYTHON:-$REPO/.venv/bin/python}"
 [ -x "$PY" ] || PY="$(command -v python3)"
 
+# commands_client fails CLOSED: with SOTN_CMD_DRYRUN unset it assumes dry-run,
+# so a fleet start reports what it "would" launch and launches nothing. That is
+# the right default for a library that something else might import by accident,
+# and the wrong one here -- typing `runfleet-cli start` is an explicit request
+# to run. So opt in, but only if the caller has not said otherwise, which keeps
+# `SOTN_CMD_DRYRUN=1 runfleet-cli start` usable as a preview.
+#
+# This is why the fleet buttons appeared to do nothing: they succeeded, in
+# dry-run, and said so in a dict nobody reads closely.
+export SOTN_CMD_DRYRUN="${SOTN_CMD_DRYRUN:-0}"
+
 CMD="$(basename "$0")"
 VERB="${1:-}"
 shift || true

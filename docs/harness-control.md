@@ -141,7 +141,12 @@ Single HTML file, stdlib `http.server`, no npm and no build step.
 
 ### Panels
 
-- **Header** live queue counts by status, straight from the scheduler queue
+Two side-by-side columns, permuter left and fleet right, each scrolling
+independently so a chatty fleet cannot push the permuter panels off screen.
+Below 900px they stack.
+
+- **Header** live queue counts by status, plus a red DRY RUN chip if
+  `SOTN_CMD_DRYRUN` is on
 - **Permuter** one column per running job: best score, iteration count,
   rejection count, stalled/improving, and the last 20 log lines
 - **Fleet** one column per worker: its own pid, alive/DEAD, last 20 lines
@@ -162,6 +167,17 @@ claiming otherwise would be inventing one.
 
 Actions: `permuter_start`, `permuter_stop`, `permuter_plan`,
 `fleet_cli_start`, `fleet_llama_start`, `fleet_stop`.
+
+### Dry run
+
+`commands_client` fails **closed**: with `SOTN_CMD_DRYRUN` unset it assumes
+dry-run and returns what it *would* have launched. That is right for a library
+but wrong for a button, so `sotn-run` and `dashboard.py` both set it to `0`
+unless you have chosen otherwise. `SOTN_CMD_DRYRUN=1 sotn-dash start` is
+therefore still a safe preview, and the header says so in red when it is on.
+
+This is exactly why the fleet buttons appeared to do nothing: they succeeded,
+in dry-run, and reported it inside a dict that was easy to skim past.
 
 ### Safeguards
 
