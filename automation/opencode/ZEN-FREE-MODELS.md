@@ -18,6 +18,73 @@ Two things WERE missing and have been added:
   retries on 429 and 5xx with linear backoff, honouring `Retry-After`.
   Tunable via `RATE_LIMIT_RETRIES` (default 5) and `RATE_LIMIT_BACKOFF` (default 20s).
 
+## Measured waste, 2026-08-03
+
+Run `python3 automation/empty_response_audit.py --by-prompt-size` to refresh.
+Over 17 worker logs and 54 model calls:
+
+| model | calls | empty | timeout | ok | dead% | wasted | useful |
+|---|---|---|---|---|---|---|---|
+| nemotron-3-ultra-free | 22 | 2 | 14 | 3 | 73% | 96.7m | 10.1m |
+| north-mini-code-free | 19 | 3 | 9 | 2 | 63% | 60.6m | 1.6m |
+| mimo-v2.5-free | 7 | 1 | 1 | 3 | 29% | 11.0m | 9.6m |
+| deepseek-v4-flash-free | 6 | 3 | 2 | 0 | 83% | 23.3m | 0.0m |
+
+**90% of all model time produced nothing.** 191.7 minutes wasted against 21.2
+minutes of useful generation.
+
+Two things this overturns:
+
+**The dominant failure is TIMEOUT, not an empty body.** 26 timeouts against 9
+empty responses. Those are different faults needing different fixes, and
+lumping them together as "coming up empty" points at the wrong lever.
+
+**Prompt size predicts it almost perfectly:**
+
+| prompt | calls | dead | dead% |
+|---|---|---|---|
+| 0-5k | 3 | 0 | **0%** |
+| 5-10k | 35 | 22 | 63% |
+| 10-20k | 16 | 13 | **81%** |
+
+This is the same variable that broke the argv path, and it still dominates now
+that the prompt goes on stdin. Size is the lever, not model choice.
+
+### Mitigations, by expected value
+
+1. **Shrink the prompt.** Nothing under 5k chars has ever failed. The m2c draft
+   and the twin section are the two largest blocks and the draft is the more
+   expendable. Highest value by a wide margin.
+2. **Cut the per-attempt timeout.** 382s x 4 attempts is 25 minutes to learn
+   nothing. At 5-10k the failure rate is 63%, so most of that budget buys
+   nothing. A 120s cap loses few real generations and returns the function to
+   the queue three times sooner.
+3. **Route by size.** Send >10k-char prompts to llama, or hold them for a
+   human. On the cli tier they are 81% dead.
+4. **Circuit-break a failing model.** N consecutive dead calls should retire
+   that model for the run rather than spending the account-wide pool on it.
+5. **Do NOT re-rank models on this table yet.** deepseek shows 83% dead on six
+   calls and mimo 29% on seven. Both are under the 10-call line, and this file
+   already records one wrong model conclusion drawn from exactly that kind of
+   unbalanced tally.
+
+### Queue damage: none
+
+Worth stating because it is the natural worry. `worker_direct.py:3238` already
+requeues a function to `todo` when no candidate was produced, so a broken model
+cannot escalate work it never evaluated. Confirmed live in the logs:
+`[worker] REQUEUE BO6_RicStepSlide: no candidate produced in 4 error(s); back
+to todo`. The cost of an empty response is time and quota, not queue state.
+
+### Logs are now archived, not deleted
+
+`fleet_start` used to `rm -f` each worker log before relaunching, which is why
+the first audit could see only 4 logs. Non-empty logs now move to
+`automation/logs/archive/<timestamp>/` on launch, so history accumulates.
+Archiving happens on START rather than on stop deliberately: logs stay readable
+in place after a stop, and are preserved the moment the next run begins, so
+nothing is ever lost either way.
+
 ## Free models (2026-07-20)
 
 All at `https://opencode.ai/zen/v1/chat/completions`:

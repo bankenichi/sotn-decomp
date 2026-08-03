@@ -191,6 +191,7 @@ ANALYSIS_SCRIPTS = {
     "permuter_promote.py",
     "permuter_supervisor.py",
     "test_permuter_settings.py",
+    "empty_response_audit.py",
 }
 # Deliberately narrow: flags, numbers, and in-repo-looking relative paths.
 # No spaces, quotes, semicolons, redirects, or leading dashes-with-spaces, so
@@ -1010,7 +1011,7 @@ def fleet_start(workers: int = 4, max_functions: int = 0,
     # would silently give every worker the last one set. That is exactly how the
     # original version ended up unable to launch anything but llama.
     parts = [f"cd {shlex.quote(str(REPO))} && mkdir -p {FLEET_LOGS} && "
-             f": > {FLEET_PIDS}"]
+             f"_stamp=$(date +%Y%m%d-%H%M%S) && : > {FLEET_PIDS}"]
     # opencode_model may be a comma-separated LIST. Each cli worker is then
     # assigned one round-robin, which is how a model bake-off runs: launch N cli
     # workers across N models and compare hit rates from one fleet. A single
@@ -1033,7 +1034,15 @@ def fleet_start(workers: int = 4, max_functions: int = 0,
         parts.append(
             f"{model_setup}for i in $(seq 1 {count}); do "
             f"  {pick}"
-            f"  rm -f {FLEET_LOGS}/worker-{tag}-$i.log; "
+            # ARCHIVE, do not delete. `rm -f` here destroyed the evidence
+            # for every earlier run, so an empty-response audit could only
+            # ever see the current fleet. The cost of keeping them is a few
+            # KB per run; the cost of deleting them is being unable to tell
+            # whether a model is getting worse.
+            f"  if [ -s {FLEET_LOGS}/worker-{tag}-$i.log ]; then "
+            f"    mkdir -p {FLEET_LOGS}/archive/$_stamp && "
+            f"    mv {FLEET_LOGS}/worker-{tag}-$i.log "
+            f"       {FLEET_LOGS}/archive/$_stamp/ ; fi; "
             f"  {env} WORKER_NAME=fleet-{tag}-$i setsid nohup python3 "
             f"automation/win/worker_direct.py loop{extra} "
             f"> {FLEET_LOGS}/worker-{tag}-$i.log 2>&1 < /dev/null & "

@@ -66,6 +66,9 @@ STATE = Path(os.path.expanduser("~/sotn-work/supervisor.json"))
 # sees "started" and the permuter column sees no jobs, with the reason in a
 # file nothing reads.
 LOG = Path(os.path.expanduser("~/sotn-work/supervisor.log"))
+# One line per live supervisor. --stop reads it to kill the LOOP, not just the
+# jobs the loop happens to have started right now.
+PIDS = Path(os.path.expanduser("~/sotn-work/supervisor.pids"))
 PYTHON = os.environ.get("SOTN_PYTHON", sys.executable)
 # Propagate, so permuter jobs started via commands_client use this interpreter
 # rather than falling back to a bare "python3" without pycparser.
@@ -338,6 +341,7 @@ def already_busy() -> list[str]:
 def supervise(slots: int, threads: int, stall: int, cycles: int,
               statuses: tuple[str, ...], once: bool = False) -> int:
     jobs = _jobs()
+    _register_pid()
     _CFG.update({"stall": stall, "slots": slots, "threads": threads,
                  "cycles": cycles})
     all_c = candidates(statuses)
@@ -454,6 +458,7 @@ def supervise(slots: int, threads: int, stall: int, cycles: int,
                 del active[jid]
 
     _write_state({}, done)
+    _unregister_pid()
     print("\n--- supervisor finished ---")
     matches = [d for d in done if d.get("result") == "MATCH"]
     for d in done:
@@ -486,15 +491,87 @@ def _write_state(active: dict, done: list) -> None:
         pass
 
 
+def _register_pid() -> None:
+    """Record this supervisor so --stop can find it."""
+    try:
+        PIDS.parent.mkdir(parents=True, exist_ok=True)
+        with open(PIDS, "a") as f:
+            f.write(f"{os.getpid()}\n")
+    except OSError:
+        pass
+
+
+def _unregister_pid() -> None:
+    try:
+        live = [l for l in PIDS.read_text().split()
+                if l.strip().isdigit() and int(l) != os.getpid()]
+        PIDS.write_text("\n".join(live) + ("\n" if live else ""))
+    except OSError:
+        pass
+
+
+def _supervisor_pids() -> list[int]:
+    """Live supervisor processes, by pid, cross-checked against /proc.
+
+    The cmdline check keeps a recycled pid from being killed. Same reasoning as
+    commands_client's worker check: a pid file alone is a claim, not evidence.
+    """
+    out = []
+    try:
+        raw = PIDS.read_text().split()
+    except OSError:
+        return out
+    for tok in raw:
+        if not tok.isdigit():
+            continue
+        pid = int(tok)
+        if pid == os.getpid():
+            continue
+        try:
+            cmd = (Path("/proc") / str(pid) / "cmdline").read_bytes()
+        except OSError:
+            continue
+        if b"permuter_supervisor.py" in cmd:
+            out.append(pid)
+    return out
+
+
 def stop_all() -> int:
+    """Stop the supervisor LOOP first, then its jobs.
+
+    Order matters and getting it wrong is why "stop" did not stop. Cancelling
+    only the jobs left the loop alive; it polled, saw them ended, and promoted
+    and restarted them. From the UI that looks like a permuter that refuses to
+    stop and a start button that does nothing, because the work dirs are still
+    busy so a NEW supervisor correctly declines to touch them.
+
+    Killing the loop before the jobs also avoids the race where the loop
+    launches a replacement between our cancel and our exit.
+    """
+    import signal as _sig
+    killed = 0
+    for pid in _supervisor_pids():
+        try:
+            os.kill(pid, _sig.SIGTERM)
+            print(f"stopped supervisor pid {pid}")
+            killed += 1
+        except OSError as e:
+            print(f"could not stop supervisor pid {pid}: {e}")
+    if killed:
+        time.sleep(1.0)          # let it die before we cancel its children
+
     jobs = _jobs()
     n = 0
     for jid in jobs.running_jobs("permuter"):
         jobs.cancel(jid)
         print(f"cancelled {jid}")
         n += 1
+    try:
+        PIDS.write_text("")
+    except OSError:
+        pass
     _write_state({}, [])
-    print(f"{n} permuter job(s) cancelled")
+    print(f"{killed} supervisor(s) stopped, {n} permuter job(s) cancelled")
     return 0
 
 
