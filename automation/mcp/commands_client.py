@@ -190,6 +190,7 @@ ANALYSIS_SCRIPTS = {
     "permuter_stall.py",
     "permuter_promote.py",
     "permuter_supervisor.py",
+    "test_permuter_settings.py",
 }
 # Deliberately narrow: flags, numbers, and in-repo-looking relative paths.
 # No spaces, quotes, semicolons, redirects, or leading dashes-with-spaces, so

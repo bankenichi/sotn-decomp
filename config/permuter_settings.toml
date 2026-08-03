@@ -30,12 +30,36 @@ asm_prelude_file = "include/main.inc"
 # ever an assignment target -- all 11 were checked, and the other nine are
 # rvalue-only.
 [preserve_macros]
-"FIX" = "s32"          # ((s32)((x) * 65536.0))   fixed-point literal
-"FLT" = "s32"          # ((s32)((x) * 4096.0))
-"ROT" = "s32"          # ((s32)(FLT(x) / 360))
-"FLT_TO_I" = "s32"     # ((s32)(x) >> 12)
-"LEN" = "s32"          # sizeof(x) / sizeof(*(x)), folds at compile time
-"CH" = "s32"           # ((x) - 0x20), character-table index
-"_S" = "s32"           # identity; marks a sound id, so worth keeping visible
-"COLOR16" = "u16"      # (r) + ((g) << 5) + ((b) << 10) + ((a) << 15)
-"PAL_FLAG" = "u16"     # ((x) | PAL_UNK_FLAG)
+# VALUES MUST BE BUILTIN C TYPES, never project typedefs.
+#
+# import.py emits these as `<type> <NAME>();` into a block it places at the TOP
+# of base.c, ABOVE the typedef section. So `s32 FIX();` lands at line 6 while
+# `typedef signed int s32;` is at line 24, and pycparser has never heard of s32
+# when it gets there. The whole import then dies with a bare
+# "Syntax error in base.c." that names neither the macro nor the type.
+#
+# Observed 2026-08-03 on BO6_AguneaShuffleParams, which failed every permuter
+# run for exactly this reason while older work dirs, imported before this table
+# existed, kept working. That split is the tell: if a new import breaks and old
+# ones do not, suspect this table.
+#
+# The spellings below are the same types the typedefs resolve to, so nothing
+# changes semantically:
+#   s32 = signed int      -> int
+#   s16 = signed short    -> short
+#   u16 = unsigned short  -> unsigned short
+"FIX" = "int"                      # ((s32)((x) * 65536.0))  fixed-point literal
+"FLT" = "int"                      # ((s32)((x) * 4096.0))
+"ROT" = "int"                      # ((s32)(FLT(x) / 360))
+"FLT_TO_I" = "int"                 # ((s32)(x) >> 12)
+"LEN" = "int"                      # sizeof(x)/sizeof(*(x)), folds at compile time
+"CH" = "int"                       # ((x) - 0x20), character-table index
+"_S" = "int"                       # identity; marks a sound id, worth keeping
+"COLOR16" = "unsigned short"       # (r) + ((g)<<5) + ((b)<<10) + ((a)<<15)
+"PAL_FLAG" = "unsigned short"      # ((x) | PAL_UNK_FLAG)
+
+# LOW and LOH remain DELIBERATELY ABSENT. A preserved macro becomes a function
+# call, and a function call cannot be an assignment target. Measured over
+# src/**/*.{c,h}: LOW is written to 921 times and LOH 253 times, e.g.
+# `LOW(entity->posX) = ...`. Preserving either would turn every one of those
+# into invalid C. No other macro here is ever an assignment target.
