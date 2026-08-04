@@ -134,6 +134,45 @@ def main() -> int:
     check("\n\n\n" not in c, "runs of blank lines are collapsed")
     check(wd.compact_draft("") == "", "an empty draft does not raise")
 
+    # The draft is HALF the prompt: measured 2026-08-03 over 11 real functions
+    # it averages 0.96x the compacted asm beside it. 31% of it was leading
+    # whitespace, because m2c indents 4 per level and this code nests 6 deep.
+    real = ("s32 g(void *a);                       /* extern */\n"
+            "\n"
+            "s32 f(void *arg0) {\n"
+            "    s32 t;\n"
+            "    switch (arg0->unk24) {            /* irregular */\n"
+            "    case 0:\n"
+            "        if (g(arg0) != 0) {\n"
+            "            t = 0x340;\n"
+            "        }\n"
+            "        /* Duplicate return node #8. Try simplifying control flow */\n"
+            "        return t;\n"
+            "    }\n"
+            "}\n")
+    r = wd.compact_draft(real)
+    check(len(r) < len(real) * 0.8,
+          f"it is materially smaller ({len(real)} -> {len(r)})")
+    check("/* extern */" not in r,
+          "the /* extern */ marker goes; the declaration it annotates stays")
+    check("s32 g(void *a);" in r, "...and that declaration really does stay")
+    check("Duplicate return node #8" in r,
+          "m2c's matching diagnostics are KEPT; they are the most actionable "
+          "line it emits and dropping them would trade signal for noise")
+    check(r.count("{") == real.count("{") and r.count("}") == real.count("}"),
+          "every brace survives, so the control flow is intact")
+    for tok in ("0x340", "unk24", "arg0", "case 0:", "irregular"):
+        check(tok in r, f"{tok} survives")
+    # Nesting must remain VISIBLE, just not expensive.
+    lines = {l.lstrip(): len(l) - len(l.lstrip()) for l in r.splitlines() if l.strip()}
+    check(lines.get("t = 0x340;", 0) > lines.get("case 0:", 0),
+          "deeper statements are still indented deeper than shallower ones")
+    check(max(lines.values()) <= 4,
+          f"but no line is pushed far right any more (max {max(lines.values())})")
+    check(wd.compact_draft(r) == r,
+          "AND it is idempotent: the prompt is rebuilt on every retry, so a "
+          "second pass must not flatten the nesting it just re-indented")
+
     print("\ncompaction is idempotent")
     once = wd.compact_asm(sample)
     check(wd.compact_asm(once) == once,

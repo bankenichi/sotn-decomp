@@ -502,8 +502,24 @@ FUNC_BUDGET = float(os.environ.get("FUNC_BUDGET", _DEFAULT_FUNC_BUDGET))
 # retries are the ONLY consumer of asm-differ feedback: attempt 1 has no diff to
 # learn from by definition. A blind first attempt is all we were ever running.
 # Default leaves a little headroom for the build and diff between attempts.
-ATTEMPT_BUDGET = float(os.environ.get(
-    "ATTEMPT_BUDGET", str(FUNC_BUDGET / max(1, MAX_ATTEMPTS) * 0.85)))
+#
+# 90s, MEASURED, not derived. Over 399 calls on 2026-08-03 the two populations
+# barely overlap:
+#
+#     produced   n=58    min 15s   median  73s   p75 138s   p90 182s
+#     dead       n=299   min 48s   median 191s   p75 191s   p90 382s
+#
+# so a cap placed just past the productive median costs 21 of 58 good calls and
+# saves 519.6 of the 960.2 wasted minutes -- 54% of all dead time. The derived
+# value was 191s, which is exactly the dead median: it sat where the useless
+# calls pile up and cut almost none of them.
+#
+# A cut good call is NOT a lost function. With no candidate the record is
+# requeued to `todo` and tried again, so the cost is one retry against half the
+# fleet's wall clock. FUNC_BUDGET stays 900 deliberately: 4 attempts now cost at
+# most 360s of model time, and the remainder is headroom for the builds and
+# diffs between them rather than more waiting on a model.
+ATTEMPT_BUDGET = float(os.environ.get("ATTEMPT_BUDGET", "90"))
 
 
 class Status:
@@ -1055,15 +1071,69 @@ def compact_asm(text: str) -> str:
     return t
 
 
-def compact_draft(text: str) -> str:
-    """Trim m2c's output without losing its structure.
+# m2c pads to a column and appends /* extern */ to every declaration it had to
+# invent. The marker says nothing the declaration does not, and the padding to
+# reach it is pure column alignment: on func_us_801AE858 the two together cost
+# 390 chars across 8 lines.
+_DRAFT_EXTERN = re.compile(r"[ \t]*/\*[ \t]*extern[ \t]*\*/[ \t]*$", re.M)
+# Kept, not stripped. These are m2c telling you WHY it could not produce clean
+# C, which is the single most useful sentence in the draft for deciding how to
+# restructure the function.
+_DRAFT_KEEP = ("Duplicate return", "irregular", "unable to", "Unhandled",
+               "Read from unset", "unknown", "warning")
 
-    m2c emits a `? ` placeholder comment block and generous blank lines. The
-    draft is explicitly labelled "rough, fix the types" in the prompt, so its
-    value is the control flow, not its formatting.
+
+def compact_draft(text: str, indent: int = 1) -> str:
+    """Trim m2c's output without losing anything that helps write C.
+
+    THE DRAFT IS NOT FREE. Measured over 11 real functions on 2026-08-03, the
+    draft averages 0.96x the size of the COMPACTED assembly beside it and runs
+    to 1.17x on some, so it is fully half the prompt. Prompt size is the
+    strongest predictor of a dead model call in this harness (0% dead under 5k
+    chars, 83% at 10-20k), which makes this the second-biggest lever there is.
+
+    WHERE THE VOLUME ACTUALLY IS
+        On func_us_801AE858, a 16,972-char draft: 5,268 chars of it, 31%, is
+        LEADING WHITESPACE. m2c indents four spaces per level and decompiled
+        control flow nests deep, so a line can start twenty-four columns in.
+        Indentation is the cheapest thing in the file to shrink and the least
+        informative: one space per level preserves the nesting exactly, because
+        what matters is that the reader can see WHICH level a statement is at,
+        not how far right it sits.
+
+    WHAT IS DELIBERATELY KEPT
+        Every identifier, literal, operator and brace, so the control flow and
+        every symbol the model must reference survive untouched. m2c's
+        diagnostic comments are kept too (see _DRAFT_KEEP): "Duplicate return
+        node #8. Try simplifying control flow for better match" is the most
+        actionable line m2c ever emits, and dropping it to save 70 chars would
+        be trading the signal for the noise.
     """
-    t = re.sub(r"^\s*//.*$", "", text, flags=re.M)   # m2c's own commentary
-    t = re.sub(r"[ \t]+$", "", t, flags=re.M)
+    # Derive the indent unit from the text instead of hardcoding 4. Hardcoding
+    # made this NON-IDEMPOTENT: after one pass the unit is 1, so `lead // 4`
+    # floors every level to 0 and a second pass flattens the nesting entirely.
+    # The prompt is rebuilt on every retry, so a non-idempotent compactor
+    # silently destroys structure on attempt 2. The asm compactor is asserted
+    # idempotent for exactly this reason.
+    leads = [len(l) - len(l.lstrip(" ")) for l in text.splitlines()
+             if l.strip() and l.startswith(" ")]
+    unit = min(leads) if leads else 4
+    out = []
+    for line in text.splitlines():
+        s = line.lstrip(" \t")
+        # m2c's own `//` chatter goes; `/* ... */` diagnostics are judged.
+        if s.startswith("//"):
+            continue
+        if s.startswith("/*") and not any(k in s for k in _DRAFT_KEEP):
+            continue
+        lead = len(line) - len(s)
+        # A re-indent, not a guess: the level survives, the width does not.
+        # Also collapse the run of spaces m2c uses to right-align a trailing
+        # comment; the comment keeps its meaning, the column does not.
+        s = re.sub(r"[ \t]{2,}(/\*)", r"  \1", s)
+        out.append(" " * ((lead // max(1, unit)) * indent) + s.rstrip())
+    t = "\n".join(out)
+    t = _DRAFT_EXTERN.sub("", t)
     t = re.sub(r"\n{3,}", "\n\n", t)
     return t.strip()
 

@@ -99,8 +99,11 @@ CLI_MODELS = [
     ("nemotron-3-ultra-free  72% dead", "opencode/nemotron-3-ultra-free"),
     ("laguna-s-2.1-free  75% dead, thin data", "opencode/laguna-s-2.1-free"),
     ("deepseek-v4-flash-free  90% dead", "opencode/deepseek-v4-flash-free"),
-    ("big-pickle  untested recently", "opencode/big-pickle"),
-    ("hy3-free  untested recently", "opencode/hy3-free"),
+    ("big-pickle  83% dead", "opencode/big-pickle"),
+    # hy3-free is GONE from OpenCode Zen, not merely bad. Its 16 recorded calls
+    # produced 0 candidates, 0 empties and 0 timeouts, i.e. every one failed
+    # before it ran. Leaving a dead endpoint in the picker is a trap: it looks
+    # selectable and silently wastes a worker.
 ]
 
 TOKEN = secrets.token_urlsafe(16)
@@ -1534,7 +1537,16 @@ def self_test() -> int:
        "the page is exactly one viewport tall, so the status bar cannot push "
        "content below the fold")
     ck("__MODELS__" in PAGE, "the page has a model-options placeholder")
-    ck(len(CLI_MODELS) == 8, f"every Zen model is selectable ({len(CLI_MODELS)})")
+    # Count was hardcoded at 8, which just meant "whatever the list was the day
+    # this was written" and failed the moment a dead endpoint was removed. The
+    # real invariant is that retired models are GONE, because a picker entry
+    # that cannot answer silently wastes a worker for a whole function budget.
+    ck(len(CLI_MODELS) >= 5,
+       f"there are enough models to spread a fleet across ({len(CLI_MODELS)})")
+    ck(not any("hy3" in m for _, m in CLI_MODELS),
+       "hy3-free is removed: OpenCode Zen dropped it, and its last 16 calls "
+       "produced 0 candidates, 0 empties and 0 timeouts, i.e. every one failed "
+       "before it ran")
     ck(all("," not in m for _, m in CLI_MODELS),
        "each entry is ONE model; mixing is now per-worker, not a preset")
     ck(any("% dead" in n for n, _ in CLI_MODELS),
