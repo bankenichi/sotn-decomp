@@ -504,6 +504,19 @@ def land_match(work: Path, fn: str, build: str = "us",
     path, asm_rel, _ = found
     ctx = {"src_rel": str(path.relative_to(REPO)), "asm_rel": asm_rel}
 
+    # build_and_check needs `overlay` as well as `build`: it reaches for
+    # rec["overlay"] to work out which artefact in check.<v>.sha this function
+    # lives in. Passing only {"build": ...} raised KeyError: 'overlay' AFTER a
+    # clean compile, and the exception handler then reverted a build that had
+    # just gone green -- a correct match thrown away by an incomplete dict.
+    #
+    # asm_rel is e.g. "boss/bo0/nonmatchings/us_3E79C", and overlay is the part
+    # above nonmatchings; overlay_artifact upper-cases its last segment to get
+    # BO0.BIN. Split on the literal separator rather than counting components,
+    # because overlay depth varies (boss/bo0 vs st/rno0 vs weapon).
+    overlay = asm_rel.split("/nonmatchings/")[0]
+    rec = {"build": build, "overlay": overlay, "function": fn}
+
     sys.path.insert(0, str(Path(__file__).resolve().parent / "win"))
     import worker_direct as wd                              # type: ignore
 
@@ -511,7 +524,7 @@ def land_match(work: Path, fn: str, build: str = "us",
     with (lock or _build_lock())():
         try:
             original = wd.apply_code(ctx, fn, body)
-            ok, detail = wd.build_and_check({"build": build})
+            ok, detail = wd.build_and_check(rec)
             if ok:
                 # An INDEPENDENT oracle, not a second opinion from the same
                 # one. build_and_check trusts make's exit code; this reads the
@@ -536,7 +549,7 @@ def land_match(work: Path, fn: str, build: str = "us",
                 # a seed that is no longer in src/. Leaving those behind is
                 # exactly the stale-artefact condition that produced the
                 # disagreement in the first place.
-                wd.build_and_check({"build": build})
+                wd.build_and_check(rec)
                 return False, f"VERIFY FAILED: {vdetail}"
 
             # Revert FIRST. A failed build must leave the tree exactly as found
@@ -550,7 +563,7 @@ def land_match(work: Path, fn: str, build: str = "us",
             # this seed would file a wrong verdict against a function that may
             # be perfectly good. worker_direct learned this the hard way and
             # has build_error_is_ours for the same reason.
-            ok2, _ = wd.build_and_check({"build": build})
+            ok2, _ = wd.build_and_check(rec)
             if not ok2:
                 return False, ("TREE ALREADY BROKEN: the build fails with the "
                                "seed REVERTED too, so this failure is not "
@@ -1046,10 +1059,23 @@ _CFG: dict = {}
 
 
 def _write_state(active: dict, done: list) -> None:
-    """Publish state for the dashboard. Best effort: never kill the run."""
+    """Publish state for the dashboard. Best effort: never kill the run.
+
+    WRITE ATOMICALLY. This was a plain write_text, which truncates the file and
+    then fills it. The dashboard polls on its own clock, so any poll landing
+    inside that window read a truncated or empty file, failed to parse it, and
+    rendered no panels -- then found them again on the next poll. That is the
+    "functions come and go" flicker: nothing was starting or stopping, the
+    reader was just seeing a half-written file.
+
+    tmp + os.replace makes the swap atomic, so a reader sees either the old
+    state or the new one and never a partial one. Same pattern worker_direct
+    uses for its restore journal, and for the same reason.
+    """
     try:
         STATE.parent.mkdir(parents=True, exist_ok=True)
-        STATE.write_text(json.dumps({
+        tmp = STATE.with_suffix(STATE.suffix + ".tmp")
+        tmp.write_text(json.dumps({
             "updated": time.time(),
             # Published so the dashboard can label "stalled" using the SAME
             # threshold this loop acts on. Two definitions of stalled is how a
