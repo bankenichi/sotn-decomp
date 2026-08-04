@@ -102,7 +102,14 @@ DEF_CYCLES = 4
 # parsing anything correctly -- the one number the supervisor can always trust
 # is how far the run has gone.
 DEF_MAX_ITERS = 50000
-POLL_S = 20
+# The poll is what bounds how fast a fault can be caught, so it is sized in
+# ITERATIONS, not seconds. Measured on permuter-175223-34471-func_us_801B1EDC:
+# 1497 iterations in 2939s, i.e. 0.51 iterations/s, so 10s is ~5 iterations.
+# A small function on 4 threads can run ~50x faster; 10s still bounds that at
+# ~250 iterations, inside the 100-500 window a fault should be caught in.
+# The cost is one linewise regex pass over a ~130KB log per job per poll,
+# which is milliseconds -- there is no reason to be stingy here.
+POLL_S = 10
 
 
 # ----------------------------------------------------------------- candidates
@@ -1147,12 +1154,24 @@ def self_test() -> int:
 
     print("\ninternal permuter faults are detected and acted on")
     from permuter_stall import scan_faults, fault_verdict, MIN_FAULTS
+    # Shaped like a REAL log, which is the whole point of this block. main.py
+    # dedupes the banner by stack trace, so a fault that fires 117 times prints
+    # "internal permuter failure." exactly ONCE and shows up only as a rising
+    # counter. The previous fixture repeated the banner 12 times, which no
+    # permuter has ever done, so it passed while the check was dead in practice.
     real = ("iteration 1, 0 errors, score = 100\n"
             "[fn] internal permuter failure.\n"
             "Traceback (most recent call last):\n"
-            "KeyError: 'func_us_801B171C'\n") * 12
+            "KeyError: 'func_us_801B171C'\n"
+            + "".join(f"iteration {i}, 0 errors, {i // 13} permuter "
+                      f"failures, score = 100\n" for i in range(2, 1498)))
     f = scan_faults(real)
-    ck(f["faults"] == 12, f"counts the failures ({f['faults']})")
+    ck(f["traces"] == 1,
+       f"the banner is printed once, as the permuter really does ({f['traces']})")
+    ck(f["faults"] == 115,
+       f"the COUNTER is what gets counted, not the banner ({f['faults']})")
+    ck(f["faults"] >= MIN_FAULTS,
+       "so a real single-banner log actually crosses the threshold")
     ck(f["undeclared"] == ["func_us_801B171C"],
        f"names the undeclared symbol ({f['undeclared']})")
     v = fault_verdict({"iterations": 1497}, f)
@@ -1172,6 +1191,12 @@ def self_test() -> int:
     ck(sup3.index("fault_verdict") < sup3.index('d["iterations"] >= max_iters'),
        "the fault check runs BEFORE the cap and the stall rule, so a broken "
        "seed is stopped immediately rather than after 50k iterations")
+    # Ordering alone is not timeliness. The check runs once per poll, so the
+    # poll is the real bound on how long a broken seed burns a core.
+    ck(POLL_S <= 10,
+       f"and the poll is short enough to make that ordering matter ({POLL_S}s)")
+    ck(MIN_FAULTS <= 5,
+       f"the threshold does not add a long wait of its own ({MIN_FAULTS})")
 
     print("\nbuild verdicts are classified, not lumped together")
     ck(classify_build_failure("BUILT, CHECKSUM MISMATCH (bytes differ)")

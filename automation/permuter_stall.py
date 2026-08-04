@@ -52,6 +52,15 @@ _FAILS = re.compile(r"(\d+) permuter failures")
 # An internal permuter failure is a Python traceback inside the randomizer, not
 # a bad mutation. It is thrown away silently and the search continues, so it is
 # invisible except as a rising "permuter failures" counter.
+#
+# COUNT THE COUNTER, NOT THE BANNER. main.py's post_score keeps a SET of stack
+# traces (context.internal_error_stack_traces) and prints "internal permuter
+# failure." only the FIRST time each distinct trace is seen, while
+# context.internal_errors increments every time. So one recurring fault prints
+# the banner exactly ONCE no matter how often it fires:
+# permuter-175223-34471-func_us_801B1EDC reached 117 failures with a single
+# banner. Counting banners meant a threshold of 10 could never be crossed and
+# the whole fault check was dead code against a real log.
 _FAULT = re.compile(r"internal permuter failure")
 # The overwhelmingly common cause: the seed CALLS a function it never declares.
 # pycparser parses the call, but the permuter's typemap has no entry, so any
@@ -67,8 +76,14 @@ _KEYERR = re.compile(r"^KeyError: '([A-Za-z_]\w*)'", re.M)
 # leans generous.
 STALL_ITERS = 2000
 # Enough to be certain it is systematic rather than one unlucky mutation.
-# func_us_801B1EDC produced 117 in 1497 iterations before it was noticed.
-MIN_FAULTS = 10
+#
+# Deliberately small. The KeyError names the symbol on its FIRST occurrence, so
+# the count is only guarding against a single freak event, not building
+# confidence. func_us_801B1EDC faulted on 7.8% of iterations (117 in 1497), so
+# 3 arrives around iteration 38 -- roughly 75 seconds at the 0.51 iterations/s
+# measured on that run. Ten would have cost ~128 iterations for no more
+# certainty than three gives.
+MIN_FAULTS = 3
 
 
 def parse(text: str) -> dict:
@@ -98,11 +113,20 @@ def parse(text: str) -> dict:
 def scan_faults(text: str) -> dict:
     """Internal permuter failures and the symbols they blame.
 
+    `faults` comes from the permuter's own counter, which rises on every fault.
+    `traces` counts the printed banners, which is 1 per DISTINCT stack trace no
+    matter how often it recurs -- kept only so the two can be compared, never as
+    the trigger. See the _FAULT comment for what counting banners cost.
+
     Separate from parse() because parse is called every poll on a growing log
     and stays cheap; this is only consulted when the failure counter says
     something is wrong.
     """
-    return {"faults": len(_FAULT.findall(text)),
+    n = 0
+    for m in _FAILS.finditer(text):
+        n = max(n, int(m.group(1)))
+    return {"faults": n,
+            "traces": len(_FAULT.findall(text)),
             "undeclared": sorted(set(_KEYERR.findall(text)))}
 
 
@@ -110,10 +134,13 @@ def fault_verdict(st: dict, faults: dict) -> str:
     """A definite, self-inflicted fault, or "" if there is nothing to say.
 
     Deliberately NOT proportional to iterations. A KeyError on a called symbol
-    reproduces on every pass that touches that expression, so ten of them and
+    reproduces on every pass that touches that expression, so three of them and
     ten thousand mean the same thing: the seed is missing a declaration and no
     amount of searching will supply it. Waiting for a ratio to cross a
     threshold just wastes the time in between.
+
+    `faults` must be the counter, not the banner count. A caller that passes
+    len(banners) will see 1 forever and this will never fire.
     """
     if not faults.get("undeclared"):
         return ""
