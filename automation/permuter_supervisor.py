@@ -336,8 +336,25 @@ def import_workdir(fn: str, seed_rel: str, lock=None) -> tuple[Path | None, str]
 
 def _import_locked(path: Path, original: str, m, body: str, asm_rel: str,
                    fn: str, cc) -> tuple[Path | None, str]:
-    """The staged import itself. Split out so the lock scope is obvious."""
+    """The staged import itself. Split out so the lock scope is obvious.
+
+    JOURNAL BEFORE THE WRITE. The `finally` below restores from an in-memory
+    copy, which covers exceptions but NOT SIGKILL, and SIGKILL is the case that
+    actually happened: on 2026-08-03 the dashboard ran this under a 60s
+    subprocess timeout, subprocess.run killed it partway, the finally never
+    ran, and a seed for func_801CE2CC stayed in src/st/rno0/unk_4A320.c. The
+    tree still built; only RNO0's checksum disagreed, so it looked like a bad
+    match rather than a stale edit.
+
+    worker_direct already solved this for its own applies. Reusing its journal
+    rather than inventing a second one means one recovery path, and the
+    recovery already runs at every worker start and on fleet_stop.
+    """
+    sys.path.insert(0, str(Path(__file__).resolve().parent / "win"))
+    import worker_direct as wd                              # type: ignore
+    src_rel = str(path.relative_to(REPO))
     try:
+        wd.journal_write(src_rel, original)
         path.write_text(original[:m.start()] + body + original[m.end():])
         r = cc.run("permuter_import", timeout=300,
                    c_file=str(path.relative_to(REPO)),
@@ -348,7 +365,11 @@ def _import_locked(path: Path, original: str, m, body: str, asm_rel: str,
         ok, detail = False, f"{type(e).__name__}: {e}"
     finally:
         # Unconditional. The tree must look untouched whatever happened above.
+        # Restore FIRST, drop the journal only once the file is actually back:
+        # if the write raises, the journal is the sole surviving copy of the
+        # original and a later replay is the recovery.
         path.write_text(original)
+        wd.journal_clear()
 
     work = workdir_for(fn)
     if work is None:
@@ -500,8 +521,17 @@ def land_match(work: Path, fn: str, build: str = "us",
                 # the hashes win.
                 vok, vdetail = verify_checksums(build)
                 if vok:
+                    # CLEAR THE JOURNAL. apply_code wrote one holding the
+                    # PRE-EDIT stub, and it is only discarded by restore(),
+                    # which a successful landing never calls. Left behind, the
+                    # next replay_pending_journals() -- run at every worker
+                    # start and by fleet_stop -- would write that stub back
+                    # over the match we just verified, silently un-landing it.
+                    # worker_direct hit this exact bug and documents it at its
+                    # own journal_clear() call site.
+                    wd.journal_clear()
                     return True, f"GREEN: {detail}; {vdetail}"
-                path.write_text(original, newline="")
+                wd.restore(ctx, original)
                 # Rebuild so the tree is not left holding artefacts built from
                 # a seed that is no longer in src/. Leaving those behind is
                 # exactly the stale-artefact condition that produced the
@@ -510,8 +540,9 @@ def land_match(work: Path, fn: str, build: str = "us",
                 return False, f"VERIFY FAILED: {vdetail}"
 
             # Revert FIRST. A failed build must leave the tree exactly as found
-            # before anything else is attempted.
-            path.write_text(original, newline="")
+            # before anything else is attempted. restore() also drops the
+            # journal, so a later replay cannot resurrect this edit.
+            wd.restore(ctx, original)
 
             # Then ask whether the failure was even OURS. If the reverted tree
             # is also red, something was broken before we touched it -- a
@@ -528,8 +559,11 @@ def land_match(work: Path, fn: str, build: str = "us",
         except Exception as e:                              # noqa: BLE001
             if original is not None:
                 try:
-                    path.write_text(original, newline="")
+                    wd.restore(ctx, original)
                 except OSError:
+                    # The journal survives on purpose: if we could not write
+                    # the file back, the ONLY remaining record of the original
+                    # is that journal, and a later replay is the recovery path.
                     pass
             return False, f"{type(e).__name__}: {e}"
 
@@ -551,6 +585,20 @@ def require_clean_src() -> str:
         disagree. Checking git is instant and names the file outright, so a
         stale apply can never again be mistaken for a bad seed.
     """
+    # Try RECOVERY before reporting a problem. A dirty src/ left by a killed
+    # apply is exactly what the journal exists to undo, and replaying it is
+    # safe: it skips journals whose owning pid is still alive and holds
+    # BuildLock while it writes. If this fixes the tree, there is nothing to
+    # report and the caller proceeds.
+    try:
+        sys.path.insert(0, str(Path(__file__).resolve().parent / "win"))
+        import worker_direct as wd                          # type: ignore
+        n = wd.replay_pending_journals()
+        if n:
+            print(f"[recover] restored {n} file(s) from a killed run's journal")
+    except Exception as e:                                  # noqa: BLE001
+        print(f"[recover] journal replay unavailable: {type(e).__name__}: {e}")
+
     r = subprocess.run(["git", "status", "--porcelain", "--", "src"],
                        cwd=str(REPO), capture_output=True, text=True,
                        timeout=120)
@@ -1297,8 +1345,8 @@ def self_test() -> int:
     lm = src_sup[i:src_sup.index("\ndef _jobs")]
     ck("build_and_check" in lm,
        "it runs the real build; a permuter zero is not sufficient on its own")
-    ck(lm.count("write_text(original") >= 2,
-       "it reverts on a red build AND on an exception")
+    ck(lm.count("wd.restore(ctx, original)") >= 3,
+       "it reverts on a red build, on a failed verify, AND on an exception")
     ck("except Exception" in lm, "an exception cannot leave the tree modified")
     ck("lock or _build_lock()" in lm,
        "and the whole apply/build/revert happens under the fleet's lock")
@@ -1369,12 +1417,36 @@ def self_test() -> int:
     ck("TREE ALREADY BROKEN" in lm2,
        "after a red build it rebuilds the REVERTED tree to see whose fault it "
        "was")
-    ck(lm2.index("write_text(original") < lm2.index("ok2"),
+    ck(lm2.index("wd.restore(ctx, original)") < lm2.index("ok2"),
        "and it reverts BEFORE that second build, so the check is honest")
+    ck("path.write_text" not in lm2,
+       "every revert goes through worker_direct.restore, which also drops the "
+       "crash journal; a raw write would leave one behind")
+    ck(lm2.index("wd.journal_clear()") < lm2.index("wd.restore(ctx, original)"),
+       "the SUCCESS path clears the journal too, so a later replay cannot "
+       "write the old stub back over a landed match")
     sup2 = src_sup[src_sup.index("def supervise"):]
     ck("TREE ALREADY BROKEN" in sup2 and "unrecorded" in sup2,
        "that case records NOTHING to the queue rather than filing a wrong "
        "status")
+
+    print("\na killed run cannot leave an edit in src/ undetected")
+    il = src_sup[src_sup.index("def _import_locked"):]
+    il = il[:il.index("\n# Notes markers")]
+    ck(il.index("wd.journal_write") < il.index("path.write_text(original[:"),
+       "the seed is journalled BEFORE it is staged, so SIGKILL between the two "
+       "is recoverable; a finally alone is not, which is how func_801CE2CC was "
+       "left in src/st/rno0/unk_4A320.c")
+    ck(il.rindex("wd.journal_clear") > il.rindex("path.write_text(original)"),
+       "and the journal is dropped only AFTER the file is actually back")
+    rc = src_sup[src_sup.index("def require_clean_src"):]
+    rc = rc[:rc.index("\ndef verify_checksums")]
+    ck(rc.index("replay_pending_journals") < rc.index('subprocess.run(["git"'),
+       "the guard tries RECOVERY before it reports a dirty tree, so a "
+       "recoverable state is fixed rather than merely complained about")
+    lp = src_sup[src_sup.index("def land_pending"):]
+    ck(lp.index("require_clean_src") < lp.index("candidates("),
+       "and --land refuses before it builds anything at all")
 
     print("\na missing score-0 output is refused, not guessed at")
     import tempfile as _tf2
@@ -1566,6 +1638,14 @@ def main() -> int:
         bad = check_statuses(statuses)
         if bad:
             print(bad, file=sys.stderr)
+            return 2
+        # Same precondition as --land. This is the path that writes seeds into
+        # src/, so starting it on an already-dirty tree risks snapshotting
+        # somebody else's applied candidate and restoring THAT as if it were
+        # the original, which makes the bad edit permanent and unreported.
+        unclean = require_clean_src()
+        if unclean:
+            print("REFUSING: " + unclean)
             return 2
         n = 0
         for c in candidates(statuses):
