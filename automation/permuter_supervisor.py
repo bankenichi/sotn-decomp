@@ -574,14 +574,20 @@ def read_log(job_id: str) -> dict:
     directly, which is why its panels showed live scores the supervisor was
     blind to. That disagreement was the evidence.
     """
-    from permuter_stall import parse
+    from permuter_stall import parse, scan_faults
     jobs = _jobs()
     st = jobs.status(job_id, wait_s=0, tail_lines=1)
     log = Path(st.get("log") or (JOBS_DIR / f"{job_id}.log"))
     if not log.is_file():
         return {"state": st.get("state", "?"), "best": None,
-                "iterations": 0, "since_improvement": 0, "failures": 0}
-    d = parse(log.read_text(errors="ignore"))
+                "iterations": 0, "since_improvement": 0, "failures": 0,
+                "faults": {"faults": 0, "undeclared": []}}
+    raw = log.read_text(errors="ignore")
+    d = parse(raw)
+    # Only scanned when the counter says something is wrong, so the common
+    # case stays a single cheap pass over the log.
+    d["faults"] = (scan_faults(raw) if d.get("failures")
+                   else {"faults": 0, "undeclared": []})
     d["state"] = st.get("state", "?")
     return d
 
@@ -751,6 +757,23 @@ def supervise(slots: int, threads: int, stall: int, cycles: int,
 
             if d["state"] not in ("running",):
                 slot["result"] = f"job ended ({d['state']}), best {d['best']}"
+                done.append(slot)
+                del active[jid]
+                continue
+
+            # A self-inflicted fault beats every other rule. It is definite,
+            # it is deterministic, and unlike a stall there is a specific fix,
+            # so there is no reason to let the job keep burning a core while a
+            # counter climbs toward some threshold.
+            from permuter_stall import fault_verdict
+            fv = fault_verdict(d, d.get("faults") or {})
+            if fv:
+                jobs.cancel(jid)
+                slot["result"] = fv
+                print(f"[FAULT] {fn}: {fv}")
+                print("  queue: " + report(
+                    slot.get("id", ""), "deferred",
+                    f"{EXHAUSTED}: {fv[:200]}"))
                 done.append(slot)
                 del active[jid]
                 continue
@@ -1121,6 +1144,34 @@ def self_test() -> int:
        "and the whole apply/build/revert happens under the fleet's lock")
     ck(lm.index("build_and_check") < lm.index("return True"),
        "there is no path that returns success without having built")
+
+    print("\ninternal permuter faults are detected and acted on")
+    from permuter_stall import scan_faults, fault_verdict, MIN_FAULTS
+    real = ("iteration 1, 0 errors, score = 100\n"
+            "[fn] internal permuter failure.\n"
+            "Traceback (most recent call last):\n"
+            "KeyError: 'func_us_801B171C'\n") * 12
+    f = scan_faults(real)
+    ck(f["faults"] == 12, f"counts the failures ({f['faults']})")
+    ck(f["undeclared"] == ["func_us_801B171C"],
+       f"names the undeclared symbol ({f['undeclared']})")
+    v = fault_verdict({"iterations": 1497}, f)
+    ck("func_us_801B171C" in v and "extern" in v,
+       "the verdict names the symbol AND the fix")
+    ck("will not improve by searching longer" in v,
+       "and says explicitly that waiting does not help")
+    ck(fault_verdict({"iterations": 100},
+                     {"faults": MIN_FAULTS - 1,
+                      "undeclared": ["x"]}) == "",
+       "a couple of failures are tolerated as noise")
+    ck(fault_verdict({"iterations": 100},
+                     {"faults": 999, "undeclared": []}) == "",
+       "failures with no KeyError are NOT called an undeclared symbol; that "
+       "is the stall path's job")
+    sup3 = src_sup[src_sup.index("def supervise"):]
+    ck(sup3.index("fault_verdict") < sup3.index('d["iterations"] >= max_iters'),
+       "the fault check runs BEFORE the cap and the stall rule, so a broken "
+       "seed is stopped immediately rather than after 50k iterations")
 
     print("\nbuild verdicts are classified, not lumped together")
     ck(classify_build_failure("BUILT, CHECKSUM MISMATCH (bytes differ)")

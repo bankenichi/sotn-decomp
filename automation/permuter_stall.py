@@ -49,6 +49,15 @@ REPO_SRC = Path(__file__).resolve().parent.parent / "src"
 _ITER = re.compile(r"iteration (\d+)")
 _SCORE = re.compile(r"score = (\d+)")
 _FAILS = re.compile(r"(\d+) permuter failures")
+# An internal permuter failure is a Python traceback inside the randomizer, not
+# a bad mutation. It is thrown away silently and the search continues, so it is
+# invisible except as a rising "permuter failures" counter.
+_FAULT = re.compile(r"internal permuter failure")
+# The overwhelmingly common cause: the seed CALLS a function it never declares.
+# pycparser parses the call, but the permuter's typemap has no entry, so any
+# pass that tries to type an expression containing it raises. Deterministic per
+# seed -- it will never fix itself by searching longer.
+_KEYERR = re.compile(r"^KeyError: '([A-Za-z_]\w*)'", re.M)
 
 # How long a run may go without improving before it is called stalled.
 #
@@ -57,6 +66,9 @@ _FAILS = re.compile(r"(\d+) permuter failures")
 # long is CPU; the cost of stopping too early is a lost match, so the threshold
 # leans generous.
 STALL_ITERS = 2000
+# Enough to be certain it is systematic rather than one unlucky mutation.
+# func_us_801B1EDC produced 117 in 1497 iterations before it was noticed.
+MIN_FAULTS = 10
 
 
 def parse(text: str) -> dict:
@@ -81,6 +93,38 @@ def parse(text: str) -> dict:
     return {"best": best, "best_at": best_at, "iterations": last_iter,
             "failures": fails,
             "since_improvement": last_iter - best_at if best is not None else 0}
+
+
+def scan_faults(text: str) -> dict:
+    """Internal permuter failures and the symbols they blame.
+
+    Separate from parse() because parse is called every poll on a growing log
+    and stays cheap; this is only consulted when the failure counter says
+    something is wrong.
+    """
+    return {"faults": len(_FAULT.findall(text)),
+            "undeclared": sorted(set(_KEYERR.findall(text)))}
+
+
+def fault_verdict(st: dict, faults: dict) -> str:
+    """A definite, self-inflicted fault, or "" if there is nothing to say.
+
+    Deliberately NOT proportional to iterations. A KeyError on a called symbol
+    reproduces on every pass that touches that expression, so ten of them and
+    ten thousand mean the same thing: the seed is missing a declaration and no
+    amount of searching will supply it. Waiting for a ratio to cross a
+    threshold just wastes the time in between.
+    """
+    if not faults.get("undeclared"):
+        return ""
+    if faults.get("faults", 0) < MIN_FAULTS:
+        return ""
+    names = ", ".join(faults["undeclared"][:5])
+    return (f"UNDECLARED SYMBOL: the seed calls {names} without declaring it, "
+            f"so the permuter raised KeyError on {faults['faults']} mutations "
+            f"({100.0 * faults['faults'] / max(1, st.get('iterations', 1)):.0f}"
+            f"% of iterations). Add `extern` for it to base.c and re-import. "
+            f"This will not improve by searching longer.")
 
 
 def verdict(st: dict) -> tuple[str, str]:
