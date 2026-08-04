@@ -1,13 +1,13 @@
 /* PERMUTER SEED -- compiled and linked, bytes differ.
-   record : us:BOSS/BO0:func_us_801B6520
-   attempt: 2/4
-   model  : opencode/ling-3.0-flash-free
+   record : us:BOSS/BO0:func_us_801B1CE0
+   attempt: 3/4
+   model  : opencode/mimo-v2.5-free
    verdict: BUILT, CHECKSUM MISMATCH (compiled and linked; bytes differ) - permuter candidate:
 --- build tail ---
   ✅ F_RBO0   ✅ RBO3     ✅ F_RBO3   ✅ RBO5     ✅ F_RBO5
   ✅
    content: WHOLE FILE (directly importable)
-   import : python3 tools/decomp-permuter/import.py <this file> asm/us/boss/bo0/nonmatchings/2D26C/func_us_801B6520.s
+   import : python3 tools/decomp-permuter/import.py <this file> asm/us/boss/bo0/nonmatchings/2D26C/func_us_801B1CE0.s
    Do NOT apply this to the tree as-is; it does not match.
    It exists so the permuter has a compiling starting point. */
 // SPDX-License-Identifier: AGPL-3.0-or-later
@@ -78,7 +78,45 @@ INCLUDE_ASM("boss/bo0/nonmatchings/2D26C", func_us_801B1B30);
 
 INCLUDE_ASM("boss/bo0/nonmatchings/2D26C", func_us_801B1C60);
 
-INCLUDE_ASM("boss/bo0/nonmatchings/2D26C", func_us_801B1CE0);
+s32 func_us_801B1CE0(Entity* self) {
+    Entity* dartEntity; // The dart entity stored in velocityX field
+    s32 attackState;    // State machine variable from offset 0x24 (zPriority used as state)
+    s32 distanceCheck;
+    s32 totalHits;
+
+    // Store velocityX (0x18) as a pointer to another entity (the dart)
+    dartEntity = (Entity*)self->velocityX;
+    attackState = self->zPriority;
+
+    // Call func_us_801B163C with g_CurrentEntity->ext.venusWeedFlower.clutOffset (0x14 in ext union)
+    // This function likely initializes some parameters for the Venus Weed flower
+    distanceCheck = func_us_801B163C(&g_CurrentEntity->ext.venusWeedFlower.clutOffset, 0x180, 0x40);
+
+    switch (attackState) {
+        case 0:
+            // First state: check if the flower should start an attack
+            func_us_801B171C(self, -0x60, 0x340, 0x18);
+            // Check if the dart entity is within attack range
+            if (func_us_801B171C(dartEntity, -0x500, 0x80, 0x20) != 0) {
+                // Transition to state 1
+                self->zPriority++;
+            }
+            return 0;
+
+        case 1:
+            // Second state: count hits and check for completion
+            distanceCheck += func_us_801B171C(self, -0x40, 0x340, 0x18);
+            totalHits = distanceCheck + func_us_801B171C(dartEntity, -0x3C0, 0xE0, 0x20);
+            // If exactly 3 hits accumulated, attack sequence complete
+            if (totalHits == 3) {
+                return 1;
+            }
+            return 0;
+
+        default:
+            return 0;
+    }
+}
 
 INCLUDE_ASM("boss/bo0/nonmatchings/2D26C", func_us_801B1DDC);
 
@@ -116,15 +154,7 @@ INCLUDE_ASM("boss/bo0/nonmatchings/2D26C", func_us_801B5E8C);
 
 INCLUDE_ASM("boss/bo0/nonmatchings/2D26C", func_us_801B619C);
 
-s32 func_us_801B6520(s32 arg0, s32 arg1, s32 arg2, s32 arg3) {
-    Entity* entity = g_CurrentEntity;
-    s32 sum = 0;
-    sum += func_us_801B163C(entity + 0x88, (s16)arg2, (s16)(arg2 >> 16));
-    sum += func_us_801B163C(entity + 0x8C, (s16)arg3, (s16)(arg3 >> 16));
-    sum += func_us_801B163C(entity + 0x80, (s16)arg0, (s16)(arg0 >> 16));
-    sum += func_us_801B163C(entity + 0x84, (s16)arg1, (s16)(arg1 >> 16));
-    return ((sum ^ 4) == 0);
-}
+INCLUDE_ASM("boss/bo0/nonmatchings/2D26C", func_us_801B6520);
 
 INCLUDE_ASM("boss/bo0/nonmatchings/2D26C", func_us_801B65C0);
 

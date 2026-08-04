@@ -1,13 +1,13 @@
 /* PERMUTER SEED -- compiled and linked, bytes differ.
-   record : us:BOSS/BO0:func_us_801B6520
-   attempt: 2/4
-   model  : opencode/ling-3.0-flash-free
+   record : us:BOSS/BO0:func_us_801B1EDC
+   attempt: 4/4
+   model  : opencode/mimo-v2.5-free
    verdict: BUILT, CHECKSUM MISMATCH (compiled and linked; bytes differ) - permuter candidate:
 --- build tail ---
   ✅ F_RBO0   ✅ RBO3     ✅ F_RBO3   ✅ RBO5     ✅ F_RBO5
   ✅
    content: WHOLE FILE (directly importable)
-   import : python3 tools/decomp-permuter/import.py <this file> asm/us/boss/bo0/nonmatchings/2D26C/func_us_801B6520.s
+   import : python3 tools/decomp-permuter/import.py <this file> asm/us/boss/bo0/nonmatchings/2D26C/func_us_801B1EDC.s
    Do NOT apply this to the tree as-is; it does not match.
    It exists so the permuter has a compiling starting point. */
 // SPDX-License-Identifier: AGPL-3.0-or-later
@@ -84,7 +84,27 @@ INCLUDE_ASM("boss/bo0/nonmatchings/2D26C", func_us_801B1DDC);
 
 INCLUDE_ASM("boss/bo0/nonmatchings/2D26C", func_us_801B1E5C);
 
-INCLUDE_ASM("boss/bo0/nonmatchings/2D26C", func_us_801B1EDC);
+s32 func_us_801B1EDC(Entity* entity) {
+    Entity* other;
+    s32 result1;
+    s32 result2;
+
+    // Load the entity pointer from offset 0x18 of the input entity.
+    // This field is blendMode (u8) in the Entity layout, but the assembly treats it as a pointer.
+    other = (Entity*) entity->blendMode;
+
+    // Clear 0x10 bytes starting at offset 0x14 in the current entity's extension union.
+    func_us_801B163C((u8*)&g_CurrentEntity->ext + 0x14, 0, 0x10);
+
+    // First range check call with the original entity, parameters -0x200, 0x200, 0x60.
+    result1 = func_us_801B171C(entity, -0x200, 0x200, 0x60);
+
+    // Second range check call with the other entity, parameters -0x200, 0x180, 0x40.
+    result2 = func_us_801B171C(other, -0x200, 0x180, 0x40);
+
+    // Return 1 if the sum of results equals 2, otherwise 0.
+    return (result1 + result2) == 2;
+}
 
 INCLUDE_ASM("boss/bo0/nonmatchings/2D26C", func_us_801B1F5C);
 
@@ -116,15 +136,7 @@ INCLUDE_ASM("boss/bo0/nonmatchings/2D26C", func_us_801B5E8C);
 
 INCLUDE_ASM("boss/bo0/nonmatchings/2D26C", func_us_801B619C);
 
-s32 func_us_801B6520(s32 arg0, s32 arg1, s32 arg2, s32 arg3) {
-    Entity* entity = g_CurrentEntity;
-    s32 sum = 0;
-    sum += func_us_801B163C(entity + 0x88, (s16)arg2, (s16)(arg2 >> 16));
-    sum += func_us_801B163C(entity + 0x8C, (s16)arg3, (s16)(arg3 >> 16));
-    sum += func_us_801B163C(entity + 0x80, (s16)arg0, (s16)(arg0 >> 16));
-    sum += func_us_801B163C(entity + 0x84, (s16)arg1, (s16)(arg1 >> 16));
-    return ((sum ^ 4) == 0);
-}
+INCLUDE_ASM("boss/bo0/nonmatchings/2D26C", func_us_801B6520);
 
 INCLUDE_ASM("boss/bo0/nonmatchings/2D26C", func_us_801B65C0);
 

@@ -482,6 +482,10 @@ ACTIONS = {
     # this would rebuild an unchanged tree and report a green that says nothing
     # about the seed. Timeout is long because it is one full build per match.
     "permuter_land": lambda: _sup("--land", timeout=7200),
+    # Reconciles records that are already landed and committed. Writes only to
+    # the QUEUE, never to src/, and refuses unless all 81 checksums pass.
+    "permuter_sync": lambda: _sup("--sync-phantoms", "--status-filter",
+                                  "near,todo", timeout=900),
     "fleet_clear_hold": _fleet_clear_hold,
     "permuter_stop": lambda: _sup("--stop"),
     "permuter_plan": lambda: _sup("--plan"),
@@ -584,6 +588,9 @@ def run_diagnostic(index: int) -> dict:
 BUILD_ACTIONS = [
     ("Build us", "build", "us",
      "make build VERSION=us, the 81/81 checksum gate"),
+    ("Restore dirty src from HEAD", "restore_src", "",
+     "undo a killed run's leftover apply, then rebuild; refuses if the "
+     "dirty tree actually verifies"),
     ("Verify only", "verify", "us",
      "re-check artefact hashes without rebuilding"),
     ("Clean us", "clean", "us",
@@ -593,6 +600,76 @@ BUILD_ACTIONS = [
     ("Function finder", "function_finder", "",
      "decomp status, file lists, call graphs"),
 ]
+
+
+def restore_dirty_src() -> dict:
+    """Put every uncommitted src/ file back to HEAD, then rebuild.
+
+    THE ONE DESTRUCTIVE BUTTON IN THIS FILE. It exists because the recovery for
+    a killed apply was "restore that file from HEAD, rebuild" and there was no
+    way to do either from here, so the operator was told what to do and handed
+    no lever to do it with.
+
+    Two safety properties, both deliberate:
+      - the path list comes from `git status --porcelain -- src`, never from
+        the request, so this cannot be aimed at anything outside src/;
+      - it REFUSES if the tree currently verifies 81/81, because a dirty src/
+        that passes the checksums is a landed match awaiting commit, and
+        throwing that away is the exact mistake this dashboard already made
+        once by advising it.
+    """
+    import subprocess
+    try:
+        r = subprocess.run(["git", "status", "--porcelain", "--", "src"],
+                           cwd=str(REPO), capture_output=True, text=True,
+                           timeout=120)
+    except (OSError, subprocess.SubprocessError) as e:
+        return {"ok": False, "out": f"could not read git status: {e}"}
+    if r.returncode != 0:
+        return {"ok": False, "out": (r.stderr or "git status failed")[:2000]}
+    files = [l[3:].strip() for l in (r.stdout or "").splitlines() if l.strip()]
+    if not files:
+        return {"ok": True, "out": "src/ already matches HEAD. Nothing to do."}
+
+    v = subprocess.run(["sha1sum", "-c", "config/check.us.sha"], cwd=str(REPO),
+                       capture_output=True, text=True, timeout=900)
+    if v.returncode == 0:
+        return {"ok": False, "out":
+                "REFUSING: src/ differs from HEAD but the build VERIFIES "
+                "81/81, which means these are landed matches waiting to be "
+                "committed, not leftovers:\n  " + "\n  ".join(files) +
+                "\n\nCommit them instead. If you really want them gone, "
+                "discard them with git yourself."}
+
+    sys.path.insert(0, str(REPO / "automation" / "win"))
+    try:
+        from worker_direct import BuildLock                    # type: ignore
+    except Exception:                                          # noqa: BLE001
+        return {"ok": False, "out": "no build lock available; refusing"}
+    out = ["restoring from HEAD:"] + ["  " + f for f in files]
+    try:
+        with BuildLock(str(REPO / "automation" / ".build.lock")):
+            g = subprocess.run(["git", "checkout", "HEAD", "--", *files],
+                               cwd=str(REPO), capture_output=True, text=True,
+                               timeout=300)
+            if g.returncode != 0:
+                return {"ok": False,
+                        "out": "\n".join(out) + "\n\nFAILED: "
+                               + (g.stderr or "")[:1500]}
+            b = subprocess.run(["make", "build", "VERSION=us"], cwd=str(REPO),
+                               capture_output=True, text=True, timeout=3600)
+        v2 = subprocess.run(["sha1sum", "-c", "config/check.us.sha"],
+                            cwd=str(REPO), capture_output=True, text=True,
+                            timeout=900)
+        bad = [l for l in (v2.stdout or "").splitlines()
+               if l.strip().endswith(": FAILED")]
+        out += ["", f"rebuild rc={b.returncode}",
+                "VERIFIED 81/81" if v2.returncode == 0 and not bad
+                else "STILL RED after restore:\n  " + "\n  ".join(bad[:10])]
+        return {"ok": v2.returncode == 0 and not bad, "out": "\n".join(out)}
+    except Exception as e:                                     # noqa: BLE001
+        return {"ok": False,
+                "out": "\n".join(out) + f"\n\n{type(e).__name__}: {e}"}
 
 
 def run_build(index: int) -> dict:
@@ -618,6 +695,13 @@ def run_build(index: int) -> dict:
         "function_finder": ["make", "function-finder"],
     }
     t0 = time.time()
+    # Its own function: it reads git, decides which paths are eligible, and
+    # takes the lock itself, none of which fits the fixed-argv table below.
+    if kind == "restore_src":
+        d = restore_dirty_src()
+        d["label"] = label
+        d["secs"] = round(time.time() - t0, 1)
+        return d
     if kind == "verify":
         argv = ["sha1sum", "-c", f"config/check.{version}.sha"]
     else:
@@ -976,6 +1060,23 @@ body{height:100vh;display:flex;flex-direction:column;overflow:hidden}
 header{flex:0 0 auto}
 .split{display:grid;gap:0;grid-template-columns:1fr 1fr;
        flex:1 1 auto;min-height:0}
+/* Collapsed permuter. The column shrinks to a spine just wide enough for the
+   expand button and a rotated label, and the fleet takes the reclaimed width
+   as TWO columns -- with 4+ workers a single column gives each log about six
+   readable lines, which is not enough to follow a live run.
+   The state lives as a class on #pane_mon, which survives refresh() because
+   that only rewrites the innards of #perm and #fleet, never the container. */
+.split.collapsed{grid-template-columns:34px 1fr}
+.split.collapsed>section:first-child{padding:8px 4px;align-items:center}
+.split.collapsed .permbody{display:none}
+.split.collapsed .permtitle{writing-mode:vertical-rl;transform:rotate(180deg);
+       margin:8px 0 0;letter-spacing:.18em}
+.split.collapsed #fleet{grid-template-columns:1fr 1fr}
+/* Two columns of logs only pay off if there is width for them. Below this the
+   collapsed layout would make each panel narrower than a log line. */
+@media(max-width:1200px){.split.collapsed #fleet{grid-template-columns:1fr}}
+.spine{background:none;border:1px solid var(--line);color:var(--dim);
+       border-radius:6px;padding:3px 5px;cursor:pointer;line-height:1}
 .split>section{padding:12px 16px;overflow:hidden;min-width:0;
                display:flex;flex-direction:column}
 .split>section+section{border-left:1px solid var(--line)}
@@ -1019,8 +1120,10 @@ pre{margin:0;padding:8px 10px;flex:1 1 auto;min-height:0;overflow:auto;font-size
 </header>
 <div class=split id=pane_mon>
   <section>
-    <h2>Permuter</h2>
-    <div class=ctl>
+    <button class=spine id=permtoggle onclick="togglePerm()"
+            title="collapse or expand the permuter column">&#9664;</button>
+    <h2 class=permtitle>Permuter</h2>
+    <div class="ctl permbody">
       <label>slots <input id=p_slots type=number value=3 min=1 max=8></label>
       <label>threads <input id=p_threads type=number value=4 min=1 max=16></label>
       <label>stall <input id=p_stall type=number value=2500 min=500 max=50000 step=500></label>
@@ -1029,10 +1132,11 @@ pre{margin:0;padding:8px 10px;flex:1 1 auto;min-height:0;overflow:auto;font-size
       <button onclick="act('permuter_plan')">plan</button>
       <button onclick="confirmAct('permuter_import','Import work dirs for candidates that lack one? This briefly writes a seed into src/ under the fleet build lock, then restores it.')">import seeds</button>
       <button onclick="confirmAct('permuter_land','Apply every score-0 permuter seed to src/ and BUILD it? Each one is verified against the 81 checksums and reverted unless it is green. This takes the build lock and runs one full build per match, so it can take a while.')">apply + build matches</button>
+      <button onclick="confirmAct('permuter_sync','Mark records that are already landed AND committed in src/ as matched? Verifies all 81 checksums first and refuses if the tree is red.')">sync phantoms</button>
       <button onclick="act('permuter_start',permParams())">start</button>
       <button class=danger onclick="confirmAct('permuter_stop','Stop all permuter jobs?')">stop</button>
     </div>
-    <div class=cols id=perm></div>
+    <div class="cols permbody" id=perm></div>
   </section>
   <section>
     <h2>Fleet</h2>
@@ -1269,6 +1373,11 @@ async function refresh(){
 
 }
 renderWorkerRows(); loadDiags(); loadBuilds(); loadLogs();
+function togglePerm(){
+  var p=el('pane_mon'), c=p.classList.toggle('collapsed');
+  // The arrow points the way the click will move the column, so it flips.
+  el('permtoggle').innerHTML = c ? '&#9654;' : '&#9664;';
+}
 refresh(); setInterval(refresh,3000);
 </script>
 """
@@ -1454,6 +1563,35 @@ def self_test() -> int:
     ck(snapshot().get("dryrun") is False,
        "and /api/status exposes the state so the UI can show it")
     ck("setInterval" in PAGE, "page refreshes itself")
+
+    print("\nthe permuter column collapses and the fleet takes the space")
+    ck("togglePerm" in PAGE and "permtoggle" in PAGE,
+       "there is a toggle, not just a CSS class nobody can reach")
+    ck(".split.collapsed{grid-template-columns:34px 1fr}" in PAGE,
+       "collapsing shrinks the permuter column to a spine")
+    ck(".split.collapsed #fleet{grid-template-columns:1fr 1fr}" in PAGE,
+       "and the fleet becomes TWO columns, which is the point of collapsing")
+    ck(PAGE.count("permbody") >= 3,
+       "both the controls and the panels hide, not just one of them")
+    ck("id=pane_mon" in PAGE and "classList.toggle('collapsed')" in PAGE,
+       "the state lives on the container, which refresh() never rewrites, so "
+       "it survives the 3s poll")
+
+    print("\nphantoms and leftovers each have a lever")
+    ck("permuter_sync" in ACTIONS,
+       "committed phantoms can be reconciled from the monitor tab")
+    ck("--sync-phantoms" in src, "and it calls the verb that verifies first")
+    kinds = [k for _l, k, _v, _n in BUILD_ACTIONS]
+    ck("restore_src" in kinds,
+       "and a killed run's leftover can be undone from the build tab")
+    rd = src[src.index("def restore_dirty_src"):src.index("def run_build")]
+    ck("git status" in rd and "--porcelain" in rd,
+       "the file list comes from git, never from the request, so this cannot "
+       "be aimed outside src/")
+    ck(rd.index("REFUSING") < rd.index('"git", "checkout"'),
+       "it refuses BEFORE checking anything out when the dirty tree verifies "
+       "81/81, because that is a landed match awaiting commit, not garbage")
+    ck("BuildLock" in rd, "and the restore plus rebuild hold the build lock")
     ck("confirm(" in PAGE, "destructive buttons confirm first")
     ck("b.disabled=true" in PAGE, "buttons disable in flight, so no double-start")
     ck("esc(" in PAGE and "&lt;" in PAGE,

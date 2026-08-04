@@ -1,13 +1,13 @@
 /* PERMUTER SEED -- compiled and linked, bytes differ.
-   record : us:BOSS/BO0:func_us_801B6520
-   attempt: 2/4
-   model  : opencode/ling-3.0-flash-free
+   record : us:BOSS/BO0:func_us_801B1E5C
+   attempt: 4/4
+   model  : opencode/mimo-v2.5-free
    verdict: BUILT, CHECKSUM MISMATCH (compiled and linked; bytes differ) - permuter candidate:
 --- build tail ---
   ✅ F_RBO0   ✅ RBO3     ✅ F_RBO3   ✅ RBO5     ✅ F_RBO5
   ✅
    content: WHOLE FILE (directly importable)
-   import : python3 tools/decomp-permuter/import.py <this file> asm/us/boss/bo0/nonmatchings/2D26C/func_us_801B6520.s
+   import : python3 tools/decomp-permuter/import.py <this file> asm/us/boss/bo0/nonmatchings/2D26C/func_us_801B1E5C.s
    Do NOT apply this to the tree as-is; it does not match.
    It exists so the permuter has a compiling starting point. */
 // SPDX-License-Identifier: AGPL-3.0-or-later
@@ -82,7 +82,29 @@ INCLUDE_ASM("boss/bo0/nonmatchings/2D26C", func_us_801B1CE0);
 
 INCLUDE_ASM("boss/bo0/nonmatchings/2D26C", func_us_801B1DDC);
 
-INCLUDE_ASM("boss/bo0/nonmatchings/2D26C", func_us_801B1E5C);
+s32 func_us_801B1E5C(void* arg0) {
+    // Boss vine stem entity: check if two child entities are within specific
+    // horizontal/vertical ranges and return whether exactly two conditions met.
+    void* entity = arg0;
+    s32 result1;
+    s32 result2;
+    // Load a pointer from the entity at offset 0x18 (likely a child entity).
+    void* child = *(void**)((char*)entity + 0x18);
+
+    // Update the boss's vine primitive state (clutOffset area).
+    func_us_801B163C((u8*)&g_CurrentEntity->ext.venusWeed.pad_90, 0, 0xC);
+
+    // Check if the main entity's horizontal position is within [-0x40, 0x40]
+    // and vertical position within [0, 0x60]; returns 1 if true.
+    result1 = func_us_801B171C(entity, -0x40, 0x40, 0x60);
+
+    // Check if the child entity's horizontal position is within [-0x200, 0x280]
+    // and vertical position within [0, 0x50]; returns 1 if true.
+    result2 = func_us_801B171C(child, -0x200, 0x280, 0x50);
+
+    // Return 1 only if exactly two of these checks succeeded.
+    return (result1 + result2) == 2;
+}
 
 INCLUDE_ASM("boss/bo0/nonmatchings/2D26C", func_us_801B1EDC);
 
@@ -116,15 +138,7 @@ INCLUDE_ASM("boss/bo0/nonmatchings/2D26C", func_us_801B5E8C);
 
 INCLUDE_ASM("boss/bo0/nonmatchings/2D26C", func_us_801B619C);
 
-s32 func_us_801B6520(s32 arg0, s32 arg1, s32 arg2, s32 arg3) {
-    Entity* entity = g_CurrentEntity;
-    s32 sum = 0;
-    sum += func_us_801B163C(entity + 0x88, (s16)arg2, (s16)(arg2 >> 16));
-    sum += func_us_801B163C(entity + 0x8C, (s16)arg3, (s16)(arg3 >> 16));
-    sum += func_us_801B163C(entity + 0x80, (s16)arg0, (s16)(arg0 >> 16));
-    sum += func_us_801B163C(entity + 0x84, (s16)arg1, (s16)(arg1 >> 16));
-    return ((sum ^ 4) == 0);
-}
+INCLUDE_ASM("boss/bo0/nonmatchings/2D26C", func_us_801B6520);
 
 INCLUDE_ASM("boss/bo0/nonmatchings/2D26C", func_us_801B65C0);
 

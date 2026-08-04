@@ -170,6 +170,62 @@ def _why_skip(rec: dict, work) -> str:
     return ""
 
 
+def file_is_dirty(where: str) -> bool | None:
+    """Does this src file differ from HEAD? None if git could not say."""
+    if not where:
+        return None
+    try:
+        p = Path(where)
+        rel = str(p.relative_to(REPO)) if p.is_absolute() else where
+        r = subprocess.run(["git", "status", "--porcelain", "--", rel],
+                           cwd=str(REPO), capture_output=True, text=True,
+                           timeout=60)
+        if r.returncode != 0:
+            return None
+        return bool((r.stdout or "").strip())
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return None
+
+
+def phantom_action(where: str) -> str:
+    """Turn "it is already defined" into the thing to actually do about it.
+
+    A phantom is a queue record that says unmatched while src/ has a real
+    definition. Exactly two things cause that, and they need OPPOSITE fixes, so
+    reporting only the symptom leaves the operator stuck:
+
+      dirty vs HEAD -> a landing or a worker left its candidate applied. The
+                       code is UNVERIFIED. Restore from HEAD and rebuild.
+      clean vs HEAD -> it is committed, so it really did land and the queue
+                       record is simply stale. Mark it matched.
+    """
+    d = file_is_dirty(where)
+    if d is True:
+        # NEVER say "restore from HEAD" without checking the build first.
+        # An uncommitted definition is EITHER a killed run's leftover OR a
+        # landing that just succeeded and has not been committed yet, and those
+        # two need opposite actions. On 2026-08-03 this told the operator to
+        # delete src/boss/bo0/2D26C.c, which at that moment held a
+        # func_us_801B1E5C landing that had verified 81/81 minutes earlier.
+        # Advice that can destroy a verified match must be evidence-based.
+        ok, detail = verify_checksums()
+        if ok:
+            return (f"LANDED/UNCOMMITTED: {where} has an applied definition "
+                    f"and the build VERIFIES ({detail}). This is a real match "
+                    f"waiting to be committed. Fix: commit that file. Do NOT "
+                    f"restore it from HEAD.")
+        return (f"PHANTOM/UNCOMMITTED: {where} has an APPLIED but uncommitted "
+                f"definition and the build does NOT verify ({detail}), so it "
+                f"is leftover from a killed or failed landing. Fix: restore "
+                f"that file from HEAD, rebuild, then re-run.")
+    if d is False:
+        return (f"PHANTOM/COMMITTED: {where} already defines this and matches "
+                f"HEAD, so it landed and the queue record is stale. Fix: mark "
+                f"this record matched.")
+    return (f"PHANTOM: defined at {where}, but git could not say whether it is "
+            f"committed. Check that file before doing anything else.")
+
+
 def candidates(statuses: tuple[str, ...] = ("near",),
                check_tree: bool = True) -> list[dict]:
     """Queue records worth permuting, best-scoring first.
@@ -195,9 +251,14 @@ def candidates(statuses: tuple[str, ...] = ("near",),
         if check_tree and workdir_state is not None:
             state, where = workdir_state(fn)
         if state == "phantom":
+            # "phantom, defined at <path>" was a dead end: it named a symptom
+            # and no action, so there was nothing to press in the dashboard and
+            # nothing to do in the queue. There are exactly two causes and git
+            # tells them apart, so say WHICH and what fixes it.
             out.append({"function": fn, "id": rec.get("id", ""),
                         "workdir": str(work) if work else "",
-                        "score": None, "skip": f"phantom, defined at {where}"})
+                        "score": None, "phantom_at": where,
+                        "skip": phantom_action(where)})
             continue
         out.append({
             "function": fn,
@@ -385,7 +446,7 @@ EXHAUSTED = "PERMUTER_EXHAUSTED"
 MATCH_PENDING = "PERMUTER_MATCH_PENDING_BUILD"
 
 
-def report(fn_id: str, status: str, notes: str) -> str:
+def report(fn_id: str, status: str, notes: str, proof: str = "") -> str:
     """Record an outcome through scheduler.py, the single queue writer.
 
     The supervisor did not write to the queue at all before, which meant a
@@ -395,11 +456,22 @@ def report(fn_id: str, status: str, notes: str) -> str:
     """
     if not fn_id:
         return "no record id"
-    r = subprocess.run(
-        [PYTHON, str(REPO / "automation" / "scheduler.py"), "report",
-         "--id", fn_id, "--status", status, "--notes", notes[:250]],
-        cwd=str(REPO), capture_output=True, text=True, timeout=60)
-    return (r.stdout or r.stderr).strip()
+    # scheduler.py REFUSES status=matched without --proof, by design: a match
+    # is the one claim in this project that must carry evidence. land_pending
+    # omitted it, so every successful landing printed "LANDED" and then
+    # "refused: status 'matched' requires --proof", leaving the record at
+    # `near` -- the work was done and the queue did not know.
+    argv = [PYTHON, str(REPO / "automation" / "scheduler.py"), "report",
+            "--id", fn_id, "--status", status, "--notes", notes[:250]]
+    if proof:
+        argv += ["--proof", proof[:250]]
+    r = subprocess.run(argv, cwd=str(REPO), capture_output=True, text=True,
+                       timeout=60)
+    out = (r.stdout or r.stderr).strip()
+    if r.returncode != 0 or "refused" in out.lower():
+        # Never let a rejected queue write look like a successful one.
+        return f"QUEUE WRITE FAILED ({status}): {out[:300]}"
+    return out
 
 
 
@@ -490,6 +562,11 @@ def land_match(work: Path, fn: str, build: str = "us",
     original, which it journals BEFORE writing, so a crash mid-build is
     recoverable by the existing journal replay.
     """
+    # See _assert_reverted: nothing in this function may report a revert it has
+    # not proven. The word cost a real match on 2026-08-03 -- land_pending
+    # printed "reverted: KeyError: 'overlay'" while func_us_801B1E5C was still
+    # applied to src/boss/bo0/2D26C.c, so the tree looked clean in the log and
+    # was not, and the next plan called the function a phantom.
     out0 = work / "output-0-1" / "source.c"
     if not out0.is_file():
         return False, f"no output-0-1/source.c in {work.name}"
@@ -545,6 +622,9 @@ def land_match(work: Path, fn: str, build: str = "us",
                     wd.journal_clear()
                     return True, f"GREEN: {detail}; {vdetail}"
                 wd.restore(ctx, original)
+                bad = _assert_reverted(path, original)
+                if bad:
+                    return False, f"{bad} (after VERIFY FAILED: {vdetail})"
                 # Rebuild so the tree is not left holding artefacts built from
                 # a seed that is no longer in src/. Leaving those behind is
                 # exactly the stale-artefact condition that produced the
@@ -556,6 +636,11 @@ def land_match(work: Path, fn: str, build: str = "us",
             # before anything else is attempted. restore() also drops the
             # journal, so a later replay cannot resurrect this edit.
             wd.restore(ctx, original)
+            bad = _assert_reverted(path, original)
+            if bad:
+                # Do NOT run the attribution build: it would compile the seed
+                # that is still applied and answer a different question.
+                return False, f"{bad} (original failure: {detail[:150]})"
 
             # Then ask whether the failure was even OURS. If the reverted tree
             # is also red, something was broken before we touched it -- a
@@ -573,6 +658,9 @@ def land_match(work: Path, fn: str, build: str = "us",
             if original is not None:
                 try:
                     wd.restore(ctx, original)
+                    bad = _assert_reverted(path, original)
+                    if bad:
+                        return False, f"{bad} (while handling {type(e).__name__}: {e})"
                 except OSError:
                     # The journal survives on purpose: if we could not write
                     # the file back, the ONLY remaining record of the original
@@ -628,6 +716,33 @@ def require_clean_src() -> str:
               "run --land again.")
 
 
+def _assert_reverted(path: Path, original: str) -> str:
+    """"" if `path` really holds `original` again, else a loud description.
+
+    A revert is a CLAIM until the bytes are read back. land_match used to write
+    the file and move on; when the write silently did not take, every downstream
+    message still said "reverted" and the applied function stayed in src/. The
+    only honest way to say reverted is to read the file and compare.
+
+    Also retries once, because the failure this guards against is a write that
+    did not land rather than a file that cannot be written.
+    """
+    for attempt in (1, 2):
+        try:
+            if path.read_text(errors="ignore") == original:
+                return ""
+        except OSError as e:
+            return f"REVERT UNVERIFIABLE: cannot read {path.name}: {e}"
+        if attempt == 1:
+            try:
+                path.write_text(original, newline="")
+            except OSError as e:
+                return f"REVERT FAILED: cannot write {path.name}: {e}"
+    return (f"REVERT FAILED: {path.name} still differs from the original after "
+            f"a retry. The applied function is STILL IN src/. Restore it from "
+            f"HEAD and rebuild before running anything else.")
+
+
 def verify_checksums(build: str = "us") -> tuple[bool, str]:
     """Hash the built artefacts against config/check.<build>.sha directly.
 
@@ -650,6 +765,39 @@ def verify_checksums(build: str = "us") -> tuple[bool, str]:
     names = ", ".join(l.split(":")[0] for l in bad[:6]) or "(none named)"
     return False, (f"{ok_n}/{total} checksums matched; {len(bad)} FAILED: "
                    f"{names}")
+
+
+def sync_phantoms(statuses: tuple[str, ...] = ("near", "todo")) -> int:
+    """Mark records that are already landed in src/ as matched.
+
+    A PHANTOM/COMMITTED record is work that is finished and committed while the
+    queue still calls it unmatched. Before this existed the plan printed the
+    diagnosis and stopped, so the only way to close the loop was to hand-edit
+    the queue, and the dashboard had no button that could do anything about it.
+
+    Gated on a REAL verify, not on the classification alone: the record is only
+    moved if the current tree passes all 81 checksums, and the proof string is
+    that verification. A matched status without evidence is the one thing
+    scheduler.py refuses outright, and rightly.
+    """
+    cs = [c for c in candidates(statuses)
+          if c["skip"].startswith("PHANTOM/COMMITTED")]
+    if not cs:
+        print("no committed phantoms to reconcile")
+        return 0
+    ok, detail = verify_checksums()
+    if not ok:
+        print(f"REFUSING: the tree does not verify ({detail}), so nothing here "
+              f"can be called matched. Fix the build first.")
+        return 2
+    for c in cs:
+        print(f"[sync] {c['function']}: already in src/ and committed")
+        print("  queue: " + report(
+            c.get("id", ""), "matched",
+            f"already present in src/ and committed; tree verifies. {detail}",
+            proof=detail))
+    print(f"\n{len(cs)} record(s) reconciled.")
+    return 0
 
 
 def land_pending(statuses: tuple[str, ...] = ("near",)) -> int:
@@ -682,8 +830,15 @@ def land_pending(statuses: tuple[str, ...] = ("near",)) -> int:
         print("REFUSING: " + unclean)
         return 2
 
+    # Select on GROUND TRUTH -- an output-0-1/source.c that actually exists --
+    # not solely on the MATCH_PENDING note. The note is a hint written into a
+    # mutable notes field, and any later report() overwrites it: when a landing
+    # died on KeyError 'overlay' it rewrote the note, and a match still sitting
+    # on disk at score 0 became unreachable to this command. The disk cannot be
+    # clobbered by a status message.
     cs = [c for c in candidates(statuses)
-          if c["skip"].startswith("permuter already scored 0")]
+          if c.get("score") == 0
+          or c["skip"].startswith("permuter already scored 0")]
     if not cs:
         print("nothing is waiting to be landed")
         return 0
@@ -703,9 +858,23 @@ def land_pending(statuses: tuple[str, ...] = ("near",)) -> int:
             print(f"  LANDED: {why}")
             print("  queue: " + report(
                 c.get("id", ""), "matched",
-                f"permuter match, applied and built green. {why}"))
+                f"permuter match, applied and built green. {why}",
+                proof=why))
             continue
-        print(f"  reverted: {why[:300]}")
+        # Say what actually happened. This used to print "reverted:" for every
+        # non-green outcome regardless of whether a revert had occurred, which
+        # is how a still-applied func_us_801B1E5C got logged as reverted and
+        # then showed up as a phantom.
+        if why.startswith(("REVERT FAILED", "REVERT UNVERIFIABLE")):
+            print(f"  *** TREE IS DIRTY: {why[:400]}")
+            print("  queue: " + report(
+                c.get("id", ""), "escalated",
+                f"LAND_REVERT_FAILED: the seed could not be removed from src/ "
+                f"after a failed landing. A human must restore the file from "
+                f"HEAD and rebuild. {why[:150]}"))
+            print("\nSTOPPING: nothing further is safe while src/ is dirty.")
+            return 2
+        print(f"  reverted (verified): {why[:300]}")
         if why.startswith("VERIFY FAILED"):
             # make said green and the hashes said otherwise. That is not a
             # "keep permuting" result -- the seed is reverted and the
@@ -937,7 +1106,8 @@ def supervise(slots: int, threads: int, stall: int, cycles: int,
                         print(f"[LANDED] {fn}: {why}")
                         print("  queue: " + report(
                             slot.get("id", ""), "matched",
-                            f"permuter match, applied and built green. {why}"))
+                            f"permuter match, applied and built green. {why}",
+                            proof=why))
                         done.append(slot)
                         del active[jid]
                         continue
@@ -1439,7 +1609,10 @@ def self_test() -> int:
 
     print("\na pre-existing broken tree is not blamed on the seed")
     lm2 = src_sup[src_sup.index("def land_match"):]
-    lm2 = lm2[:lm2.index("\ndef _jobs")]
+    # Cut at land_match's OWN end, not at _jobs: the helpers defined in between
+    # (_assert_reverted) legitimately write the file, and slicing past them
+    # made this assertion fail for the right behaviour.
+    lm2 = lm2[:lm2.index("\ndef _assert_reverted")]
     ck("TREE ALREADY BROKEN" in lm2,
        "after a red build it rebuilds the REVERTED tree to see whose fault it "
        "was")
@@ -1629,6 +1802,9 @@ def main() -> int:
     ap.add_argument("--import-seeds", action="store_true",
                     help="import work dirs for candidates that lack one, "
                          "then stop; starts no jobs")
+    ap.add_argument("--sync-phantoms", action="store_true",
+                    help="mark records already landed and committed in src/ "
+                         "as matched; verifies the tree first")
     ap.add_argument("--land", action="store_true",
                     help="apply and build every candidate already sitting at "
                          "score 0, then stop; starts no searches")
@@ -1686,6 +1862,14 @@ def main() -> int:
         print(f"\n{n} work dir(s) imported. Nothing was started; press "
               f"start to search them.")
         return 0
+    if a.sync_phantoms:
+        statuses = tuple(x.strip() for x in a.status_filter.split(",")
+                         if x.strip())
+        bad = check_statuses(statuses)
+        if bad:
+            print(bad, file=sys.stderr)
+            return 2
+        return sync_phantoms(statuses)
     if a.land:
         statuses = tuple(x.strip() for x in a.status_filter.split(",")
                          if x.strip())
