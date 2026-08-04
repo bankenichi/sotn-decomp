@@ -468,7 +468,14 @@ ACTIONS = {
     "permuter_start": _sup_start,
     # Writes to src/ (transiently, under the fleet's build lock), so it lives
     # with the permuter controls and NOT on the read-only diagnostics tab.
-    "permuter_import": lambda: _sup("--import-seeds"),
+    # 1800s, NOT the 60s default. This scan reads every .c under src/ once per
+    # candidate, which on the Windows mount is slow enough to blow a 60s cap.
+    # When it did, subprocess.run SIGKILLed it, and a SIGKILL between staging a
+    # seed and restoring it skips import_workdir's `finally` and leaves the
+    # candidate applied to src/. That is exactly how func_801CE2CC was left in
+    # src/st/rno0/unk_4A320.c, which then failed RNO0's checksum while every
+    # other overlay passed.
+    "permuter_import": lambda: _sup("--import-seeds", timeout=1800),
     # Applies every score-0 seed to src/, builds it, and reverts anything short
     # of 81/81. Belongs here rather than on the build tab: the build tab only
     # ever operates on the tree as it stands, so pressing Build there before
@@ -937,6 +944,17 @@ button.danger:hover{border-color:var(--bad);color:var(--bad)}
          background:var(--panel);border:1px solid var(--line);
          border-radius:7px;padding:10px 12px;font-size:11px;
          white-space:pre;color:var(--fg)}
+/* The build tab had NO rule of its own, so it was not a flex column and
+   nothing bounded its height: an 81-line sha1sum report simply grew the
+   section past the viewport and the only way to read the end was ctrl+A.
+   min-height:0 is the load-bearing part -- without it a flex child refuses to
+   shrink below its content and the inner overflow:auto never engages. */
+#pane_build{flex:1 1 auto;min-height:0;overflow:hidden;padding:12px 16px;
+            display:flex;flex-direction:column}
+#buildout{margin-top:12px;flex:1 1 auto;min-height:0;overflow:auto;
+          background:var(--panel);border:1px solid var(--line);
+          border-radius:7px;padding:10px 12px;font-size:11px;
+          white-space:pre;color:var(--fg)}
 .ctl{display:flex;gap:8px;align-items:center;flex-wrap:wrap;flex:0 0 auto;
      padding-bottom:10px;margin-bottom:4px;border-bottom:1px solid var(--line)}
 .ctl label{color:var(--dim);display:flex;gap:4px;align-items:center;font-size:11px}

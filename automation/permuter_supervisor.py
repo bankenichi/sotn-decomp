@@ -534,6 +534,39 @@ def land_match(work: Path, fn: str, build: str = "us",
             return False, f"{type(e).__name__}: {e}"
 
 
+def require_clean_src() -> str:
+    """"" if src/ matches HEAD, else a message naming what is dirty.
+
+    WHY THIS EXISTS
+        On 2026-08-03 --land spent two full builds discovering, via TREE
+        ALREADY BROKEN, that src/st/rno0/unk_4A320.c still had a fleet
+        candidate for func_801CE2CC applied to it. The seed had been left
+        behind by an earlier run that was KILLED between staging and restoring:
+        import_workdir restores in a `finally` from an in-memory copy, and a
+        `finally` does not run when the process is SIGKILLed. The dashboard
+        killed it, because _sup ran --import-seeds under a 60s subprocess
+        timeout and that scan walks every .c under src/ on a Windows mount.
+
+        A leftover apply is invisible: the tree builds, and only the checksums
+        disagree. Checking git is instant and names the file outright, so a
+        stale apply can never again be mistaken for a bad seed.
+    """
+    r = subprocess.run(["git", "status", "--porcelain", "--", "src"],
+                       cwd=str(REPO), capture_output=True, text=True,
+                       timeout=120)
+    if r.returncode != 0:
+        return f"could not check git status: {(r.stderr or '').strip()[:200]}"
+    dirty = [l[3:] for l in (r.stdout or "").splitlines() if l.strip()]
+    if not dirty:
+        return ""
+    return ("src/ does not match HEAD, so nothing can be landed or attributed "
+            "until it does. Uncommitted: " + ", ".join(dirty[:8])
+            + (f" (+{len(dirty) - 8} more)" if len(dirty) > 8 else "")
+            + ". This is usually a candidate left applied by a run that was "
+              "killed mid-apply. Restore those files from HEAD, rebuild, then "
+              "run --land again.")
+
+
 def verify_checksums(build: str = "us") -> tuple[bool, str]:
     """Hash the built artefacts against config/check.<build>.sha directly.
 
@@ -578,6 +611,16 @@ def land_pending(statuses: tuple[str, ...] = ("near",)) -> int:
     slip in. They are done ONE AT A TIME and the tree is clean between them, so
     a failure is always attributable to a single function.
     """
+    # BEFORE anything else, and before any build. Landing onto a tree that
+    # already differs from HEAD cannot produce an attributable result: a green
+    # would credit this seed for someone else's edit, and a red would blame it
+    # for one. Refusing costs a git call; not refusing cost two builds and a
+    # corrupted-looking tree.
+    unclean = require_clean_src()
+    if unclean:
+        print("REFUSING: " + unclean)
+        return 2
+
     cs = [c for c in candidates(statuses)
           if c["skip"].startswith("permuter already scored 0")]
     if not cs:
