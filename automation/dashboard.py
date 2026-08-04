@@ -608,6 +608,88 @@ def run_build(index: int) -> dict:
         return {"ok": False, "label": label, "out": f"{type(e).__name__}: {e}"}
 
 
+
+# ------------------------------------------------------------------- logs
+# Every log this harness writes, in one place, newest first.
+#
+# Exists because a transient error is unreadable: the permuter prints ten lines
+# a second, the dashboard's status line is overwritten by the next action, and
+# a job that dies leaves its reason in a file under ~/sotn-work that nothing
+# surfaces. "I saw an error but it went away" should not be a possible sentence.
+#
+# Paths are collected HERE and selected by index, exactly like the diagnostics
+# and build registries. A request never names a file, so this cannot be turned
+# into an arbitrary file reader.
+LOG_SOURCES = [
+    ("supervisor", Path(os.path.expanduser("~/sotn-work")), "supervisor.log"),
+    ("permuter", JOBS_DIR, "permuter-*.log"),
+    ("build", JOBS_DIR, "make_build-*.log"),
+    ("analysis", JOBS_DIR, "run_analysis-*.log"),
+    ("fleet", FLEET_LOGS, "worker-*.log"),
+]
+
+
+def log_index() -> list[dict]:
+    """All known logs as (category, name, path, mtime, size), newest first."""
+    out = []
+    for cat, root, pat in LOG_SOURCES:
+        try:
+            if not root.is_dir():
+                continue
+            for f in root.glob(pat):
+                try:
+                    st = f.stat()
+                except OSError:
+                    continue
+                out.append({"cat": cat, "name": f.name, "path": str(f),
+                            "mtime": st.st_mtime, "size": st.st_size})
+        except OSError:
+            continue
+    # Archived fleet runs, so a finished run is still readable.
+    arch = FLEET_LOGS / "archive"
+    if arch.is_dir():
+        for f in arch.rglob("worker-*.log"):
+            try:
+                st = f.stat()
+            except OSError:
+                continue
+            out.append({"cat": "fleet archive",
+                        "name": f"{f.parent.name}/{f.name}", "path": str(f),
+                        "mtime": st.st_mtime, "size": st.st_size})
+    out.sort(key=lambda d: -d["mtime"])
+    return out
+
+
+def read_log(index: int, tail_lines: int = 400) -> dict:
+    """Tail one indexed log. Errors are usually at the END, so tail not head."""
+    idx = log_index()
+    if not 0 <= index < len(idx):
+        return {"ok": False, "out": f"no log {index}"}
+    entry = idx[index]
+    p = Path(entry["path"])
+    # Re-check containment. The index is server-built, but a symlink inside a
+    # log directory could still point elsewhere, and a log viewer that will
+    # read any path is a file-disclosure bug wearing a friendly name.
+    roots = [JOBS_DIR.resolve(), FLEET_LOGS.resolve(),
+             Path(os.path.expanduser("~/sotn-work")).resolve()]
+    try:
+        rp = p.resolve()
+        if not any(str(rp).startswith(str(r)) for r in roots):
+            return {"ok": False, "out": "refusing to read outside the log dirs"}
+        raw = rp.read_text(errors="ignore")
+    except OSError as e:
+        return {"ok": False, "out": f"cannot read: {e}"}
+    lines = [re.sub(r"[\b\r]+", "", l).rstrip() for l in raw.splitlines()]
+    lines = [l for l in lines if l]
+    shown = lines[-tail_lines:]
+    head = (f"{entry['cat']}  {entry['name']}\n"
+            f"{len(lines)} lines, {entry['size']} bytes, modified "
+            f"{time.strftime('%H:%M:%S', time.localtime(entry['mtime']))}\n"
+            + ("(showing the last %d)\n" % tail_lines
+               if len(lines) > tail_lines else "") + "\n")
+    return {"ok": True, "out": head + "\n".join(shown)}
+
+
 # ------------------------------------------------------------------- server
 
 class Handler(http.server.BaseHTTPRequestHandler):
@@ -638,6 +720,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
                        "text/html; charset=utf-8")
         elif path == "/api/status":
             self._json(snapshot())
+        elif path == "/api/logs":
+            self._json({"items": [
+                {"cat": d["cat"], "name": d["name"], "size": d["size"],
+                 "when": time.strftime("%H:%M:%S",
+                                       time.localtime(d["mtime"]))}
+                for d in log_index()[:200]]})
         elif path == "/api/buildactions":
             self._json({"items": [{"label": l, "note": nt}
                                   for l, _, _, nt in BUILD_ACTIONS]})
@@ -655,8 +743,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self._json({"error": "bad or missing token"}, 403)
             return
         path = urllib.parse.urlparse(self.path).path
-        if path in ("/api/diag", "/api/build"):
-            runner = run_diagnostic if path == "/api/diag" else run_build
+        if path in ("/api/diag", "/api/build", "/api/log"):
+            runner = {"/api/diag": run_diagnostic, "/api/build": run_build,
+                      "/api/log": read_log}[path]
             try:
                 n = int(self.headers.get("Content-Length") or 0)
                 body = json.loads(self.rfile.read(n) or b"{}") if n else {}
@@ -803,6 +892,24 @@ button.danger:hover{border-color:var(--bad);color:var(--bad)}
 .diagbtn{text-align:left;padding:8px 10px;line-height:1.35}
 .diagbtn b{display:block;color:var(--fg)}
 .diagbtn span{color:var(--dim);font-size:10px}
+/* List on the left, contents on the right: picking a log must not scroll the
+   list away, which is the whole point of being able to compare two of them. */
+.logsplit{display:grid;grid-template-columns:340px 1fr;gap:12px;
+          flex:1 1 auto;min-height:0;margin-top:10px}
+#loglist{overflow:auto;border:1px solid var(--line);border-radius:7px;
+         background:var(--panel);padding:6px}
+#loglist .cat{color:var(--dim);font-size:10px;text-transform:uppercase;
+              letter-spacing:.1em;padding:8px 6px 3px}
+#loglist button{display:block;width:100%;text-align:left;margin:2px 0;
+                padding:4px 7px;font-size:11px;border-color:transparent}
+#loglist button:hover{border-color:var(--accent)}
+#loglist button b{color:var(--fg);font-weight:500}
+#loglist button i{color:var(--dim);font-style:normal;float:right;font-size:10px}
+#logout{margin:0;overflow:auto;background:var(--panel);
+        border:1px solid var(--line);border-radius:7px;padding:10px 12px;
+        font-size:11px;white-space:pre;color:var(--fg)}
+#pane_logs{flex:1 1 auto;min-height:0;overflow:hidden;padding:12px 16px;
+           display:flex;flex-direction:column}
 #diagout{margin-top:12px;flex:1 1 auto;min-height:0;overflow:auto;
          background:var(--panel);border:1px solid var(--line);
          border-radius:7px;padding:10px 12px;font-size:11px;
@@ -866,6 +973,7 @@ pre{margin:0;padding:8px 10px;flex:1 1 auto;min-height:0;overflow:auto;font-size
     <button id=tab_mon class=on onclick="showTab('mon')">monitor</button>
     <button id=tab_diag onclick="showTab('diag')">diagnostics</button>
     <button id=tab_build onclick="showTab('build')">build</button>
+    <button id=tab_logs onclick="showTab('logs')">logs</button>
   </div>
 </header>
 <div class=split id=pane_mon>
@@ -913,6 +1021,17 @@ pre{margin:0;padding:8px 10px;flex:1 1 auto;min-height:0;overflow:auto;font-size
   <div class=diaggrid id=buildbtns></div>
   <pre id=buildout>These change build artefacts. Each runs under the same lock the fleet and supervisor use, so pressing one during a fleet run waits rather than corrupts.</pre>
 </section>
+<section id=pane_logs style="display:none">
+  <h2>Logs &mdash; newest first</h2>
+  <div class=ctl>
+    <button onclick="loadLogs()">refresh list</button>
+    <span class=empty id=logcount></span>
+  </div>
+  <div class=logsplit>
+    <div id=loglist></div>
+    <pre id=logout>Pick a log. Shows the last 400 lines, because errors are at the end.</pre>
+  </div>
+</section>
 <div id=out></div>
 <script>
 const TOKEN="__TOKEN__";
@@ -950,7 +1069,7 @@ function fleetParams(){
   return p;
 }
 function showTab(t){
-  for(const k of ['mon','diag','build']){
+  for(const k of ['mon','diag','build','logs']){
     el('pane_'+k).style.display = t===k ? '' : 'none';
     el('tab_'+k).className = t===k ? 'on' : '';
   }
@@ -990,6 +1109,34 @@ async function runBuild(i){
       `${j.ok===false?'   [FAILED]':'   [ok]'}\n\n${j.out||'(no output)'}`;
   }catch(e){ el('buildout').textContent='request failed: '+e; }
   btns.forEach(b=>b.disabled=false);
+}
+
+let LOGS=[];
+async function loadLogs(){
+  try{ LOGS=(await (await fetch('/api/logs')).json()).items; }
+  catch(e){ return; }
+  el('logcount').textContent = LOGS.length+' log(s)';
+  // Grouped by category but the GROUPS keep global newest-first order, so the
+  // thing that just happened is always near the top.
+  let h='', last=null;
+  LOGS.forEach((d,i)=>{
+    if(d.cat!==last){ h+=`<div class=cat>${esc(d.cat)}</div>`; last=d.cat; }
+    h+=`<button onclick="showLog(${i})"><b>${esc(d.name)}</b>`+
+       `<i>${esc(d.when)}</i></button>`;
+  });
+  el('loglist').innerHTML=h;
+}
+
+async function showLog(i){
+  el('logout').textContent='loading '+LOGS[i].name+' ...';
+  try{
+    const r=await fetch('/api/log',{method:'POST',
+      headers:{'X-Token':TOKEN,'Content-Type':'application/json'},
+      body:JSON.stringify({index:i})});
+    const j=await r.json();
+    el('logout').textContent=j.out||'(empty)';
+    el('logout').scrollTop=el('logout').scrollHeight;   // errors are at the end
+  }catch(e){ el('logout').textContent='request failed: '+e; }
 }
 
 async function runDiag(i){
@@ -1079,7 +1226,7 @@ async function refresh(){
     : `<div class=empty>no live fleet workers${dead?` (${dead} stopped)`:''}</div>`;
 
 }
-renderWorkerRows(); loadDiags(); loadBuilds();
+renderWorkerRows(); loadDiags(); loadBuilds(); loadLogs();
 refresh(); setInterval(refresh,3000);
 </script>
 """
@@ -1205,6 +1352,22 @@ def self_test() -> int:
     ck("shell=True" not in rb, "no shell in the build path")
     ck("pane_build" in PAGE and "runBuild" in PAGE, "the build tab renders")
     ck("confirm(" in PAGE, "build buttons confirm first")
+
+    print("\nthe logs tab exposes every log, index-selected")
+    idx = log_index()
+    ck(isinstance(idx, list), "an index is produced even with nothing running")
+    if len(idx) > 1:
+        ck(idx[0]["mtime"] >= idx[-1]["mtime"], "newest first")
+    ck(read_log(-1)["ok"] is False and read_log(10**6)["ok"] is False,
+       "out-of-range log indices are refused")
+    rl = src[src.index("def read_log"):]
+    rl = rl[:rl.index("\n\n\n")]
+    ck("resolve()" in rl and "refusing to read outside" in rl,
+       "it re-checks containment after resolving, so a symlink in a log dir "
+       "cannot turn this into an arbitrary file reader")
+    ck("lines[-tail_lines:]" in rl,
+       "it tails rather than heads, because errors are at the END")
+    ck("pane_logs" in PAGE and "showLog" in PAGE, "the logs tab renders")
 
     print("\nthe page")
     ck("__TOKEN__" in PAGE, "page carries a token placeholder")

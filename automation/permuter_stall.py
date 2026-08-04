@@ -91,9 +91,14 @@ def verdict(st: dict) -> tuple[str, str]:
         return ("MATCH", "score 0 reached; collect the output and apply it")
     if st["failures"] > st["iterations"] // 20:
         return ("UNPERTURBABLE",
-                f"{st['failures']} mutations were rejected. The seed is barely "
-                f"mutable, which usually means its structure is wrong. "
-                f"Re-derive from the assembly.")
+                f"{st['failures']} mutations were rejected. Run "
+                f"`permuter_stall.py --errors` first: the most common cause is "
+                f"an UNDECLARED function in the seed, which makes pycparser's "
+                f"typemap raise KeyError on every pass that tries to type an "
+                f"expression containing the call (observed on "
+                f"func_us_801B1EDC, KeyError 'func_us_801B171C'). Adding the "
+                f"extern fixes it. If every callee IS declared, then the "
+                f"structure really is wrong and it needs re-deriving.")
     if st["since_improvement"] >= STALL_ITERS:
         return ("STALLED",
                 f"no improvement for {st['since_improvement']} iterations "
@@ -252,10 +257,50 @@ def main() -> int:
     ap.add_argument("--log", default="")
     ap.add_argument("--all", action="store_true")
     ap.add_argument("--self-test", action="store_true")
+    ap.add_argument("--errors", action="store_true",
+                    help="show every NON-iteration line across all job logs; "
+                         "the permuter spams iterations, so anything else is "
+                         "signal and is usually the thing you missed")
+    ap.add_argument("--only", default="",
+                    help="restrict --errors to logs whose name contains this")
     a = ap.parse_args()
 
     if a.self_test:
         return self_test()
+
+    if a.errors:
+        # A permuter log is ~10 iteration lines a second and nothing else,
+        # UNTIL something goes wrong. So the cheapest possible error finder is
+        # "print the lines that are not iterations". That is what makes a
+        # mid-run error findable at all: it scrolls past in the UI and is then
+        # buried under thousands of identical lines, invisible to a tail.
+        noise = re.compile(r"^iteration \d+, \d+ errors")
+        logs = sorted(JOBS_DIR.glob("*.log"),
+                      key=lambda p: -p.stat().st_mtime)
+        if a.only:
+            logs = [p for p in logs if a.only in p.name]
+        found = 0
+        for lp in logs:
+            try:
+                raw = lp.read_text(errors="ignore")
+            except OSError:
+                continue
+            out = []
+            for i, line in enumerate(raw.splitlines(), 1):
+                line = re.sub(r"[\b\r]+", "", line).rstrip()
+                if not line or noise.match(line):
+                    continue
+                out.append(f"  {i:>7}: {line}")
+            if out:
+                found += 1
+                print(f"\n=== {lp.name} ({len(out)} non-iteration line(s)) ===")
+                for l in out[:80]:
+                    print(l)
+                if len(out) > 80:
+                    print(f"  ... {len(out) - 80} more")
+        if not found:
+            print("no non-iteration lines in any job log")
+        return 0
 
     logs = []
     if a.log:
