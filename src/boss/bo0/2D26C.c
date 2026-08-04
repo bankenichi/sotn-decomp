@@ -70,7 +70,16 @@ INCLUDE_ASM("boss/bo0/nonmatchings/2D26C", func_us_801B1CE0);
 
 INCLUDE_ASM("boss/bo0/nonmatchings/2D26C", func_us_801B1DDC);
 
-INCLUDE_ASM("boss/bo0/nonmatchings/2D26C", func_us_801B1E5C);
+s32 func_us_801B1E5C(void *arg0)
+{
+  void *entity = arg0;
+  s32 result1;
+  s32 result2;
+  void *child = *((void **) (((char *) entity) + 0x18));
+  func_us_801B163C(&g_CurrentEntity->ext.venusWeed.pad_90, 0, 0xC);
+  result1 = func_us_801B171C(entity, -0x40, 0x40, 0x60);
+ do { result2 = func_us_801B171C(child, -0x200, 0x280, 0x50); return (result1 + result2) == 2; } while (0);
+}
 
 INCLUDE_ASM("boss/bo0/nonmatchings/2D26C", func_us_801B1EDC);
 
