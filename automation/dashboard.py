@@ -514,6 +514,12 @@ DIAGNOSTICS = [
      "what would run next, and why the rest would not"),
     ("Permuter stalls", "permuter_stall.py", "--all",
      "true minimum per run, and whether it is still learning"),
+    ("Match provenance", "match_provenance.py", "",
+     "which part of the harness produced each match, and what is unattributed"),
+    ("Match provenance: unknown", "match_provenance.py", "--unknown",
+     "matches whose method note was lost or never written"),
+    ("Match provenance: detail", "match_provenance.py", "--detail",
+     "one line per matched function with the evidence behind it"),
     ("Fleet: empty responses", "empty_response_audit.py",
      "--timing --by-prompt-size",
      "dead rate per model, call timing, prompt-size correlation"),
@@ -1588,6 +1594,25 @@ def self_test() -> int:
     ck("id=pane_mon" in PAGE and "classList.toggle('collapsed')" in PAGE,
        "the state lives on the container, which refresh() never rewrites, so "
        "it survives the 3s poll")
+
+    print("\nevery diagnostics button points at an allowlisted script")
+    import importlib.util as _il
+    _sp = _il.spec_from_file_location(
+        "cc", str(REPO / "automation" / "mcp" / "commands_client.py"))
+    try:
+        _cc = _il.module_from_spec(_sp); _sp.loader.exec_module(_cc)
+        allowed = set(_cc.ANALYSIS_SCRIPTS)
+    except Exception:                                        # noqa: BLE001
+        allowed = None
+    if allowed is None:
+        print("  ~~ commands_client not importable; skipped")
+    else:
+        missing = sorted({sc for _l, sc, _a, _n in DIAGNOSTICS} - allowed)
+        ck(not missing,
+           "a button whose script is not allowlisted is a dead button "
+           f"(missing: {missing})")
+        ck("match_provenance.py" in allowed,
+           "match provenance is runnable through the connector too")
 
     print("\nphantoms and leftovers each have a lever")
     ck("permuter_sync" in ACTIONS,
