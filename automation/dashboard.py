@@ -351,12 +351,25 @@ def validate_params(action: str, raw: dict) -> tuple[dict, str]:
     return clean, ""
 
 
-def _sup(*args: str) -> dict:
+def _sup(*args: str, timeout: int = 60) -> dict:
+    """Run the supervisor and return its output.
+
+    timeout is a parameter because --land is not like the others: it is one
+    full make build per pending match, so 60s would kill it partway through a
+    build with a seed still applied to src/. Read-only verbs keep the short
+    default so a hung call cannot wedge the dashboard.
+    """
     import subprocess
     py = os.environ.get("SOTN_PYTHON", sys.executable)
-    r = subprocess.run([py, str(REPO / "automation" / "permuter_supervisor.py"),
-                        *args], cwd=str(REPO), capture_output=True, text=True,
-                       timeout=60)
+    try:
+        r = subprocess.run(
+            [py, str(REPO / "automation" / "permuter_supervisor.py"), *args],
+            cwd=str(REPO), capture_output=True, text=True, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        return {"ok": False,
+                "out": f"supervisor {' '.join(args)} exceeded {timeout}s "
+                       f"and was killed. If this was --land, check the build "
+                       f"tab and git status before starting anything else."}
     return {"ok": r.returncode == 0, "out": (r.stdout or r.stderr)[-4000:]}
 
 
@@ -456,6 +469,12 @@ ACTIONS = {
     # Writes to src/ (transiently, under the fleet's build lock), so it lives
     # with the permuter controls and NOT on the read-only diagnostics tab.
     "permuter_import": lambda: _sup("--import-seeds"),
+    # Applies every score-0 seed to src/, builds it, and reverts anything short
+    # of 81/81. Belongs here rather than on the build tab: the build tab only
+    # ever operates on the tree as it stands, so pressing Build there before
+    # this would rebuild an unchanged tree and report a green that says nothing
+    # about the seed. Timeout is long because it is one full build per match.
+    "permuter_land": lambda: _sup("--land", timeout=7200),
     "fleet_clear_hold": _fleet_clear_hold,
     "permuter_stop": lambda: _sup("--stop"),
     "permuter_plan": lambda: _sup("--plan"),
@@ -551,6 +570,10 @@ def run_diagnostic(index: int) -> dict:
 # builds share one output directory and produce artefacts matching nothing. It
 # therefore runs under the same automation/.build.lock the fleet and the
 # supervisor use, so pressing it during a fleet run waits rather than corrupts.
+# Deliberately NO apply-and-build action here. Everything in this tab operates
+# on the tree exactly as it stands; landing a permuter seed CHANGES src/, which
+# belongs with the permuter it came from. That button lives in the monitor
+# tab's permuter column.
 BUILD_ACTIONS = [
     ("Build us", "build", "us",
      "make build VERSION=us, the 81/81 checksum gate"),
@@ -987,6 +1010,7 @@ pre{margin:0;padding:8px 10px;flex:1 1 auto;min-height:0;overflow:auto;font-size
       <label>max it <input id=p_maxit type=number value=50000 min=1000 max=500000 step=5000></label>
       <button onclick="act('permuter_plan')">plan</button>
       <button onclick="confirmAct('permuter_import','Import work dirs for candidates that lack one? This briefly writes a seed into src/ under the fleet build lock, then restores it.')">import seeds</button>
+      <button onclick="confirmAct('permuter_land','Apply every score-0 permuter seed to src/ and BUILD it? Each one is verified against the 81 checksums and reverted unless it is green. This takes the build lock and runs one full build per match, so it can take a while.')">apply + build matches</button>
       <button onclick="act('permuter_start',permParams())">start</button>
       <button class=danger onclick="confirmAct('permuter_stop','Stop all permuter jobs?')">stop</button>
     </div>

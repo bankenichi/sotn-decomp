@@ -492,7 +492,22 @@ def land_match(work: Path, fn: str, build: str = "us",
             original = wd.apply_code(ctx, fn, body)
             ok, detail = wd.build_and_check({"build": build})
             if ok:
-                return True, "GREEN: " + detail
+                # An INDEPENDENT oracle, not a second opinion from the same
+                # one. build_and_check trusts make's exit code; this reads the
+                # 81 SHA-1s out of config/check.<build>.sha and hashes the
+                # artefacts itself. The two have disagreed before -- a stale
+                # artefact satisfies make and fails this -- and when they do,
+                # the hashes win.
+                vok, vdetail = verify_checksums(build)
+                if vok:
+                    return True, f"GREEN: {detail}; {vdetail}"
+                path.write_text(original, newline="")
+                # Rebuild so the tree is not left holding artefacts built from
+                # a seed that is no longer in src/. Leaving those behind is
+                # exactly the stale-artefact condition that produced the
+                # disagreement in the first place.
+                wd.build_and_check({"build": build})
+                return False, f"VERIFY FAILED: {vdetail}"
 
             # Revert FIRST. A failed build must leave the tree exactly as found
             # before anything else is attempted.
@@ -517,6 +532,101 @@ def land_match(work: Path, fn: str, build: str = "us",
                 except OSError:
                     pass
             return False, f"{type(e).__name__}: {e}"
+
+
+def verify_checksums(build: str = "us") -> tuple[bool, str]:
+    """Hash the built artefacts against config/check.<build>.sha directly.
+
+    This is the project's real oracle: 81 SHA-1s, all of which must match. It
+    is deliberately NOT `make`, so it cannot be satisfied by a build system
+    that decided nothing needed doing.
+    """
+    sha = REPO / "config" / f"check.{build}.sha"
+    if not sha.is_file():
+        return False, f"no {sha.name} to verify against"
+    r = subprocess.run(["sha1sum", "-c", f"config/{sha.name}"],
+                       cwd=str(REPO), capture_output=True, text=True,
+                       timeout=900)
+    lines = [l for l in (r.stdout or "").splitlines() if l.strip()]
+    ok_n = sum(1 for l in lines if l.endswith(": OK"))
+    bad = [l for l in lines if l.endswith(": FAILED")]
+    total = ok_n + len(bad)
+    if r.returncode == 0 and not bad:
+        return True, f"verified {ok_n}/{total or ok_n} checksums"
+    names = ", ".join(l.split(":")[0] for l in bad[:6]) or "(none named)"
+    return False, (f"{ok_n}/{total} checksums matched; {len(bad)} FAILED: "
+                   f"{names}")
+
+
+def land_pending(statuses: tuple[str, ...] = ("near",)) -> int:
+    """Apply and build every candidate that ALREADY sits at score 0.
+
+    WHY THIS IS SEPARATE FROM --run
+        supervise() lands a match the moment it finds one, but only for jobs it
+        started itself. A record that reached 0 in an earlier run carries
+        MATCH_PENDING in its notes, and _why_skip deliberately excludes those
+        from the plan so a slot is not burnt re-searching solved work. The
+        effect was a dead end: --run would not touch them, and the dashboard's
+        build tab only builds the tree as it stands -- it does not apply
+        anything, so pressing Build there would have rebuilt an unchanged tree
+        and reported a green 81/81 that said nothing about the seed.
+
+        func_us_801B1E5C was sitting in exactly that gap.
+
+    Each landing is a full apply -> build -> revert-unless-green through
+    land_match, so a permuter zero that does not survive the real build cannot
+    slip in. They are done ONE AT A TIME and the tree is clean between them, so
+    a failure is always attributable to a single function.
+    """
+    cs = [c for c in candidates(statuses)
+          if c["skip"].startswith("permuter already scored 0")]
+    if not cs:
+        print("nothing is waiting to be landed")
+        return 0
+
+    lock = _build_lock()
+    print(f"{len(cs)} match(es) pending a build\n")
+    landed = 0
+    for c in cs:
+        fn, work = c["function"], c["workdir"]
+        if not work:
+            print(f"[skip] {fn}: notes say score 0 but there is no work dir")
+            continue
+        print(f"[land] {fn} from {work}")
+        good, why = land_match(Path(work), fn, lock=lock)
+        if good:
+            landed += 1
+            print(f"  LANDED: {why}")
+            print("  queue: " + report(
+                c.get("id", ""), "matched",
+                f"permuter match, applied and built green. {why}"))
+            continue
+        print(f"  reverted: {why[:300]}")
+        if why.startswith("VERIFY FAILED"):
+            # make said green and the hashes said otherwise. That is not a
+            # "keep permuting" result -- the seed is reverted and the
+            # disagreement itself needs looking at, so it goes to deferred
+            # rather than back into the search pool.
+            print("  queue: " + report(
+                c.get("id", ""), "deferred",
+                f"{EXHAUSTED}: build reported success but the checksum "
+                f"verification disagreed; seed reverted. {why[:150]}"))
+        elif why.startswith("TREE ALREADY BROKEN"):
+            # Not this function's failure, so the record is left alone. A
+            # status change here would file a wrong verdict.
+            print("  queue: untouched; fix the tree and run --land again")
+        elif why.startswith("COMPILE ERROR"):
+            print("  queue: " + report(
+                c.get("id", ""), "deferred",
+                f"{EXHAUSTED}: scored 0 but does not compile in its real "
+                f"file; needs declarations the permuter cannot add. {why[:120]}"))
+        else:
+            print("  queue: " + report(
+                c.get("id", ""), "near",
+                f"permuter scored 0 in isolation but the overlay checksum "
+                f"still differs; seed at {work}. Keep searching. {why[:120]}"))
+    print(f"\n{landed} of {len(cs)} landed.")
+    return 0
 
 
 def _jobs():
@@ -1378,6 +1488,9 @@ def main() -> int:
     ap.add_argument("--import-seeds", action="store_true",
                     help="import work dirs for candidates that lack one, "
                          "then stop; starts no jobs")
+    ap.add_argument("--land", action="store_true",
+                    help="apply and build every candidate already sitting at "
+                         "score 0, then stop; starts no searches")
     ap.add_argument("--log", action="store_true",
                     help="print the detached supervisor's own log")
     ap.add_argument("--slots", type=int, default=DEF_SLOTS)
@@ -1424,6 +1537,14 @@ def main() -> int:
         print(f"\n{n} work dir(s) imported. Nothing was started; press "
               f"start to search them.")
         return 0
+    if a.land:
+        statuses = tuple(x.strip() for x in a.status_filter.split(",")
+                         if x.strip())
+        bad = check_statuses(statuses)
+        if bad:
+            print(bad, file=sys.stderr)
+            return 2
+        return land_pending(statuses)
     if a.log:
         if not LOG.is_file():
             print(f"no supervisor log at {LOG}")
