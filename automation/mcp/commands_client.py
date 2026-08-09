@@ -197,6 +197,7 @@ ANALYSIS_SCRIPTS = {
     "member_types.py",
     "upstream_harvest.py",
     "transplant.py",
+    "asm_delta.py",
     "test_stub_locate.py",
     "test_permuter_seed.py",
     "permuter_stall.py",

@@ -585,6 +585,8 @@ DIAGNOSTICS = [
      "classify escalated records: harness, C89, symbol, or real"),
     ("Member type check", "member_types.py", "--self-test",
      "does x->field exist in the struct x points at (type-aware)"),
+    ("Twin asm delta", "asm_delta.py", "--function",
+     "what actually differs between a stub and its twin, derived"),
     ("Transplant candidates", "transplant.py", "--list",
      "functions copyable from upstream; dry run, writes nothing"),
     ("Upstream harvest", "upstream_harvest.py", "",

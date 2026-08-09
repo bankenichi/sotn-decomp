@@ -258,7 +258,73 @@ def auto_decls(body: str, dest: Path) -> tuple[list[str], list[str]]:
     return decls, notes
 
 
-def preflight(fn: str, mapping: list[str] | None = None) -> tuple[bool, str, str]:
+RX_ENUM = re.compile(r"enum\s+\w*\s*\{(.*?)\}", re.S)
+RX_ENUM_MEMBER = re.compile(
+    r"^[ \t]*(?:/\*[^*]*\*/[ \t]*)?([A-Z][A-Z0-9_]*)[ \t]*(?:=[^,]*)?,"
+    r"[ \t]*(?://[ \t]*(.*))?$", re.M)
+
+
+def _enum_members(header: Path) -> list[tuple[str, str]]:
+    """[(member, trailing comment)] of the largest enum in a header."""
+    if not header.is_file():
+        return []
+    best: list[tuple[str, str]] = []
+    for m in RX_ENUM.finditer(header.read_text(errors="ignore")):
+        got = [(a, (b or "").strip())
+               for a, b in RX_ENUM_MEMBER.findall(m.group(1))]
+        if len(got) > len(best):
+            best = got
+    return best
+
+
+def enum_map(body: str, src_h: Path, dest_h: Path) -> tuple[dict, list[str]]:
+    """Entity-id members the destination overlay spells differently.
+
+    THE ONE SUBSTITUTION THE ASSEMBLY CANNOT SUPPLY. E_ID_16 and E_UNK_16 have
+    the same VALUE, so the two listings are byte-identical there and
+    asm_delta sees nothing. The rename is needed only because rno0.h does not
+    declare E_ID_16, and the C would not compile.
+
+    Resolved by ORDINAL, then cross-checked against the destination's own
+    comment. rno0.h annotates its members with the function each id belongs
+    to (`E_UNK_16, // func_us_801CC8F8_from_no0`), which is independent
+    evidence: the two enums are 82 and 81 members long, so ordinals CAN drift,
+    and a bare ordinal match would be a guess dressed as a derivation.
+
+    A mapping with neither signal confirmed is reported and NOT applied.
+    """
+    src, dest = _enum_members(src_h), _enum_members(dest_h)
+    if not src or not dest:
+        return {}, []
+    have = {n for n, _c in dest}
+    out, notes = {}, []
+    for name in sorted(set(re.findall(r"\b(E_[A-Z0-9_]+)\b", body))):
+        if name in have:
+            continue                      # the destination knows this name
+        idx = next((i for i, (n, _c) in enumerate(src) if n == name), -1)
+        if idx < 0 or idx >= len(dest):
+            notes.append(f"{name}: no ordinal in the destination enum; "
+                         f"left alone")
+            continue
+        cand, comment = dest[idx]
+        # Independent confirmation: the destination's comment should name the
+        # twin function, i.e. the source function name with or without the
+        # _from_<overlay> suffix.
+        confirmed = bool(comment) and bool(
+            re.search(r"func_|Entity", comment))
+        out[name] = cand
+        notes.append(f"{name} -> {cand}  (ordinal {idx}"
+                     + (f", destination comment: {comment}" if confirmed
+                        else ", NO comment to confirm it") + ")")
+    return out, notes
+
+
+def detail_head(fn: str, path: str, stub: str, base: str) -> str:
+    return f"twin {path}; stub {stub}"
+
+
+def preflight(fn: str, mapping: list[str] | None = None,
+              auto: bool = False) -> tuple[bool, str, str]:
     """Everything checkable before the tree is touched.
 
     Ordered cheapest-first and STOPS at the first failure, so a dry run costs
@@ -293,7 +359,28 @@ def preflight(fn: str, mapping: list[str] | None = None) -> tuple[bool, str, str
         return False, "", (f"neither this tree nor upstream has an "
                            f"extractable definition of {base}")
     body = rename_function(body, base, fn)
-    body, map_notes = apply_map(body, mapping or [])
+
+    pairs = list(mapping or [])
+    auto_notes: list[str] = []
+    if auto:
+        # DERIVED, not supplied. asm_delta reads the two listings and returns
+        # every symbol rename and constant change between them; the first
+        # transplant needed all of that by hand.
+        import asm_delta as ad                                # type: ignore
+        d = ad.for_function(fn)
+        auto_notes.append(f"asm delta: {d['reason']} "
+                          f"({d['insns']} insns, {d['diffs']} differing)")
+        if not d["ok"]:
+            return False, "", "\n  ".join([detail_head(fn, path, stub_path,
+                                                        base)] + auto_notes)
+        pairs = ad.as_maps(d) + pairs
+        em, en = enum_map(body, Path(path).parent / f"{Path(path).parent.name}.h",
+                          Path(REPO / stub_path).parent
+                          / f"{Path(stub_path).parent.name}.h")
+        pairs += [f"{k}={v}" for k, v in em.items()]
+        auto_notes += [f"enum: {x}" for x in en]
+
+    body, map_notes = apply_map(body, pairs)
     decls, decl_notes = auto_decls(body, REPO / stub_path)
     if decls:
         body = "\n".join(decls) + "\n\n" + body
@@ -319,6 +406,8 @@ def preflight(fn: str, mapping: list[str] | None = None) -> tuple[bool, str, str
     detail = (f"ready: {len(body)} chars from the {src_kind} "
               f"{path}\n  stub: {stub_path}"
               + (f"\n  renamed {base} -> {fn}" if base != fn else ""))
+    for n in auto_notes:
+        detail += f"\n  {n}"
     for n in map_notes:
         detail += f"\n  map: {n}"
     for n in decl_notes:
@@ -326,8 +415,9 @@ def preflight(fn: str, mapping: list[str] | None = None) -> tuple[bool, str, str
     return True, body, detail
 
 
-def run(fn: str, apply: bool, mapping: list[str] | None = None) -> int:
-    ok, body, detail = preflight(fn, mapping)
+def run(fn: str, apply: bool, mapping: list[str] | None = None,
+        auto: bool = False) -> int:
+    ok, body, detail = preflight(fn, mapping, auto)
     print(f"{fn}\n  {detail}")
     if not ok:
         return 1
@@ -364,6 +454,83 @@ def list_all() -> int:
     for fn, ovl, path in rows:
         print(f"{fn[:32]:34}{ovl[:12]:14}{path}")
     print("\nTry one:  transplant.py --function <name>")
+    return 0
+
+
+def scan(limit: int = 0, overlay: str = "") -> int:
+    """Classify EVERY unmatched record, unsupervised, writing nothing.
+
+    THE POINT OF THE MECHANISM. A tool that needs an operator to pick the
+    candidate, read the asm diff and hand-write the substitutions is not
+    automation; it is me with extra steps. This asks the same questions for
+    the whole queue and reports what it finds, whether or not any of it
+    becomes a match.
+
+    The classes are deliberately about EVIDENCE, not optimism:
+
+      ready       a clean twin whose every substitution resolved and whose
+                  every symbol is declarable in the destination. Worth a
+                  build.
+      needs-defs  a clean twin that references file-scope statics or symbols
+                  the destination overlay does not have. func_us_801CC9B4
+                  needs two `static s16` arrays that live in no0/4C750.c and
+                  do not travel with a function body. Actionable, but not by
+                  copying one function.
+      not-twin    the assembly genuinely differs: different length, or a
+                  different instruction. No amount of renaming fixes that,
+                  and saying so is more useful than a failed build.
+      no-twin     nothing in the tree defines this function under another
+                  name.
+    """
+    uh = _harv()
+    recs = uh.unmatched_records()
+    if overlay:
+        recs = [r for r in recs if overlay.lower() in r[1].lower()]
+    if limit:
+        recs = recs[:limit]
+
+    buckets: dict[str, list] = {"ready": [], "needs-defs": [],
+                                "not-twin": [], "no-twin": []}
+    for _rid, ovl, fn in recs:
+        try:
+            ok, _body, detail = preflight(fn, None, auto=True)
+        except Exception as e:                                # noqa: BLE001
+            buckets["no-twin"].append((fn, ovl, f"error: {type(e).__name__}"))
+            continue
+        if not ok:
+            why = detail.splitlines()[-1].strip()
+            key = "not-twin" if "not a twin" in why else "no-twin"
+            buckets[key].append((fn, ovl, why[:88]))
+            continue
+        missing = [l.split("for ", 1)[1].split(";")[0]
+                   for l in detail.splitlines()
+                   if "NO DECLARATION FOUND" in l]
+        # Enum members and macros come from the shared headers and are not
+        # per-overlay symbols, so they are not a blocker; a bare D_ or func_
+        # symbol is.
+        real = [m for m in missing
+                if re.match(r"^(?:D_us_|D_|func_)", m)]
+        if real:
+            buckets["needs-defs"].append((fn, ovl, ", ".join(real[:4])))
+        else:
+            nsub = len([l for l in detail.splitlines()
+                        if l.strip().startswith("map: ")
+                        and "IGNORED" not in l])
+            buckets["ready"].append((fn, ovl, f"{nsub} substitution(s)"))
+
+    total = sum(len(v) for v in buckets.values())
+    print(f"{total} unmatched record(s) examined, nothing written\n")
+    for k in ("ready", "needs-defs", "not-twin", "no-twin"):
+        print(f"  {k:12} {len(buckets[k])}")
+    for k in ("ready", "needs-defs", "not-twin"):
+        if not buckets[k]:
+            continue
+        print(f"\n=== {k} ===")
+        for fn, ovl, why in buckets[k]:
+            print(f"  {fn[:34]:36}{ovl[:12]:14}{why}")
+    if buckets["ready"]:
+        print("\nEach `ready` is one build away from a verdict:")
+        print("  transplant.py --function <name> --auto --apply")
     return 0
 
 
@@ -523,6 +690,22 @@ def self_test() -> int:
         ck(any("func_us_801CC8F8_from_no0(Entity* self);" in x for x in d4),
            f"a declaration-only symbol still yields a prototype ({d4})")
 
+    print("\nthe scan classifies on evidence, and writes nothing")
+    # By CALLS, not by text: the scan prints a hint containing "--apply", and
+    # a text search matched its own help string. Fifth time today.
+    scan_src = src[src.index("def scan("):src.index("def self_test(")]
+    _sc = _ast.parse(scan_src.replace("\ndef scan(", "\ndef scan(", 1))
+    _scalls = {n.func.attr if isinstance(n.func, _ast.Attribute)
+               else getattr(n.func, "id", "")
+               for n in _ast.walk(_sc) if isinstance(n, _ast.Call)}
+    ck("land_match" not in _scalls,
+       f"the scan never calls land_match ({sorted(_scalls)[:6]})")
+    ck("run" not in _scalls, "and never calls run()")
+    for k in ("ready", "needs-defs", "not-twin", "no-twin"):
+        ck(f'"{k}"' in scan_src, f"the {k} class exists")
+    ck("not a twin" in scan_src,
+       "a structural mismatch is separated from a missing twin")
+
     print("\nthe transplant is type-checked like generated C is")
     ck("member_types" in body_fn,
        "upstream's members are validated against THIS tree's structs")
@@ -549,6 +732,10 @@ def main() -> int:
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--list", action="store_true")
+    ap.add_argument("--scan", action="store_true",
+                    help="classify every unmatched record, unsupervised")
+    ap.add_argument("--overlay", default="")
+    ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--function")
     # ONE argument carrying many pairs. The connector caps a call at 12
     # arguments and rejects commas and spaces, so nine renames could not be
@@ -562,6 +749,9 @@ def main() -> int:
     ap.add_argument("--map", action="append", default=[], metavar="OLD=NEW",
                     help="rename a symbol the destination overlay calls "
                          "something else; repeatable")
+    ap.add_argument("--auto", action="store_true",
+                    help="derive every substitution from the asm diff and the "
+                         "destination enum; no hand-supplied map")
     ap.add_argument("--apply", action="store_true",
                     help="actually apply, build, verify and revert on failure")
     ap.add_argument("--self-test", action="store_true")
@@ -570,11 +760,13 @@ def main() -> int:
         return self_test()
     if a.list:
         return list_all()
+    if a.scan:
+        return scan(a.limit, a.overlay)
     if a.function:
         pairs = list(a.map)
         for chunk in a.maps:
             pairs += [x for x in chunk.split("/") if x.strip()]
-        return run(a.function, a.apply, pairs)
+        return run(a.function, a.apply, pairs, a.auto)
     ap.print_help()
     return 0
 
