@@ -519,11 +519,70 @@ def main() -> int:
                     help="run the full function x model x config battery")
     ap.add_argument("--battery-report", action="store_true")
     ap.add_argument("--models", default="")
+    ap.add_argument("--write", action="store_true",
+                    help="with --list-models, apply the diff to opencode.json")
+    ap.add_argument("--list-models", action="store_true",
+                    help="GET /models and diff against opencode.json; exits "
+                         "non-zero when they disagree, so a scheduled run can "
+                         "flag drift")
     ap.add_argument("--self-test", action="store_true")
     a = ap.parse_args()
     if a.self_test:
         return self_test()
 
+    if a.list_models:
+        # GET /models on the live endpoint. The catalogue drifts: hy3-free
+        # vanished, ling-3.0-flash became ling-3.0-tiny, longcat-2.0 appeared,
+        # and opencode.json knew about none of it. A stale list means the
+        # fleet spends workers on endpoints that 401 or no longer exist.
+        # Resolve the endpoint here rather than relying on `url`, which is
+        # assigned further down main() -- this branch returns before that.
+        murl = base_url(load_config())
+        req = urllib.request.Request(murl + "/models",
+                                     headers=dict(CLIENT_HEADERS))
+        key = os.environ.get("MODEL_API_KEY") or os.environ.get("OPENCODE_API_KEY")
+        if key:
+            req.add_header("Authorization", f"Bearer {key}")
+        try:
+            with urllib.request.urlopen(req, timeout=a.timeout) as r:
+                doc = json.loads(r.read().decode("utf-8", "replace"))
+        except Exception as e:                                # noqa: BLE001
+            print(f"could not list models: {type(e).__name__}: "
+                  f"{redact(str(e))[:200]}", file=sys.stderr)
+            return 2
+        live = sorted(m.get("id", "") for m in (doc.get("data") or []))
+        known = sorted(models(load_config()))
+        print(f"live at {murl}: {len(live)}")
+        for m in live:
+            print(f"  {m}")
+        # FREE ONLY. The catalogue is 61 models, most of them paid; the fleet
+        # runs on the free tier, so anything without a `-free` suffix would
+        # bill. big-pickle is the one free model without the suffix.
+        free = [m for m in live if m.endswith("-free") or m == "big-pickle"]
+        known = sorted(models(load_config()))
+        added = [m for m in free if m not in known]
+        gone = [m for m in known if m not in live]
+        print(f"\nfree models live: {len(free)}")
+        for m in free:
+            mark = "  NEW" if m in added else ""
+            print(f"  {m}{mark}")
+        print(f"\nin opencode.json but NOT live (remove): {gone or 'none'}")
+        print(f"free and live but NOT configured (add):  {added or 'none'}")
+        if a.write and (added or gone):
+            cfg = load_config()
+            slot = cfg["provider"]["opencode"]["models"]
+            for m in gone:
+                slot.pop(m, None)
+            for m in added:
+                slot[m] = {"name": m}
+            CONFIG.write_text(json.dumps(cfg, indent=2) + "\n",
+                              encoding="utf-8")
+            print(f"\nWROTE {CONFIG.name}: +{len(added)} -{len(gone)}")
+            print("New models are UNTESTED. Run the battery before trusting "
+                  "them:\n  probe_provider.py --battery")
+        elif added or gone:
+            print("\n(run again with --write to apply)")
+        return 1 if (added or gone) else 0
     if a.battery:
         # Delegated for the same reason as --quality-ab: probe_provider is
         # already allowlisted, so a long battery can be launched without

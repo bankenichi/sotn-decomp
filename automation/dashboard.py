@@ -105,10 +105,12 @@ CLI_MODELS = [
      "opencode/nemotron-3-ultra-free"),
     ("north-mini-code-free  DEAD: HTTP 401 on all 18",
      "opencode/north-mini-code-free"),
-    # Offered by Zen but NOT in opencode.json, so the battery never tested
-    # them. `ling-3.0-flash-free` was in our config and is gone from the
-    # catalogue entirely; the current one is ling-3.0-tiny. Untested is not
-    # the same as bad, and the labels say which is which.
+    # Free and live per GET /models, but never in opencode.json, so the
+    # battery never tested them. CORRECTION: an earlier comment here claimed
+    # ling-3.0-flash-free had been dropped from the catalogue. It has not --
+    # it is still served; ling-3.0-tiny-free is an ADDITIONAL model, not a
+    # replacement. Untested is not the same as bad, and the labels say which.
+    ("ling-3.0-flash-free  UNTESTED", "opencode/ling-3.0-flash-free"),
     ("ling-3.0-tiny-free  UNTESTED", "opencode/ling-3.0-tiny-free"),
     ("laguna-s-2.1-free  UNTESTED", "opencode/laguna-s-2.1-free"),
     ("longcat-2.0-free  UNTESTED", "opencode/longcat-2.0-free"),

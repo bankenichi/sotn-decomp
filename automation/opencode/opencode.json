@@ -10,11 +10,33 @@
         "baseURL": "https://opencode.ai/zen/v1"
       },
       "models": {
-        "big-pickle": { "name": "Big Pickle (free, stealth)" },
-        "deepseek-v4-flash-free": { "name": "DeepSeek V4 Flash (free)" },
-        "mimo-v2.5-free": { "name": "MiMo V2.5 (free)" },
-        "north-mini-code-free": { "name": "North Mini Code (free)" },
-        "nemotron-3-ultra-free": { "name": "Nemotron 3 Ultra (free)" }
+        "big-pickle": {
+          "name": "Big Pickle (free, stealth)"
+        },
+        "deepseek-v4-flash-free": {
+          "name": "DeepSeek V4 Flash (free)"
+        },
+        "mimo-v2.5-free": {
+          "name": "MiMo V2.5 (free)"
+        },
+        "north-mini-code-free": {
+          "name": "North Mini Code (free)"
+        },
+        "nemotron-3-ultra-free": {
+          "name": "Nemotron 3 Ultra (free)"
+        },
+        "laguna-s-2.1-free": {
+          "name": "laguna-s-2.1-free"
+        },
+        "ling-3.0-flash-free": {
+          "name": "ling-3.0-flash-free"
+        },
+        "ling-3.0-tiny-free": {
+          "name": "ling-3.0-tiny-free"
+        },
+        "longcat-2.0-free": {
+          "name": "longcat-2.0-free"
+        }
       }
     },
     "llama": {
@@ -36,8 +58,12 @@
     "webfetch": "deny"
   },
   "mcp": {
-    "coding-assistant": { "enabled": false },
-    "sotn": { "enabled": false }
+    "coding-assistant": {
+      "enabled": false
+    },
+    "sotn": {
+      "enabled": false
+    }
   },
   "agent": {
     "raw": {
