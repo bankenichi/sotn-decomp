@@ -156,6 +156,48 @@ def main() -> int:
           f"ATTEMPT_BUDGET is tight ({wd.ATTEMPT_BUDGET}s), which is exactly "
           f"why salvage matters")
 
+    print("\nthe degeneration detector does not kill REAL analysis")
+    # Replayed against reasoning captured from the first zen run. All ten of
+    # those blocks ended in a usable analysis that the force-code pass turned
+    # into C, so any firing here is a false positive that would throw away
+    # working generation.
+    #
+    # This matters because a SYNTHETIC "healthy" case -- "step 1: offset 0x01,
+    # step 2: offset 0x02, ..." -- DOES trip the enumeration rule. Real
+    # reasoning is not that regular, but the margin is thin enough that the
+    # detector must be regression-tested against real text, never against a
+    # pattern someone invented.
+    fx = REPO / "automation" / "fixtures" / "real_reasoning.txt"
+    if fx.is_file():
+        real = fx.read_text(errors="ignore")
+        chunks = re.findall(r"\S+\s*", real)
+        det = wd.make_degeneration_detector()
+        fired = ""
+        for j in range(40, len(chunks) + 1, 40):
+            fired = det(chunks[:j])
+            if fired:
+                break
+        check(not fired,
+              f"real captured reasoning runs clean ({len(real)} chars)", fired)
+    else:
+        check(False, "the real-reasoning fixture is present")
+
+    # And it must still catch the thing it exists for.
+    det2 = wd.make_degeneration_detector()
+    stuck = ["the same sentence repeated verbatim\n"] * 80
+    caught = ""
+    for j in range(40, len(stuck) + 1, 40):
+        caught = det2(stuck[:j])
+        if caught:
+            break
+    check(bool(caught), f"a genuinely stuck stream is still caught ({caught})")
+
+    print("\nthe reasoning cap is not the default behaviour")
+    check(wd.REASON_CAP >= 6000,
+          f"REASON_CAP is {wd.REASON_CAP}: the first zen run hit 3000 on 10 of "
+          f"10 calls mid-analysis, which means the cap WAS the behaviour "
+          f"rather than a safety net")
+
     print("\nstale claims about the CLI having no stream are gone")
     whole = (REPO / "automation" / "win" / "worker_direct.py").read_text(
         errors="ignore")

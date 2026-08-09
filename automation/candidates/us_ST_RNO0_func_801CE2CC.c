@@ -1,7 +1,7 @@
 /* PERMUTER SEED -- compiled and linked, bytes differ.
    record : us:ST/RNO0:func_801CE2CC
-   attempt: 1/4
-   model  : opencode/ling-3.0-flash-free
+   attempt: 2/4
+   model  : opencode/mimo-v2.5-free
    verdict: BUILT, CHECKSUM MISMATCH (compiled and linked; bytes differ) - permuter candidate:
 --- build tail ---
   ✅ F_RBO0   ✅ RBO3     ✅ F_RBO3   ✅ RBO5     ✅ F_RBO5
@@ -86,21 +86,32 @@ void polarPlacePartsList(s16* partsList) {
     }
 }
 
-// Places entities in polar coordinates relative to g_CurrentEntity using indices
-// from a parameter block. Offsets 0/2 use func_801CD91C; offsets 4/6 and the
-// variable-length tail (terminated by 0) use polarPlacePart. Value 0xFF skips.
-void func_801CE2CC(u16 *arg0) {
-    func_801CD91C(&g_CurrentEntity[arg0[1]]);
-    func_801CD91C(&g_CurrentEntity[arg0[0]]);
-    polarPlacePart(&g_CurrentEntity[arg0[2]]);
-    polarPlacePart(&g_CurrentEntity[arg0[3]]);
-    arg0 += 4;
-    while (*arg0 != 0) {
-        s16 value = (s16)*arg0;
-        arg0++;
-        if (value != 0xFF) {
-            polarPlacePart(&g_CurrentEntity[value]);
+// Processes part attachment data for an entity in RNO0 overlay.
+// Calls func_801CD91C for first two parts, polarPlacePart for the next two,
+// then loops through additional part indices until encountering a 0 value.
+void func_801CE2CC(s16* partData) {
+        s16 *partIndex;
+    // Get base entity pointer from global
+    Entity* entities = g_CurrentEntity;
+    
+    // Process first two parts with func_801CD91C (order: partData[1], partData[0])
+    func_801CD91C(&entities[partData[1]]);
+    func_801CD91C(&entities[partData[0]]);
+    
+    // Process next two parts with polarPlacePart (partData[2], partData[3])
+    polarPlacePart(&entities[partData[2]]);
+    polarPlacePart(&entities[partData[3]]);
+    
+    // Move to the array of additional part indices
+    partIndex = &partData[4];
+    
+    // Loop through part indices until we find a zero
+    while (*partIndex != 0) {
+        // Skip if the index is 0xFF (sentinel value)
+        if (*partIndex != 0xFF) {
+            polarPlacePart(&entities[*partIndex]);
         }
+        partIndex++;
     }
 }
 

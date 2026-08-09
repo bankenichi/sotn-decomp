@@ -1,0 +1,19 @@
+ We are given MIPS assembly for function func_us_801B8794 in overlay BOSS/BO0. The m2c draft is rough. We need to produce a complete C function that matches the assembly exactly. We have ENTITY LAYOUT to translate unkNN fields. We need to use real Entity* type. The draft uses arg0 as void*, but we should use Entity* since it's an entity. The draft has fields like unk13 (offset 0x13) etc. We need to map them:
+
+From ENTITY LAYOUT:
+0x00 posX(f32) 0x04 posY(f32) 0x08 velocityX(s32) 0x0C velocityY(s32) 
+0x10 hitboxOffX(s16) 0x12 hitboxOffY(s16) 0x14 facingLeft(u16) 0x16 palette(u16) 
+0x18 blendMode(u8) 0x19 drawFlags(u8) 0x1A scaleX(s16) 0x1C scaleY(s16) 0x1E rotate(s16) 
+0x20 rotPivotX(s16) 0x22 rotPivotY(s16) 0x24 zPriority(u16) 0x26 entityId(u16) 0x28 pfnUpdate(ptr) 
+0x2C step(u16) 0x2E step_s(u16) 0x30 params(u16) 0x32 entityRoomIndex(u16) 0x34 flags(s32) 
+0x3A enemyId(u16) 0x3C hitboxState(u16) 0x3E hitPoints(s16) 0x40 attack(s16) 0x42 attackElement(u16) 
+0x44 hitParams(u16) 0x46 hitboxWidth(u8) 0x47 hitboxHeight(u8) 0x48 hitFlags(u8) 0x49 nFramesInvincibility(u8) 
+0x4A unk4A(s16) 0x4C anim(ptr) 0x50 pose(u16) 0x52 poseTimer(s16) 0x54 animSet(s16) 0x56 animCurFrame(s16) 
+0x58 stunFrames(s16) 0x5A unk5A(u16) 0x5C parent(Entity*) 0x60 nextPart(Entity*) 0x64 primIndex(s32) 
+0x68 unk68(u16) 0x6A hitEffect(u16) 0x6C opacity(u8) 0x6D unk6D[11] 0x78 unk78(s32) 0x7C ext(union)
+
+But the assembly accesses fields at offsets: 0x13 (byte), 0x7 (byte), 0x14 (half), 0x8 (half), 0xA (half), 0x16 (half), 0x22 (half), 0x5 (byte), 0x6 (byte), 0x11 (byte), 0x12 (byte), 0x26 (half), 0x4 (byte), 0x10 (byte), 0x32 (half), 0x2B (byte). Let's map:
+
+- 0x13: likely part of some field. Look at 0x10 hitboxOffX(s16) occupies 0x10-0x11, 0x12 hitboxOffY(s16) occupies 0x12-0x13? Actually 0x12 hitboxOffY is s16, so bytes 0x12 and 0x13. But the assembly reads a byte at 0x13. That could be the high byte of hitboxOffY? But it's likely a separate field? In m2c draft it is "unk13". But according to layout, 0x13 is the high byte of hitboxOffY (s16). However, the assembly treats it as a byte state variable. The layout lists hitboxOffY at 0x12 as s16, so offset 0x12 is low byte, 0x13 is high byte. But they use lbu at 0x13 to get a byte. That would get the high byte of hitboxOffY. That seems odd. But in many entity structs, there are extra fields beyond the standard ones. Actually the layout given may not be exhaustive; it says "0x12 hitboxOffY(s16)" but that's a signed 16-bit, so it occupies two bytes. The assembly uses byte access at 0x13, which is the upper byte. But it's likely a separate flag that resides in that byte? Actually the layout might be incomplete, or these are custom fields for this enemy. The m2c draft treats them as separate fields: unk13, unk14, unk8, unkA, etc. But we need to map to the real fields. The layout gives known fields, but some offsets might be unused or custom. For example, 0x14 is facingLeft(u16) per layout, but the assembly writes a halfword at 0x14 with a random mask 0x3F. That could be facingLeft? Possibly it's something else, but the layout says that's facingLeft. Similarly 0x16 is palette(u16). 0x22 is rotPivotY(s16) per layout. 0x26 is entityId(u16). 0x32 is entityRoomIndex(u16). 0x2B is? Not in layout; it's within the range of some fields: 0x2A? Actually 0x28 pfnUpdate is 4 bytes, then 0x2C step. So 0x2B is within pfnUpdate? That would be a byte inside the pointer. That seems unlikely. Let's reconsider.
+
+The entity layout given is generic

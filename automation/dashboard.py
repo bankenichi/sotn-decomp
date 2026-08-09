@@ -304,6 +304,7 @@ ACTION_PARAMS: dict[str, dict[str, tuple[int, int]]] = {
                        "stall": (500, 50000), "cycles": (1, 8),
                        "max_iters": (1000, 500000)},
     "fleet_cli_start": {"workers": (1, 8)},
+    "fleet_zen_start": {"workers": (1, 8)},
     "fleet_llama_start": {"workers": (1, 8)},
 }
 
@@ -312,6 +313,8 @@ ACTION_PARAMS: dict[str, dict[str, tuple[int, int]]] = {
 # scalar path stays trivially auditable: name -> (item_min, item_max, max_len).
 ACTION_LIST_PARAMS: dict[str, dict[str, tuple[int, int, int]]] = {
     "fleet_cli_start": {"models": (0, len(CLI_MODELS) - 1, 8)},
+    # zen rotates the same Zen model list, one per worker, like cli.
+    "fleet_zen_start": {"models": (0, len(CLI_MODELS) - 1, 8)},
 }
 
 
@@ -493,6 +496,11 @@ ACTIONS = {
     "permuter_stop": lambda: _sup("--stop"),
     "permuter_plan": lambda: _sup("--plan"),
     "fleet_cli_start": _fleet("cli", 2),
+    # Direct HTTP to Zen. Bypasses `opencode run`, which relays only `content`
+    # and therefore made a thinking model look like a dead request; this path
+    # captures reasoning_content and drops opencode's ~14s per-call git
+    # snapshot. It is the backend the 2026-08-03 run validated.
+    "fleet_zen_start": _fleet("zen", 2),
     "fleet_llama_start": _fleet("http", 2),
     "fleet_stop": _fleet_stop,
 }
@@ -522,6 +530,8 @@ DIAGNOSTICS = [
      "one line per matched function with the evidence behind it"),
     ("Provider probe (http vs cli)", "probe_provider.py", "",
      "asks the endpoint directly: does it answer, refuse, or just go silent"),
+    ("Fleet: what models THINK about", "reasoning_audit.py", "--offsets",
+     "where the reasoning budget goes, and which gaps are prompt fixes"),
     ("Fleet: WHY calls fail", "fleet_forensics.py", "--by-model --streaks",
      "replays the logs: what each dead call actually contained"),
     ("Fleet: empty responses", "empty_response_audit.py",
@@ -1163,6 +1173,7 @@ pre{margin:0;padding:8px 10px;flex:1 1 auto;min-height:0;overflow:auto;font-size
       <label>backend
         <select id=f_backend onchange="renderWorkerRows()">
           <option value=fleet_cli_start>opencode cli</option>
+          <option value=fleet_zen_start>zen (direct http)</option>
           <option value=fleet_llama_start>local llama</option>
         </select>
       </label>
@@ -1208,7 +1219,10 @@ function renderWorkerRows(){
   // rather than one setting applied four times. That is what makes a bake-off
   // possible: same fleet, same functions, one variable per worker.
   const n=Math.max(1,Math.min(8,+el('f_workers').value||1));
-  const cli=el('f_backend').value==='fleet_cli_start';
+  // zen rotates per-worker models exactly like cli, so it gets the same
+  // pickers. Gating only on fleet_cli_start hid them for zen runs.
+  const v=el('f_backend').value;
+  const cli=(v==='fleet_cli_start'||v==='fleet_zen_start');
   const box=el('f_rows');
   if(!cli){ box.innerHTML='<span class=empty>llama workers take no per-worker model</span>'; return; }
   // Preserve existing choices when the count changes, so nudging workers from
@@ -1226,7 +1240,8 @@ function fleetParams(){
   const p={workers:+el('f_workers').value};
   // models is only meaningful for the cli backend; sending it to llama would be
   // rejected as an unknown parameter, which is correct but unhelpful.
-  if(el('f_backend').value==='fleet_cli_start'){
+  const bv=el('f_backend').value;
+  if(bv==='fleet_cli_start'||bv==='fleet_zen_start'){
     p.models=[...el('f_rows').querySelectorAll('select')].map(s=>+s.value);
   }
   return p;
@@ -1621,6 +1636,15 @@ def self_test() -> int:
            f"(missing: {missing})")
         ck("match_provenance.py" in allowed,
            "match provenance is runnable through the connector too")
+
+    print("\nzen is selectable, not just startable from a connector call")
+    ck("fleet_zen_start" in ACTIONS, "the action exists")
+    ck("fleet_zen_start>zen" in PAGE, "and the dropdown offers it")
+    ck(PAGE.count("fleet_zen_start") >= 3,
+       "option, model-picker gate and start gate all know about it; gating "
+       "only on fleet_cli_start hid the per-worker model rows for zen runs")
+    for tbl in (NUMERIC_LIMITS if "NUMERIC_LIMITS" in dir() else {},):
+        pass
 
     print("\nphantoms and leftovers each have a lever")
     ck("permuter_sync" in ACTIONS,

@@ -137,8 +137,18 @@ NO_THINKING = {
 # REASONING_EFFORT=none restores the measured-safe behaviour in one env var if
 # a model ignores the cap.
 REASONING_EFFORT = os.environ.get("REASONING_EFFORT", "low").strip().lower()
+# 6000, raised from 3000 after the first zen run. ALL TEN calls hit the 3000
+# cap with 0 content tokens, and reading the captured reasoning shows why: the
+# model was still mid-analysis, working offset by offset through the assembly.
+# It was not looping or stuck -- it was cut off. A cap that fires 100% of the
+# time is not a safety net, it is the behaviour.
+#
+# The force-code pass rescued all ten, so nothing was lost, but a truncated
+# analysis produces worse C than a finished one: the 8 build failures were all
+# "structure has no member named unkNN", i.e. fields it had not finished
+# resolving when the axe fell.
 REASONING_MAX_TOKENS = int(os.environ.get("REASONING_MAX_TOKENS",
-                                          os.environ.get("REASON_CAP", "3000")))
+                                          os.environ.get("REASON_CAP", "6000")))
 CONTENT_MAX_TOKENS = int(os.environ.get("CONTENT_MAX_TOKENS", "4000"))
 
 

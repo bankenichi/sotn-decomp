@@ -167,6 +167,7 @@ ANALYSIS_SCRIPTS = {
     "asm_twin_finder.py",
     "match_provenance.py",
     "fleet_forensics.py",
+    "reasoning_audit.py",
     "probe_provider.py",
     "test_call_telemetry.py",
     "test_stream_salvage.py",
