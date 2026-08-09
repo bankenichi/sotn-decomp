@@ -508,10 +508,44 @@ def main() -> int:
                     help="effort levels to compare on ONE prompt. Use `all`, "
                          "or join with + / , (the connector rejects commas in "
                          "arguments, so `all` and `+` are the usable forms)")
+    ap.add_argument("--quality-ab",
+                    help="delegate to quality_ab.py: generate the SAME "
+                         "function under several reasoning configs and score "
+                         "the C. Lives here so it is reachable without "
+                         "re-allowlisting a new script on every connector "
+                         "restart.")
+    ap.add_argument("--configs", default="none+low3k+low9k")
     ap.add_argument("--self-test", action="store_true")
     a = ap.parse_args()
     if a.self_test:
         return self_test()
+
+    if a.quality_ab:
+        sys.path.insert(0, str(REPO / "automation"))
+        import quality_ab as qa
+        asm = Path(a.quality_ab)
+        if not asm.is_file():
+            print(f"no such asm file: {asm}", file=sys.stderr)
+            return 2
+        names = [c.strip() for c in re.split(r"[,+]", a.configs) if c.strip()]
+        bad = [c for c in names if c not in qa.CONFIGS]
+        if bad:
+            print(f"unknown config(s) {bad}", file=sys.stderr)
+            return 2
+        print(f"function: {asm.stem}\nconfigs : {', '.join(names)}\n")
+        rows = []
+        for c in names:
+            print(f"[{c}] generating ...", flush=True)
+            r = qa.generate(asm, c, a.timeout)
+            rows.append(r)
+            print(f"     {r.get('secs')}s, {r.get('chars')} chars, "
+                  f"{r.get('unk_fields')} unkNN", flush=True)
+        qa.report(rows)
+        OUT_DIR.mkdir(parents=True, exist_ok=True)
+        out = OUT_DIR / f"quality-ab-{asm.stem}-{int(time.time())}.json"
+        out.write_text(json.dumps(rows, indent=2), encoding="utf-8")
+        print(f"\nwrote {out}")
+        return 0
 
     alive = fleet_alive()
     if alive:

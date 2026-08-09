@@ -62,15 +62,65 @@ CONFIGS = {
 }
 
 RX_UNK = re.compile(r"\bunk[0-9A-Fa-f]{1,3}\b")
+RX_ARROW = re.compile(r"->\s*([A-Za-z_]\w*)")
+RX_TYPE = re.compile(r"\b([A-Z]\w+)\s*\*")
 RX_ILLEGAL = re.compile(r"\bILLEGAL\b")
 RX_RAWOFF = re.compile(r"0x[0-9A-Fa-f]+\s*/\s*[124]\b|\[\s*0x[0-9A-Fa-f]+\s*\]")
 RX_FN = re.compile(r"[A-Za-z_]\w*\s*\([^;{]*\)\s*\{")
 
 
+def _known_names() -> tuple[set[str], set[str]]:
+    """Field names and type names that actually exist in the tree.
+
+    Read from worker_direct's ENTITY_LAYOUT plus the ext variant table, i.e.
+    exactly what the prompt tells the model it may use.
+    """
+    try:
+        sys.path.insert(0, str(REPO / "automation" / "win"))
+        import worker_direct as wd                            # type: ignore
+        fields = {n for _o, n, _t in wd._layout_fields()}
+        fields |= {"val", "i", "hi", "lo", "ext", "ILLEGAL"}
+        types = {"Entity", "Primitive", "AnimationFrame", "s8", "u8", "s16",
+                 "u16", "s32", "u32", "f32", "void"}
+        return fields, types
+    except Exception:                                         # noqa: BLE001
+        return set(), set()
+
+
+def invented(code: str) -> dict:
+    """Names the model made up: fields and types that do not exist.
+
+    THE METRIC THAT MATTERS, and the one this file originally got wrong.
+    Counting `unkNN` alone rewards the WRONG behaviour. Measured on
+    func_us_801B21F0:
+
+        low3k  15 unkNN   ->  `entity->unk80`, `s1->unk1C`
+        low9k   0 unkNN   ->  `ent->partA->field1C`, `Part* part`
+
+    low9k scored "clean" while inventing a type (`Part`) and a family of
+    fields (`field1C`, `valueBC`) that exist nowhere. That is strictly worse
+    than unkNN: `unk80` honestly says "I could not resolve this", whereas
+    `field1C` asserts something false with confidence, fails the build with
+    the same "structure has no member named" error, and is harder to catch in
+    review. A scorer that prefers it would have chosen the worst config.
+    """
+    fields, types = _known_names()
+    if not fields:
+        return {"invented_fields": 0, "invented_types": 0, "examples": []}
+    used = set(RX_ARROW.findall(code or ""))
+    bad_f = {f for f in used
+             if f not in fields and not RX_UNK.fullmatch(f)}
+    bad_t = {t for t in set(RX_TYPE.findall(code or "")) if t not in types}
+    return {"invented_fields": len(bad_f), "invented_types": len(bad_t),
+            "examples": sorted(bad_f | bad_t)[:8]}
+
+
 def score(code: str) -> dict:
     """Cheap, objective markers. No judgement calls."""
     code = code or ""
+    inv = invented(code)
     return {
+        **inv,
         "chars": len(code),
         "has_function": bool(RX_FN.search(code)),
         "unk_fields": len(set(RX_UNK.findall(code))),
@@ -102,6 +152,11 @@ def generate(asm_path: Path, cfg: str, timeout: float) -> dict:
         rec["secs"] = round(time.time() - t0, 1)
         rec.update(score(text))
         rec["code_head"] = (text or "")[:300]
+        # Keep the FULL body. Rescoring the first run was limited to
+        # the 300-char head, which under-counts every metric; a
+        # comparison you cannot re-score after fixing the scorer is a
+        # comparison you have to re-run.
+        rec["code"] = text or ""
     except Exception as e:                                     # noqa: BLE001
         rec.update(secs=round(time.time() - t0, 1),
                    error=f"{type(e).__name__}: {str(e)[:200]}", **score(""))
@@ -113,24 +168,32 @@ def report(rows: list[dict]) -> None:
     print("C QUALITY BY REASONING CONFIGURATION  (same function, same prompt)")
     print("=" * 78)
     print(f"{'config':8} {'secs':>6} {'chars':>7} {'fn?':>4} {'unkNN':>6} "
-          f"{'ILLEGAL':>8} {'rawoff':>7}")
+          f"{'INVENTED':>9} {'ILLEGAL':>8} {'rawoff':>7}")
     for r in rows:
+        inv = r.get("invented_fields", 0) + r.get("invented_types", 0)
         print(f"{r['config']:8} {r.get('secs', 0):6.1f} {r.get('chars', 0):7d} "
               f"{'y' if r.get('has_function') else 'n':>4} "
-              f"{r.get('unk_fields', 0):6d} {r.get('illegal', 0):8d} "
-              f"{r.get('raw_offsets', 0):7d}")
+              f"{r.get('unk_fields', 0):6d} {inv:9d} "
+              f"{r.get('illegal', 0):8d} {r.get('raw_offsets', 0):7d}")
+        if r.get("examples"):
+            print(f"         invented: {', '.join(r['examples'])}")
         if r.get("error"):
             print(f"         error: {r['error']}")
+    print("\nINVENTED counts fields and types that exist nowhere in the tree.")
+    print("It outranks unkNN: `unk80` admits ignorance, `field1C` asserts a")
+    print("falsehood, and both fail the build the same way.")
 
     usable = [r for r in rows if r.get("has_function")]
     if not usable:
         print("\nNo configuration produced a function. Nothing to compare.")
         return
-    best = min(usable, key=lambda r: (r["unk_fields"], r["illegal"],
-                                      r["raw_offsets"], r["secs"]))
-    print(f"\nfewest invented/unresolved fields: {best['config']} "
-          f"({best['unk_fields']} unkNN, {best['illegal']} ILLEGAL, "
-          f"{best['secs']}s)")
+    def badness(r):
+        return (r.get("invented_fields", 0) + r.get("invented_types", 0),
+                r["unk_fields"], r["illegal"], r["raw_offsets"], r["secs"])
+    best = min(usable, key=badness)
+    print(f"\ncleanest: {best['config']} "
+          f"({best.get('invented_fields',0)+best.get('invented_types',0)} "
+          f"invented, {best['unk_fields']} unkNN, {best['secs']}s)")
     quick = min(usable, key=lambda r: r["secs"])
     if quick["config"] != best["config"]:
         dt = best["secs"] - quick["secs"]
