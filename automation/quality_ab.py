@@ -18,7 +18,6 @@ WHY THIS EXISTS
 HOW IT SCORES
     Same function, same prompt, one variable. For each configuration:
 
-      compiles        does psx cc accept it at all
       unkNN count     invented/unresolved fields. All 8 build failures in the
                       2026-08-03 run were "structure has no member named
                       unkNN", so this is the failure mode, not a style nit
@@ -31,9 +30,15 @@ HOW IT SCORES
     would make this unrunnable. Compiling with no invented fields is the
     measurable precondition for a match, and it is what currently fails.
 
+    NOT a compile check. Earlier revisions of this docstring claimed one
+    ("does psx cc accept it at all", "a throwaway copy in /tmp"); no such code
+    was ever written, so nothing here had verified the output POSITIVELY.
+    decomp_fidelity.py now does that, by checking the C against the callees,
+    constants and branch count the target assembly demands.
+
 SAFETY
     Generation only. Never writes to src/, never builds the overlay, never
-    touches the queue. The compile check uses a throwaway copy in /tmp.
+    touches the queue.
 
 Usage:
     python3 automation/quality_ab.py --asm <file.s>
@@ -115,6 +120,20 @@ def invented(code: str) -> dict:
             "examples": sorted(bad_f | bad_t)[:8]}
 
 
+# The MIPS register file, which is what a model transcribes when it gives up
+# on decompiling and starts describing the assembly instead.
+RX_REG_DECL = re.compile(
+    r"^\s*(?:[A-Za-z_]\w*\s+)+"
+    r"(?:temp_|tmp_|var_)?(?:v[01]|a[0-3]|t[0-9]|s[0-8]|at|gp|sp|fp|ra|hi|lo)"
+    r"(?:_\d+)?\s*;\s*$", re.M)
+
+# A line of the disassembly listing: /* fileoff vaddr word */  insn ...
+# Echoing these back is not decompilation, and it GAMES the fidelity scorer:
+# output containing the assembly trivially "reproduces" every constant and
+# symbol in it. ling-3.0-flash-free scored 1.00 constant recall this way.
+RX_ASM_ECHO = re.compile(r"^\s*/\*\s*[0-9A-Fa-f]{4,6}\s+8[0-9A-Fa-f]{7}\s+"
+                         r"[0-9A-Fa-f]{8}\s*\*/", re.M)
+
 RX_DECL_SEQ = re.compile(
     r"^\s*(?:[A-Za-z_]\w*\s+)+([A-Za-z_]\w*?)(\d+)\s*;\s*$", re.M)
 
@@ -152,13 +171,28 @@ def degenerate(code: str) -> dict:
             best = max(best, cur)
         if best > longest:
             longest, worst = best, stem
+    # SECOND SHAPE, found on big-pickle/func_us_801CF64C after the ascending
+    # -integer check was already in place: instead of numbering temporaries the
+    # model transcribes the register file, `temp_v0; temp_v1; temp_s0; ...
+    # temp_v0_2;`. The suffixes are register names, not an ascending run, so
+    # the first check did not see it. Its ctrl_ratio was 0.28, i.e. it had
+    # dropped nearly all the control flow, while scoring zero on every defect
+    # metric.
+    regs = len(RX_REG_DECL.findall(code))
+    echo = len(RX_ASM_ECHO.findall(code))
+
     lines = [l.strip() for l in code.splitlines() if l.strip()]
     dup = (1.0 - len(set(lines)) / len(lines)) if lines else 0.0
     return {"decl_run": longest, "decl_stem": worst if longest >= 20 else "",
+            "reg_decls": regs, "asm_echo": echo,
             "dup_line_frac": round(dup, 2),
             # 20 is far above anything hand-written and far below the hundreds
-            # seen when a model is actually looping.
-            "degenerate": bool(longest >= 20)}
+            # seen when a model is actually looping. Real decompiled C does
+            # name a few temporaries after registers, so the register-dump
+            # threshold is set well clear of legitimate use.
+            # A couple of quoted asm lines in a comment is legitimate
+            # annotation; ten is a transcript.
+            "degenerate": bool(longest >= 20 or regs >= 15 or echo >= 10)}
 
 
 def score(code: str) -> dict:
@@ -491,6 +525,28 @@ def self_test() -> int:
        "the loop scores clean on every OTHER metric, which is why "
        "this check has to exist")
     ck(sc["degenerate"], "but score() surfaces it")
+
+    print("\nregister-file dumps are caught too, not just numbered runs")
+    dump = "s32 func(Entity* e) {\n" + "".join(
+        f"    s32 temp_{r};\n" for r in
+        ("v0","v1","a0","a1","a2","a3","t0","t1","t2","t3","t4","t5","t6",
+         "t7","t8","t9","s0","s1","s2","s3","ra")) + "    return 0;\n}\n"
+    d = degenerate(dump)
+    ck(d["decl_run"] < 20, f"no ascending run to find ({d['decl_run']})")
+    ck(d["degenerate"], f"but it IS degenerate ({d['reg_decls']} reg decls)")
+    ok = ("void f(Entity* e) {\n    s32 temp_v0;\n    s32 temp_s0;\n"
+          "    temp_v0 = rand();\n    e->posX.val += temp_v0;\n}\n")
+    ck(not degenerate(ok)["degenerate"],
+       "two register-named temporaries is normal decomp style, not a dump")
+
+    print("\necho of the input assembly is not a decompilation")
+    ech = "/* 3A930 801BA930 1D80013C */  lui $at, %hi(g_Ric)\n" * 12
+    de = degenerate(ech)
+    ck(de["degenerate"], f"12 listing lines is an echo ({de['asm_echo']})")
+    ann = ("/* 3A930 801BA930 1D80013C */\nvoid f(Entity* e) {\n"
+           "    e->posX.val += 1;\n}\n")
+    ck(not degenerate(ann)["degenerate"],
+       "one quoted asm line as annotation is fine")
 
     if fails:
         print(f"{len(fails)} FAILED:")

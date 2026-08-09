@@ -347,3 +347,93 @@ usable output at all. This is the same size cliff the fabrication rate shows,
 and it argues for routing by asm size rather than trying to find one model that
 handles everything: send small functions to the fleet, and stop sending
 functions over ~6k to it until they get a purpose-built approach.
+
+## The quality question: is the C a decompilation, or just clean C? (2026-08-09)
+
+Every metric to this point was NEGATIVE: invented names, unkNN, ILLEGAL, raw
+offsets, runaway loops. They count ways output is wrong. None of them can
+separate
+
+    a faithful decompilation of the target function, from
+    a plausible, well-formed C function about something else entirely
+
+Both score zero defects. Ranking models on defect counts therefore ranks them
+on tidiness, and the model that writes the most cautious generic code wins.
+
+quality_ab's docstring also claimed a compile check ("does psx cc accept it at
+all", "a throwaway copy in /tmp"). No such code was ever written. Nothing had
+verified any output positively. Docstring corrected.
+
+### decomp_fidelity.py: check the C against what the assembly demands
+
+    callees    every `jal SYMBOL` is a function the C must call. Strongest
+               signal available; no model invents BO6_RicCreateEntFactoryFromEntity
+               by accident. Indirect calls (%hi/%lo + jalr, e.g. g_api_PlaySfx)
+               count as permitted but never as required.
+    constants  distinctive immediates (>=0x40) that must appear literally.
+    branching  C control-flow constructs per asm branch. A ratio, never a
+               pass/fail, because the compiler reorders and one `if` can emit
+               several branches.
+
+Not a match oracle. Only the build and config/check.us.sha decide a match.
+This decides whether a generation is worth a build cycle.
+
+### Three parser bugs, each of which inverted a real result
+
+1. `hi`, `lo`, `entity` scored as fabricated calls: they were prose inside
+   comments. Comments are now stripped before parsing.
+2. `nemotron-3-ultra-free` scored 0.00 callee recall on a FAITHFUL generation.
+   It declares `extern s32 rand(void);` and then calls `rand()`; the scorer
+   subtracted declared names from the call set and so deleted the real calls.
+   Prototypes are now removed as text, not by name.
+3. `g_api_PlaySfx` scored as fabricated on three models that were correct. It
+   is called through a pointer, so it appears as a relocation rather than a
+   `jal`.
+
+Each bug made a correct model look broken. The rule that keeps proving itself
+here: when a metric disagrees with the artefact, read the artefact.
+
+### Two further degeneration shapes, both invisible to the first check
+
+    register dump   `temp_v0; temp_v1; temp_s0; ... temp_v0_2;` -- the model
+                    transcribes the MIPS register file. Not an ascending run,
+                    so the numbered-loop check missed it. big-pickle emitted
+                    447 such declarations on func_us_801CF64C.
+    asm echo        the model returns the disassembly listing verbatim. This
+                    GAMES the fidelity scorer: output containing the assembly
+                    trivially reproduces every constant and symbol in it.
+                    ling-3.0-flash-free scored 1.00 constant recall this way.
+
+Breakdown of the 54 `none` generations: 30 usable, 11 numbered loops, 3 asm
+echoes, 2 register dumps, 8 empty or errored.
+
+### Final ranking, config=none
+
+SCORE = usable_rate x callee_recall / (1 + invented)
+
+| model | usable | recall | INVENTED | avg s | SCORE |
+|---|---:|---:|---:|---:|---:|
+| **mimo-v2.5-free** | **6/6** | **1.00** | 0.5 | **7.0** | **0.67** |
+| laguna-s-2.1-free | 4/6 | 1.00 | 0.5 | 13.9 | 0.44 |
+| big-pickle | 4/6 | 0.67 | 0.0 | 8.0 | 0.44 |
+| longcat-2.0-free | 6/6 | 1.00 | 1.8 | 14.2 | 0.35 |
+| nemotron-3-ultra-free | 5/6 | 0.88 | 2.6 | 28.3 | 0.20 |
+| deepseek-v4-flash-free | 3/6 | 0.50 | 1.0 | 8.4 | 0.12 |
+| ling-3.0-tiny-free | 2/6 | 0.00 | 0.0 | 47.8 | 0.00 |
+| ling-3.0-flash-free | 0/6 | - | - | - | 0.00 |
+| north-mini-code-free | 0/6 | - | - | - | HTTP 401 |
+
+`mimo-v2.5-free` wins on every axis independently: the only model to answer all
+six usably, perfect callee recall AND precision, lowest fabrication among
+models that answered, and the fastest at 7s. It is the pick, and nothing about
+that conclusion depends on the weighting of the composite.
+
+`big-pickle`, previously reported as the cleanest model, is third. Its 0.0
+invented count came from writing LESS: 0.67 callee recall and a control-flow
+ratio of 0.41, i.e. it drops roughly half the control flow. Zero defects
+because it declines to do the work, which is precisely the failure the old
+metrics could not see.
+
+Constant recall is poor for everyone (0.10 to 0.60). That is the clearest
+remaining prompt lever: the immediates are in the assembly, the harness parses
+it, and the models are not carrying the values across.
