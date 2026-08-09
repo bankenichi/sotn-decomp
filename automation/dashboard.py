@@ -520,6 +520,8 @@ DIAGNOSTICS = [
      "matches whose method note was lost or never written"),
     ("Match provenance: detail", "match_provenance.py", "--detail",
      "one line per matched function with the evidence behind it"),
+    ("Fleet: WHY calls fail", "fleet_forensics.py", "--by-model --streaks",
+     "replays the logs: what each dead call actually contained"),
     ("Fleet: empty responses", "empty_response_audit.py",
      "--timing --by-prompt-size",
      "dead rate per model, call timing, prompt-size correlation"),

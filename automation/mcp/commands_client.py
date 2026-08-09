@@ -166,6 +166,7 @@ def _confirmed(confirm, what: str) -> None:
 ANALYSIS_SCRIPTS = {
     "asm_twin_finder.py",
     "match_provenance.py",
+    "fleet_forensics.py",
     "test_stream_salvage.py",
     "codebase_index.py",
     "quality_audit.py",
