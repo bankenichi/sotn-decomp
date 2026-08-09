@@ -213,11 +213,15 @@ def _opencode_run(prompt: str, timeout: float | None = None) -> str:
     it is what the cli fleet was doing: five identical calls at 48-382s each,
     then a hard failure, per function.
 
-    The streaming salvage in _force_code cannot help here -- it fires from the
-    degeneration detector, and `opencode run` gives no stream to watch (see
-    worker_direct.py:1213). So the cli backend gets its own last-ditch attempt
-    with thinking suppressed, which is the part of _force_code that actually
-    does the work.
+    _force_code's salvage cannot help here -- it fires from the degeneration
+    detector, which only trips on output that IS arriving and is bad, whereas
+    this path exists for output that never arrives at all. So the cli backend
+    gets its own last-ditch attempt with thinking suppressed, which is the part
+    of _force_code that actually does the work.
+
+    (The cli backend DOES stream now, via Popen in _opencode_run_once, and a
+    timed-out stream holding a complete function is salvaged there. This
+    fallback covers the different case of a genuinely empty response.)
     """
     deadline = None if timeout is None else time.time() + timeout
     last = None
@@ -363,7 +367,30 @@ def _opencode_run_once(prompt: str, timeout: float | None = None) -> str:
     try:
         proc.wait(timeout=_to)
     except subprocess.TimeoutExpired:
+        # SALVAGE BEFORE GIVING UP.
+        #
+        # `buf` already holds every line the model streamed. Discarding it on
+        # timeout threw away finished work: observed 2026-08-03 on
+        # func_us_801B21F0, where attempt 2 streamed a complete 130-line
+        # function and was then reported as "timed out after 90s" and dropped,
+        # so the worker paid for three more attempts on a function it had
+        # already answered. The 90s cap made this common rather than rare --
+        # the model finishes the code and then keeps talking, and the clock
+        # runs out during the epilogue.
+        #
+        # Only a COMPLETE function is salvaged. A truncated body would compile
+        # to something arbitrary or fail the build with a confusing error, so
+        # complete_function() insists on balanced braces and a closing brace at
+        # the end; anything less re-raises and the attempt is spent as before.
         proc.kill()
+        done.wait(timeout=5)
+        salvaged = complete_function("".join(buf))
+        if salvaged:
+            print(f"  ++ attempt timed out at {int(time.time() - t0)}s but the "
+                  f"stream already held a COMPLETE function "
+                  f"({len(salvaged)} chars); salvaged instead of discarded",
+                  flush=True)
+            return salvaged
         raise
     done.wait(timeout=5)
     out = "".join(buf)
@@ -1384,10 +1411,10 @@ def _force_code(orig_prompt: str, analysis: str,
             f"Emit the complete C function now. Start with the return type. "
             f"Output nothing that is not C.")
     if MODEL_BACKEND == "cli":
-        # Unreachable today: this salvage path only fires from the streaming
-        # degeneration detector, which the CLI backend has no stream to watch.
-        # Guarded anyway so it can never fall through to an HTTP endpoint that
-        # is not configured when running on the CLI.
+        # Reached only from the streaming degeneration detector. Guarded so it
+        # can never fall through to an HTTP endpoint that is not configured
+        # when running on the CLI. (This used to say the CLI has no stream to
+        # watch; it has had one since Popen streaming landed.)
         return _opencode_run(f"{sys_msg}\n\n{user}")
     body = json.dumps({
         "model": LLAMA_MODEL,
@@ -2311,6 +2338,64 @@ def clean_code(text: str) -> str:
                 r'^\s*[A-Za-z_][\w \*]*\s+[A-Za-z_]\w*\s*\(', l):
             return "\n".join(lines[i:]).strip()
     return text.strip()
+
+
+def complete_function(text: str) -> str:
+    """The code, if `text` contains a WHOLE function; "" otherwise.
+
+    The gate for salvaging a timed-out stream. A partial body is worse than
+    nothing: it either fails the build with an error that describes the
+    truncation rather than the real problem, or -- worse -- closes by accident
+    and compiles into something the model never wrote. So this is deliberately
+    strict and answers only "is this definitely complete?".
+
+    Requirements, all of them:
+      - a function signature, i.e. `name(...)` followed by a `{`
+      - brace balance that never goes negative and ends at exactly 0
+      - the last meaningful character is `}`
+
+    Braces inside string and char literals are ignored, because a body
+    containing "}" in a message string would otherwise fail the balance check
+    and a correct salvage would be thrown away.
+    """
+    code = clean_code(text or "")
+    if not code.strip():
+        return ""
+    if not re.search(r"[A-Za-z_]\w*\s*\([^;]*\)\s*\{", code, re.S):
+        return ""
+    depth = 0
+    i = 0
+    n = len(code)
+    while i < n:
+        c = code[i]
+        if c == "\\":
+            i += 2
+            continue
+        if c in "\"'":
+            quote = c
+            i += 1
+            while i < n and code[i] != quote:
+                i += 2 if code[i] == "\\" else 1
+            i += 1
+            continue
+        if c == "/" and i + 1 < n and code[i + 1] == "/":
+            j = code.find("\n", i)
+            i = n if j < 0 else j
+            continue
+        if c == "/" and i + 1 < n and code[i + 1] == "*":
+            j = code.find("*/", i + 2)
+            i = n if j < 0 else j + 2
+            continue
+        if c == "{":
+            depth += 1
+        elif c == "}":
+            depth -= 1
+            if depth < 0:
+                return ""
+        i += 1
+    if depth != 0:
+        return ""
+    return code if code.rstrip().endswith("}") else ""
 
 
 def build_prompt(rec: dict, ctx: dict, feedback: str = "") -> str:
