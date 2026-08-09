@@ -268,6 +268,40 @@ def thinking_extra(a) -> dict | None:
     return extra or None
 
 
+def probe_worker(model: str, ask: str, timeout: float = 600.0) -> dict:
+    """Drive the WORKER's own generation path, not a hand-rolled request.
+
+    The raw HTTP probe proves what the provider does. This proves what the
+    harness does with it, which is a different question and the one that
+    decides whether a fleet run is worth starting: bounded reasoning, the
+    client-side REASON_CAP, and the _force_code pass that turns captured
+    reasoning into content all live in worker_direct and none of them are
+    exercised by a bare urllib call.
+    """
+    os.environ.setdefault("MODEL_BACKEND", "zen")
+    os.environ["OPENCODE_MODEL"] = f"opencode/{model}"
+    sys.path.insert(0, str(REPO / "automation" / "win"))
+    import importlib
+    import worker_direct as wd                                # type: ignore
+    importlib.reload(wd)
+    rec = {"model": model, "backend": wd.MODEL_BACKEND,
+           "url": wd._base_url(), "reason_cap": wd.REASON_CAP,
+           "effort": wd.REASONING_EFFORT}
+    t0 = time.time()
+    try:
+        text = wd.llama_echo(ask, budget_left=timeout)
+        rec.update(total_s=round(time.time() - t0, 1),
+                   content_chars=len(text or ""),
+                   content_head=redact((text or "")[:400]),
+                   verdict="ANSWERED" if (text or "").strip()
+                           else "no content even after the force-code pass")
+    except Exception as e:                                     # noqa: BLE001
+        rec.update(total_s=round(time.time() - t0, 1),
+                   error=f"{type(e).__name__}: {redact(str(e))[:300]}",
+                   verdict="raised")
+    return rec
+
+
 def real_ask(a) -> str | None:
     """A genuine decompilation ask, or None for the trivial one.
 
@@ -370,6 +404,9 @@ def main() -> int:
     ap.add_argument("--repeat", type=int, default=1)
     ap.add_argument("--http-only", action="store_true")
     ap.add_argument("--cli-only", action="store_true")
+    ap.add_argument("--worker", action="store_true",
+                    help="drive worker_direct's own generation path (bounded "
+                         "reasoning + force-code), not a bare HTTP request")
     ap.add_argument("--timeout", type=float, default=60.0)
     ap.add_argument("--max-tokens", type=int, default=8)
     ap.add_argument("--prompt-chars", type=int, default=0,
@@ -413,6 +450,25 @@ def main() -> int:
           f"prompt   'Reply with the word ok.' (tiny, deliberately)")
 
     results = []
+    if a.worker:
+        ask = real_ask(a) or "Reply with the word ok."
+        for model in picks:
+            r = probe_worker(model, ask, timeout=a.timeout)
+            r["kind"] = "worker"; results.append(r)
+            print(f"\n[worker] {model}  backend={r.get('backend')} "
+                  f"effort={r.get('effort')} cap={r.get('reason_cap')}")
+            print(f"  total {r.get('total_s')}s  "
+                  f"content {r.get('content_chars', 0)} chars")
+            if r.get("content_head"):
+                print("  " + r["content_head"][:300].replace("\n", "\n  "))
+            if r.get("error"):
+                print(f"  error {r['error']}")
+            print(f"  -> {r.get('verdict')}")
+        OUT_DIR.mkdir(parents=True, exist_ok=True)
+        out = OUT_DIR / f"probe-{int(time.time())}.json"
+        out.write_text(json.dumps(results, indent=2), encoding="utf-8")
+        print(f"\nwrote {out}")
+        return 0
     for model in picks:
         for i in range(a.repeat):
             if not a.cli_only:
