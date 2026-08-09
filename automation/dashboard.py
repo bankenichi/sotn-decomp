@@ -549,6 +549,8 @@ DIAGNOSTICS = [
      "preserve_macros types are builtins, LOW/LOH absent"),
     ("Connector surfaces", "test_connector_surfaces.py", "",
      "REGISTRY and @mcp.tool() agree"),
+    ("Self-test: call telemetry", "test_call_telemetry.py", "",
+     "drives the real worker against fake providers; asserts ttfb and stderr"),
     ("Self-test: stream salvage", "test_stream_salvage.py", "",
      "does a timed-out attempt keep the code the model already finished"),
     ("Self-test: supervisor", "permuter_supervisor.py", "--self-test",

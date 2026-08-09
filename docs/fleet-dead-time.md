@@ -90,14 +90,31 @@ remaining diagnosis.
 
 ## 3. Plan
 
-### Phase 1 — See the failure (no fleet run needed to build; one short run to collect)
+### Phase 1 — See the failure — **DONE 2026-08-03**, needs one short run to collect
 
-| # | Change | File | Done when |
+| # | Change | File | Status |
 |---|---|---|---|
-| 1.1 | Read stderr before killing the child on timeout; log first 500 chars | `win/worker_direct.py` | A timed-out call logs `stderr: ...` or `stderr: (empty)` |
-| 1.2 | Record time-to-first-byte in the pump thread | `win/worker_direct.py` | Every call logs `ttfb=Ns` or `ttfb=never` |
-| 1.3 | Emit one JSON line per call to `logs/calls.jsonl` | `win/worker_direct.py` | Schema below validates |
-| 1.4 | Teach forensics to read `calls.jsonl` when present | `fleet_forensics.py` | Same report, richer fields |
+| 1.1 | Read stderr before killing the child on timeout | `win/worker_direct.py` | **done** — `_drain_stderr` reads in a thread with a 3s join, so a pipe whose writer was killed cannot hang the worker |
+| 1.2 | Record time-to-first-byte in the pump thread | `win/worker_direct.py` | **done** — `ttfb_s`, `null` when no byte ever arrived |
+| 1.3 | Emit one JSON line per call to `logs/calls.jsonl` | `win/worker_direct.py` | **done** — 5 emit sites, one per terminal outcome |
+| 1.4 | Teach forensics to read `calls.jsonl` when present | `fleet_forensics.py` | **done** — prefers telemetry, falls back to log scraping for the 1042 historical calls |
+
+Both the human log and the JSONL now carry the reason. A timed-out call prints:
+
+```
+!! timed out at 90s (ttfb=never, 0 chars). stderr: 429 Too Many Requests: quota exhausted
+```
+
+Verified by `test_call_telemetry.py`, which drives the real
+`_opencode_run_once` against fake `opencode` binaries reproducing each failure
+shape — a provider that writes to stderr then hangs, one that streams a whole
+function then hangs, and one that exits rc=0 with nothing. Source review was
+explicitly not enough here: the previous handler *looked* correct and threw
+stderr away, because the read sat after a `raise` that never ran.
+
+**To collect:** one short fleet run, a few minutes, 2 workers. That is enough
+to populate `calls.jsonl`; then `fleet_forensics.py` reports the TTFB split and
+groups the stderr messages.
 
 **Per-call record schema** (`automation/logs/calls.jsonl`, one JSON object per line):
 

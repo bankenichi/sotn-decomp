@@ -247,6 +247,63 @@ def _opencode_run(prompt: str, timeout: float | None = None) -> str:
                        f"a force-code retry: {last}")
 
 
+def _telemetry_path() -> str:
+    return os.path.join(WIN_REPO, "automation", "logs", "calls.jsonl")
+
+
+def emit_call(rec: dict) -> None:
+    """Append one call record to logs/calls.jsonl. Never raises.
+
+    ONE COMPLETE LINE PER WRITE, in append mode. A worker killed mid-write
+    would otherwise leave a half-record that makes the whole file unparseable
+    from that point on, and workers get killed routinely here. Serialising
+    first and issuing a single write of a string that already ends in \\n is
+    what keeps concurrent appends from interleaving: POSIX guarantees an
+    append-mode write below PIPE_BUF is atomic, and these records are ~300
+    bytes.
+
+    Telemetry must never be able to break a run, hence the bare except: a
+    disk-full or permission error here is not a reason to lose a candidate.
+    """
+    try:
+        rec.setdefault("ts", time.time())
+        rec.setdefault("worker", WORKER_NAME)
+        line = json.dumps(rec, default=str) + "\n"
+        d = os.path.dirname(_telemetry_path())
+        os.makedirs(d, exist_ok=True)
+        with open(_telemetry_path(), "a", encoding="utf-8") as f:
+            f.write(line)
+    except Exception:                                        # noqa: BLE001
+        pass
+
+
+def _drain_stderr(proc, limit: int = 500) -> str:
+    """Whatever the child wrote to stderr, without hanging on it.
+
+    THE POINT OF THE WHOLE EXERCISE. The timeout path used to kill the child
+    and re-raise without ever reading stderr, so 724 silent timeouts threw away
+    whatever `opencode run` said about them -- rate limit, auth, model gone.
+
+    Runs in a thread with a hard join, because a read on a pipe whose writer
+    has been killed is *usually* an instant EOF and occasionally is not, and
+    blocking here would turn a 90s timeout into a hang.
+    """
+    if not proc.stderr:
+        return ""
+    box: list[str] = []
+
+    def rd():
+        try:
+            box.append(proc.stderr.read() or "")
+        except (OSError, ValueError):
+            pass
+
+    t = threading.Thread(target=rd, daemon=True)
+    t.start()
+    t.join(timeout=3)
+    return (box[0].strip()[:limit] if box else "")
+
+
 def _opencode_run_once(prompt: str, timeout: float | None = None) -> str:
     """Run one non-interactive completion through the OpenCode CLI.
 
@@ -342,11 +399,18 @@ def _opencode_run_once(prompt: str, timeout: float | None = None) -> str:
     buf: list[str] = []
     last_check = [0]
     aborted = [""]
+    # Time to first byte, recorded where the first byte actually lands. This is
+    # the field that separates "the provider never answered" from "the provider
+    # answered and we cut it off", which the logs could not distinguish at all:
+    # both were just `timed out after 90s`. None means nothing ever arrived.
+    ttfb: list[float | None] = [None]
     done = threading.Event()
 
     def pump():
         try:
             for line in proc.stdout:
+                if ttfb[0] is None:
+                    ttfb[0] = time.time() - t0
                 buf.append(line)
                 print(f"  | {line.rstrip()}", flush=True)
                 total = sum(len(x) for x in buf)
@@ -384,7 +448,22 @@ def _opencode_run_once(prompt: str, timeout: float | None = None) -> str:
         # the end; anything less re-raises and the attempt is spent as before.
         proc.kill()
         done.wait(timeout=5)
-        salvaged = complete_function("".join(buf))
+        err = _drain_stderr(proc)
+        text = "".join(buf)
+        salvaged = complete_function(text)
+        emit_call({
+            "model": OPENCODE_MODEL, "prompt_chars": len(prompt),
+            "ttfb_s": ttfb[0], "total_s": round(time.time() - t0, 1),
+            "stream_chars": len(text), "rc": proc.returncode,
+            "outcome": ("timeout_complete" if salvaged
+                        else "timeout_partial" if text.strip()
+                        else "timeout_no_bytes"),
+            "stderr_head": err, "cap_s": _to})
+        # Surface it in the human log too. A reason that only exists in a JSONL
+        # nobody opens is barely better than one that was thrown away.
+        print(f"  !! timed out at {int(time.time() - t0)}s "
+              f"(ttfb={'never' if ttfb[0] is None else f'{ttfb[0]:.1f}s'}, "
+              f"{len(text)} chars). stderr: {err or '(empty)'}", flush=True)
         if salvaged:
             print(f"  ++ attempt timed out at {int(time.time() - t0)}s but the "
                   f"stream already held a COMPLETE function "
@@ -394,7 +473,20 @@ def _opencode_run_once(prompt: str, timeout: float | None = None) -> str:
         raise
     done.wait(timeout=5)
     out = "".join(buf)
-    err = (proc.stderr.read() or "").strip() if proc.stderr else ""
+    err = _drain_stderr(proc, limit=800)
+
+    _tel = {"model": OPENCODE_MODEL, "prompt_chars": len(prompt),
+            "ttfb_s": ttfb[0], "total_s": round(time.time() - t0, 1),
+            "stream_chars": len(out), "rc": proc.returncode,
+            "stderr_head": err[:500], "cap_s": _to}
+    if aborted[0]:
+        emit_call({**_tel, "outcome": "degenerated", "detail": aborted[0][:200]})
+    elif proc.returncode not in (0, None) and not out.strip():
+        emit_call({**_tel, "outcome": "genfail"})
+    elif not out.strip():
+        emit_call({**_tel, "outcome": "empty"})
+    else:
+        emit_call({**_tel, "outcome": "produced"})
 
     if aborted[0]:
         # Degenerate output is not empty-transient; the model IS answering, just
@@ -404,7 +496,8 @@ def _opencode_run_once(prompt: str, timeout: float | None = None) -> str:
     if proc.returncode not in (0, None) and not out.strip():
         raise RuntimeError(
             f"opencode run failed (rc={proc.returncode}): {err[:800]}")
-    print(f"  --- done in {int(time.time() - t0)}s: {len(out)} chars ---",
+    print(f"  --- done in {int(time.time() - t0)}s: {len(out)} chars "
+          f"(ttfb={'never' if ttfb[0] is None else f'{ttfb[0]:.1f}s'}) ---",
           flush=True)
     if not out.strip():
         # rc=0 with EMPTY stdout: transient gateway drop, correlated with large

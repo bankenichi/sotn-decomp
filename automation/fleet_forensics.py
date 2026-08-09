@@ -30,11 +30,14 @@ WHAT IT FOUND ON FIRST RUN (1041 calls, 2026-08-03)
 WHAT THE SHAPE OF THE FAILURE RULES OUT
     not warm-up      the first call of a log produces 12% of the time against
                      10% overall, so it is not session initialisation.
-    not streaky      dead runs average 9.2 calls, and independent failures at
-                     the observed 9.8% success rate predict 9.2. The failures
-                     are INDEPENDENT per call. That argues against connection
-                     or session state and for each request being dropped on
-                     its own merits.
+    BURSTY           dead runs average 12.8 calls against 9.9 expected if
+                     failures were independent, and 12.4 vs 9.2 counting only
+                     real model answers. Dropping the single longest run (81)
+                     still leaves 11.9, so it is not one outlier. An earlier
+                     ad-hoc count said "independent"; it dropped aborted calls
+                     from the sequence instead of ending a run at them, which
+                     shortened every run it measured. Burstiness plus a 93%
+                     zero-byte rate points at quota or contention.
     degrades late    5% success after the 20th call in a log against 14% in
                      the first five. Confounded (later calls may be harder
                      functions) but consistent with a per-session or per-hour
@@ -82,6 +85,74 @@ RX_STREAM = "  | "
 # and therefore different fixes.
 OUTCOMES = ("produced", "empty", "timeout_no_bytes", "timeout_partial",
             "timeout_complete", "genfail", "abandoned")
+
+
+TELEMETRY = LOGS / "calls.jsonl"
+
+
+def load_telemetry(path: Path | None = None) -> list[dict]:
+    """Structured per-call records, if the instrumented worker has written any.
+
+    Preferred over log scraping because it carries the two fields the logs
+    cannot express: `ttfb_s` (None when no byte ever arrived) and
+    `stderr_head` (what the provider actually said). Log parsing stays as the
+    fallback so this tool keeps working on the 1042 calls recorded before the
+    instrumentation existed.
+
+    A truncated final line is tolerated: a worker killed mid-append leaves one,
+    and refusing to read the other 99% of the file over it would be perverse.
+    """
+    p = path or TELEMETRY
+    if not p.is_file():
+        return []
+    out = []
+    for line in p.read_text(encoding="utf-8", errors="ignore").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            rec = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(rec, dict) and rec.get("outcome"):
+            rec.setdefault("log", rec.get("worker", "?"))
+            rec.setdefault("secs", rec.get("total_s", 0))
+            rec.setdefault("prompt", rec.get("prompt_chars", 0))
+            out.append(rec)
+    return out
+
+
+def ttfb_report(calls: list[dict]) -> None:
+    """The question the whole instrumentation exists to answer."""
+    have = [c for c in calls if "ttfb_s" in c]
+    if not have:
+        print("\nno time-to-first-byte data yet: these records predate the "
+              "instrumentation. Run the fleet briefly to collect some.")
+        return
+    never = [c for c in have if c.get("ttfb_s") is None]
+    got = sorted(c["ttfb_s"] for c in have if c.get("ttfb_s") is not None)
+    print(f"\ntime to first byte ({len(have)} instrumented call(s))")
+    print(f"  never answered      {len(never):5d} "
+          f"({100.0*len(never)/len(have):.0f}%)")
+    if got:
+        def pct(v, q):
+            return v[min(len(v) - 1, int(len(v) * q))]
+        print(f"  answered            {len(got):5d}   "
+              f"median {pct(got,0.5):.1f}s  p90 {pct(got,0.9):.1f}s  "
+              f"max {got[-1]:.1f}s")
+    print("  A call that never produced a first byte cannot be fixed by a "
+          "longer\n  timeout, a smaller prompt, or a better model. It is the "
+          "provider.")
+    said = [c for c in have if (c.get("stderr_head") or "").strip()]
+    print(f"\nstderr captured on {len(said)} of {len(have)} call(s)")
+    if said:
+        seen = Counter((c.get("stderr_head") or "")[:120] for c in said)
+        for msg, n in seen.most_common(8):
+            print(f"  {n:4d}x  {msg}")
+    else:
+        print("  Every instrumented call was silent on stderr too. That rules "
+              "out\n  the provider explaining itself, and points at the "
+              "request being\n  dropped before anything is generated.")
 
 
 def log_files() -> list[Path]:
@@ -316,6 +387,28 @@ def self_test() -> int:
     ck(calls[3]["model"] == "m/y" and calls[3]["prompt"] == 200,
        "model and prompt size are carried on every record")
 
+    print("\ntelemetry records are preferred over log scraping when present")
+    with tempfile.TemporaryDirectory() as td:
+        j = Path(td) / "calls.jsonl"
+        j.write_text(
+            json.dumps({"outcome": "timeout_no_bytes", "model": "m/x",
+                        "ttfb_s": None, "total_s": 90.0, "prompt_chars": 100,
+                        "stderr_head": "429 rate limit"}) + "\n"
+            + json.dumps({"outcome": "produced", "model": "m/x",
+                          "ttfb_s": 2.5, "total_s": 30.0,
+                          "prompt_chars": 100, "stderr_head": ""}) + "\n"
+            + '{"outcome": "produced", "model": "m/x", "ttfb_s"',  # killed
+            encoding="utf-8")
+        recs = load_telemetry(j)
+    ck(len(recs) == 2,
+       f"a half-written final line is skipped, the rest survive ({len(recs)})")
+    ck(recs[0]["ttfb_s"] is None,
+       "a call that never answered records ttfb_s = null, not 0")
+    ck(recs[1]["ttfb_s"] == 2.5, "a call that answered records when")
+    ck(all("log" in r and "prompt" in r for r in recs),
+       "telemetry records carry the fields the report expects, so the same "
+       "report code works on both sources")
+
     print("\nthe independence test can tell the two shapes apart")
     bursty = [{"log": "a", "outcome": o} for o in
               (["produced"] * 5 + ["empty"] * 20 + ["produced"] * 5)]
@@ -363,11 +456,18 @@ def main() -> int:
     a = ap.parse_args()
     if a.self_test:
         return self_test()
-    calls = parse(log_files())
+    tel = load_telemetry()
+    if tel:
+        print(f"using {len(tel)} instrumented record(s) from "
+              f"{TELEMETRY.name}; log scraping skipped")
+        calls = tel
+    else:
+        calls = parse(log_files())
     if a.json:
         Path(a.json).write_text(json.dumps(calls, indent=2), encoding="utf-8")
         print(f"wrote {len(calls)} record(s) to {a.json}")
     report(calls, by_model=a.by_model, streaks=a.streaks)
+    ttfb_report(calls)
     return 0
 
 
