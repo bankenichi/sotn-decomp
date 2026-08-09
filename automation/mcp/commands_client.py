@@ -967,11 +967,14 @@ def fleet_start(workers: int = 4, max_functions: int = 0,
              else int(cli_workers) if backend == "mixed" else 0)
     if backend == "mixed" and n_cli < 1:
         raise Rejected("backend=mixed needs cli_workers >= 1")
-    total = n_http + n_cli
+    # n_zen belongs in the total. Omitting it made backend="zen" fail the
+    # 1-16 check with "got 0" even though workers=2 was requested: the
+    # count existed, it just was not being counted.
+    total = n_http + n_cli + n_zen
     if not 1 <= total <= 16:
         raise Rejected(f"total workers must be 1-16 (got {total})")
 
-    plan = {"backend": backend, "llama_workers": n_http, "cli_workers": n_cli,
+    plan = {"backend": backend, "llama_workers": n_http, "zen_workers": n_zen, "cli_workers": n_cli,
             "opencode_model": opencode_model or "(worker default)"}
     if DRYRUN:
         return {"action": "fleet_start", "dry_run": True, **plan,
