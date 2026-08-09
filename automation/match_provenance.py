@@ -62,6 +62,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import inspect
 import json
 import os
 import re
@@ -193,17 +194,24 @@ def git_introduced(fn: str, timeout: int = 20) -> tuple[str, str]:
     """
     if not re.fullmatch(r"[A-Za-z_]\w*", fn or ""):
         return "", ""
+    # %x09 (a TAB), not a literal NUL. `--format=%s\x00%an` put a real zero
+    # byte in argv, and execve() cannot carry one: every call raised
+    # ValueError: embedded null byte before git ever ran. It survived review
+    # because both self-tests passed names that return early, so the
+    # subprocess line was never once executed. git expands %x09 itself, so the
+    # separator reaches the output without ever being a NUL in our argv.
+    SEP = "\t"
     try:
         r = subprocess.run(
             ["git", "log", "-1", "--diff-filter=M", f"-S{fn}(",
-             "--format=%s\x00%an", "--", "src"],
+             "--format=%s%x09%an", "--", "src"],
             cwd=str(REPO), capture_output=True, text=True, timeout=timeout)
-    except (OSError, subprocess.SubprocessError):
+    except (OSError, subprocess.SubprocessError, ValueError):
         return "", ""
     if r.returncode != 0 or not (r.stdout or "").strip():
         return "", ""
     head = r.stdout.strip().splitlines()[0]
-    subj, _, author = head.partition("\x00")
+    subj, _, author = head.partition(SEP)
     return subj.strip(), author.strip()
 
 
@@ -455,6 +463,36 @@ def self_test() -> int:
     ck(git_introduced("") == ("", ""), "an empty function name is refused")
     ck(git_introduced("not a real name; rm -rf") == ("", ""),
        "and anything that is not an identifier never reaches git")
+    # THE CHECK THAT WAS MISSING. Both cases above return before the
+    # subprocess call, so the argv was never actually executed and a literal
+    # NUL byte in the format string shipped. Every dashboard button that ran
+    # without --no-git died with "ValueError: embedded null byte".
+    got = git_introduced("InitializeEntity")
+    ck(isinstance(got, tuple) and len(got) == 2,
+       f"a REAL identifier reaches git and comes back cleanly ({got!r})")
+    ck(all(isinstance(x, str) for x in got),
+       "both halves are strings whether or not git found anything")
+    ck(all("\x00" not in x for x in got),
+       "and no NUL survives into the result")
+    # Scope to CODE lines. The first version of this scanned the raw source
+    # and matched the comment above explaining the bug, which is the same
+    # class of mistake as the assertions that matched their own prose earlier
+    # today: a check that reads documentation instead of behaviour.
+    body = inspect.getsource(git_introduced)
+    code = "\n".join(l for l in body.splitlines()
+                     if not l.lstrip().startswith("#"))
+    code = re.sub(r'""".*?"""', "", code, flags=re.S)
+    ck("\\x00" not in code and "\x00" not in code,
+       "the git argv contains no literal NUL; execve cannot carry one")
+
+    print("\nthe full pipeline runs end to end, git included")
+    # analyse() with use_git=True is the path the dashboard actually calls.
+    rows = analyse([{"status": "matched", "function": "InitializeEntity",
+                     "id": "x", "overlay": "ST/RNO0",
+                     "notes": "Verbatim copy from st_common.h:506-533."}],
+                   use_git=True)
+    ck(len(rows) == 1 and rows[0]["primary"] == "shim-header",
+       f"one matched record in, one attributed row out ({rows})")
 
     print()
     if fails:

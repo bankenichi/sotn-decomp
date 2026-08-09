@@ -520,6 +520,8 @@ DIAGNOSTICS = [
      "matches whose method note was lost or never written"),
     ("Match provenance: detail", "match_provenance.py", "--detail",
      "one line per matched function with the evidence behind it"),
+    ("Provider probe (http vs cli)", "probe_provider.py", "",
+     "asks the endpoint directly: does it answer, refuse, or just go silent"),
     ("Fleet: WHY calls fail", "fleet_forensics.py", "--by-model --streaks",
      "replays the logs: what each dead call actually contained"),
     ("Fleet: empty responses", "empty_response_audit.py",

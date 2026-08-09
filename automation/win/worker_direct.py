@@ -404,6 +404,9 @@ def _opencode_run_once(prompt: str, timeout: float | None = None) -> str:
     # answered and we cut it off", which the logs could not distinguish at all:
     # both were just `timed out after 90s`. None means nothing ever arrived.
     ttfb: list[float | None] = [None]
+    # When the most recent byte arrived. Silence is measured from here, not
+    # from the start of the call.
+    last_byte = [time.time()]
     done = threading.Event()
 
     def pump():
@@ -411,6 +414,7 @@ def _opencode_run_once(prompt: str, timeout: float | None = None) -> str:
             for line in proc.stdout:
                 if ttfb[0] is None:
                     ttfb[0] = time.time() - t0
+                last_byte[0] = time.time()
                 buf.append(line)
                 print(f"  | {line.rstrip()}", flush=True)
                 total = sum(len(x) for x in buf)
@@ -428,24 +432,45 @@ def _opencode_run_once(prompt: str, timeout: float | None = None) -> str:
 
     t = threading.Thread(target=pump, daemon=True)
     t.start()
-    try:
-        proc.wait(timeout=_to)
-    except subprocess.TimeoutExpired:
+    def _adaptive_wait(hard_cap: float) -> str:
+        """Block until the child exits or a deadline fires; say WHICH.
+
+        Polls rather than using proc.wait(timeout=...) because the deadline is
+        not a constant: it depends on whether anything has been received yet
+        and, once it has, on how long ago. 0.25s is well below every deadline
+        involved and costs nothing measurable.
+        """
+        while True:
+            if proc.poll() is not None:
+                return ""
+            now = time.time()
+            if ttfb[0] is None:
+                if now - t0 >= min(NO_FIRST_BYTE_S, hard_cap):
+                    return "no_first_byte"
+            elif now - last_byte[0] >= STREAM_IDLE_S:
+                return "stream_idle"
+            if now - t0 >= hard_cap:
+                return "hard_cap"
+            time.sleep(0.25)
+
+    kill_reason = _adaptive_wait(_to)
+    if kill_reason:
         # SALVAGE BEFORE GIVING UP.
         #
         # `buf` already holds every line the model streamed. Discarding it on
         # timeout threw away finished work: observed 2026-08-03 on
-        # func_us_801B21F0, where attempt 2 streamed a complete 130-line
-        # function and was then reported as "timed out after 90s" and dropped,
-        # so the worker paid for three more attempts on a function it had
-        # already answered. The 90s cap made this common rather than rare --
-        # the model finishes the code and then keeps talking, and the clock
-        # runs out during the epilogue.
+        # func_us_801B21F0, where attempt 2 streamed a complete function and
+        # was reported as "timed out" and dropped, so the worker paid for three
+        # more attempts on a function it had already answered.
+        #
+        # Rare in practice -- 2 of 1041 recorded calls -- because the dominant
+        # failure produces nothing at all. Kept because it costs nothing and
+        # the one case it catches is a whole function.
         #
         # Only a COMPLETE function is salvaged. A truncated body would compile
         # to something arbitrary or fail the build with a confusing error, so
         # complete_function() insists on balanced braces and a closing brace at
-        # the end; anything less re-raises and the attempt is spent as before.
+        # the end; anything less raises and the attempt is spent as before.
         proc.kill()
         done.wait(timeout=5)
         err = _drain_stderr(proc)
@@ -458,10 +483,22 @@ def _opencode_run_once(prompt: str, timeout: float | None = None) -> str:
             "outcome": ("timeout_complete" if salvaged
                         else "timeout_partial" if text.strip()
                         else "timeout_no_bytes"),
-            "stderr_head": err, "cap_s": _to})
+            "stderr_head": err, "cap_s": _to,
+            # WHICH deadline fired. Without this the tuning is blind: a run
+            # full of `no_first_byte` means the provider is dropping requests,
+            # a run full of `stream_idle` means models are stalling mid-answer,
+            # and `hard_cap` means the ceiling is genuinely too low. They need
+            # opposite responses.
+            "kill_reason": kill_reason,
+            "no_first_byte_s": NO_FIRST_BYTE_S,
+            "stream_idle_s": STREAM_IDLE_S})
         # Surface it in the human log too. A reason that only exists in a JSONL
         # nobody opens is barely better than one that was thrown away.
-        print(f"  !! timed out at {int(time.time() - t0)}s "
+        why = {"no_first_byte": f"nothing arrived in {NO_FIRST_BYTE_S:.0f}s",
+               "stream_idle": f"went quiet for {STREAM_IDLE_S:.0f}s",
+               "hard_cap": f"hit the {_to:.0f}s ceiling"}.get(
+                   kill_reason, kill_reason)
+        print(f"  !! killed at {int(time.time() - t0)}s: {why} "
               f"(ttfb={'never' if ttfb[0] is None else f'{ttfb[0]:.1f}s'}, "
               f"{len(text)} chars). stderr: {err or '(empty)'}", flush=True)
         if salvaged:
@@ -470,7 +507,7 @@ def _opencode_run_once(prompt: str, timeout: float | None = None) -> str:
                   f"({len(salvaged)} chars); salvaged instead of discarded",
                   flush=True)
             return salvaged
-        raise
+        raise subprocess.TimeoutExpired(argv, _to)
     done.wait(timeout=5)
     out = "".join(buf)
     err = _drain_stderr(proc, limit=800)
@@ -640,6 +677,33 @@ FUNC_BUDGET = float(os.environ.get("FUNC_BUDGET", _DEFAULT_FUNC_BUDGET))
 # most 360s of model time, and the remainder is headroom for the builds and
 # diffs between them rather than more waiting on a model.
 ATTEMPT_BUDGET = float(os.environ.get("ATTEMPT_BUDGET", "90"))
+
+# ADAPTIVE DEADLINES. A flat cap punishes the wrong call.
+#
+# Measured 2026-08-03: of 946 dead calls, 878 (93%) returned ZERO bytes, and an
+# instrumented run of 11 confirmed 11/11 never produced a first byte -- while
+# stderr held nothing but opencode's own startup banner. The provider does not
+# refuse, it goes silent.
+#
+# So silence and slowness are completely different states and deserve
+# different deadlines:
+#
+#   NO_FIRST_BYTE_S  nothing has arrived at all. In every case measured so far
+#                    nothing ever did, so waiting the full budget buys nothing.
+#                    Kill early and spend the time on the next attempt.
+#   STREAM_IDLE_S    bytes ARE arriving. The model is working. Only give up
+#                    after it has gone quiet for this long, NOT at some total
+#                    elapsed time -- a long function legitimately takes a long
+#                    time to write, and killing a model mid-emission throws
+#                    away work that was about to land.
+#   hard ceiling     whatever remains of FUNC_BUDGET, so a model that streams
+#                    forever still cannot hold a worker hostage.
+#
+# The net effect is the opposite of a flat cap on both ends: dead calls die in
+# 45s instead of 90s, and a genuinely productive call may run WELL PAST 90s as
+# long as it keeps producing.
+NO_FIRST_BYTE_S = float(os.environ.get("NO_FIRST_BYTE_S", "45"))
+STREAM_IDLE_S = float(os.environ.get("STREAM_IDLE_S", "45"))
 
 
 class Status:
