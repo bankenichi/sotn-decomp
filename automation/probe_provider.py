@@ -302,6 +302,81 @@ def probe_worker(model: str, ask: str, timeout: float = 600.0) -> dict:
     return rec
 
 
+def sweep_effort(url: str, model: str, ask: str, levels: list[str],
+                 repeat: int, max_tokens: int, timeout: float) -> list[dict]:
+    """Same model, same prompt, one variable: how hard it is told to think.
+
+    Apples to apples or it proves nothing. Everything except reasoning_effort
+    is pinned -- identical prompt string, identical max_tokens, identical
+    model, same session -- because the earlier per-model comparisons in this
+    project were each overturned once a second variable was controlled for.
+
+    Reports content vs reasoning separately. A level that "answers faster" by
+    thinking less is only better if `content` is still non-empty; the whole
+    failure mode being tuned here is a model that spends everything on
+    reasoning and returns nothing.
+    """
+    out = []
+    for eff in levels:
+        for i in range(repeat):
+            extra = (dict(NO_THINK) if eff == "none" else
+                     {"reasoning_effort": eff,
+                      "chat_template_kwargs": {"enable_thinking": True}})
+            r = probe_http(url, model, timeout=timeout, max_tokens=max_tokens,
+                           ask=ask, extra=extra)
+            r.update(kind="sweep", effort=eff, run=i + 1)
+            out.append(r)
+            st = r.get("status")
+            # Distinguish "the model returned nothing" from "the SERVER
+            # refused". Both show 0 content, and conflating them would read as
+            # a model-behaviour result when it is really an unsupported
+            # parameter value.
+            note = ("" if st == 200 else
+                    f"  <-- HTTP {st}, the provider rejected this value")
+            print(f"  effort={eff:6} run {i+1}/{repeat}  "
+                  f"{r.get('total_s', 0):6.1f}s  "
+                  f"content {r.get('content_chars', 0) or 0:5d}  "
+                  f"reasoning {r.get('reasoning_chars', 0) or 0:6d}  "
+                  f"finish {r.get('finish_reason')}{note}")
+    return out
+
+
+def sweep_report(rows: list[dict]) -> None:
+    from statistics import median
+    by = {}
+    for r in rows:
+        by.setdefault(r["effort"], []).append(r)
+    print("\n" + "=" * 76)
+    print("EFFORT SWEEP  (same model, same prompt, same max_tokens)")
+    print("=" * 76)
+    print(f"{'effort':8} {'n':>3} {'answered':>9} {'med s':>7} "
+          f"{'med content':>12} {'med reasoning':>14}")
+    for eff, rs in by.items():
+        bad = [r for r in rs if r.get("status") != 200]
+        if bad:
+            codes = sorted({str(r.get("status")) for r in bad})
+            print(f"{eff:8} {len(rs):3d}   UNSUPPORTED: HTTP {'/'.join(codes)}")
+            continue
+        ok = [r for r in rs if r.get("content_chars", 0) > 0]
+        print(f"{eff:8} {len(rs):3d} {len(ok):9d} "
+              f"{median([r.get('total_s', 0) for r in rs]):7.1f} "
+              f"{median([r.get('content_chars', 0) for r in rs]):12.0f} "
+              f"{median([r.get('reasoning_chars', 0) for r in rs]):14.0f}")
+    best = [e for e, rs in by.items()
+            if all(r.get("content_chars", 0) > 0 for r in rs)]
+    print()
+    if not best:
+        print("NO level answered every time. Reasoning is not a knob worth")
+        print("exploiting here; keep it off and rely on the force-code pass.")
+    elif len(best) == len(by):
+        print("Every level answered. Pick on TIME, and treat the extra")
+        print("reasoning as unpaid-for unless a build-rate test says it helps.")
+    else:
+        print(f"Answered every time: {', '.join(best)}.")
+        print("Levels that sometimes returned empty content are traps: they")
+        print("look cheap until the call that produces nothing is counted.")
+
+
 def real_ask(a) -> str | None:
     """A genuine decompilation ask, or None for the trivial one.
 
@@ -429,6 +504,10 @@ def main() -> int:
                          "arguments, and because the exact switch differs per "
                          "runtime: send all the known ones and let the server "
                          "ignore the fields it does not implement.")
+    ap.add_argument("--sweep-effort",
+                    help="effort levels to compare on ONE prompt. Use `all`, "
+                         "or join with + / , (the connector rejects commas in "
+                         "arguments, so `all` and `+` are the usable forms)")
     ap.add_argument("--self-test", action="store_true")
     a = ap.parse_args()
     if a.self_test:
@@ -450,6 +529,22 @@ def main() -> int:
           f"prompt   'Reply with the word ok.' (tiny, deliberately)")
 
     results = []
+    if a.sweep_effort:
+        raw = a.sweep_effort.strip().lower()
+        levels = (["none", "low", "medium", "high"] if raw == "all"
+                  else [x.strip() for x in re.split(r"[,+]", raw) if x.strip()])
+        ask = real_ask(a) or "Reply with the word ok."
+        print(f"prompt is {len(ask)} chars, identical across every level\n")
+        for model in picks:
+            print(f"[{model}]")
+            results += sweep_effort(url, model, ask, levels, a.repeat,
+                                    a.max_tokens, a.timeout)
+        sweep_report(results)
+        OUT_DIR.mkdir(parents=True, exist_ok=True)
+        out = OUT_DIR / f"probe-sweep-{int(time.time())}.json"
+        out.write_text(json.dumps(results, indent=2), encoding="utf-8")
+        print(f"\nwrote {out}")
+        return 0
     if a.worker:
         ask = real_ask(a) or "Reply with the word ok."
         for model in picks:

@@ -136,7 +136,23 @@ NO_THINKING = {
 #
 # REASONING_EFFORT=none restores the measured-safe behaviour in one env var if
 # a model ignores the cap.
-REASONING_EFFORT = os.environ.get("REASONING_EFFORT", "low").strip().lower()
+# DEFAULT none, on evidence. Apples-to-apples sweep 2026-08-03, one model, one
+# prompt, identical max_tokens (probe_provider.py --sweep-effort all):
+#
+#   none     9.9s   1990 chars of content   0 reasoning      finish stop
+#   low     81.5s      0 chars of content   25,215 reasoning finish length
+#   medium  94.5s   HTTP 503 Service Unavailable
+#   high    39.5s   HTTP 500 Internal Server Error
+#
+# Reasoning is NOT a knob worth exploiting on Zen. `none` is the only value
+# that returns content; `low` spends everything thinking and returns nothing;
+# medium and high are not supported at all and fail server-side.
+#
+# The reasoning machinery stays: the local llama models are reasoning-distilled
+# and do emit useful analysis, the capture is what diagnosed this whole class,
+# and the force-code pass is the safety net for any model that thinks anyway.
+# Set REASONING_EFFORT=low to re-enable it and pay for a second pass.
+REASONING_EFFORT = os.environ.get("REASONING_EFFORT", "none").strip().lower()
 # 6000, raised from 3000 after the first zen run. ALL TEN calls hit the 3000
 # cap with 0 content tokens, and reading the captured reasoning shows why: the
 # model was still mid-analysis, working offset by offset through the assembly.
