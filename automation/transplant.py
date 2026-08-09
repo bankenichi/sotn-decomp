@@ -139,20 +139,30 @@ def apply_map(body: str, pairs: list[str]) -> tuple[str, list[str]]:
     Word-anchored, and reports what it changed so a dry run shows the exact
     substitutions before anything is written.
     """
-    notes = []
+    notes, table = [], {}
     for pair in pairs or []:
-        old, _, new = pair.partition("=")
-        old, new = old.strip(), new.strip()
-        if not old or not new:
+        o, _, n_ = pair.partition("=")
+        o, n_ = o.strip(), n_.strip()
+        if not o or not n_:
             notes.append(f"IGNORED malformed --map {pair!r}")
             continue
-        n = len(re.findall(r"\b" + re.escape(old) + r"\b", body))
-        if not n:
-            notes.append(f"IGNORED {old}: not present in the body")
+        hits = len(re.findall(r"(?<![\w.])" + re.escape(o) + r"(?![\w.])",
+                              body))
+        if not hits:
+            notes.append(f"IGNORED {o}: not present in the body")
             continue
-        body = re.sub(r"\b" + re.escape(old) + r"\b", new, body)
-        notes.append(f"{old} -> {new}  ({n} occurrence(s))")
-    return body, notes
+        table[o] = n_
+        notes.append(f"{o} -> {n_}  ({hits} occurrence(s))")
+    if not table:
+        return body, notes
+    # SIMULTANEOUS, in ONE pass. Applying the pairs in sequence cannot express
+    # a swap: the inverted castle mirrors this sprite, so 0xC0 and 0xE0 trade
+    # places, and `0xC0->0xE0` followed by `0xE0->0xC0` collapses both to
+    # 0xC0. Longest key first so a shorter one cannot match inside a longer.
+    pat = re.compile(r"(?<![\w.])(" + "|".join(
+        re.escape(k) for k in sorted(table, key=len, reverse=True))
+        + r")(?![\w.])")
+    return pat.sub(lambda m: table[m.group(1)], body), notes
 
 
 def auto_decls(body: str, dest: Path) -> tuple[list[str], list[str]]:
@@ -449,6 +459,14 @@ def self_test() -> int:
     ck("IGNORED" in n2[0], f"a symbol not present is reported, not silent ({n2})")
     _b3, n3 = apply_map("x", ["garbage"])
     ck("IGNORED malformed" in n3[0], "a malformed pair is reported")
+    # A SWAP. Sequential substitution collapses this; the inverted castle
+    # mirrors the sprite, so 0xC0 and 0xE0 genuinely trade places.
+    sw, _ = apply_map("a = 0xC0; b = 0xE0;", ["0xC0=0xE0", "0xE0=0xC0"])
+    ck(sw == "a = 0xE0; b = 0xC0;", f"the values are swapped, not collapsed ({sw})")
+    # Numeric literals are not word characters at their edges, so \b would
+    # mis-anchor; the guard is a non-word, non-dot lookaround.
+    nb, _ = apply_map("x = 0x91; y = 0x910;", ["0x91=0x5F"])
+    ck(nb == "x = 0x5F; y = 0x910;", f"0x910 is not touched by 0x91 ({nb})")
 
     print("\nmissing declarations are DERIVED from the definition")
     import tempfile
@@ -532,6 +550,15 @@ def main() -> int:
         formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--list", action="store_true")
     ap.add_argument("--function")
+    # ONE argument carrying many pairs. The connector caps a call at 12
+    # arguments and rejects commas and spaces, so nine renames could not be
+    # expressed as nine --map flags. `/` is in the allowed character set and
+    # cannot occur in a C identifier or a hex literal.
+    # Repeatable as well as slash-separated: a single argument is also capped
+    # at ~120 characters, so nine renames need both mechanisms.
+    ap.add_argument("--maps", action="append", default=[], metavar="A=B/C=D",
+                    help="slash-separated renames, repeatable; for when --map "
+                         "would exceed the connector's argument cap")
     ap.add_argument("--map", action="append", default=[], metavar="OLD=NEW",
                     help="rename a symbol the destination overlay calls "
                          "something else; repeatable")
@@ -544,7 +571,10 @@ def main() -> int:
     if a.list:
         return list_all()
     if a.function:
-        return run(a.function, a.apply, a.map)
+        pairs = list(a.map)
+        for chunk in a.maps:
+            pairs += [x for x in chunk.split("/") if x.strip()]
+        return run(a.function, a.apply, pairs)
     ap.print_help()
     return 0
 
