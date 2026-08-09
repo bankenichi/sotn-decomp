@@ -556,3 +556,51 @@ offset get the generic pointer to the layout section instead.
 Both `subType` and `updateFunc` are, for the record, genuinely absent from
 include/game.h and from every .c file in the tree, so flagging them was right;
 only the hint was wrong.
+
+## First live run on mimo: 20 generations (2026-08-09)
+
+3 zen workers, mimo default, corrected 20000 ceiling.
+
+    generations              20
+    completed streams        19
+    degenerate aborts         0
+    quality rejects           5
+    build failures           20
+    built, bytes differ       2   (permuter candidates; 1 record reached `near`)
+    matched                   0
+
+Zero degenerate aborts is itself a result: the three shapes that wasted 30% of
+the battery are a property of the weaker models, not of mimo. The abort path
+cost nothing and fired never, which is the right outcome for a safety net.
+
+### The pre-build member gate caught NONE of the 20 failures
+
+Every build failure was a member-name error, and the gate added earlier today
+missed all of them:
+
+    4x  structure has no member named `unk1C
+    3x  structure has no member named `unk1E
+    3x  structure has no member named 'unk1C
+    1x  structure has no member named `scaleY
+    1x  structure has no member named `scaleX
+
+`unk1C`, `unk1E`, `scaleY` and `scaleX` are ALL in the tree-wide legal set, so
+`invented_members()` passed them. They exist -- in some other struct. The
+pointer being dereferenced here is not the struct that has them.
+
+That is a structural limit of the check, not a tuning problem. It compares
+names against a UNION of every struct in the tree, which can only catch a name
+that exists NOWHERE (`field1C`, `partA`). The failure the fleet actually
+produces is a name that exists in the WRONG struct, and separating those
+requires knowing the declared type of the variable being dereferenced.
+
+The earlier claim, "catches 20 of the fabricating generations with 0 false
+positives", stands for the battery corpus and is worth nothing here: the
+battery measured against `quality_ab.invented()`, which uses the same
+tree-wide notion of legality, so the two agreed with each other rather than
+with the compiler. A metric validated against another metric is not validated.
+
+The tractable fix is a type-aware check: parse `Entity* self` style
+declarations, then validate `self->x` against Entity's fields specifically
+rather than against everything. That covers the common case, where the
+function has one entity parameter, and would have caught all 20.

@@ -71,6 +71,41 @@ RX_RESCUED = re.compile(r"RESCUED", re.I)
 HOSTED_MAX_CHARS = 20000
 
 
+
+_ASM_INDEX: dict | None = None
+
+
+def real_asm_chars(rec_id: str) -> int | None:
+    """The size of the actual .s file, not the size the note claims.
+
+    THE NOTE CANNOT BE TRUSTED FOR THIS. The deferral message reports the
+    length of the asm AFTER the prompt builder truncated it, so eleven records
+    all claimed exactly "asm 12000 chars" -- a cap, not a measurement. Their
+    real sizes ranged from 12,186 to 43,582, and nine of the twenty-five were
+    genuinely over the hosted 20000 ceiling. Requeueing those on the strength
+    of the note would send them straight back to deferred, one wasted claim and
+    scheduler round trip each.
+    """
+    global _ASM_INDEX
+    if _ASM_INDEX is None:
+        _ASM_INDEX = {}
+        root = REPO / "asm" / "us"
+        if root.is_dir():
+            for f in root.rglob("*.s"):
+                _ASM_INDEX.setdefault(f.stem, f)
+    fn = rec_id.rsplit(":", 1)[-1]
+    # Queue ids carry a `_from_<overlay>` suffix for shimmed-in functions; the
+    # .s file is named without it.
+    for cand in (fn, re.sub(r"_from_\w+$", "", fn)):
+        f = _ASM_INDEX.get(cand)
+        if f:
+            try:
+                return f.stat().st_size
+            except OSError:
+                return None
+    return None
+
+
 def classify(note: str, asm_chars: int | None = None) -> tuple[str, str]:
     """(class, action). Pure, so the self-test can pin every branch."""
     note = note or ""
@@ -172,7 +207,8 @@ def report(plan: bool = False) -> int:
         return 0
     buckets: dict[str, list] = collections.defaultdict(list)
     for r in recs:
-        cls, action = classify(r.get("note", ""))
+        cls, action = classify(r.get("note", ""),
+                               real_asm_chars(r["id"]))
         buckets[cls].append((r, action))
 
     print(f"{len(recs)} deferred record(s)\n")
@@ -264,6 +300,17 @@ def self_test() -> int:
     ck("scheduler.py" in src_self and "queue.jsonl" not in src_self.split(
         "def self_test")[0].replace("~/sotn-work/queue.jsonl", ""),
        "no direct queue-file read in the loader")
+
+    print("\nthe MEASURED asm size overrides the size the note claims")
+    # Eleven notes all said "asm 12000 chars" because the prompt builder had
+    # truncated there. Real sizes were 12,186 to 43,582.
+    capped = "TIER_HANDOFF_TOO_LARGE: asm 12000 chars > 6000 on backend=http"
+    ck(classify(capped, 43582)[0] == "too-large-still",
+       "a note saying 12000 does not requeue a 43,582-char function")
+    ck(classify(capped, 13447)[0] == "stale-tier",
+       "while a genuinely mid-size one still requeues")
+    ck(classify(capped)[0] == "stale-tier",
+       "and with no measurement it falls back to the note")
 
     print("\nthe queue being read is identified before any conclusion")
     src_self = Path(__file__).read_text(errors="ignore")
