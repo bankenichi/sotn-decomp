@@ -515,11 +515,37 @@ def main() -> int:
                          "re-allowlisting a new script on every connector "
                          "restart.")
     ap.add_argument("--configs", default="none+low3k+low9k")
+    ap.add_argument("--battery", action="store_true",
+                    help="run the full function x model x config battery")
+    ap.add_argument("--battery-report", action="store_true")
+    ap.add_argument("--models", default="")
     ap.add_argument("--self-test", action="store_true")
     a = ap.parse_args()
     if a.self_test:
         return self_test()
 
+    if a.battery:
+        # Delegated for the same reason as --quality-ab: probe_provider is
+        # already allowlisted, so a long battery can be launched without
+        # another connector restart.
+        sys.path.insert(0, str(REPO / "automation"))
+        import quality_ab as qa
+        mdl = ([m.strip() for m in re.split(r"[,+]", a.models) if m.strip()]
+               or models(load_config()))
+        cfgs = [c.strip() for c in re.split(r"[,+]", a.configs) if c.strip()]
+        print(f"battery: {len(qa.BATTERY_ASM)} functions x {len(mdl)} models "
+              f"x {len(cfgs)} configs = "
+              f"{len(qa.BATTERY_ASM)*len(mdl)*len(cfgs)} generations",
+              flush=True)
+        print(f"models: {', '.join(mdl)}", flush=True)
+        qa.battery(qa.BATTERY_ASM, mdl, cfgs, a.timeout)
+        qa.battery_report()
+        return 0
+    if a.battery_report:
+        sys.path.insert(0, str(REPO / "automation"))
+        import quality_ab as qa
+        qa.battery_report()
+        return 0
     if a.quality_ab:
         sys.path.insert(0, str(REPO / "automation"))
         import quality_ab as qa

@@ -92,14 +92,27 @@ os.environ.setdefault("SOTN_PYTHON", sys.executable)
 # That is the second time a model verdict in this project has been overturned by
 # actually counting, and both times the wrong verdict came from a small sample
 # repeated as fact. Prefer the number to the label.
+# Labels carry the 2026-08-03 battery result (90 generations, 6 functions x 5
+# models x 3 configs), not the old dead-rate guesses. INVENTED is the average
+# count of fabricated field/type names per answer: the thing that breaks the
+# build. Ordered best first so the default pick is the measured best.
 CLI_MODELS = [
-    ("ling-3.0-flash-free  62% dead, 68s med", "opencode/ling-3.0-flash-free"),
-    ("north-mini-code-free  63% dead", "opencode/north-mini-code-free"),
-    ("mimo-v2.5-free  66% dead", "opencode/mimo-v2.5-free"),
-    ("nemotron-3-ultra-free  72% dead", "opencode/nemotron-3-ultra-free"),
-    ("laguna-s-2.1-free  75% dead, thin data", "opencode/laguna-s-2.1-free"),
-    ("deepseek-v4-flash-free  90% dead", "opencode/deepseek-v4-flash-free"),
-    ("big-pickle  83% dead", "opencode/big-pickle"),
+    ("big-pickle  BEST: 18/18, 0.8 invented, 40s", "opencode/big-pickle"),
+    ("mimo-v2.5-free  18/18, 0.9 invented, 67s", "opencode/mimo-v2.5-free"),
+    ("deepseek-v4-flash-free  18/18, 1.1 inv, 35s",
+     "opencode/deepseek-v4-flash-free"),
+    ("nemotron-3-ultra-free  WORST: 13/18, 3.7 inv",
+     "opencode/nemotron-3-ultra-free"),
+    ("north-mini-code-free  DEAD: HTTP 401 on all 18",
+     "opencode/north-mini-code-free"),
+    # Offered by Zen but NOT in opencode.json, so the battery never tested
+    # them. `ling-3.0-flash-free` was in our config and is gone from the
+    # catalogue entirely; the current one is ling-3.0-tiny. Untested is not
+    # the same as bad, and the labels say which is which.
+    ("ling-3.0-tiny-free  UNTESTED", "opencode/ling-3.0-tiny-free"),
+    ("laguna-s-2.1-free  UNTESTED", "opencode/laguna-s-2.1-free"),
+    ("longcat-2.0-free  UNTESTED", "opencode/longcat-2.0-free"),
+
     # hy3-free is GONE from OpenCode Zen, not merely bad. Its 16 recorded calls
     # produced 0 candidates, 0 empties and 0 timeouts, i.e. every one failed
     # before it ran. Leaving a dead endpoint in the picker is a trap: it looks
@@ -1580,11 +1593,17 @@ def self_test() -> int:
        "before it ran")
     ck(all("," not in m for _, m in CLI_MODELS),
        "each entry is ONE model; mixing is now per-worker, not a preset")
-    ck(any("% dead" in n for n, _ in CLI_MODELS),
-       "labels carry a measured dead-rate rather than a folklore verdict")
-    ck("ling-3.0-flash-free" in CLI_MODELS[0][0],
-       "the default is the model with the best measured record, not the one "
-       "an out-of-date doc recommends")
+    # The old assertions demanded "% dead" labels and ling-3.0-flash first.
+    # Both encoded a superseded verdict: dead-rate was the wrong metric (it
+    # counted provider silence, not code quality) and ling-3.0-flash is not
+    # even offered by Zen any more. Assert the CURRENT invariant instead.
+    ck(any("invented" in n for n, _ in CLI_MODELS),
+       "labels carry the measured INVENTED rate, which is what breaks builds")
+    ck("big-pickle" in CLI_MODELS[0][1],
+       "the default is the battery winner: 18/18 answered, 0.8 invented")
+    ck(any("DEAD" in n for n, _ in CLI_MODELS),
+       "a model that returns HTTP 401 on every call is labelled DEAD rather "
+       "than left looking selectable")
     ck("renderWorkerRows" in PAGE and "class=wmodel" in PAGE,
        "the page renders one model row per worker")
     ck("best ever" in PAGE,

@@ -198,3 +198,81 @@ Recorded because they were each asserted confidently and were each wrong.
   `fleet_forensics.py --streaks` says bursty on both of its readings. The
   lesson is the reason the throwaway became a tool: an ad-hoc count that
   nobody can re-run is not evidence.
+
+
+---
+
+## 6. Battery results, 2026-08-03 (90 generations)
+
+6 functions (1.5k-14k of asm) x 5 Zen models x 3 reasoning configs, one
+variable at a time, through the real worker path. `quality_ab.py`, resumable,
+appended to `automation/logs/quality-battery.jsonl`.
+
+Ranked on **INVENTED** — field and type names that exist nowhere in the tree —
+because that is what breaks the build. `unk80` admits ignorance; `field1C`
+asserts a falsehood and fails identically while surviving review.
+
+### By model
+
+| model | answered | avg INVENTED | avg unkNN | avg s |
+|---|---:|---:|---:|---:|
+| big-pickle | 18/18 | **0.8** | 3.2 | 40.4 |
+| mimo-v2.5-free | 18/18 | 0.9 | 3.8 | 66.7 |
+| deepseek-v4-flash-free | 18/18 | 1.1 | 2.2 | 34.6 |
+| nemotron-3-ultra-free | 13/18 | **3.7** | 1.3 | 91.2 |
+| north-mini-code-free | **0/18** | — | — | 0.8 |
+
+`north-mini-code-free` returns **HTTP 401 on every call**. It is a second dead
+endpoint alongside hy3-free, and it has been contributing nothing while
+counting as a worker.
+
+`nemotron-3-ultra-free` is the worst live model on every axis: fewest answers,
+most fabrication, slowest.
+
+### By config
+
+| config | answered | avg INVENTED | avg s |
+|---|---:|---:|---:|
+| **none** | 23/30 | **0.9** | **10.8** |
+| low9k | 23/30 | 1.4 | 79.3 |
+| low3k | 21/30 | 2.1 | 50.1 |
+
+### The aggregate hides an outlier, and the conclusion survives it
+
+Per model x config, avg INVENTED:
+
+| model | none | low3k | low9k |
+|---|---:|---:|---:|
+| big-pickle | **0.0** | 0.5 | 2.0 |
+| deepseek-v4-flash-free | 0.8 | **0.3** | 2.0 |
+| mimo-v2.5-free | **0.5** | 1.3 | 0.8 |
+| nemotron-3-ultra-free | 2.6 | **10.3** | 0.8 |
+
+nemotron's low3k cell (10.3) is what pushes aggregate low3k above low9k.
+Excluding that one unstable model: none 0.43, low3k 0.70, low9k 1.60. The
+ordering is unchanged — **`none` wins, low9k is worst** — but the aggregate
+table on its own would have supported the wrong story about 3k vs 9k.
+
+A mid-run reading at 48/126 said the opposite (low3k 0.5 vs low9k 1.8). It was
+reported as provisional and it was wrong. Partial batteries are not evidence.
+
+### Size
+
+| asm size | avg INVENTED | avg unkNN |
+|---|---:|---:|
+| <= 6k | 0.7 | 1.8 |
+| > 6k | **2.2** | 3.6 |
+
+Fabrication triples on large functions. Whatever is done about reasoning, the
+large end needs a different approach.
+
+### What this says about the defaults
+
+`REASONING_EFFORT=low` with a 9000-token cap is the current default and the
+battery does not support it. `none` answered as often, invented least, and ran
+**7x faster**. The premise for choosing `low` — that thinking yields more
+sensible C — is measurably false on this provider.
+
+Not changed unilaterally: the default was set deliberately. But it should be
+`none`, and `big-pickle` + `none` was clean on all six functions (0.0 INVENTED,
+6/6 answered).

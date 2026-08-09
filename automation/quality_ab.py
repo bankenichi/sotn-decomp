@@ -163,6 +163,135 @@ def generate(asm_path: Path, cfg: str, timeout: float) -> dict:
     return rec
 
 
+# Six real functions spanning the size range, smallest to largest. Chosen by
+# .s size rather than by name so the battery covers the easy and the hard
+# cases instead of whatever happened to be at the top of the queue.
+BATTERY_ASM = [
+    "asm/us/boss/bo6/nonmatchings/us_39144/func_us_801BD47C.s",          # 1.5k
+    "asm/us/boss/bo6/nonmatchings/us_39144/BO6_RicSetSlideKick.s",       # 2.8k
+    "asm/us/boss/bo6/nonmatchings/us_39144/func_us_801BD384.s",          # 3.9k
+    "asm/us/st/rno0/nonmatchings/e_gorgon/func_us_801CF64C.s",           # 6.1k
+    "asm/us/boss/bo0/nonmatchings/2D26C/func_us_801AF8C0.s",             # 8.9k
+    "asm/us/st/rno0/nonmatchings/e_hammer/EntityGurkhaBodyParts.s",      # 13.9k
+]
+
+BATTERY_JSONL = OUT_DIR / "quality-battery.jsonl"
+
+
+def _done_keys(path: Path) -> set[tuple]:
+    """(function, model, config) already recorded, so a rerun resumes."""
+    if not path.is_file():
+        return set()
+    out = set()
+    for line in path.read_text(errors="ignore").splitlines():
+        try:
+            r = json.loads(line)
+            out.add((r.get("function"), r.get("model"), r.get("config")))
+        except ValueError:
+            continue
+    return out
+
+
+def battery(asms: list[str], models: list[str], configs: list[str],
+            timeout: float, out: Path = BATTERY_JSONL) -> list[dict]:
+    """Every function x model x config, written as it goes.
+
+    APPEND-AS-YOU-GO, and RESUMABLE. A full battery is ~126 generations and
+    over an hour; anything that only writes at the end loses the lot to one
+    timeout, and this session has already lost two long runs that way. Each
+    result is a complete JSON line the moment it exists, and a rerun skips
+    what is already there, so the battery can be run in as many sittings as
+    it takes.
+    """
+    out.parent.mkdir(parents=True, exist_ok=True)
+    done = _done_keys(out)
+    total = len(asms) * len(models) * len(configs)
+    n = 0
+    rows = []
+    for asm_rel in asms:
+        asm = REPO / asm_rel
+        if not asm.is_file():
+            print(f"  skip (missing): {asm_rel}", flush=True)
+            continue
+        for model in models:
+            for cfg in configs:
+                n += 1
+                key = (asm.stem, model, cfg)
+                if key in done:
+                    print(f"[{n}/{total}] skip (done) {asm.stem} {model} {cfg}",
+                          flush=True)
+                    continue
+                os.environ["OPENCODE_MODEL"] = f"opencode/{model}"
+                print(f"[{n}/{total}] {asm.stem} | {model} | {cfg}", flush=True)
+                r = generate(asm, cfg, timeout)
+                r["function"] = asm.stem
+                r["asm_chars"] = asm.stat().st_size
+                r["model"] = model
+                with out.open("a", encoding="utf-8") as f:
+                    f.write(json.dumps(r) + "\n")
+                rows.append(r)
+                inv = r.get("invented_fields", 0) + r.get("invented_types", 0)
+                print(f"        {r.get('secs')}s  {r.get('chars')} chars  "
+                      f"unkNN {r.get('unk_fields')}  INVENTED {inv}"
+                      + (f"  ERROR {r['error'][:60]}" if r.get("error") else ""),
+                      flush=True)
+    return rows
+
+
+def battery_report(path: Path = BATTERY_JSONL) -> None:
+    """Aggregate the battery along both axes that were being tested."""
+    if not path.is_file():
+        print(f"no battery data at {path}")
+        return
+    rows = []
+    for line in path.read_text(errors="ignore").splitlines():
+        try:
+            rows.append(json.loads(line))
+        except ValueError:
+            continue
+    if not rows:
+        print("battery file is empty")
+        return
+    ok = [r for r in rows if r.get("has_function")]
+    print(f"\n{len(rows)} generation(s), {len(ok)} produced a function, "
+          f"{len(rows) - len(ok)} did not")
+
+    def agg(rs):
+        n = len(rs)
+        good = [r for r in rs if r.get("has_function")]
+        inv = [r.get("invented_fields", 0) + r.get("invented_types", 0)
+               for r in good]
+        unk = [r.get("unk_fields", 0) for r in good]
+        sec = [r.get("secs", 0) for r in rs]
+        return (n, len(good),
+                sum(inv) / len(inv) if inv else 0.0,
+                sum(unk) / len(unk) if unk else 0.0,
+                sum(sec) / len(sec) if sec else 0.0)
+
+    for axis in ("model", "config"):
+        by = {}
+        for r in rows:
+            by.setdefault(r.get(axis, "?"), []).append(r)
+        print(f"\nby {axis}")
+        print(f"  {axis:32} {'n':>4} {'answered':>9} {'avg INVENTED':>13} "
+              f"{'avg unkNN':>10} {'avg s':>7}")
+        for k, rs in sorted(by.items(),
+                            key=lambda kv: (-agg(kv[1])[1], agg(kv[1])[2])):
+            n, g, i, u, sc = agg(rs)
+            print(f"  {k:32} {n:4d} {g:9d} {i:13.1f} {u:10.1f} {sc:7.1f}")
+
+    print("\nRank on avg INVENTED first: a model that answers every time with")
+    print("fabricated field names is worse than one that answers less often")
+    print("and admits what it could not resolve.")
+    big = [r for r in ok if r.get("asm_chars", 0) > 6000]
+    small = [r for r in ok if r.get("asm_chars", 0) <= 6000]
+    if big and small:
+        _n, _g, bi, bu, _s = agg(big)
+        _n, _g, si, su, _s = agg(small)
+        print(f"\nsmall asm (<=6k): avg INVENTED {si:.1f}, unkNN {su:.1f}")
+        print(f"large asm  (>6k): avg INVENTED {bi:.1f}, unkNN {bu:.1f}")
+
+
 def report(rows: list[dict]) -> None:
     print("\n" + "=" * 78)
     print("C QUALITY BY REASONING CONFIGURATION  (same function, same prompt)")
@@ -270,10 +399,31 @@ def main() -> int:
                     help="which configs to compare, joined by + (the "
                          "connector rejects commas in arguments)")
     ap.add_argument("--timeout", type=float, default=300.0)
+    ap.add_argument("--battery", action="store_true",
+                    help="every BATTERY_ASM x model x config, resumable")
+    ap.add_argument("--models", default="",
+                    help="joined by + ; default is every Zen model")
+    ap.add_argument("--battery-report", action="store_true")
     ap.add_argument("--self-test", action="store_true")
     a = ap.parse_args()
     if a.self_test:
         return self_test()
+    if a.battery_report:
+        battery_report()
+        return 0
+    if a.battery:
+        sys.path.insert(0, str(REPO / "automation"))
+        import probe_provider as pp
+        mdl = ([m.strip() for m in re.split(r"[,+]", a.models) if m.strip()]
+               or pp.models(pp.load_config()))
+        cfgs = [c.strip() for c in re.split(r"[,+]", a.configs) if c.strip()]
+        print(f"battery: {len(BATTERY_ASM)} functions x {len(mdl)} models "
+              f"x {len(cfgs)} configs = "
+              f"{len(BATTERY_ASM)*len(mdl)*len(cfgs)} generations")
+        print(f"models: {', '.join(mdl)}\nappending to {BATTERY_JSONL}\n")
+        battery(BATTERY_ASM, mdl, cfgs, a.timeout)
+        battery_report()
+        return 0
     if not a.asm:
         ap.error("--asm is required")
     asm = Path(a.asm)
