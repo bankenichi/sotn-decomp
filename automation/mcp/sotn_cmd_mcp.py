@@ -611,6 +611,43 @@ def git_show(ref: str = "HEAD", path: str = "", timeout: int = 120) -> dict:
 
 
 @mcp.tool()
+def git_fetch(remote: str = "upstream", timeout: int = 300) -> dict:
+    """Update remote-tracking refs. READ-ONLY with respect to the tree.
+
+    Fetch writes only refs/remotes/*; it never touches the working tree, HEAD,
+    or any branch this repo builds from, so it is safe to run at any time --
+    including while the fleet is generating, which merging is NOT.
+
+    Needed because the fork otherwise cannot measure its own drift: on
+    2026-08-09 upstream/master was still f6bfa379 from a 2026-08-01 fetch, and
+    "how far behind are we" had no answer. `upstream` push is disabled at the
+    remote, so this cannot become a route to publishing.
+
+    Follow with git_log_range('HEAD..upstream/master') to see what arrived.
+    """
+    return cc.run("git_fetch", timeout=timeout, remote=remote)
+
+
+@mcp.tool()
+def git_log_range(rng: str = "", n: int = 40, path: str = "",
+                  timeout: int = 120) -> dict:
+    """Commits in a revision range, e.g. 'HEAD..upstream/master'.
+
+    git_log takes only a count, so it could not answer "what is upstream
+    carrying that we are not". Read-only."""
+    return cc.run("git_log_range", timeout=timeout, rng=rng, n=n, path=path)
+
+
+@mcp.tool()
+def git_diff_stat_range(rng: str = "", timeout: int = 180) -> dict:
+    """Per-file churn across a revision range, e.g. 'HEAD...upstream/master'.
+
+    Use before reading any cross-fork diff: it says how big the change is
+    without paying to read it."""
+    return cc.run("git_diff_stat_range", timeout=timeout, rng=rng)
+
+
+@mcp.tool()
 def git_rev_parse(ref: str = "HEAD", timeout: int = 60) -> dict:
     """Resolve a revision to a full sha. Read-only."""
     return cc.run("git_rev_parse", timeout=timeout, ref=ref)

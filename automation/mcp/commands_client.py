@@ -210,6 +210,24 @@ ANALYSIS_SCRIPTS = {
 _ARG_RX = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_./=-]{0,120}$|^--?[A-Za-z0-9][A-Za-z0-9_-]{0,40}$")
 
 
+_REMOTES = frozenset({"origin", "upstream"})
+# A revision range is two refs and dots, nothing else. Keeping this narrow is
+# what stops `rng` becoming a general argv escape into git.
+_RANGE_RX = re.compile(r"^[A-Za-z0-9_./-]{1,80}\.\.\.?[A-Za-z0-9_./-]{1,80}$")
+
+
+def _remote(name: str) -> str:
+    if name not in _REMOTES:
+        raise Rejected(f"remote must be one of {sorted(_REMOTES)}")
+    return name
+
+
+def _rev_range(rng: str) -> str:
+    if not _RANGE_RX.match(rng or ""):
+        raise Rejected("range must look like `A..B` or `A...B`")
+    return rng
+
+
 def _script(name: str) -> str:
     if name not in ANALYSIS_SCRIPTS:
         raise Rejected(f"script must be one of {sorted(ANALYSIS_SCRIPTS)}")
@@ -421,6 +439,24 @@ REGISTRY = {
     "git_show": lambda ref="HEAD", path="": (
         ["git", "show", "--format=%h %an <%ae> %ad%n%n%B", "--date=short",
          _ref(ref)] + (["--", _inrepo(path, must_exist=False)] if path else [])),
+    # FETCH IS READ-ONLY and the only way to learn what upstream has done.
+    # Without it the fork could not even measure its own drift: on 2026-08-09
+    # the local upstream/master was still f6bfa379, last fetched 2026-08-01,
+    # and "how far behind are we" was unanswerable.
+    #
+    # Safe by construction: fetch writes only remote-tracking refs, never the
+    # working tree, never HEAD, and never a branch this repo builds from.
+    # Merging or rebasing that ref remains a separate, deliberate act.
+    # `upstream` push is DISABLED at the remote level, so this cannot become a
+    # route to publishing anything.
+    "git_fetch": lambda remote="upstream": (
+        ["git", "fetch", "--no-tags", "--prune", _remote(remote)]),
+    "git_log_range": lambda rng="", n=40, path="": (
+        ["git", "log", f"-{_count(n)}", "--format=%h %ad %s", "--date=short"]
+        + ([_rev_range(rng)] if rng else [])
+        + (["--", _inrepo(path, must_exist=False)] if path else [])),
+    "git_diff_stat_range": lambda rng="": (
+        ["git", "diff", "--stat", _rev_range(rng)]),
     "git_rev_parse": lambda ref="HEAD": ["git", "rev-parse", _ref(ref)],
     "git_branch_list": lambda: ["git", "branch", "-vv", "--no-color"],
     "git_remote_list": lambda: ["git", "remote", "-v"],

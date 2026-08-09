@@ -171,6 +171,27 @@ def main() -> int:
     check(not sig.parameters,
           "git_push takes no arguments, so no caller can choose the remote")
 
+    print("\nevery git_* capability is on BOTH surfaces")
+    # REGISTRY and @mcp.tool() are separate lists. A name in one but not the
+    # other is uncallable, and it fails at call time rather than at load time,
+    # so it looks like a missing feature rather than a wiring bug.
+    import re as _re
+    _cc = (MCP / "commands_client.py").read_text()
+    _mc = (MCP / "sotn_cmd_mcp.py").read_text()
+    _reg = set(_re.findall(r'^\s*"(\w+)":\s*lambda', _cc, _re.M))
+    _tools = set(_re.findall(r'@mcp\.tool\(\)\s*\ndef (\w+)', _mc))
+    _git_gap = sorted(n for n in _reg if n.startswith("git_")
+                      and n not in _tools)
+    check(not _git_gap,
+          f"no git_* command is stranded in the registry ({_git_gap})")
+    # fetch specifically: without it the fork cannot measure drift at all.
+    check("git_fetch" in _reg and "git_fetch" in _tools,
+          "git_fetch exists and is callable")
+    check("_remote(remote)" in _cc and "_REMOTES" in _cc,
+          "fetch cannot target an arbitrary remote")
+    check("_rev_range(rng)" in _cc and "_RANGE_RX" in _cc,
+          "a revision range is validated, not passed through")
+
     print()
     if FAILS:
         print(f"{len(FAILS)} FAILED:")
