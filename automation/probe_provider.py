@@ -121,7 +121,8 @@ def fleet_alive() -> list[int]:
 
 def probe_http(url: str, model: str, timeout: float = 60.0,
                stream: bool = False, max_tokens: int = 8,
-               extra: dict | None = None, prompt_chars: int = 0) -> dict:
+               extra: dict | None = None, prompt_chars: int = 0,
+               ask: str | None = None) -> dict:
     """One direct request. Reports what came back, not what we hoped for.
 
     Measures connect time and time-to-first-byte separately, because they
@@ -131,7 +132,7 @@ def probe_http(url: str, model: str, timeout: float = 60.0,
     # Inert padding, not a harder task. The point is to vary SIZE while
     # holding the work constant, so any change in behaviour is attributable to
     # the request size rather than to the model thinking harder.
-    ask = "Reply with the word ok."
+    ask = ask or "Reply with the word ok."
     if prompt_chars:
         pad = ("\n/* padding line, ignore this entirely */" *
                max(1, prompt_chars // 40))
@@ -243,6 +244,40 @@ def probe_cli(model: str, timeout: float = 90.0, ask: str | None = None) -> dict
     return rec
 
 
+# Every known way to say "do not think". Which one bites depends on the
+# runtime behind the endpoint; unknown fields are ignored by servers that do
+# not implement them, so sending all of them is safe and one probe covers the
+# whole space instead of four.
+NO_THINK = {
+    "reasoning_effort": "none",
+    "reasoning_budget": 0,
+    "chat_template_kwargs": {"enable_thinking": False},
+    "thinking": {"type": "disabled"},
+}
+
+
+def thinking_extra(a) -> dict | None:
+    extra = json.loads(a.extra) if getattr(a, "extra", None) else {}
+    if getattr(a, "no_thinking", False):
+        extra = {**NO_THINK, **extra}
+    return extra or None
+
+
+def real_ask(a) -> str | None:
+    """A genuine decompilation ask, or None for the trivial one.
+
+    Inert padding does not make a model think; only a real task does, and
+    thinking is what we suspect the deadline was killing. Both probes must be
+    able to send it or the http-vs-cli comparison is between two different
+    questions.
+    """
+    if not getattr(a, "real_asm", None):
+        return None
+    asm = Path(a.real_asm).read_text(errors="ignore")
+    return ("Write ONE C function that compiles to this MIPS assembly under "
+            "GCC 2.7.2. Output only C.\n\n" + asm[:12000])
+
+
 def summarise(results: list[dict]) -> None:
     print("\n" + "=" * 78)
     print("WHICH LAYER IS SILENT")
@@ -341,6 +376,12 @@ def main() -> int:
                          "suspect the timeout is actually killing.")
     ap.add_argument("--extra", help="JSON merged into the request body, for "
                                     "testing reasoning switches")
+    ap.add_argument("--no-thinking", action="store_true",
+                    help="ask the model NOT to reason. A flag rather than raw "
+                         "JSON because the connector rejects brace-laden "
+                         "arguments, and because the exact switch differs per "
+                         "runtime: send all the known ones and let the server "
+                         "ignore the fields it does not implement.")
     ap.add_argument("--self-test", action="store_true")
     a = ap.parse_args()
     if a.self_test:
@@ -368,7 +409,7 @@ def main() -> int:
                 r = probe_http(url, model, timeout=a.timeout,
                                max_tokens=a.max_tokens,
                                prompt_chars=a.prompt_chars,
-                               extra=json.loads(a.extra) if a.extra else None)
+                               ask=real_ask(a), extra=thinking_extra(a))
                 r["kind"] = "http"; results.append(r)
                 print(f"\n[http {i+1}/{a.repeat}] {model}")
                 print(f"  status {r.get('status')}  "
@@ -386,13 +427,8 @@ def main() -> int:
                           f"usage {r.get('usage')}")
                 print(f"  -> {r.get('verdict')}")
             if not a.http_only:
-                ask = None
-                if a.real_asm:
-                    asm = Path(a.real_asm).read_text(errors="ignore")
-                    ask = ("Write ONE C function that compiles to this MIPS "
-                           "assembly under GCC 2.7.2. Output only C.\n\n"
-                           + asm[:12000])
-                r = probe_cli(model, timeout=max(30.0, a.timeout), ask=ask)
+                r = probe_cli(model, timeout=max(30.0, a.timeout),
+                              ask=real_ask(a))
                 r["kind"] = "cli"; results.append(r)
                 print(f"\n[cli  {i+1}/{a.repeat}] {model}")
                 print(f"  rc {r.get('rc')}  total {r.get('total_s')}s  "

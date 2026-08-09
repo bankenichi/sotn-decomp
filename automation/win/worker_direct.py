@@ -95,6 +95,33 @@ ZEN_URL = os.environ.get("ZEN_BASE_URL", "https://opencode.ai/zen/v1")
 # identifies clients this way; without them we would be a different, anonymous
 # client and would not be measuring the service the fleet actually uses.
 ZEN_HEADERS = {"User-Agent": "opencode/1.18.12", "x-opencode-client": "cli"}
+
+# THE SINGLE HIGHEST-VALUE SETTING IN THIS FILE.
+#
+# Measured 2026-08-03, same model (big-pickle), same real decompilation prompt
+# (func_us_801B21F0), via automation/probe_provider.py --real-asm:
+#
+#   thinking ON   77s   8000 completion tokens   0 chars of content
+#                       21,535 chars of reasoning_content
+#                       finish_reason = "length"  (budget gone, still thinking)
+#   thinking OFF  13.5s   647 completion tokens   1,658 chars of C
+#                       0 chars of reasoning
+#                       finish_reason = "stop"
+#
+# Twelve times fewer tokens, six times faster, and the difference between a
+# complete C function and nothing at all. The model was never failing: it was
+# spending its entire budget reasoning and never reaching `content`, and
+# `opencode run` relays only `content`, so from the worker's side that is
+# indistinguishable from a dead request. That is the 94%.
+#
+# Which switch actually bites depends on the runtime behind the endpoint.
+# Servers ignore fields they do not implement, so send all of them.
+NO_THINKING = {
+    "reasoning_effort": "none",
+    "reasoning_budget": 0,
+    "chat_template_kwargs": {"enable_thinking": False},
+    "thinking": {"type": "disabled"},
+}
 # Optional bearer token. Local llama-server needs none, but any hosted
 # OpenAI-compatible endpoint (OpenCode Zen, NVIDIA build.nvidia.com, OpenRouter)
 # will reject unauthenticated requests. Set MODEL_API_KEY to switch providers
@@ -1650,8 +1677,7 @@ def _force_code(orig_prompt: str, analysis: str,
         #   reasoning_budget: 0                  -> llama.cpp server flag
         # Unknown fields are ignored by servers that do not implement them, so
         # sending both is safe and covers either build.
-        "chat_template_kwargs": {"enable_thinking": False},
-        "reasoning_budget": 0,
+        **NO_THINKING,
     }).encode()
     req = urllib.request.Request(_base_url() + "/chat/completions",
                                  data=body,
@@ -1748,6 +1774,7 @@ def llama_echo(prompt: str, temperature: float = 0.2,
         "messages": [{"role": "system", "content": SYSTEM},
                      {"role": "user", "content": prompt}],
         "temperature": temperature, "stream": True,
+        **NO_THINKING,
     }).encode()
     req = urllib.request.Request(_base_url() + "/chat/completions",
                                  data=body,
