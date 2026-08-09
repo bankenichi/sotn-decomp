@@ -604,3 +604,54 @@ The tractable fix is a type-aware check: parse `Entity* self` style
 declarations, then validate `self->x` against Entity's fields specifically
 rather than against everything. That covers the common case, where the
 function has one entity parameter, and would have caught all 20.
+
+## Type-aware member checking (2026-08-09)
+
+The union-of-all-names gate caught 0 of the 20 live build failures because
+every failure used a REAL name on the WRONG struct. `member_types.py` resolves
+the declared type of each pointer and validates the member against THAT
+struct, following chains through typed fields.
+
+### Two rounds of false positives, one of them mine
+
+Run unrestricted it produced 348 findings on code that provably compiles.
+
+    mine    declarations were pooled per FILE. src/boss/bo6/us_3E79C.c has a
+            `PrimLineG2* prim` in one function and a `Primitive* prim` in
+            another; the flat map let one retype the other. Scoping per
+            function removed 108 findings and took Entity to ZERO.
+    index   the PSY-Q types (SVECTOR, TILE, LINE_G2/G4, POLY_FT4, DRAWENV,
+            CVECTOR) come from SDK headers the index models badly. 240 of the
+            findings were these.
+
+Two more, both real limits rather than bugs: `src/saturn` has its own 0xB8
+Entity in sattypes.h, and `#define prevTailPart ext.diploTail.prevPart` makes
+a member legal without existing. Saturn is excluded; macros are now read out
+of the file and skipped.
+
+### The trusted set is measured, not assumed
+
+54 structs, each with ZERO findings across 2,006 known-good .c files, covering
+52,821 member accesses. Final false-positive count on that corpus: **0**.
+
+Entity is the one that matters: 48,951 uses, zero false positives, and the
+type nearly every generated function takes as a parameter.
+
+### The live failure is still NOT caught, and the test says so
+
+`Primitive` is excluded at 2 false positives in 35,402 uses, and `Primitive`
+is exactly the struct in the failure this was written for:
+
+    Primitive* prim;
+    prim->next->scaleX = 0x20;      // scaleX is an Entity field
+
+Trading a certain false rejection for a possible catch is the wrong way round
+when the gate runs before the build and nothing downstream can undo it. The
+self-test asserts the miss rather than asserting a wish, and also asserts that
+trusting Primitive WOULD catch it, so the day the index models Primitive
+properly the change is one line.
+
+What is covered today: any wrong member on Entity, which is where most
+generated code spends its time, including every `unkNN` that resolves to a
+real field. `e->unk1C` now returns "offset 0x1C is `scaleY`" before a build
+cycle is spent discovering it.

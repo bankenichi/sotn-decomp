@@ -583,6 +583,8 @@ DIAGNOSTICS = [
      "symbols that moved and would silently break a match"),
     ("Escalation triage", "escalation_triage.py", "",
      "classify escalated records: harness, C89, symbol, or real"),
+    ("Member type check", "member_types.py", "--self-test",
+     "does x->field exist in the struct x points at (type-aware)"),
     ("Deferred triage", "deferred_triage.py", "",
      "which deferrals are stale: a tier that could not run, or a seed bug"),
     ("Deferred triage: requeue plan", "deferred_triage.py", "--requeue-plan",

@@ -298,6 +298,17 @@ def main() -> int:
           and src.index("invented_members(code)") < src.rindex(
               "with BuildLock("))
 
+    # ---- type-aware member check, wired into the same pre-build gate -------
+    # The union-of-all-names check (4b) caught 0 of the 20 build failures in
+    # the first live run: every one used a REAL name on the WRONG struct.
+    _g = wd.quality_gate("void f(Entity* e) { e->unk1C = 1; }", "")
+    check("a real name on the wrong struct is caught before the build",
+          any("no member" in d and "scaleY" in d for d in _g))
+    check("a correct Entity member passes",
+          wd.quality_gate("void f(Entity* e) { e->scaleY = 1; }", "") == [])
+    check("the type-aware check is called in quality_gate",
+          "member_types.check(code)" in src)
+
     print()
     if failures:
         print(f"{len(failures)} check(s) failed: {', '.join(failures)}")

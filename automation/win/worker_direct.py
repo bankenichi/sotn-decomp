@@ -2416,6 +2416,20 @@ def quality_gate(code: str, asm: str) -> list[str]:
     #     GUARANTEED build failure rather than a review objection.
     problems.extend(invented_members(code))
 
+    # 4c. TYPE-AWARE member check. 4b compares against a union of every struct
+    #     in the tree, so it can only see a name that exists nowhere. The first
+    #     live run produced 20 build failures and 4b caught none of them:
+    #     every one was a real name used on the WRONG struct. This resolves the
+    #     declared type of each pointer and checks the member against that
+    #     struct. Restricted to structs measured at zero false positives over
+    #     2,006 known-good files; see automation/member_types.py.
+    try:
+        sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+        import member_types                                  # noqa: PLC0415
+        problems.extend(member_types.check(code))
+    except Exception:                                        # noqa: BLE001
+        pass                     # never let a checker failure block a build
+
     # 4. ext.ILLEGAL where the asm shows which named variant applies.
     if "ext.ILLEGAL" in code:
         problems.append(

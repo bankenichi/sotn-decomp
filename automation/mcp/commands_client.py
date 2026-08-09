@@ -194,6 +194,7 @@ ANALYSIS_SCRIPTS = {
     "test_build_attribution.py",
     "escalation_triage.py",
     "deferred_triage.py",
+    "member_types.py",
     "test_stub_locate.py",
     "test_permuter_seed.py",
     "permuter_stall.py",
