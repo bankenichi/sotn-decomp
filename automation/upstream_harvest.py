@@ -178,6 +178,135 @@ def show(fn: str) -> int:
     return 0
 
 
+
+
+# --------------------------------------------------------------- comparison
+
+RX_UNK_FIELD = re.compile(r"->\s*(unk[0-9A-Fa-f]{1,3})\b")
+RX_ILLEGAL = re.compile(r"\bILLEGAL\b")
+RX_FAKE_SYM = re.compile(r"\bD_(?:us_)?[0-9A-Fa-f]{8}\b")
+
+
+def _extract(body_src: str, fn: str) -> str:
+    """The single function `fn` out of a whole .c file, or ''. """
+    sys.path.insert(0, str(REPO / "automation"))
+    try:
+        import member_types as mt                            # type: ignore
+    except ImportError:                                      # pragma: no cover
+        return ""
+    for b in mt.function_bodies(mt.RX_COMMENT.sub(" ", body_src)):
+        head = b.split("{", 1)[0]
+        if re.search(r"\b" + re.escape(fn) + r"\s*\(", head):
+            return b
+    return ""
+
+
+def compare_matched(limit: int = 0) -> int:
+    """Our matched C against upstream's INDEPENDENT decompilation of the same.
+
+    THE FIRST EXTERNAL CHECK THIS PROJECT HAS HAD. Every quality measure so
+    far -- invented(), degenerate(), fidelity, member_types -- is something we
+    wrote, scoring output against a model of correctness we also wrote. Two of
+    them have already been caught agreeing with each other rather than with
+    the compiler.
+
+    Upstream decompiled these functions without reference to us. Where both
+    sides match the same assembly the SEMANTICS must agree, so every remaining
+    difference is naming and shape -- which is exactly the axis our own
+    metrics cannot see, and the axis a reviewer judges.
+
+    A field they name and we call `unkNN` is a concrete, checkable upgrade,
+    not an opinion.
+    """
+    ref = _git("rev-parse", "--short", UPSTREAM).strip()
+    if not ref:
+        print(f"cannot resolve {UPSTREAM}; run git_fetch first")
+        return 1
+
+    r = subprocess.run(
+        [PYTHON, str(REPO / "automation" / "scheduler.py"),
+         "list", "--status", "matched"],
+        capture_output=True, text=True, timeout=180, cwd=str(REPO))
+    ours = []
+    for line in r.stdout.splitlines():
+        line = line.strip()
+        if not line.startswith("matched"):
+            continue
+        parts = line.split(None, 2)
+        if len(parts) < 3:
+            continue
+        rid = parts[2].partition("|")[0].strip()
+        bits = rid.split(":")
+        if len(bits) >= 3:
+            ours.append((bits[1], re.sub(r"_from_\w+$", "", bits[2])))
+    if limit:
+        ours = ours[:limit]
+
+    up = upstream_files()
+    stubs = upstream_stubs()
+    rows, both = [], 0
+    for ovl, fn in ours:
+        if fn in stubs or fn not in up:
+            continue                    # upstream has not done this one
+        upath = up[fn]
+        utext = _extract(_git("show", f"{UPSTREAM}:{upath}"), fn)
+        # Ours: find the file in the working tree that defines it.
+        hit = subprocess.run(
+            ["git", "grep", "-lE", r"\b" + re.escape(fn) + r"\s*\(", "--",
+             "src/"], capture_output=True, text=True, timeout=120,
+            cwd=str(REPO)).stdout.split()
+        otext = ""
+        for h in hit:
+            otext = _extract(Path(REPO / h).read_text(errors="ignore"), fn)
+            if otext:
+                break
+        if not utext or not otext:
+            continue
+        both += 1
+        o_unk = set(RX_UNK_FIELD.findall(otext))
+        u_unk = set(RX_UNK_FIELD.findall(utext))
+        rows.append({
+            "fn": fn, "overlay": ovl, "path": upath,
+            "our_unk": len(o_unk), "up_unk": len(u_unk),
+            # Offsets THEY resolved and we did not: each is a rename we can
+            # make with the answer already in hand.
+            "upgradable": sorted(o_unk - u_unk)[:6],
+            "our_illegal": len(RX_ILLEGAL.findall(otext)),
+            "up_illegal": len(RX_ILLEGAL.findall(utext)),
+            "our_fake": len(set(RX_FAKE_SYM.findall(otext))),
+            "up_fake": len(set(RX_FAKE_SYM.findall(utext))),
+            "our_lines": otext.count("\n"), "up_lines": utext.count("\n"),
+        })
+
+    print(f"upstream/master {ref}\n")
+    if not rows:
+        print("no matched function of ours is also decompiled upstream; "
+              "nothing to compare")
+        return 0
+    print(f"{both} of our matched functions are ALSO decompiled upstream, "
+          f"independently.\n")
+    worse = [r for r in rows if r["our_unk"] > r["up_unk"]]
+    better = [r for r in rows if r["our_unk"] < r["up_unk"]]
+    ill = [r for r in rows if r["our_illegal"] > r["up_illegal"]]
+    fake = [r for r in rows if r["our_fake"] > r["up_fake"]]
+    print(f"  unresolved unkNN:  we name fewer fields in {len(worse)}, "
+          f"more in {len(better)}, same in {both - len(worse) - len(better)}")
+    print(f"  ext.ILLEGAL:       worse in {len(ill)}")
+    print(f"  raw D_ symbols:    worse in {len(fake)}")
+    tot_up = sum(len(r["upgradable"]) for r in rows)
+    print(f"\n{tot_up} field name(s) upstream resolved that we left as unkNN.")
+    print("Each is a rename with the answer already known -- no model, no "
+          "build risk\nbeyond the usual verify.\n")
+
+    for r in sorted(rows, key=lambda x: -(x["our_unk"] - x["up_unk"]))[:20]:
+        d = r["our_unk"] - r["up_unk"]
+        if d <= 0 and not r["upgradable"]:
+            continue
+        print(f"  {r['fn'][:30]:32} ours {r['our_unk']:2} unk vs "
+              f"theirs {r['up_unk']:2}   {r['upgradable']}")
+    return 0
+
+
 def self_test() -> int:
     fails = []
 
@@ -214,6 +343,24 @@ def self_test() -> int:
     ck(not writers, f"only read-only git subcommands are used ({subcmds})",
        f"writers found: {writers}")
 
+    print("\na single function is extracted from a whole file")
+    src2 = ("void other(Entity* e) { e->posX = 1; }\n"
+            "void target(Entity* e) { e->unk1C = 2; e->unk80 = 3; }\n")
+    got = _extract(src2, "target")
+    ck("unk1C" in got and "posX" not in got,
+       f"only the requested function comes back ({got[:40]!r})")
+    ck(_extract(src2, "absent") == "", "a missing function yields nothing")
+
+    print("\nthe comparison metric is the one our own metrics cannot see")
+    # Both sides match the same asm, so semantics agree and only naming can
+    # differ. An offset THEY named and we did not is a checkable upgrade.
+    ours = "void f(Entity* e) { e->unk1C = 1; e->unk80 = 2; }"
+    theirs = "void f(Entity* e) { e->scaleY = 1; e->unk80 = 2; }"
+    o = set(RX_UNK_FIELD.findall(ours)); u = set(RX_UNK_FIELD.findall(theirs))
+    ck(sorted(o - u) == ["unk1C"],
+       f"the upgradable offset is identified ({sorted(o - u)})")
+    ck(sorted(u - o) == [], "and one we already named is not counted against us")
+
     print("\nthe ref is resolved before any conclusion is drawn")
     ck("cannot resolve" in src and "git_fetch first" in src,
        "a missing upstream ref is reported, not silently treated as empty")
@@ -234,12 +381,17 @@ def main() -> int:
         formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--overlay", default="", help="filter, e.g. rno0")
     ap.add_argument("--show", help="print upstream's file for one function")
+    ap.add_argument("--compare-matched", action="store_true",
+                    help="our matched C vs upstream's independent version")
+    ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--self-test", action="store_true")
     a = ap.parse_args()
     if a.self_test:
         return self_test()
     if a.show:
         return show(a.show)
+    if a.compare_matched:
+        return compare_matched(a.limit)
     return report(a.overlay)
 
 
