@@ -1078,8 +1078,10 @@ def compact_asm(text: str) -> str:
 
     Measured over 372 asm files: a MEDIAN 62% smaller, and 67% on
     BO6_RicEntitySubwpnStopwatchCircle (13,660 -> 4,485 chars). That matters
-    because prompt size is the strongest predictor of a dead call we have:
-    0% dead under 5k chars, 61% at 5-10k, 83% at 10-20k.
+    because prompt size predicts an EMPTY response: re-measured over 1042
+    calls, 3% empty under 5k chars, 19% at 5-10k, 37% at 10-20k. (The COMBINED
+    dead rate is flat at 88/82/84; the empty and timeout slopes cancel. Quote
+    the split, not the total.)
 
     Safe with respect to everything downstream. resolve_raw_symbols matches
     `D_us_XXXXXXXX` and undeclared_symbols matches `%hi(...)/%lo(...)`; both
@@ -1115,9 +1117,10 @@ def compact_draft(text: str, indent: int = 1) -> str:
 
     THE DRAFT IS NOT FREE. Measured over 11 real functions on 2026-08-03, the
     draft averages 0.96x the size of the COMPACTED assembly beside it and runs
-    to 1.17x on some, so it is fully half the prompt. Prompt size is the
-    strongest predictor of a dead model call in this harness (0% dead under 5k
-    chars, 83% at 10-20k), which makes this the second-biggest lever there is.
+    to 1.17x on some, so it is fully half the prompt. Prompt size drives the
+    EMPTY-response rate (3% under 5k chars, 37% at 10-20k, over 1042 calls),
+    so halving the prompt attacks that specific failure. It does NOT move the
+    combined dead rate, which is flat across sizes.
 
     WHERE THE VOLUME ACTUALLY IS
         On func_us_801AE858, a 16,972-char draft: 5,268 chars of it, 31%, is

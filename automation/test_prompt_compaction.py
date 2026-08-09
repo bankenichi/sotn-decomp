@@ -2,15 +2,25 @@
 """Does prompt compaction shrink the prompt WITHOUT losing anything?
 
 WHY THIS EXISTS
-    Prompt size is the strongest predictor of a dead model call in this
-    harness. Measured 2026-08-03 over 123 cli calls:
+    Prompt size predicts an EMPTY response, and only that. Re-measured
+    2026-08-03 over 1042 cli calls (the earlier figure came from 123 and did
+    not survive):
 
-        0-5k chars     0% dead
-        5-10k chars   61% dead
-        10-20k chars  83% dead
+        prompt      empty   timeout   dead
+        0-5k          3%      85%      88%
+        5-10k        19%      62%      82%
+        10-20k       37%      47%      84%
 
-    So shrinking the prompt is a bigger lever than either the model or the
-    timeout. But a smaller prompt that has quietly dropped a symbol is worse
+    The `dead` column is FLAT, which is why the combined number looked like
+    prompt size did not matter at all. It is two opposing effects cancelling:
+    the empty rate climbs steeply with size, the timeout rate falls. Quote the
+    split, never the total.
+
+    Caveat on the timeout column: this sample straddles the ATTEMPT_BUDGET
+    change from 191s to 90s, so part of that slope is when the call ran rather
+    than how big it was. The empty slope has no such confound.
+
+    So shrinking the prompt reduces empty responses specifically. But a smaller prompt that has quietly dropped a symbol is worse
     than a large one: the model invents an extern instead of using the real
     declaration, and that is the single biggest review-rejection class this
     project has (see resolve_raw_symbols' docstring).

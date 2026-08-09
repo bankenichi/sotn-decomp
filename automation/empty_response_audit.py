@@ -139,22 +139,76 @@ def report(stats: dict, calls: list, requeues: int, n_logs: int) -> None:
 
 
 def by_prompt_size(calls: list) -> None:
-    """Empty rate against prompt size, the one variable known to matter here."""
-    print("\nempty rate by prompt size")
+    """Failure rate against prompt size, split by FAILURE MODE.
+
+    This used to print one `dead` column combining empty and timeout, under
+    the heading "empty rate". Those are different failures with different
+    causes -- an empty response is the provider returning rc=0 and no bytes,
+    a timeout is us cutting the call off -- and merging them hid the only
+    real signal in the table.
+
+    It also let a stale claim survive. The docstring said prompt size was
+    "the one variable known to matter", citing 0% / 61% / 83% dead across the
+    size buckets. That was 123 calls on 2026-08-03. At 1042 calls the combined
+    figure is 88% / 82% / 84%: FLAT, and slightly WORSE for the smallest
+    prompts. Whatever the old number measured, it does not reproduce.
+    """
+    print("\nfailure mode by prompt size")
     buckets = [(0, 5000), (5000, 10000), (10000, 20000), (20000, 10**9)]
-    print(f"{'prompt chars':>16} {'calls':>6} {'dead':>6} {'dead%':>7}")
+    print(f"{'prompt chars':>16} {'calls':>6} {'empty':>6} {'empty%':>7} "
+          f"{'t/out':>6} {'t/out%':>7} {'ok':>5} {'dead%':>7}")
+    rows = []
     for lo, hi in buckets:
         sel = [c for c in calls if lo <= c["prompt"] < hi]
         if not sel:
             continue
-        dead = sum(1 for c in sel if c["outcome"] in ("empty", "timeout"))
+        n = len(sel)
+        empty = sum(1 for c in sel if c["outcome"] == "empty")
+        tout = sum(1 for c in sel if c["outcome"] == "timeout")
+        ok = sum(1 for c in sel if c["outcome"] == "produced")
         label = f"{lo//1000}k-{hi//1000}k" if hi < 10**9 else f"{lo//1000}k+"
-        print(f"{label:>16} {len(sel):6d} {dead:6d} "
-              f"{100.0*dead/len(sel):6.0f}%")
-    print("\nPrompt size is the variable that has historically tracked this "
-          "failure: on argv, anything over 32767 chars never started at all "
-          "(ZEN-FREE-MODELS.md). The prompt now goes on stdin, so a size "
-          "correlation here means something new.")
+        rows.append((label, n, empty, tout, ok))
+        print(f"{label:>16} {n:6d} {empty:6d} {100.0*empty/n:6.0f}% "
+              f"{tout:6d} {100.0*tout/n:6.0f}% {ok:5d} "
+              f"{100.0*(empty+tout)/n:6.0f}%")
+
+    if len(rows) < 2:
+        return
+    # State the conclusion rather than leaving a table for someone to
+    # misremember later. Spread is the honest summary: a variable that
+    # "predicts" a failure should separate the buckets.
+    for name, idx in (("empty", 2), ("timeout", 3)):
+        rates = [100.0 * r[idx] / r[1] for r in rows]
+        spread = max(rates) - min(rates)
+        verdict = ("tracks prompt size" if spread >= 25 else
+                   "does NOT track prompt size")
+        print(f"\n  {name:8} {' / '.join(f'{x:.0f}%' for x in rates)}"
+              f"   spread {spread:.0f} points -> {verdict}")
+
+    # THE CONFOUND. ATTEMPT_BUDGET was 191s until 2026-08-03 and is 90s after,
+    # so a timeout means different things in different halves of this sample
+    # and the timeout column cannot be read as a property of prompt size
+    # alone. The cap in force is recoverable per call: a timeout lands AT the
+    # cap, so the durations cluster around whichever one was active.
+    touts = sorted(c["secs"] for c in calls if c["outcome"] == "timeout")
+    if touts:
+        era90 = sum(1 for s in touts if s <= 120)
+        era191 = sum(1 for s in touts if 120 < s <= 250)
+        older = len(touts) - era90 - era191
+        print(f"\ntimeout durations: {len(touts)} total, "
+              f"{era90} at <=120s (the 90s cap), {era191} at 121-250s "
+              f"(the old 191s cap), {older} longer")
+        if era90 and era191:
+            print("  MIXED SAMPLE: this spans both caps, so the t/out column "
+                  "above is partly an artefact of when the call ran, not of "
+                  "how big its prompt was. Re-run once the fleet has "
+                  "accumulated calls entirely under the 90s cap.")
+
+    print("\nOn argv, anything over 32767 chars never started at all "
+          "(ZEN-FREE-MODELS.md). The prompt now goes on stdin, so that "
+          "mechanism is gone; any surviving correlation is a different one, "
+          "and the numbers above are the only thing that should be quoted "
+          "for it.")
 
 
 def timing(calls: list) -> None:
