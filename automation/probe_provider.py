@@ -258,7 +258,12 @@ NO_THINK = {
 
 def thinking_extra(a) -> dict | None:
     extra = json.loads(a.extra) if getattr(a, "extra", None) else {}
-    if getattr(a, "no_thinking", False):
+    eff = getattr(a, "effort", None)
+    if eff and eff != "none":
+        extra = {"reasoning_effort": eff,
+                 "reasoning_budget": getattr(a, "reasoning_budget", 2000),
+                 "chat_template_kwargs": {"enable_thinking": True}, **extra}
+    elif eff == "none" or getattr(a, "no_thinking", False):
         extra = {**NO_THINK, **extra}
     return extra or None
 
@@ -376,6 +381,11 @@ def main() -> int:
                          "suspect the timeout is actually killing.")
     ap.add_argument("--extra", help="JSON merged into the request body, for "
                                     "testing reasoning switches")
+    ap.add_argument("--effort", choices=("none", "low", "medium", "high"),
+                    help="bounded reasoning: send reasoning_effort plus a "
+                         "reasoning_budget, so the model may think but cannot "
+                         "spend the whole completion doing it")
+    ap.add_argument("--reasoning-budget", type=int, default=2000)
     ap.add_argument("--no-thinking", action="store_true",
                     help="ask the model NOT to reason. A flag rather than raw "
                          "JSON because the connector rejects brace-laden "

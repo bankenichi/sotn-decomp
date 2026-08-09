@@ -122,6 +122,52 @@ NO_THINKING = {
     "chat_template_kwargs": {"enable_thinking": False},
     "thinking": {"type": "disabled"},
 }
+
+# BOUNDED reasoning, not banned reasoning.
+#
+# Switching thinking off entirely works (13.5s, 647 tokens, a complete
+# function) but throws away the thing these models are good at. The failure was
+# never that they reasoned, it was that reasoning was UNBOUNDED: 8000 tokens
+# spent, `finish_reason: length`, zero content. The budget ran out mid-thought.
+#
+# So: give them room to think, cap it, and guarantee headroom for the answer.
+# REASONING_MAX_TOKENS + CONTENT_MAX_TOKENS is sent as max_tokens, so content
+# cannot be starved by thinking no matter how long the thinking runs.
+#
+# REASONING_EFFORT=none restores the measured-safe behaviour in one env var if
+# a model ignores the cap.
+REASONING_EFFORT = os.environ.get("REASONING_EFFORT", "low").strip().lower()
+REASONING_MAX_TOKENS = int(os.environ.get("REASONING_MAX_TOKENS",
+                                          os.environ.get("REASON_CAP", "3000")))
+CONTENT_MAX_TOKENS = int(os.environ.get("CONTENT_MAX_TOKENS", "4000"))
+
+
+def thinking_params() -> dict:
+    """What to send so the model thinks a bounded amount and then answers.
+
+    TESTED, AND THE SERVER IGNORES THE SERVER-SIDE KNOBS. Sending
+    reasoning_effort="low" with reasoning_budget=2000 and max_tokens=6000 on
+    the real func_us_801B21F0 prompt produced 6000 reasoning tokens, zero
+    content, finish_reason="length" -- identical to sending nothing at all. Zen
+    honours `enable_thinking: false` and nothing finer.
+
+    So the bound has to be OURS. The fields are still sent, because a provider
+    that starts honouring them costs us nothing, but the cap that actually
+    bites is REASON_CAP in the streaming reader: it counts reasoning tokens as
+    they arrive, aborts the stream once they pass the limit with no content,
+    and hands the reasoning to _force_code. That gives the model room to think,
+    stops it thinking forever, and reuses the thinking instead of binning it.
+    """
+    if REASONING_EFFORT in ("none", "off", "0"):
+        return dict(NO_THINKING, max_tokens=CONTENT_MAX_TOKENS)
+    return {
+        "reasoning_effort": REASONING_EFFORT,
+        "reasoning_budget": REASONING_MAX_TOKENS,
+        "chat_template_kwargs": {"enable_thinking": True},
+        # Headroom so content cannot be starved even if the server lets
+        # thinking run to the ceiling.
+        "max_tokens": REASONING_MAX_TOKENS + CONTENT_MAX_TOKENS,
+    }
 # Optional bearer token. Local llama-server needs none, but any hosted
 # OpenAI-compatible endpoint (OpenCode Zen, NVIDIA build.nvidia.com, OpenRouter)
 # will reject unauthenticated requests. Set MODEL_API_KEY to switch providers
@@ -669,7 +715,13 @@ MAX_CTX_CHARS = int(os.environ.get("MAX_CTX_CHARS", "8000"))
 # Still well inside the per-slot budget (60k context / 4 slots = 15104, prompts
 # run ~1000-2400 tokens). Runaway loops are caught by degenerating() on their
 # own, independently of this ceiling.
-REASON_CAP = int(os.environ.get("REASON_CAP", "3000"))
+# The bound that actually bites, because Zen ignores reasoning_budget.
+# Counted in the streaming reader: once reasoning passes this with no
+# content, the stream is aborted and the reasoning is handed to
+# _force_code rather than thrown away. Same value as
+# REASONING_MAX_TOKENS so the request we send and the limit we enforce
+# cannot drift apart.
+REASON_CAP = REASONING_MAX_TOKENS
 # Largest function this tier will attempt, in chars of assembly.
 #
 # BACKEND-DEPENDENT. 6000 is calibrated for local llama, which loses coherence
@@ -1774,7 +1826,7 @@ def llama_echo(prompt: str, temperature: float = 0.2,
         "messages": [{"role": "system", "content": SYSTEM},
                      {"role": "user", "content": prompt}],
         "temperature": temperature, "stream": True,
-        **NO_THINKING,
+        **thinking_params(),
     }).encode()
     req = urllib.request.Request(_base_url() + "/chat/completions",
                                  data=body,
@@ -1894,14 +1946,29 @@ def llama_echo(prompt: str, temperature: float = 0.2,
 
     el = time.time() - t0
     text = "".join(content)
-    if aborted and not text.strip():
-        # The analysis is typically sound; it just never stopped analysing.
-        # Feed its own reasoning back and demand code with no further thinking.
-        print(f"\n  !! {aborted}", flush=True)
-        print("  --> salvaging: forcing code output from its own analysis",
-              flush=True)
+    # FORCE CONTENT OUT OF THE REASONING.
+    #
+    # This used to require `aborted`, i.e. the degeneration detector firing.
+    # But the dominant failure is not degeneration: measured 2026-08-03, the
+    # model reasons cleanly for 21,535 chars, hits `finish_reason: length`, and
+    # the stream simply ENDS with content empty. Nothing aborts, so the salvage
+    # never ran, and a call that had done all the analysis was thrown away.
+    #
+    # The trigger is now the condition that actually matters: no content, but
+    # reasoning present. The model has already done the work; the second pass
+    # hands its own analysis back as established fact and asks only for
+    # transcription, with thinking hard-off so it cannot spend the budget
+    # thinking twice.
+    if not text.strip() and "".join(reason_buf).strip():
+        if aborted:
+            print(f"\n  !! {aborted}", flush=True)
+        print(f"  --> {n_reason} reasoning tokens, 0 content. Forcing code "
+              f"from its own analysis.", flush=True)
         analysis = "".join(reason_buf)[-6000:]
         text = _force_code(prompt, analysis, timeout=budget_left)
+        if text.strip():
+            print(f"  ++ recovered {len(text)} chars from the reasoning",
+                  flush=True)
     if aborted:
         print(f"\n  !! ABORTED: {aborted}", flush=True)
     print(f"  --- done in {el:.0f}s: {n_content} content tokens, "
