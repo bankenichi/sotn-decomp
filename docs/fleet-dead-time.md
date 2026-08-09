@@ -276,3 +276,74 @@ sensible C — is measurably false on this provider.
 Not changed unilaterally: the default was set deliberately. But it should be
 `none`, and `big-pickle` + `none` was clean on all six functions (0.0 INVENTED,
 6/6 answered).
+
+## Correction: "big-pickle was clean on all six" was wrong (2026-08-09)
+
+The claim immediately above is retracted. It rested on a scorer that could not
+see the failure mode that actually occurred.
+
+Re-running the battery over the four newly configured models surfaced a
+generation shape none of the metrics covered: the model stops writing a
+function and emits an ascending list of declarations until the token cap fires.
+
+    s32 temp659;
+    s32 temp660;
+    s32 temp                       <- truncated mid-token at the cap
+
+Eleven of the 54 `none` generations did this, with runs of 176 to 661
+declarations. Every one of them scored PERFECTLY on every existing metric:
+zero invented fields, zero unkNN, zero ILLEGAL, no raw offsets. They score
+clean because they contain no field accesses at all, and a metric counting
+wrong field accesses cannot fault code that accesses no fields.
+
+One of those eleven was `big-pickle` on func_us_801AF8C0. So "0.0 INVENTED,
+6/6 answered" was really 5/6 answered plus one runaway loop being counted as a
+flawless zero.
+
+`quality_ab.degenerate()` now detects this structurally: a run of declarations
+whose names differ only by an ascending integer suffix, threshold 20. Real
+decompiled C reuses temporaries; it does not number them into the hundreds.
+The five self-tests include the case that matters, which is that the looping
+output scores clean on every OTHER metric.
+
+### Standings after rescoring, config=none, INVENTED over USABLE answers
+
+| model | usable | degen | INVENTED | avg s |
+|---|---:|---:|---:|---:|
+| **mimo-v2.5-free** | **6/6** | 0 | **0.5** | **7.0** |
+| longcat-2.0-free (new) | 6/6 | 0 | 1.8 | 14.2 |
+| big-pickle | 5/6 | 1 | 0.0 | 10.0 |
+| nemotron-3-ultra-free | 5/6 | 0 | 2.6 | 28.3 |
+| laguna-s-2.1-free (new) | 4/6 | 2 | 0.5 | 13.9 |
+| deepseek-v4-flash-free | 4/6 | 2 | 1.2 | 7.9 |
+| ling-3.0-tiny-free (new) | 3/6 | 2 | 1.3 | 58.2 |
+| ling-3.0-flash-free (new) | 2/6 | 4 | 5.0 | 9.1 |
+| north-mini-code-free | 0/6 | 0 | - | HTTP 401 |
+
+`mimo-v2.5-free` is the pick: the only model that answered all six usably, at
+the lowest fabrication rate of any model that did, and the fastest.
+
+### None of the four new models earns a slot
+
+The best of them, `longcat-2.0-free`, matches mimo on usable answers but
+fabricates 3.6x as much. `ling-3.0-flash-free` is the worst model measured to
+date on this harness: 4 of 6 degenerate, and 5.0 invented names on the two it
+completed. `ling-3.0-tiny-free` also returns HTTP 503 under load, costing 200s
+of backoff per affected cell.
+
+### Degeneration is a function-size effect, not a model defect
+
+| asm | function | degenerate |
+|---:|---|---:|
+| 1,557 | func_us_801BD47C | 0/9 |
+| 2,839 | BO6_RicSetSlideKick | 0/9 |
+| 3,918 | func_us_801BD384 | 1/9 |
+| 6,069 | func_us_801CF64C | 2/9 |
+| 8,895 | func_us_801AF8C0 | 5/9 |
+| 13,934 | EntityGurkhaBodyParts | 3/9 |
+
+Nothing under 3k degenerated on any model. Above 6k, four models produced zero
+usable output at all. This is the same size cliff the fabrication rate shows,
+and it argues for routing by asm size rather than trying to find one model that
+handles everything: send small functions to the fleet, and stop sending
+functions over ~6k to it until they get a purpose-built approach.

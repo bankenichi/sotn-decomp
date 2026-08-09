@@ -115,12 +115,59 @@ def invented(code: str) -> dict:
             "examples": sorted(bad_f | bad_t)[:8]}
 
 
+RX_DECL_SEQ = re.compile(
+    r"^\s*(?:[A-Za-z_]\w*\s+)+([A-Za-z_]\w*?)(\d+)\s*;\s*$", re.M)
+
+
+def degenerate(code: str) -> dict:
+    """Is the model stuck in a loop instead of writing a function?
+
+    OBSERVED LIVE, 2026-08-09 battery. Three separate cells spent their entire
+    300s budget emitting nothing but an ascending list of declarations:
+
+        s32 temp_v0_280;
+        s32 temp_v0_281;
+        s32 temp_v0_282;      ... and on until the timeout fired
+
+    Every other metric rates that output WELL: zero invented fields, zero
+    unkNN, zero ILLEGAL, no raw offsets. Only `chars` is unusual, and a large
+    function is legitimately large, so size alone cannot separate the two. A
+    battery scored without this check would have reported those cells as clean
+    and ranked a looping model above an honest one.
+
+    Detected structurally: a run of declarations whose names differ only by an
+    ascending integer suffix. Real decompiled C reuses temporaries; it does not
+    number them into the hundreds.
+    """
+    code = code or ""
+    runs: dict[str, list[int]] = {}
+    for stem, num in RX_DECL_SEQ.findall(code):
+        runs.setdefault(stem, []).append(int(num))
+    longest, worst = 0, ""
+    for stem, nums in runs.items():
+        nums.sort()
+        cur = best = 1
+        for a, b in zip(nums, nums[1:]):
+            cur = cur + 1 if b == a + 1 else 1
+            best = max(best, cur)
+        if best > longest:
+            longest, worst = best, stem
+    lines = [l.strip() for l in code.splitlines() if l.strip()]
+    dup = (1.0 - len(set(lines)) / len(lines)) if lines else 0.0
+    return {"decl_run": longest, "decl_stem": worst if longest >= 20 else "",
+            "dup_line_frac": round(dup, 2),
+            # 20 is far above anything hand-written and far below the hundreds
+            # seen when a model is actually looping.
+            "degenerate": bool(longest >= 20)}
+
+
 def score(code: str) -> dict:
     """Cheap, objective markers. No judgement calls."""
     code = code or ""
     inv = invented(code)
     return {
         **inv,
+        **degenerate(code),
         "chars": len(code),
         "has_function": bool(RX_FN.search(code)),
         "unk_fields": len(set(RX_UNK.findall(code))),
@@ -236,6 +283,31 @@ def battery(asms: list[str], models: list[str], configs: list[str],
                       + (f"  ERROR {r['error'][:60]}" if r.get("error") else ""),
                       flush=True)
     return rows
+
+
+def untested_models(configured: list[str], asms: list[str] | None = None,
+                    configs: list[str] | None = None,
+                    path: Path = BATTERY_JSONL) -> list[str]:
+    """Configured models MISSING at least one cell of the requested run.
+
+    A preset rather than a typed list because the connector rejects commas and
+    plus signs in arguments, and because "which models still owe results" is a
+    fact the results file already knows.
+
+    Keyed on CELLS, not on model names. The first version asked only "does this
+    model appear anywhere in the results", which a brownout proved wrong: it
+    killed the run after 9 of 24 cells, every one of the four models had at
+    least one row, and so the preset declared the whole battery finished. A
+    partially-measured model is the most dangerous kind, because it reports an
+    average over whichever functions happened to run first.
+    """
+    asms = asms or BATTERY_ASM
+    configs = configs or list(CONFIGS)
+    want = {(Path(a).stem, c) for a in asms for c in configs}
+    have: dict[str, set] = {}
+    for fn, model, cfg in _done_keys(path):
+        have.setdefault(model, set()).add((fn, cfg))
+    return [m for m in configured if not want <= have.get(m, set())]
 
 
 def battery_report(path: Path = BATTERY_JSONL) -> None:
@@ -381,6 +453,45 @@ def self_test() -> int:
         ck(banned not in body, f"generate() never calls {banned}")
 
     print()
+    print("\nthe untested preset is keyed on CELLS, not on model names")
+    import tempfile
+    with tempfile.TemporaryDirectory() as td:
+        j = Path(td) / "b.jsonl"
+        stems = [Path(a).stem for a in BATTERY_ASM]
+        # "full" has every cell; "partial" has one. A brownout on 2026-08-09
+        # left four models in exactly the "partial" state and the name-keyed
+        # version of this preset declared the battery finished.
+        rows = [{"function": st, "model": "full", "config": "none"}
+                for st in stems]
+        rows.append({"function": stems[0], "model": "partial",
+                     "config": "none"})
+        j.write_text("\n".join(json.dumps(r) for r in rows), encoding="utf-8")
+        got = untested_models(["full", "partial", "absent"],
+                              BATTERY_ASM, ["none"], j)
+        ck(got == ["partial", "absent"],
+           f"partial and absent are untested, full is not ({got})")
+        got2 = untested_models(["full"], BATTERY_ASM, ["low9k"], j)
+        ck(got2 == ["full"],
+           f"a model measured at none is still untested at low9k ({got2})")
+
+    print("\nrunaway declaration loops are caught, real code is not")
+    loop = "void f(void) {\n" + "".join(
+        f"    s32 temp_v0_{n};\n" for n in range(1, 60)) + "}\n"
+    d = degenerate(loop)
+    ck(d["degenerate"], f"a 59-long ascending run is degenerate ({d})")
+    ck(d["decl_stem"] == "temp_v0_", f"and names the stem ({d['decl_stem']})")
+    real = ("void f(Entity* e) {\n    s32 temp_a;\n    s32 temp_b;\n"
+            "    s16 var1;\n    s16 var2;\n    s16 var3;\n"
+            "    e->posX = temp_a;\n}\n")
+    ck(not degenerate(real)["degenerate"],
+       "a handful of numbered locals is NOT degenerate")
+    # The point of the metric: this output is otherwise perfect.
+    sc = score(loop)
+    ck(sc["invented_fields"] == 0 and sc["unk_fields"] == 0,
+       "the loop scores clean on every OTHER metric, which is why "
+       "this check has to exist")
+    ck(sc["degenerate"], "but score() surfaces it")
+
     if fails:
         print(f"{len(fails)} FAILED:")
         for f in fails:

@@ -589,9 +589,22 @@ def main() -> int:
         # another connector restart.
         sys.path.insert(0, str(REPO / "automation"))
         import quality_ab as qa
-        mdl = ([m.strip() for m in re.split(r"[,+]", a.models) if m.strip()]
-               or models(load_config()))
+        cfg_models = models(load_config())
+        # Parsed BEFORE the model list, because the "untested" preset is
+        # defined relative to the configs being asked for: a model fully
+        # measured at `none` is still untested at `low9k`.
         cfgs = [c.strip() for c in re.split(r"[,+]", a.configs) if c.strip()]
+        if a.models.strip().lower() == "untested":
+            mdl = qa.untested_models(cfg_models, qa.BATTERY_ASM, cfgs)
+            if not mdl:
+                print(f"every configured model has a full battery for "
+                      f"{'+'.join(cfgs)}")
+                qa.battery_report()
+                return 0
+            print(f"untested for {'+'.join(cfgs)}: {', '.join(mdl)}")
+        else:
+            mdl = ([m.strip() for m in re.split(r"[,+]", a.models) if m.strip()]
+                   or cfg_models)
         print(f"battery: {len(qa.BATTERY_ASM)} functions x {len(mdl)} models "
               f"x {len(cfgs)} configs = "
               f"{len(qa.BATTERY_ASM)*len(mdl)*len(cfgs)} generations",
