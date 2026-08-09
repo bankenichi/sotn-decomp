@@ -1155,6 +1155,70 @@ def fleet_status(tail: int = 2) -> dict:
             "logs": logs}
 
 
+def refresh_zen_models(timeout: float = 20.0) -> dict:
+    """Reconcile opencode.json against the live Zen catalogue.
+
+    RUNS ON FLEET STOP, not start. Start must not block on a network call, and
+    at stop nothing is racing for the config; the refreshed list is then in
+    place for the NEXT run, which is when it matters.
+
+    The catalogue drifts and the harness never noticed. Measured 2026-08-03:
+    `hy3-free` had been withdrawn but was still configured and burned a worker
+    slot on every rotation, while FOUR free models (laguna-s-2.1-free,
+    ling-3.0-flash-free, ling-3.0-tiny-free, longcat-2.0-free) were live and
+    absent from the config -- the fleet had been running on 5 of 9 available
+    models without anyone knowing.
+
+    Free-tier only. The endpoint serves 61 models and most of them bill; the
+    filter is a `-free` suffix plus `big-pickle`, which is free without one.
+
+    BEST EFFORT, ALWAYS. Any failure here returns a note and nothing else. A
+    stop that fails because a catalogue lookup timed out would strand claimed
+    queue records, which is far worse than a stale model list.
+    """
+    import urllib.request
+    cfg_path = str(REPO / "automation" / "opencode" / "opencode.json")
+    try:
+        with open(cfg_path, encoding="utf-8") as f:
+            cfg = json.load(f)
+        slot = cfg["provider"]["opencode"]["models"]
+        base = cfg["provider"]["opencode"]["options"]["baseURL"].rstrip("/")
+        req = urllib.request.Request(
+            base + "/models",
+            headers={"User-Agent": "opencode/1.18.12",
+                     "x-opencode-client": "cli"})
+        key = os.environ.get("MODEL_API_KEY", "").strip()
+        if key:
+            req.add_header("Authorization", f"Bearer {key}")
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            doc = json.load(r)
+        live = [m.get("id", "") for m in (doc.get("data") or [])]
+        if not live:
+            return {"ok": False, "note": "endpoint returned no models; "
+                                         "config left alone"}
+        free = sorted(m for m in live
+                      if m.endswith("-free") or m == "big-pickle")
+        added = [m for m in free if m not in slot]
+        gone = [m for m in slot if m not in live]
+        if not added and not gone:
+            return {"ok": True, "changed": False, "free_models": len(free)}
+        for m in gone:
+            slot.pop(m, None)
+        for m in added:
+            slot[m] = {"name": m}
+        tmp = cfg_path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(cfg, f, indent=2)
+            f.write("\n")
+        os.replace(tmp, cfg_path)          # atomic; a torn config breaks every worker
+        return {"ok": True, "changed": True, "added": added, "removed": gone,
+                "free_models": len(free),
+                "note": "new models are UNTESTED; run probe_provider.py "
+                        "--battery before trusting one"}
+    except Exception as e:                                   # noqa: BLE001
+        return {"ok": False, "note": f"{type(e).__name__}: {str(e)[:160]}"}
+
+
 def fleet_stop(hold: bool = True) -> dict:
     """Stop all workers and return their claimed records to 'todo'.
 
@@ -1198,6 +1262,8 @@ def fleet_stop(hold: bool = True) -> dict:
             pass
     return {"action": "fleet_stop", "stopped": alive, "hold": held,
             "reclaim": r.stdout.strip(),
+            # Refreshed here so the NEXT run starts from a current catalogue.
+            "models": refresh_zen_models(),
             "note": "claims released, lock cleared"
                     + ("; HOLD set, fleet_start will refuse without force"
                        if held else "; no hold (recycle allowed)")}
