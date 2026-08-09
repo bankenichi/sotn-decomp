@@ -237,7 +237,13 @@ MODEL_BACKEND = os.environ.get("MODEL_BACKEND", "http").strip().lower()
 # is why it resisted diagnosis for so long: half the models genuinely return an
 # empty body, AND every prompt over 32767 chars failed to exec at all. Fixing
 # either one alone still looks broken. See the Popen call for the second.
-OPENCODE_MODEL = os.environ.get("OPENCODE_MODEL", "opencode/deepseek-v4-flash-free")
+# Default chosen by measurement, not preference. The 2026-08-09 battery (90
+# generations, 6 functions, 5 models, 3 reasoning configs, then 24 more over
+# the newly configured models) put mimo-v2.5-free first on every axis
+# independently: 6/6 usable, 1.00 callee recall AND precision, lowest
+# fabrication among models that answered, and the fastest at 7s.
+# See docs/fleet-dead-time.md.
+OPENCODE_MODEL = os.environ.get("OPENCODE_MODEL", "opencode/mimo-v2.5-free")
 # Optional: point at a running `opencode serve` to skip MCP cold-boot per call.
 OPENCODE_ATTACH = os.environ.get("OPENCODE_ATTACH", "").strip()
 # Tool-less agent defined in automation/opencode/opencode.json. Must be used, or
@@ -691,7 +697,7 @@ def _active_model() -> str:
     """Zen model ids are bare here; the `opencode/` prefix is a CLI concept."""
     if MODEL_BACKEND != "zen":
         return LLAMA_MODEL
-    return (OPENCODE_MODEL or "").split("/")[-1] or "big-pickle"
+    return (OPENCODE_MODEL or "").split("/")[-1] or "mimo-v2.5-free"
 
 
 def _api_headers() -> dict:
@@ -881,6 +887,16 @@ ATTEMPT_BUDGET = float(os.environ.get("ATTEMPT_BUDGET", "90"))
 # (probe_provider.py --real-asm); treat any value here as a hypothesis.
 NO_FIRST_BYTE_S = float(os.environ.get("NO_FIRST_BYTE_S", "240"))
 STREAM_IDLE_S = float(os.environ.get("STREAM_IDLE_S", "45"))
+# How often to test the CONTENT stream for a degeneration loop. Cheap: the
+# check is three regex passes over the text so far, run every N tokens.
+CONTENT_CHECK_EVERY = int(os.environ.get("CONTENT_CHECK_EVERY", "120"))
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+try:
+    from degeneracy import degenerate as _content_degenerate
+except ImportError:                                          # pragma: no cover
+    def _content_degenerate(_c):                             # type: ignore
+        return {"degenerate": False}
 
 
 class Status:
@@ -1984,6 +2000,28 @@ def llama_echo(prompt: str, temperature: float = 0.2,
                 sys.stdout.flush()
                 content.append(piece)
                 n_content += 1
+                # WATCH THE CONTENT STREAM, NOT JUST THE REASONING.
+                #
+                # The degeneration check above runs only while `n_content == 0`
+                # and only over reasoning tokens. At REASONING_EFFORT=none
+                # there is no reasoning, so nothing was watching anything: in
+                # the 2026-08-09 battery, 16 of 54 generations ran to their
+                # full timeout emitting `s32 temp661;`, a transcript of the
+                # MIPS register file, or a verbatim echo of the input assembly.
+                # Each burned its entire budget producing nothing.
+                if n_content % CONTENT_CHECK_EVERY == 0:
+                    d = _content_degenerate("".join(content))
+                    if d.get("degenerate"):
+                        if d.get("decl_run", 0) >= 20:
+                            why = (f"declaration loop "
+                                   f"({d['decl_stem']}{d['decl_run']})")
+                        elif d.get("reg_decls", 0) >= 15:
+                            why = (f"register-file dump "
+                                   f"({d['reg_decls']} declarations)")
+                        else:
+                            why = f"echoing the input asm ({d['asm_echo']} lines)"
+                        aborted = f"degenerate output: {why}"
+                        break
 
     el = time.time() - t0
     text = "".join(content)

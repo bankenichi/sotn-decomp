@@ -437,3 +437,75 @@ metrics could not see.
 Constant recall is poor for everyone (0.10 to 0.60). That is the clearest
 remaining prompt lever: the immediates are in the assembly, the harness parses
 it, and the models are not carrying the values across.
+
+## Retraction: "constant recall is poor across all models" (2026-08-09)
+
+That was the stated next lever in the section above. It was an artefact of two
+bugs in my own extractor, and it does not survive fixing them.
+
+    counted as a constant the C must contain     what it actually is
+    -------------------------------------------  ---------------------------
+    0x50 in `lw $v0, 0x50($s0)`                  a STRUCT FIELD OFFSET. The
+                                                 correct C writes
+                                                 `self->unk50`, so the scorer
+                                                 was marking models DOWN for
+                                                 the one behaviour the whole
+                                                 harness exists to encourage
+    -0x48 in `addiu $sp, $sp, -0x48`             the compiler's stack frame
+                                                 size; never in the source
+    0xbc in `addiu $a0, $s0, 0xbc`               address arithmetic,
+                                                 `&self->field_BC`
+    missing: `lui $v0, 0x2800`                   the top half of 0x28000000.
+                                                 A correct literal read as a
+                                                 miss because the halves were
+                                                 never recombined
+
+Only `andi/xori/slti/sltiu/li`, and `addiu/ori` FROM $zero, carry a value the C
+must reproduce. With that correction:
+
+    constant recall   before (wrong)   after
+    mimo-v2.5-free         0.36        0.88
+    longcat-2.0-free       0.41        0.88
+    laguna-s-2.1-free      0.60        1.00
+    nemotron-3-ultra       0.29        0.82
+
+There is no constants problem. There was a measurement problem. No prompt
+section was added, because adding one would have "fixed" nothing and the
+metric would have "improved" on its own.
+
+## The lever that is real: abort degenerate calls mid-stream
+
+16 of 54 `none` generations were loops, register dumps or asm echoes, and every
+one ran to its FULL timeout. The worker did have a degeneration detector, but
+it watched only the reasoning stream and only while `n_content == 0`:
+
+    if n_reason % 40 == 0 and n_content == 0:
+        why = degenerating(reason_buf)
+
+At REASONING_EFFORT=none there is no reasoning, so nothing was watching
+anything. All three shapes occur in the CONTENT stream.
+
+The detectors moved to `automation/degeneracy.py` (worker_direct cannot import
+quality_ab, which imports worker_direct; a shared module is what stops two
+copies drifting), and the worker now tests accumulated content every 120
+tokens.
+
+Replayed against the real captured output:
+
+    all 16 degenerate generations abort, cutting 82% of the wasted output
+    0 of 69 good generations across every config abort falsely
+
+The four largest cases fire after 480 of 11,230 characters, i.e. at 4%.
+
+## Default model changed to mimo-v2.5-free
+
+`OPENCODE_MODEL` now defaults to `opencode/mimo-v2.5-free`, was
+`deepseek-v4-flash-free` (which scores 3/6 usable, 0.50 callee recall).
+
+## Dashboard wiring
+
+Diagnostics tab gains: model ranking by fidelity, per-function fidelity,
+battery report, and a battery run over untested models. `decomp_fidelity.py`
+added to ANALYSIS_SCRIPTS, without which those buttons are rejected only after
+being clicked; a new dashboard self-test now fails if any button points at a
+script that is not allowlisted.

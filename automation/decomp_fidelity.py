@@ -103,6 +103,67 @@ NOT_CALLS = frozenset({
 })
 
 
+
+# Instructions whose numeric operand is a VALUE the C must contain.
+# Masks and comparisons: the immediate is a value whatever the source register.
+RX_IMM = re.compile(
+    r"\b(andi|xori|slti|sltiu|li)\s+"
+    r"\$\w+,\s*(?:\$\w+,\s*)?(-?(?:0x[0-9A-Fa-f]+|\d+))\b")
+# `addiu`/`ori` are a literal load ONLY from $zero. From any other register
+# they are address arithmetic: `addiu $a0, $s0, 0xbc` is `&self->field_BC`,
+# an offset the C should resolve to a field name, not reproduce as a number.
+RX_IMM_ZERO = re.compile(
+    r"\b(addiu|addi|ori)\s+\$\w+,\s*\$zero,\s*"
+    r"(-?(?:0x[0-9A-Fa-f]+|\d+))\b")
+# The prologue's frame size is chosen by the compiler and never appears in the
+# source. `addiu $sp, $sp, -0x48` made -0x48 the joint most-"missed" value.
+RX_SP = re.compile(r"\$sp\s*,")
+# `lui` carries the TOP HALF of a 32-bit constant. The C writes the whole
+# value, so the halves must be recombined or every one of them reads as a miss.
+RX_LUI = re.compile(r"\blui\s+\$(\w+),\s*(0x[0-9A-Fa-f]+|\d+)\b")
+# A load/store displacement is a STRUCT FIELD OFFSET, not a value. The correct
+# C writes `self->unk50`, not `0x50`.
+RX_MEMOFF = re.compile(
+    r"\b(?:lw|lh|lhu|lb|lbu|sw|sh|sb|lwc1|swc1|ldc1|sdc1)\s+"
+    r"\$?\w+,\s*(-?(?:0x[0-9A-Fa-f]+|\d+))\s*\(")
+
+
+def _num(tok: str) -> int:
+    neg = tok.startswith("-")
+    tok = tok.lstrip("-")
+    v = int(tok, 16) if tok.lower().startswith("0x") else int(tok)
+    return -v if neg else v
+
+
+def _immediates(asm_text: str) -> set[int]:
+    """Values the C must contain literally.
+
+    THE FIRST VERSION OF THIS WAS WRONG, and its error pointed the wrong way.
+    It scraped every `0x...` in the file, which swept up the displacement in
+    `lw $v0, 0x50($s0)`. That displacement is a STRUCT FIELD OFFSET: the
+    correct C writes `self->unk50`, so the scorer was marking a model DOWN for
+    resolving offsets to fields, which is the single behaviour the whole
+    harness is built to encourage. It also missed `lui $v0, 0x2800` +
+    implicit low half, so a correct `0x28000000` read as a miss.
+
+    Together those two errors produced "constant recall is 0.10 to 0.60 across
+    all models", which was an artefact, not a finding.
+    """
+    consts = set()
+    for rx in (RX_IMM, RX_IMM_ZERO):
+        for m in rx.finditer(asm_text):
+            if RX_SP.search(m.group(0)):
+                continue
+            v = _num(m.group(2))
+            if abs(v) >= MIN_CONST:
+                consts.add(v)
+    for m in RX_LUI.finditer(asm_text):
+        v = _num(m.group(2)) << 16
+        if v >= MIN_CONST:
+            consts.add(v)
+    return consts
+
+
 def strip_fences(code: str) -> str:
     """Models wrap output in markdown fences; they are not part of the C."""
     return RX_FENCE.sub("", code or "")
@@ -115,15 +176,7 @@ def asm_facts(asm_text: str) -> dict:
     # from the assembly alone. So they never count as REQUIRED calls, only as
     # permitted ones, which keeps recall honest and stops precision lying.
     reloc = set(RX_RELOC.findall(asm_text or ""))
-    consts = set()
-    for m in re.finditer(r"0x([0-9A-Fa-f]+)\b", asm_text or ""):
-        # Skip the address column of the disassembly listing: those are
-        # locations, not values, and are 8 hex digits of instruction address.
-        if len(m.group(1)) == 8:
-            continue
-        v = int(m.group(1), 16)
-        if v >= MIN_CONST:
-            consts.add(v)
+    consts = _immediates(asm_text or "")
     return {"callees": callees, "reloc": reloc, "consts": consts,
             "branches": len(RX_BRANCH.findall(asm_text or ""))}
 
@@ -319,6 +372,25 @@ def self_test() -> int:
     # 801BD384 is an address in the listing column, not a value the C needs.
     ck(0x801BD384 not in a["consts"], "an 8-digit address is NOT a constant")
     ck(a["branches"] == 2, f"branches counted ({a['branches']})")
+
+    print("\na load/store displacement is a field offset, not a constant")
+    mem = ("/* 1 8010 8FA20050 */  lw   $v0, 0x50($s0)\n"
+           "/* 2 8014 34423FFF */  andi $v0, $v0, 0x3FFF\n"
+           "/* 3 8018 3C022800 */  lui  $v0, 0x2800\n")
+    im = asm_facts(mem)["consts"]
+    ck(0x50 not in im, f"0x50 is an offset, excluded ({sorted(map(hex,im))})")
+    ck(0x3FFF in im, "0x3FFF is a real immediate")
+    ck(0x28000000 in im,
+       f"lui is recombined to the full word ({sorted(map(hex,im))})")
+
+    print("\nframe size and address arithmetic are not constants")
+    noise = ("/* 1 8000 27BDFFB8 */  addiu $sp, $sp, -0x48\n"
+             "/* 2 8004 26040BC0 */  addiu $a0, $s0, 0xbc\n"
+             "/* 3 8008 24020064 */  addiu $v0, $zero, 0x64\n")
+    nz = asm_facts(noise)["consts"]
+    ck(-0x48 not in nz, f"the frame size is excluded ({sorted(map(hex,nz))})")
+    ck(0xbc not in nz, "address arithmetic off a struct pointer is excluded")
+    ck(0x64 in nz, f"but a literal load from $zero is kept ({sorted(nz)})")
 
     print("\na faithful generation scores high")
     good = ("```c\nvoid func_us_801BD384(Entity* self) {\n"

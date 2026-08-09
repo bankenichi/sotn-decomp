@@ -554,6 +554,19 @@ DIAGNOSTICS = [
     ("Fleet: empty responses", "empty_response_audit.py",
      "--timing --by-prompt-size",
      "dead rate per model, call timing, prompt-size correlation"),
+    # Model selection evidence. These three answer "which model, and is the
+    # output actually a decompilation" -- the questions the defect-counting
+    # metrics structurally could not.
+    ("Model ranking (fidelity)", "decomp_fidelity.py", "--rescore",
+     "callee recall/precision, constants, control flow: is it THIS function"),
+    ("Model ranking: per function", "decomp_fidelity.py",
+     "--rescore --by-function",
+     "which functions every model fails, ordered by asm size"),
+    ("Battery results", "probe_provider.py", "--battery-report",
+     "usable rate, fabrication and speed per model and reasoning config"),
+    ("Battery: untested models", "probe_provider.py",
+     "--battery --models untested --configs none",
+     "RUNS a battery over any model with no results yet (minutes, generates)"),
     ("Quality audit", "quality_audit.py", "",
      "ILLEGAL names, invented symbols, magic numbers, duplicates"),
     ("Review checks", "review_checks.py", "",
@@ -1690,6 +1703,24 @@ def self_test() -> int:
        "log text is escaped before it reaches the DOM")
 
     print()
+    print("\nevery diagnostics button points at an allowlisted script")
+    import importlib.util as _il
+    spec = _il.spec_from_file_location(
+        "_cc", str(Path(__file__).resolve().parent / "mcp" /
+                   "commands_client.py"))
+    missing = []
+    try:
+        mod = _il.module_from_spec(spec)
+        spec.loader.exec_module(mod)                       # type: ignore
+        allowed = mod.ANALYSIS_SCRIPTS
+        missing = sorted({d[1] for d in DIAGNOSTICS} - set(allowed))
+    except Exception as e:                                 # noqa: BLE001
+        missing = [f"could not load the allowlist: {e}"]
+    # A button whose script is not allowlisted is rejected at run time with a
+    # message the operator sees only after clicking it. decomp_fidelity.py
+    # shipped in exactly that state until this check was written.
+    ck(not missing, f"no orphaned buttons ({missing})")
+
     if fails:
         print(f"{len(fails)} FAILED")
         for f in fails:

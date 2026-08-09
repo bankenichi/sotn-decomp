@@ -169,6 +169,7 @@ ANALYSIS_SCRIPTS = {
     "fleet_forensics.py",
     "reasoning_audit.py",
     "quality_ab.py",
+    "decomp_fidelity.py",
     "probe_provider.py",
     "test_call_telemetry.py",
     "test_stream_salvage.py",
