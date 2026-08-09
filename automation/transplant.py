@@ -116,7 +116,139 @@ def rename_function(body: str, old: str, new: str) -> str:
     return re.sub(r"\b" + re.escape(old) + r"\b", new, body)
 
 
-def preflight(fn: str) -> tuple[bool, str, str]:
+def apply_map(body: str, pairs: list[str]) -> tuple[str, list[str]]:
+    """Rename symbols the destination overlay calls something else.
+
+    THE THING THAT ACTUALLY BLOCKS A TWIN TRANSPLANT. The C is already correct
+    -- the first live test failed only because src/st/rno0 has different NAMES
+    for three symbols src/st/no0 uses:
+
+        func_us_801CC8F8  -> func_us_801CC8F8_from_no0   (declared in rno0)
+        E_ID_16           -> E_UNK_16                    (rno0.h names the
+                                                          same function in its
+                                                          comment)
+        D_us_80180A88     -> OVL_EXPORT(EInitSpawner)    (byte-identical
+                                                          initialiser)
+
+    Supplied EXPLICITLY rather than inferred. Each of those three came from a
+    different kind of evidence, and a resolver that guessed them would be a
+    fourth unvalidated checker in a day that has already produced five. When
+    the mapping has been proven by enough builds, deriving it is a safe next
+    step; guessing it first is not.
+
+    Word-anchored, and reports what it changed so a dry run shows the exact
+    substitutions before anything is written.
+    """
+    notes = []
+    for pair in pairs or []:
+        old, _, new = pair.partition("=")
+        old, new = old.strip(), new.strip()
+        if not old or not new:
+            notes.append(f"IGNORED malformed --map {pair!r}")
+            continue
+        n = len(re.findall(r"\b" + re.escape(old) + r"\b", body))
+        if not n:
+            notes.append(f"IGNORED {old}: not present in the body")
+            continue
+        body = re.sub(r"\b" + re.escape(old) + r"\b", new, body)
+        notes.append(f"{old} -> {new}  ({n} occurrence(s))")
+    return body, notes
+
+
+def auto_decls(body: str, dest: Path) -> tuple[list[str], list[str]]:
+    """Declarations the destination file needs but does not have.
+
+    THE SECOND HALF OF A TWIN TRANSPLANT, and the reason the first two build
+    tests failed. The C was correct both times; the destination simply could
+    not SEE the symbols it referenced.
+
+    src/st/no0/4C750.c gets them from two places that do not travel with the
+    function body:
+
+        void func_us_801CC8F8(Entity*);   a local forward declaration, line 7
+        extern EInit D_us_80180A88;       from no0.h, line 115
+
+    src/st/rno0/e_background_pillars.c has neither, and rno0.h exports
+    neither, so the transplant referenced two symbols that exist in the
+    overlay but are invisible from that translation unit.
+
+    DERIVED FROM THE DEFINITION, not guessed. Each candidate symbol is looked
+    up in the destination's OWN overlay directory; a declaration is emitted
+    only when its definition is found there, and its shape is taken from that
+    definition. A symbol with no definition in the overlay is left alone, so
+    the build still fails rather than being handed a fabricated extern.
+
+    A redundant declaration is harmless; a wrong one fails the build and
+    reverts. Both outcomes are cheap and neither is silent.
+    """
+    overlay = dest.parent
+    # INCLUDE_ASM LINES ARE NOT DECLARATIONS. e_background_pillars.c mentions
+    # func_us_801CC8F8_from_no0 inside an INCLUDE_ASM, which expands to inline
+    # assembly and declares no C prototype -- but a plain text search sees the
+    # name followed by `)` and concludes it is already visible. That silently
+    # suppressed the one declaration the build was asking for, and the symbol
+    # did not even appear in the NOT-FOUND list.
+    have = re.sub(r"^.*INCLUDE_ASM\(.*$", "", dest.read_text(errors="ignore"),
+                  flags=re.M)
+    decls, notes = [], []
+    # Only symbols that look like this project's globals. A broad identifier
+    # sweep would try to declare locals, macros and enum members.
+    cands = set(re.findall(r"\b(?:func_us_\w+|func_\d\w*|"
+                           r"[A-Z][A-Z0-9]+_[A-Za-z]\w*|D_us_\w+)\b", body))
+    for sym in sorted(cands):
+        if re.search(r"\b" + re.escape(sym) + r"\b\s*[;)(,]", have):
+            continue                       # already visible in this file
+        # The symbol may be spelled through OVL_EXPORT in its own overlay:
+        # rno0/e_init.c writes `EInit OVL_EXPORT(EInitSpawner) = ...`, so a
+        # literal search for RNO0_EInitSpawner finds nothing. Both spellings
+        # are tried. This cost a build to discover.
+        spellings = [sym]
+        m_ovl = re.match(r"^[A-Z][A-Z0-9]*_(\w+)$", sym)
+        if m_ovl:
+            spellings.append(f"OVL_EXPORT({m_ovl.group(1)})")
+        found = None
+        for f in sorted(overlay.glob("*.c")) + sorted(overlay.glob("*.h")):
+            if f == dest:
+                continue
+            t = f.read_text(errors="ignore")
+            for sp in spellings:
+                esp = re.escape(sp)
+                # A DEFINITION, ending in a brace.
+                m = re.search(r"^[ \t]*(?:static[ \t]+)?([A-Za-z_]\w*)[ \t*]+"
+                              + esp + r"[ \t]*\(([^;{)]*)\)[ \t]*\{", t, re.M)
+                if m:
+                    found = (f"{m.group(1)} {sym}"
+                             f"({m.group(2).strip() or 'void'});")
+                    break
+                # An existing DECLARATION is just as good a source for a
+                # prototype, and for func_us_801CC8F8_from_no0 it is the ONLY
+                # source: rno0 declares it on line 25 and never defines it,
+                # because the definition is the INCLUDE_ASM stub. Requiring a
+                # brace missed it and cost a second build.
+                m = re.search(r"^[ \t]*(?:extern[ \t]+)?([A-Za-z_]\w*)[ \t*]+"
+                              + esp + r"[ \t]*\(([^;{)]*)\)[ \t]*;", t, re.M)
+                if m:
+                    found = (f"{m.group(1)} {sym}"
+                             f"({m.group(2).strip() or 'void'});")
+                    break
+                # Data.
+                m = re.search(r"^[ \t]*([A-Za-z_]\w*)[ \t]+" + esp
+                              + r"[ \t]*=", t, re.M)
+                if m:
+                    found = f"extern {m.group(1)} {sym};"
+                    break
+            if found:
+                break
+        if found:
+            decls.append(found)
+            notes.append(f"{found}   (from {f.name})")
+        else:
+            notes.append(f"NO DECLARATION FOUND for {sym}; the build will say "
+                         f"so")
+    return decls, notes
+
+
+def preflight(fn: str, mapping: list[str] | None = None) -> tuple[bool, str, str]:
     """Everything checkable before the tree is touched.
 
     Ordered cheapest-first and STOPS at the first failure, so a dry run costs
@@ -151,6 +283,10 @@ def preflight(fn: str) -> tuple[bool, str, str]:
         return False, "", (f"neither this tree nor upstream has an "
                            f"extractable definition of {base}")
     body = rename_function(body, base, fn)
+    body, map_notes = apply_map(body, mapping or [])
+    decls, decl_notes = auto_decls(body, REPO / stub_path)
+    if decls:
+        body = "\n".join(decls) + "\n\n" + body
 
     # The transplant must define the function we are replacing, not merely
     # mention it. _extract already enforces this, but a wrong body here would
@@ -170,13 +306,18 @@ def preflight(fn: str) -> tuple[bool, str, str]:
     if bad:
         return False, body, ("upstream's C uses members this tree does not "
                              "have: " + "; ".join(bad[:3]))
-    return True, body, (f"ready: {len(body)} chars from the {src_kind} "
-                        f"{path}\n  stub: {stub_path}"
-                        + (f"\n  renamed {base} -> {fn}" if base != fn else ""))
+    detail = (f"ready: {len(body)} chars from the {src_kind} "
+              f"{path}\n  stub: {stub_path}"
+              + (f"\n  renamed {base} -> {fn}" if base != fn else ""))
+    for n in map_notes:
+        detail += f"\n  map: {n}"
+    for n in decl_notes:
+        detail += f"\n  decl: {n}"
+    return True, body, detail
 
 
-def run(fn: str, apply: bool) -> int:
-    ok, body, detail = preflight(fn)
+def run(fn: str, apply: bool, mapping: list[str] | None = None) -> int:
+    ok, body, detail = preflight(fn, mapping)
     print(f"{fn}\n  {detail}")
     if not ok:
         return 1
@@ -235,8 +376,16 @@ def self_test() -> int:
     # that calls no such thing. Reading prose is not testing code -- the same
     # mistake this project has now made three times.
     import ast as _ast
+    # The SELF-TEST is excluded from this scan: it legitimately writes to a
+    # temp directory to exercise auto_decls, and including it made the test
+    # fail on its own scaffolding. Scope the assertion to the code that
+    # actually runs against the repo.
     called = set()
-    for node in _ast.walk(_ast.parse(src)):
+    tree = _ast.parse(src)
+    tree.body = [n for n in tree.body
+                 if not (isinstance(n, _ast.FunctionDef)
+                         and n.name == "self_test")]
+    for node in _ast.walk(tree):
         if isinstance(node, _ast.Call):
             f = node.func
             if isinstance(f, _ast.Name):
@@ -291,6 +440,71 @@ def self_test() -> int:
     ck(rename_function("void a(void){}", "a", "a") == "void a(void){}",
        "renaming to the same name is a no-op")
 
+    print("\nsymbol mapping is explicit, word-anchored, and reported")
+    b, n = apply_map("void f(void){ E_ID_16; E_ID_160; }", ["E_ID_16=E_UNK_16"])
+    ck("E_UNK_16;" in b and "E_ID_160" in b,
+       f"only the whole word is renamed ({b})")
+    ck(n and "1 occurrence" in n[0], f"and the count is reported ({n})")
+    _b2, n2 = apply_map("void f(void){}", ["Absent=Thing"])
+    ck("IGNORED" in n2[0], f"a symbol not present is reported, not silent ({n2})")
+    _b3, n3 = apply_map("x", ["garbage"])
+    ck("IGNORED malformed" in n3[0], "a malformed pair is reported")
+
+    print("\nmissing declarations are DERIVED from the definition")
+    import tempfile
+    with tempfile.TemporaryDirectory() as td:
+        ov = Path(td)
+        (ov / "e_init.c").write_text(
+            "void func_us_801CC8F8_from_no0(Entity* self) { }\n"
+            "EInit RNO0_EInitSpawner = {1, 2, 3};\n", encoding="utf-8")
+        dest = ov / "e_background_pillars.c"
+        dest.write_text("#include \"rno0.h\"\n", encoding="utf-8")
+        d, n = auto_decls(
+            "void f(Entity* e){ InitializeEntity(RNO0_EInitSpawner);"
+            " e->pfnUpdate = func_us_801CC8F8_from_no0; }", dest)
+        ck("extern EInit RNO0_EInitSpawner;" in d,
+           f"the data symbol becomes an extern ({d})")
+        ck(any("func_us_801CC8F8_from_no0(Entity* self);" in x for x in d),
+           f"the function becomes a prototype ({d})")
+        # A symbol with no definition anywhere must NOT be invented.
+        d2, n2 = auto_decls("void f(void){ D_us_DEADBEEF; }", dest)
+        ck(d2 == [], f"an unknown symbol yields no declaration ({d2})")
+        ck(any("NO DECLARATION FOUND" in x for x in n2),
+           "and it is reported rather than passed over")
+        # Already visible in the destination: do not redeclare.
+        dest.write_text("void func_us_801CC8F8_from_no0(Entity*);\n",
+                        encoding="utf-8")
+        d3, _ = auto_decls("void f(Entity* e){"
+                           " e->pfnUpdate = func_us_801CC8F8_from_no0; }",
+                           dest)
+        ck(d3 == [], f"a symbol already declared here is skipped ({d3})")
+        # An INCLUDE_ASM mention must NOT count as a declaration.
+        dest.write_text(
+            'INCLUDE_ASM("st/rno0/nonmatchings/x", '
+            'func_us_801CC8F8_from_no0);\n', encoding="utf-8")
+        (ov / "e_init.c").write_text(
+            "void func_us_801CC8F8_from_no0(Entity* self);\n",
+            encoding="utf-8")
+        d5, _ = auto_decls("void f(Entity* e){"
+                           " e->pfnUpdate = func_us_801CC8F8_from_no0; }",
+                           dest)
+        ck(any("func_us_801CC8F8_from_no0" in x for x in d5),
+           f"an INCLUDE_ASM mention does not count as a declaration ({d5})")
+        # OVL_EXPORT spelling and declaration-only sources: the two misses
+        # that each cost a build.
+        (ov / "e_init.c").write_text(
+            "void func_us_801CC8F8_from_no0(Entity* self);\n"
+            "EInit OVL_EXPORT(EInitSpawner) = {1};\n", encoding="utf-8")
+        dest.write_text("#include \"rno0.h\"\n", encoding="utf-8")
+        d4, _ = auto_decls("void f(Entity* e){ InitializeEntity("
+                           "RNO0_EInitSpawner);"
+                           " e->pfnUpdate = func_us_801CC8F8_from_no0; }",
+                           dest)
+        ck("extern EInit RNO0_EInitSpawner;" in d4,
+           f"OVL_EXPORT(EInitSpawner) resolves RNO0_EInitSpawner ({d4})")
+        ck(any("func_us_801CC8F8_from_no0(Entity* self);" in x for x in d4),
+           f"a declaration-only symbol still yields a prototype ({d4})")
+
     print("\nthe transplant is type-checked like generated C is")
     ck("member_types" in body_fn,
        "upstream's members are validated against THIS tree's structs")
@@ -318,6 +532,9 @@ def main() -> int:
         formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--list", action="store_true")
     ap.add_argument("--function")
+    ap.add_argument("--map", action="append", default=[], metavar="OLD=NEW",
+                    help="rename a symbol the destination overlay calls "
+                         "something else; repeatable")
     ap.add_argument("--apply", action="store_true",
                     help="actually apply, build, verify and revert on failure")
     ap.add_argument("--self-test", action="store_true")
@@ -327,7 +544,7 @@ def main() -> int:
     if a.list:
         return list_all()
     if a.function:
-        return run(a.function, a.apply)
+        return run(a.function, a.apply, a.map)
     ap.print_help()
     return 0
 
