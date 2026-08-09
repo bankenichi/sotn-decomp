@@ -530,6 +530,8 @@ DIAGNOSTICS = [
      "one line per matched function with the evidence behind it"),
     ("Provider probe (http vs cli)", "probe_provider.py", "",
      "asks the endpoint directly: does it answer, refuse, or just go silent"),
+    ("Prompt: offsets pre-resolved?", "reasoning_audit.py", "",
+     "how much thinking is still spent on offset lookups"),
     ("Fleet: what models THINK about", "reasoning_audit.py", "--offsets",
      "where the reasoning budget goes, and which gaps are prompt fixes"),
     ("Fleet: WHY calls fail", "fleet_forensics.py", "--by-model --streaks",

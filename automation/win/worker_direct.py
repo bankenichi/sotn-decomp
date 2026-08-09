@@ -152,7 +152,15 @@ NO_THINKING = {
 # and do emit useful analysis, the capture is what diagnosed this whole class,
 # and the force-code pass is the safety net for any model that thinks anyway.
 # Set REASONING_EFFORT=low to re-enable it and pay for a second pass.
-REASONING_EFFORT = os.environ.get("REASONING_EFFORT", "none").strip().lower()
+# DEFAULT low, by choice: reasoning is worth paying for if it produces more
+# sensible C, and the sweep only measured WHETHER content came back, never
+# whether the content was any good. `none` answers in 9.9s; `low` needs the
+# force-code pass and lands around 90s, which is affordable. quality_ab.py
+# exists to settle which actually produces better code.
+#
+# The sweep still stands on the other two: medium is HTTP 503 and high is HTTP
+# 500 on Zen, so those are not options, whatever one might want from them.
+REASONING_EFFORT = os.environ.get("REASONING_EFFORT", "low").strip().lower()
 # 6000, raised from 3000 after the first zen run. ALL TEN calls hit the 3000
 # cap with 0 content tokens, and reading the captured reasoning shows why: the
 # model was still mid-analysis, working offset by offset through the assembly.
@@ -164,7 +172,7 @@ REASONING_EFFORT = os.environ.get("REASONING_EFFORT", "none").strip().lower()
 # "structure has no member named unkNN", i.e. fields it had not finished
 # resolving when the axe fell.
 REASONING_MAX_TOKENS = int(os.environ.get("REASONING_MAX_TOKENS",
-                                          os.environ.get("REASON_CAP", "6000")))
+                                          os.environ.get("REASON_CAP", "9000")))
 CONTENT_MAX_TOKENS = int(os.environ.get("CONTENT_MAX_TOKENS", "4000"))
 
 
@@ -2766,6 +2774,80 @@ def complete_function(text: str) -> str:
     return code if code.rstrip().endswith("}") else ""
 
 
+_WIDTH = {"u8": 1, "s8": 1, "u16": 2, "s16": 2, "u32": 4, "s32": 4,
+          "f32": 4, "ptr": 4, "union": 4}
+_LAYOUT_RX = re.compile(r"0x([0-9A-Fa-f]{1,3})\s+(\w+)\(([^)]*)\)")
+_UNK_RX = re.compile(r"\bunk([0-9A-Fa-f]{1,3})\b")
+
+
+def _layout_fields() -> list[tuple[int, str, str]]:
+    """(offset, name, type) parsed out of the ENTITY_LAYOUT constant."""
+    out = [(int(o, 16), n, t) for o, n, t in _LAYOUT_RX.findall(ENTITY_LAYOUT)]
+    return sorted(out)
+
+
+def resolve_unk_offsets(draft: str) -> str:
+    """Pre-resolve every `->unkNN` in the m2c draft to a real field.
+
+    THE SINGLE LARGEST CONSUMER OF REASONING. Measured with
+    reasoning_audit.py over 543,873 chars captured on 2026-08-03: 34% of all
+    model thinking was sentences resolving a raw offset against the layout
+    table we had supplied. In prose. One offset at a time. For example:
+
+        "half at 0x0A: not in layout as half. Layout has velocityX (0x08) and
+         velocityY (0x0C) both s32. 0x0A is within velocityX? Actually
+         velocityX s32 spans 0x08-0x0B, so 0x0A is the high half..."
+
+    That is a table lookup the harness can do for free, and getting it wrong
+    is what produced every build failure in that run: all 8 were "structure
+    has no member named unkNN", i.e. offsets still unresolved when the
+    reasoning cap fired.
+
+    Interior offsets are called out EXPLICITLY rather than left blank. A
+    silent gap is what sends the model into the paragraph above; being told
+    "0x0A is inside velocityX, the asm is reading half of a word, keep unk0A
+    and comment it" ends the question in one line.
+    """
+    if not draft:
+        return ""
+    fields = _layout_fields()
+    wanted = sorted({int(h, 16) for h in _UNK_RX.findall(draft)})
+    if not wanted:
+        return ""
+    lines = []
+    for off in wanted:
+        exact = [f for f in fields if f[0] == off]
+        if exact:
+            _o, name, typ = exact[0]
+            lines.append(f"  unk{off:02X}  ->  ->{name}    ({typ})")
+            continue
+        if off >= 0x7C:
+            idx2, idx4 = (off - 0x7C) // 2, (off - 0x7C) // 4
+            lines.append(
+                f"  unk{off:02X}  ->  ext union. Prefer a named variant from "
+                f"EXT VARIANTS; otherwise ext.ILLEGAL.u16[{idx2}] "
+                f"or .u32[{idx4}], matching the asm load width")
+            continue
+        prev = [f for f in fields if f[0] < off]
+        if prev:
+            po, pname, ptyp = prev[-1]
+            w = _WIDTH.get(ptyp, 4)
+            if po + w > off:
+                lines.append(
+                    f"  unk{off:02X}  ->  NO named field. It is INSIDE "
+                    f"->{pname} (0x{po:02X}, {ptyp}, {w} bytes), so the asm is "
+                    f"reading part of that word. Keep unk{off:02X} and say so "
+                    f"in a comment. Do NOT invent a field.")
+                continue
+        lines.append(
+            f"  unk{off:02X}  ->  NO named field at this offset and it is not "
+            f"inside one. Keep unk{off:02X}. Do NOT invent a field.")
+    return ("\n=== OFFSETS ALREADY RESOLVED FOR YOU ===\n"
+            "Every `->unkNN` in the draft, looked up in the Entity layout so "
+            "you do not have to.\nThis is authoritative: use it verbatim and "
+            "spend no time re-deriving it.\n" + "\n".join(lines) + "\n")
+
+
 def build_prompt(rec: dict, ctx: dict, feedback: str = "") -> str:
     fb = f"\nPREVIOUS ATTEMPT FAILED:\n{feedback}\nFix it.\n" if feedback else ""
     # Declarations harvested from the tree. These are ground truth about types,
@@ -2795,6 +2877,10 @@ def build_prompt(rec: dict, ctx: dict, feedback: str = "") -> str:
         ev = ext_variants_for(rec.get("function", ""), blob)
         if ev:
             entity_sec += ev
+        # Then the pre-resolved lookup. It goes LAST so it is the most recent
+        # thing before the task, and it is the section that replaces 34% of
+        # the model's reasoning with text it can simply read.
+        entity_sec += resolve_unk_offsets(ctx.get("draft") or "")
     # Index-derived context, independent of whether this is an entity function:
     #   - raw D_ addresses resolved to their real meanings (kills the biggest
     #     review-rejection class: invented externs)
