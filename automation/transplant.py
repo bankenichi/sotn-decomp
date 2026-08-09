@@ -187,6 +187,21 @@ def apply_map(body: str, pairs: list[str]) -> tuple[str, list[str]]:
     return pat.sub(lambda m: table[m.group(1)], body), notes
 
 
+def _ovl_prefix(overlay: Path) -> str:
+    """The OVL_EXPORT prefix for an overlay, e.g. RNO0.
+
+    Read from the overlay's own header (`#define OVL_EXPORT(x) RNO0_##x`)
+    rather than guessed from the directory name, which is lower case and not
+    always the same token.
+    """
+    for h in overlay.glob("*.h"):
+        m = re.search(r"#\s*define\s+OVL_EXPORT\(\s*x\s*\)\s+(\w+)##x",
+                      h.read_text(errors="ignore"))
+        if m:
+            return m.group(1).rstrip("_")
+    return ""
+
+
 def auto_decls(body: str, dest: Path,
                defining: str = "") -> tuple[list[str], list[str]]:
     """Declarations the destination file needs but does not have.
@@ -227,15 +242,54 @@ def auto_decls(body: str, dest: Path,
     # Only symbols that look like this project's globals. A broad identifier
     # sweep would try to declare locals, macros and enum members.
     cands = set(re.findall(r"\b(?:func_us_\w+|func_\d\w*|"
-                           r"[A-Z][A-Z0-9]+_[A-Za-z]\w*|D_us_\w+)\b", body))
+                           r"[A-Z][A-Z0-9]+_[A-Za-z]\w*|D_us_\w+|g_\w+)\b",
+                           body))
     # THE FUNCTION BEING DEFINED NEEDS NO DECLARATION. Leaving it in reported
     # "NO DECLARATION FOUND for func_us_801D1184_from_are" while transplanting
     # exactly that function, and the scan then filed five clean candidates
     # under needs-defs for a dependency that does not exist.
     cands.discard(defining)
-    for sym in sorted(cands):
+    pending = sorted(cands)
+    while pending:
+        sym = pending.pop(0)
         if re.search(r"\b" + re.escape(sym) + r"\b\s*[;)(,]", have):
             continue                       # already visible in this file
+        # THE OVL_EXPORT ALIAS. The shared stages name a struct g_EInitCommon
+        # while rno0 exports it as OVL_EXPORT(EInitCommon), i.e.
+        # RNO0_EInitCommon, and the rno0 assembly confirms %hi(RNO0_EInitCommon)
+        # at that site. A transplant carrying the shared name will not compile.
+        #
+        # This is not invention: the idiom is already used three times in
+        # src/st/rno0, e.g. e_clock_room.c:59
+        #     #define g_EInitCommon OVL_EXPORT(EInitCommon)
+        # and the mapping is only emitted when the destination overlay really
+        # does define OVL_EXPORT(<rest>).
+        if sym.startswith("g_"):
+            rest = sym[2:]
+            if any(f"OVL_EXPORT({rest})" in f.read_text(errors="ignore")
+                   for f in overlay.glob("*.c") if f != dest):
+                decls.append(f"#define {sym} OVL_EXPORT({rest})")
+                notes.append(f"#define {sym} OVL_EXPORT({rest})   "
+                             f"(the overlay exports it under that name)")
+                # AND THE EXTERN FOR THE EXPANDED NAME. The #define alone
+                # turns g_EInitCommon into RNO0_EInitCommon, which is DEFINED
+                # in the overlay's e_init.c but not DECLARED in any header
+                # this file sees -- so the alias merely moved the undeclared
+                # identifier from one name to the other, and cost a build to
+                # find out.
+                pref = _ovl_prefix(overlay)
+                if pref:
+                    expanded = f"{pref}_{rest}"
+                    if (not re.search(r"\b" + re.escape(expanded)
+                                      + r"\b\s*[;)(,]", have)
+                            and expanded not in cands):
+                        cands.add(expanded)
+                        pending.append(expanded)
+            # Otherwise it is a shared global from game.h -- g_api, g_PrimBuf,
+            # g_CurrentEntity -- visible everywhere and not the overlay's to
+            # declare. Reporting those as missing would bury the real findings
+            # in noise, so they are passed over in silence.
+            continue
         # The symbol may be spelled through OVL_EXPORT in its own overlay:
         # rno0/e_init.c writes `EInit OVL_EXPORT(EInitSpawner) = ...`, so a
         # literal search for RNO0_EInitSpawner finds nothing. Both spellings
@@ -735,6 +789,17 @@ def self_test() -> int:
             dest, defining="func_us_801D1184_from_are")
         ck(not any("func_us_801D1184_from_are" in x for x in n6),
            f"the defined function is not reported as missing ({n6})")
+        # The OVL_EXPORT alias, only when the overlay really exports it.
+        (ov / "e_init.c").write_text(
+            "EInit OVL_EXPORT(EInitCommon) = {1};\n", encoding="utf-8")
+        dest.write_text("#include \"rno0.h\"\n", encoding="utf-8")
+        d7, _ = auto_decls("void f(Entity* e){ InitializeEntity("
+                           "g_EInitCommon); }", dest)
+        ck("#define g_EInitCommon OVL_EXPORT(EInitCommon)" in d7,
+           f"the alias is emitted ({d7})")
+        d8, n8 = auto_decls("void f(void){ g_NotExported; }", dest)
+        ck(not any("#define" in x for x in d8),
+           f"and NOT invented when the overlay does not export it ({d8})")
         # OVL_EXPORT spelling and declaration-only sources: the two misses
         # that each cost a build.
         (ov / "e_init.c").write_text(
