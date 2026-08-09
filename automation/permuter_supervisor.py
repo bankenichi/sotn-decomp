@@ -477,16 +477,35 @@ def report(fn_id: str, status: str, notes: str, proof: str = "") -> str:
 
 # ------------------------------------------------------- landing a match
 
+_STUB_INDEX: dict[str, tuple[Path, str]] | None = None
+_ANY_STUB = re.compile(r'INCLUDE_ASM\(\s*"([^"]+)"\s*,\s*(\w+)\s*\)\s*;')
+
+
 def find_stub(fn: str) -> tuple[Path, str, object] | None:
-    """(src file, asm path, regex match) for fn's INCLUDE_ASM stub."""
-    stub = re.compile(
-        rf'INCLUDE_ASM\(\s*"([^"]+)"\s*,\s*{re.escape(fn)}\s*\)\s*;')
-    for p in (REPO / "src").rglob("*.c"):
-        text = p.read_text(errors="ignore")
-        m = stub.search(text)
-        if m:
-            return p, m.group(1), m
-    return None
+    """(src file, asm path, regex match) for fn's INCLUDE_ASM stub.
+
+    INDEXED. The original read every .c under src/ looking for one name --
+    about 12 seconds. That is invisible for a single permuter landing and
+    ruinous for transplant --scan, which asks once per queue record: 250
+    records spent nearly an hour here alone. One pass builds the whole map.
+
+    The regex match is still returned for callers that want it, recomputed on
+    the one file rather than re-scanned across the tree.
+    """
+    global _STUB_INDEX
+    if _STUB_INDEX is None:
+        _STUB_INDEX = {}
+        for p in (REPO / "src").rglob("*.c"):
+            for asm_rel, name in _ANY_STUB.findall(p.read_text(errors="ignore")):
+                _STUB_INDEX.setdefault(name, (p, asm_rel))
+    hit = _STUB_INDEX.get(fn)
+    if not hit:
+        return None
+    path, asm_rel = hit
+    m = re.compile(
+        rf'INCLUDE_ASM\(\s*"([^"]+)"\s*,\s*{re.escape(fn)}\s*\)\s*;'
+    ).search(path.read_text(errors="ignore"))
+    return (path, asm_rel, m) if m else None
 
 
 def extract_function(text: str, fn: str) -> str:

@@ -88,12 +88,21 @@ def unmatched_records() -> list[tuple[str, str, str]]:
     return out
 
 
+_UF_CACHE: dict[str, dict[str, str]] = {}
+_US_CACHE: set[str] | None = None
+
+
 def upstream_files(overlay_hint: str = "") -> dict[str, str]:
     """{function name: upstream path} for every real definition upstream has.
 
     One `git grep` over the ref rather than a show per file: the per-file
     version is hundreds of subprocesses and minutes of wall clock.
     """
+    # CACHED. Each call is a git grep over the whole upstream tree, roughly
+    # 30 seconds. transplant --scan asks per record, so without this a scan of
+    # 250 records spends over two hours re-reading the same ref.
+    if overlay_hint in _UF_CACHE:
+        return _UF_CACHE[overlay_hint]
     # `git grep -n` over a ref searches that ref's tree without checking it out.
     pattern = r"^[A-Za-z_][A-Za-z0-9_ \t*]*\b\w+\s*\("
     raw = _git("grep", "-nE", pattern, UPSTREAM, "--", "src/", timeout=300)
@@ -108,14 +117,18 @@ def upstream_files(overlay_hint: str = "") -> dict[str, str]:
         if overlay_hint and overlay_hint not in m.group("path"):
             continue
         defs.setdefault(m.group("fn"), m.group("path"))
+    _UF_CACHE[overlay_hint] = defs
     return defs
 
 
 def upstream_stubs() -> set[str]:
     """Functions upstream still has as INCLUDE_ASM, i.e. NOT decompiled."""
-    raw = _git("grep", "-hE", "INCLUDE_ASM", UPSTREAM, "--", "src/",
-               timeout=300)
-    return set(RX_INCLUDE_ASM.findall(raw))
+    global _US_CACHE
+    if _US_CACHE is None:
+        raw = _git("grep", "-hE", "INCLUDE_ASM", UPSTREAM, "--", "src/",
+                   timeout=300)
+        _US_CACHE = set(RX_INCLUDE_ASM.findall(raw))
+    return _US_CACHE
 
 
 def harvest(overlay: str = "") -> list[tuple[str, str, str]]:

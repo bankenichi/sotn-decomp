@@ -135,13 +135,25 @@ def delta(twin_asm: str, target_asm: str) -> dict:
             "consts": consts, "insns": len(a), "diffs": diffs}
 
 
+_ASM_INDEX: dict[str, Path] | None = None
+
+
 def _find_asm(fn: str) -> Path | None:
-    root = REPO / "asm" / "us"
-    if not root.is_dir():
-        return None
-    for f in root.rglob(f"{fn}.s"):
-        return f
-    return None
+    """The .s for a function, via an index built ONCE.
+
+    The first version rglob'd asm/us looking for one filename, twice per
+    call: 27 seconds per function, and transplant --scan calls this for every
+    record. Walking the tree once and keeping the map costs six seconds for
+    the whole queue.
+    """
+    global _ASM_INDEX
+    if _ASM_INDEX is None:
+        _ASM_INDEX = {}
+        root = REPO / "asm" / "us"
+        if root.is_dir():
+            for f in root.rglob("*.s"):
+                _ASM_INDEX.setdefault(f.stem, f)
+    return _ASM_INDEX.get(fn)
 
 
 def for_function(fn: str) -> dict:

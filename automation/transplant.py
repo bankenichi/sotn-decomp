@@ -55,19 +55,42 @@ def _harv():
 
 
 def candidates() -> list[tuple[str, str, str]]:
-    """(function, our overlay, upstream path) we could transplant right now."""
-    return _harv().harvest()
-
-
-def upstream_body(fn: str) -> tuple[str, str]:
-    """(C source of fn as upstream writes it, upstream path)."""
+    """(function, our overlay, the file in THIS tree that already defines it)."""
     uh = _harv()
-    base = re.sub(r"_from_\w+$", "", fn)
-    path = uh.upstream_files().get(base)
-    if not path:
-        return "", ""
-    whole = uh._git("show", f"{uh.UPSTREAM}:{path}")
-    return uh._extract(whole, base), path
+    idx = _local_def_index()
+    out = []
+    for _rid, ovl, fn in uh.unmatched_records():
+        base = re.sub(r"_from_\w+$", "", fn)
+        for path in idx.get(base, []):
+            out.append((fn, ovl, path))
+            break
+    return sorted(set(out))
+
+
+_LOCAL_DEFS: dict[str, list[str]] | None = None
+
+
+def _local_def_index() -> dict[str, list[str]]:
+    """{function name: [files defining it]} for all of src/, built once."""
+    global _LOCAL_DEFS
+    if _LOCAL_DEFS is not None:
+        return _LOCAL_DEFS
+    import subprocess
+    rx = re.compile(r"^(?P<path>[^:]+):[ \t]*(?:static[ \t]+)?"
+                    r"[A-Za-z_][A-Za-z0-9_ \t*]*?\b(?P<fn>\w+)[ \t]*\([^;]*$")
+    raw = subprocess.run(
+        ["git", "grep", "-nE", r"^[A-Za-z_][A-Za-z0-9_ \t*]*\b\w+[ \t]*\(",
+         "--", "src/"], capture_output=True, text=True, timeout=300,
+        cwd=str(REPO)).stdout
+    out: dict[str, list[str]] = {}
+    for line in raw.splitlines():
+        path, _, rest = line.partition(":")
+        _num, _, code = rest.partition(":")
+        m = rx.match(f"{path}:{code}")
+        if m:
+            out.setdefault(m.group("fn"), []).append(m.group("path"))
+    _LOCAL_DEFS = out
+    return out
 
 
 def local_twin(base: str, exclude: str = "") -> tuple[str, str]:
@@ -86,12 +109,11 @@ def local_twin(base: str, exclude: str = "") -> tuple[str, str]:
     So the first question is never "what does upstream have"; it is "do we
     already have this function under another name".
     """
-    import subprocess
-    hits = subprocess.run(
-        ["git", "grep", "-lE", r"^[A-Za-z_][A-Za-z0-9_ \t*]*\b"
-         + re.escape(base) + r"\s*\(", "--", "src/"],
-        capture_output=True, text=True, timeout=120,
-        cwd=str(REPO)).stdout.split()
+    # ONE index for the whole run. A git grep per record is fine for a single
+    # transplant and hopeless for a scan: 250 records x ~1.5s of grep is most
+    # of an hour, and the scan produced no output for seven minutes before
+    # this was added.
+    hits = _local_def_index().get(base, [])
     uh = _harv()
     for h in hits:
         if exclude and h.endswith(exclude):
@@ -165,7 +187,8 @@ def apply_map(body: str, pairs: list[str]) -> tuple[str, list[str]]:
     return pat.sub(lambda m: table[m.group(1)], body), notes
 
 
-def auto_decls(body: str, dest: Path) -> tuple[list[str], list[str]]:
+def auto_decls(body: str, dest: Path,
+               defining: str = "") -> tuple[list[str], list[str]]:
     """Declarations the destination file needs but does not have.
 
     THE SECOND HALF OF A TWIN TRANSPLANT, and the reason the first two build
@@ -205,6 +228,11 @@ def auto_decls(body: str, dest: Path) -> tuple[list[str], list[str]]:
     # sweep would try to declare locals, macros and enum members.
     cands = set(re.findall(r"\b(?:func_us_\w+|func_\d\w*|"
                            r"[A-Z][A-Z0-9]+_[A-Za-z]\w*|D_us_\w+)\b", body))
+    # THE FUNCTION BEING DEFINED NEEDS NO DECLARATION. Leaving it in reported
+    # "NO DECLARATION FOUND for func_us_801D1184_from_are" while transplanting
+    # exactly that function, and the scan then filed five clean candidates
+    # under needs-defs for a dependency that does not exist.
+    cands.discard(defining)
     for sym in sorted(cands):
         if re.search(r"\b" + re.escape(sym) + r"\b\s*[;)(,]", have):
             continue                       # already visible in this file
@@ -324,7 +352,8 @@ def detail_head(fn: str, path: str, stub: str, base: str) -> str:
 
 
 def preflight(fn: str, mapping: list[str] | None = None,
-              auto: bool = False) -> tuple[bool, str, str]:
+              auto: bool = False, skip_clean: bool = False
+              ) -> tuple[bool, str, str]:
     """Everything checkable before the tree is touched.
 
     Ordered cheapest-first and STOPS at the first failure, so a dry run costs
@@ -333,9 +362,13 @@ def preflight(fn: str, mapping: list[str] | None = None,
     ps = _sup()
     base = re.sub(r"_from_\w+$", "", fn)
 
-    dirty = ps.require_clean_src()
-    if dirty:
-        return False, "", f"src/ is not clean: {dirty}"
+    # Hoisted for scans: this is a git status over the whole repo, ~8s, and
+    # the answer cannot change while a read-only scan runs. Checking it per
+    # record made the scan 8 seconds slower for every function examined.
+    if not skip_clean:
+        dirty = ps.require_clean_src()
+        if dirty:
+            return False, "", f"src/ is not clean: {dirty}"
 
     # LOOK FOR THE STUB UNDER THE QUEUE'S OWN NAME, suffix and all. The first
     # version stripped `_from_no0` for both lookups and then reported "no
@@ -348,16 +381,22 @@ def preflight(fn: str, mapping: list[str] | None = None,
     stub_path = str(found[0].relative_to(REPO)) if hasattr(
         found[0], "relative_to") else str(found[0])
 
-    # OUR OWN TREE FIRST. A twin already compiling here beats upstream's C,
-    # which is written against upstream's headers.
+    # THIS TREE ONLY. Upstream is not a runtime dependency of this mechanism.
+    #
+    # An earlier version fell back to upstream/master whenever the local
+    # lookup missed, which made every scan resolve a network-fetched ref and
+    # run a git grep over a foreign tree: three preflights took 118 seconds,
+    # nearly all of it upstream, including for a function upstream did not
+    # have either. Worse than slow, it made the fork's own tooling depend on
+    # somebody else's repository being present and current.
+    #
+    # Taking what we need from upstream is a deliberate, occasional act, and
+    # it has its own tool: upstream_harvest.py. This one answers a question
+    # about OUR tree.
     body, path = local_twin(base, exclude=Path(stub_path).name)
     src_kind = "local twin"
     if not body:
-        body, path = upstream_body(base)
-        src_kind = "upstream"
-    if not body:
-        return False, "", (f"neither this tree nor upstream has an "
-                           f"extractable definition of {base}")
+        return False, "", (f"no other definition of {base} in this tree")
     body = rename_function(body, base, fn)
 
     pairs = list(mapping or [])
@@ -381,7 +420,7 @@ def preflight(fn: str, mapping: list[str] | None = None,
         auto_notes += [f"enum: {x}" for x in en]
 
     body, map_notes = apply_map(body, pairs)
-    decls, decl_notes = auto_decls(body, REPO / stub_path)
+    decls, decl_notes = auto_decls(body, REPO / stub_path, defining=fn)
     if decls:
         body = "\n".join(decls) + "\n\n" + body
 
@@ -448,8 +487,9 @@ def list_all() -> int:
     if not rows:
         print("nothing available to transplant")
         return 0
-    print(f"{len(rows)} function(s) upstream has decompiled and we have not\n")
-    print(f"{'function':34}{'overlay':14}upstream path")
+    print(f"{len(rows)} unmatched function(s) already defined elsewhere in "
+          f"THIS tree\n")
+    print(f"{'function':34}{'overlay':14}defined in")
     print("-" * 92)
     for fn, ovl, path in rows:
         print(f"{fn[:32]:34}{ovl[:12]:14}{path}")
@@ -491,9 +531,14 @@ def scan(limit: int = 0, overlay: str = "") -> int:
 
     buckets: dict[str, list] = {"ready": [], "needs-defs": [],
                                 "not-twin": [], "no-twin": []}
+    dirty = _sup().require_clean_src()
+    if dirty:
+        print(f"src/ is not clean: {dirty}\n")
+        return 1
     for _rid, ovl, fn in recs:
         try:
-            ok, _body, detail = preflight(fn, None, auto=True)
+            ok, _body, detail = preflight(fn, None, auto=True,
+                                          skip_clean=True)
         except Exception as e:                                # noqa: BLE001
             buckets["no-twin"].append((fn, ovl, f"error: {type(e).__name__}"))
             continue
@@ -603,9 +648,18 @@ def self_test() -> int:
     ck("find_stub(fn)" in body_fn and "find_stub(base)" not in body_fn,
        "find_stub gets the full name")
 
-    print("\nour own tree is preferred over upstream")
-    ck(body_fn.index("local_twin(") < body_fn.index("upstream_body("),
-       "local_twin is tried first")
+    print("\nUPSTREAM IS NOT A RUNTIME DEPENDENCY of this mechanism")
+    # Taking what we need from upstream is a deliberate, occasional act with
+    # its own tool. Resolving a network-fetched ref on every scan made three
+    # preflights take 118 seconds and made the fork's tooling depend on
+    # somebody else's repository being present and current.
+    ck("local_twin(" in body_fn, "the body comes from this tree")
+    for banned in ("upstream_files", "upstream_stubs", "upstream_body",
+                   "harvest"):
+        ck(banned not in called, f"never calls {banned}()")
+    ck("UPSTREAM" not in [n.id for n in _ast.walk(tree)
+                          if isinstance(n, _ast.Name)],
+       "the upstream ref is never named")
 
     print("\nthe twin is renamed to the symbol being replaced")
     ck(rename_function("void a(Entity* e) { a(e); }", "a", "a_from_no0")
@@ -675,6 +729,12 @@ def self_test() -> int:
                            dest)
         ck(any("func_us_801CC8F8_from_no0" in x for x in d5),
            f"an INCLUDE_ASM mention does not count as a declaration ({d5})")
+        # The function being transplanted is not its own dependency.
+        _d6, n6 = auto_decls(
+            "void func_us_801D1184_from_are(Entity* e){ e->step = 1; }",
+            dest, defining="func_us_801D1184_from_are")
+        ck(not any("func_us_801D1184_from_are" in x for x in n6),
+           f"the defined function is not reported as missing ({n6})")
         # OVL_EXPORT spelling and declaration-only sources: the two misses
         # that each cost a build.
         (ov / "e_init.c").write_text(
