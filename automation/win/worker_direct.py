@@ -766,12 +766,22 @@ REASON_CAP = REASONING_MAX_TOKENS
 #
 # BACKEND-DEPENDENT. 6000 is calibrated for local llama, which loses coherence
 # well before that (the 2026-07-21 logs show degenerate-loop aborts on far
-# smaller inputs). Hosted OpenCode models take much more context, so the cli
-# tier exists precisely to pick up what llama defers.
+# smaller inputs). HOSTED models take much more context, so the hosted tiers
+# exist precisely to pick up what llama defers.
 #
 # Deferring is therefore a HANDOFF, not a dead end: see DEFER_TOO_LARGE and
 # scheduler `next --include-deferred`.
-_DEFAULT_MAX_FUNC = "20000" if MODEL_BACKEND == "cli" else "6000"
+#
+# THE TEST USED TO BE `== "cli"`, AND ZEN FELL INTO THE LOCAL-LLAMA BRANCH.
+# zen is hosted, with the same large context as cli; it was added after this
+# line was written and the ternary was never revisited. The effect was that
+# the zen fleet deferred every function over 6000 chars to a "next tier" that
+# was itself the broken cli backend, so ~25 records accumulated in `deferred`
+# having never been attempted by anything. The 2026-08-09 battery put 8.9k and
+# 13.9k asm through zen and got usable C back from mimo, so 6000 was never the
+# right ceiling for it.
+_HOSTED = {"cli", "zen"}
+_DEFAULT_MAX_FUNC = "20000" if MODEL_BACKEND in _HOSTED else "6000"
 MAX_FUNC_CHARS = int(os.environ.get("MAX_FUNC_CHARS", _DEFAULT_MAX_FUNC))
 # Stable marker in the notes so the next tier can find exactly these records.
 # Matching on prose would break the moment someone reworded the message.

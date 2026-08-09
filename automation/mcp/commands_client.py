@@ -193,6 +193,7 @@ ANALYSIS_SCRIPTS = {
     "test_connector_surfaces.py",
     "test_build_attribution.py",
     "escalation_triage.py",
+    "deferred_triage.py",
     "test_stub_locate.py",
     "test_permuter_seed.py",
     "permuter_stall.py",
