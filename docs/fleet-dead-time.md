@@ -509,3 +509,50 @@ battery report, and a battery run over untested models. `decomp_fidelity.py`
 added to ANALYSIS_SCRIPTS, without which those buttons are rejected only after
 being clicked; a new dashboard self-test now fails if any button points at a
 script that is not allowlisted.
+
+## Fabricated field names caught before the build, not after (2026-08-09)
+
+The `invented` metric was only ever an offline score. It is now a live gate.
+
+A fabricated member is a GUARANTEED build failure -- `structure has no member
+named X` -- and it was being discovered by spending a 40s build cycle. The
+pre-build `quality_gate` already had five checks, but every one was a review
+objection (invented externs, raw casts, wrong typedefs, `ext.ILLEGAL`, bitmask
+literals). None caught the top failure class.
+
+`invented_members()` compares every `->name` against the union of ALL struct
+members in the tree (1,950 names from index.us.json), not just Entity, because
+generated C legitimately touches Primitive and the ET_* variants; a check
+scoped to Entity would reject correct code, and a false rejection costs a whole
+attempt.
+
+    caught          20 of the fabricating generations
+    false positives 0 of the 39 that scored clean
+
+`unkNN` is deliberately NOT flagged. It is the honest form: it states the
+offset it could not resolve, and that is far easier to fix than a confident
+`->field1C`.
+
+### The feedback names the field, which the compiler cannot
+
+    `->field1C` exists in no struct in this tree; offset 0x1C is `scaleY`
+    `->valueBC` exists in no struct in this tree; 0xBC falls inside `ext`
+                (0x7C, union) -- use `unkBC` if you cannot name it
+    `->partA`   exists in no struct in this tree; use a field from the
+                ENTITY LAYOUT section, or `unkNN` naming the raw offset
+
+### The offset hint had to be narrowed, twice
+
+The first pattern was `[A-Za-z_]+_?([0-9A-Fa-f]{1,3})$`. Because a-f are hex
+digits, it read `subType` as `subTyp` + 0x0E and `updateFunc` as `updateFun` +
+0x0C, and told the model both of them meant `velocityY`.
+
+Wrong guidance is worse than none: it does not just fail to help, it sends the
+next attempt somewhere new and equally wrong, and it does so in a confident
+voice. An offset is now read only from a known prefix (`field`, `value`,
+`data`, `off`, ...) or after an explicit underscore. Names with no encoded
+offset get the generic pointer to the layout section instead.
+
+Both `subType` and `updateFunc` are, for the record, genuinely absent from
+include/game.h and from every .c file in the tree, so flagging them was right;
+only the hint was wrong.

@@ -271,6 +271,33 @@ def main() -> int:
     check("it runs BEFORE the apply/build critical section",
           src.index("defects += review_gate") < src.rindex("with BuildLock("))
 
+    # ---- fabricated struct members, caught BEFORE the build ----------------
+    # Every one becomes `structure has no member named X`, which otherwise
+    # costs a 40s build cycle to discover. Measured against the 2026-08-09
+    # battery: 20 fabricating generations caught, 0 false positives over the
+    # 39 that scored clean.
+    check("an invented member name is flagged",
+          bool(wd.invented_members("void f(Entity* e) { e->field1C = 1; }")))
+    _h = wd.invented_members("void f(Entity* e) { e->field1C = 1; }")
+    check("and the real field at 0x1C is named in the feedback",
+          bool(_h) and "scaleY" in _h[0])
+    check("a real field is not flagged",
+          not wd.invented_members("void f(Entity* e) { e->posX.val = 1; }"))
+    check("unkNN is HONEST about the offset and is not flagged",
+          not wd.invented_members("void f(Entity* e) { e->unk80 = 1; }"))
+    # A permissive offset pattern read `subType` as `subTyp`+0x0E and
+    # `updateFunc` as `updateFun`+0x0C, then told the model both meant
+    # velocityY. Wrong guidance is worse than none: it sends the next attempt
+    # somewhere new and equally wrong.
+    for _n in ("subType", "updateFunc"):
+        _r = wd.invented_members("void f(Entity* e) { e->%s = 1; }" % _n)
+        check(f"no bogus offset is inferred from `{_n}`",
+              bool(_r) and "velocity" not in _r[0])
+    check("the member check runs in quality_gate, before the build",
+          "invented_members(code)" in src
+          and src.index("invented_members(code)") < src.rindex(
+              "with BuildLock("))
+
     print()
     if failures:
         print(f"{len(failures)} check(s) failed: {', '.join(failures)}")

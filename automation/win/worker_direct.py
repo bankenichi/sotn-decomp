@@ -2264,6 +2264,92 @@ def resolve_raw_symbols(asm: str, limit: int = 10) -> str:
 
 # MIPS load/store -> the C type that access width implies. Used to type a
 # symbol that the linker knows about but no C file declares.
+_RX_ARROW_MEMBER = re.compile(r"->\s*([A-Za-z_]\w*)")
+# Some fabricated names encode the offset they stand for (`field1C`,
+# `value_BC`, `unk_C`); for those the correct field can be named outright.
+#
+# The pattern must be NARROW. A permissive `[A-Za-z_]+_?([0-9A-Fa-f]{1,3})$`
+# treats a-f as offset digits wherever they fall, so `subType` parsed as
+# `subTyp` + 0x0E and `updateFunc` as `updateFun` + 0x0C, and the gate
+# confidently told the model that `->updateFunc` meant `velocityY`. Wrong
+# guidance is worse than none: it sends the next attempt somewhere new and
+# equally wrong. So an offset is only read from a known prefix, or after an
+# explicit underscore separator.
+_RX_NAME_OFFSET = re.compile(
+    r"^(?:field|value|val|data|word|half|byte|off|offset|member|slot|attr)"
+    r"_?([0-9A-Fa-f]{1,3})$|^[A-Za-z]+_([0-9A-Fa-f]{1,3})$", re.I)
+_RX_HONEST_UNK = re.compile(r"^unk[0-9A-Fa-f]{1,3}$")
+
+
+def _legal_members() -> set[str]:
+    """Every struct member name that exists ANYWHERE in the tree.
+
+    Built from the whole `structs` table, not just Entity, because generated C
+    legitimately touches Primitive, the ET_* ext variants and many others. A
+    check scoped to Entity alone would reject correct code, and a false
+    rejection costs a whole attempt.
+    """
+    idx = _load_index()
+    out = set()
+    for _name, flds in (idx.get("structs") or {}).items():
+        for f in flds or []:
+            n = f.get("name")
+            if n:
+                out.add(n)
+    for _off, f in (idx.get("entity", {}).get("fields") or {}).items():
+        if isinstance(f, dict) and f.get("name"):
+            out.add(f["name"])
+    out |= set(idx.get("ext_variants") or {})
+    return out
+
+
+def invented_members(code: str) -> list[str]:
+    """`->name` accesses for members that exist in no struct in the tree.
+
+    THE TOP BUILD-FAILURE CLASS. Every one becomes `structure has no member
+    named X`, so catching it here turns a wasted 40s build cycle into free and
+    MORE specific retry feedback: the compiler says only that the name is
+    wrong, whereas this can usually say which field was meant.
+
+    `unkNN` is deliberately NOT flagged. It is the honest form: it says "I
+    could not resolve this offset", and the offset is right there in the name,
+    which is far easier to fix than a confident invention like `field1C`.
+
+    Measured against the 2026-08-09 battery: catches 20 of the fabricating
+    generations with ZERO false positives across the 39 that scored clean.
+    """
+    legal = _legal_members()
+    if not legal:
+        return []                    # no index: do not guess, do not reject
+    fields = _layout_fields()
+    bad = sorted({n for n in _RX_ARROW_MEMBER.findall(code or "")
+                  if n not in legal and not _RX_HONEST_UNK.match(n)})
+    out = []
+    for n in bad:
+        m = _RX_NAME_OFFSET.match(n)
+        hint = ""
+        if m:
+            try:
+                off = int(m.group(1) or m.group(2), 16)
+            except (ValueError, TypeError):
+                off = -1
+            exact = [f for f in fields if f[0] == off]
+            prior = [f for f in fields if f[0] <= off]
+            if exact:
+                hint = f"; offset 0x{off:02X} is `{exact[0][1]}`"
+            elif off >= 0 and prior:
+                b = prior[-1]
+                hint = (f"; 0x{off:02X} falls inside `{b[1]}` "
+                        f"(0x{b[0]:02X}, {b[2]}) -- use `unk{off:02X}` if you "
+                        f"cannot name it")
+        if not hint:
+            hint = ("; use a field from the ENTITY LAYOUT section, or "
+                    "`unkNN` naming the raw offset if you cannot resolve it")
+        out.append(f"`->{n}` exists in no struct in this tree{hint}")
+    return out
+
+
+
 def quality_gate(code: str, asm: str) -> list[str]:
     """Reject generated C that matches bytes but would fail review.
 
@@ -2314,6 +2400,11 @@ def quality_gate(code: str, asm: str) -> list[str]:
                       ("unsigned int", "u32")):
         if re.search(rf"\b{bad}\b", code):
             problems.append(f"uses `{bad}`; this codebase uses `{good}`")
+
+    # 4b. Members that exist in NO struct in the tree. Listed before the
+    #     stylistic checks because it is the only defect here that is a
+    #     GUARANTEED build failure rather than a review objection.
+    problems.extend(invented_members(code))
 
     # 4. ext.ILLEGAL where the asm shows which named variant applies.
     if "ext.ILLEGAL" in code:
