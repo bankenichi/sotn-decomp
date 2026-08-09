@@ -120,19 +120,30 @@ def fleet_alive() -> list[int]:
 
 
 def probe_http(url: str, model: str, timeout: float = 60.0,
-               stream: bool = False) -> dict:
+               stream: bool = False, max_tokens: int = 8,
+               extra: dict | None = None, prompt_chars: int = 0) -> dict:
     """One direct request. Reports what came back, not what we hoped for.
 
     Measures connect time and time-to-first-byte separately, because they
     answer different questions: a slow connect is the network, a fast connect
     with no first byte is the provider holding the request open.
     """
-    body = json.dumps({
+    # Inert padding, not a harder task. The point is to vary SIZE while
+    # holding the work constant, so any change in behaviour is attributable to
+    # the request size rather than to the model thinking harder.
+    ask = "Reply with the word ok."
+    if prompt_chars:
+        pad = ("\n/* padding line, ignore this entirely */" *
+               max(1, prompt_chars // 40))
+        ask = ask + pad[:max(0, prompt_chars - len(ask))]
+    payload = {
         "model": model,
-        "messages": [{"role": "user", "content": "Reply with the word ok."}],
-        "max_tokens": 8,
+        "messages": [{"role": "user", "content": ask}],
+        "max_tokens": max_tokens,
         "stream": stream,
-    }).encode()
+    }
+    payload.update(extra or {})
+    body = json.dumps(payload).encode()
     key = os.environ.get("MODEL_API_KEY") or os.environ.get("OPENCODE_API_KEY")
     headers = dict(CLIENT_HEADERS)
     if key:
@@ -158,6 +169,24 @@ def probe_http(url: str, model: str, timeout: float = 60.0,
             rec["body_head"] = redact(raw[:600])
             rec["verdict"] = ("ANSWERED" if raw.strip()
                               else "CONNECTED BUT EMPTY BODY")
+            # THE FINDING. These are reasoning models: they fill
+            # `reasoning_content` first and only then `content`. opencode
+            # streams `content` deltas, so while a model is thinking our
+            # stdout stays EMPTY -- which is indistinguishable from a dead
+            # request unless you look at the raw envelope, as here.
+            try:
+                j = json.loads(raw)
+                ch = (j.get("choices") or [{}])[0]
+                msg = ch.get("message") or ch.get("delta") or {}
+                rec["finish_reason"] = ch.get("finish_reason")
+                rec["content_chars"] = len(msg.get("content") or "")
+                rec["reasoning_chars"] = len(msg.get("reasoning_content") or "")
+                rec["usage"] = j.get("usage")
+                if rec["reasoning_chars"] and not rec["content_chars"]:
+                    rec["verdict"] = ("ALL OUTPUT WENT TO reasoning_content; "
+                                      "content is EMPTY")
+            except (ValueError, AttributeError, IndexError):
+                pass
     except urllib.error.HTTPError as e:
         raw = ""
         try:
@@ -176,7 +205,7 @@ def probe_http(url: str, model: str, timeout: float = 60.0,
     return rec
 
 
-def probe_cli(model: str, timeout: float = 90.0) -> dict:
+def probe_cli(model: str, timeout: float = 90.0, ask: str | None = None) -> dict:
     """The same question through `opencode run`, with its logs turned on.
 
     Comparing this against probe_http is the whole point: if the raw endpoint
@@ -192,7 +221,7 @@ def probe_cli(model: str, timeout: float = 90.0) -> dict:
     rec = {"model": model, "argv": " ".join(argv)}
     t0 = time.time()
     try:
-        p = subprocess.run(argv, input="Reply with the word ok.",
+        p = subprocess.run(argv, input=ask or "Reply with the word ok.",
                            capture_output=True, text=True, timeout=timeout,
                            cwd=str(REPO), env=env)
         rec.update(rc=p.returncode, total_s=round(time.time() - t0, 1),
@@ -302,6 +331,16 @@ def main() -> int:
     ap.add_argument("--http-only", action="store_true")
     ap.add_argument("--cli-only", action="store_true")
     ap.add_argument("--timeout", type=float, default=60.0)
+    ap.add_argument("--max-tokens", type=int, default=8)
+    ap.add_argument("--prompt-chars", type=int, default=0,
+                    help="pad the prompt with inert text to this size")
+    ap.add_argument("--real-asm",
+                    help="send a REAL decompilation ask built from this .s "
+                         "file. Inert padding does not make a model think; "
+                         "only a real task does, and thinking is what we "
+                         "suspect the timeout is actually killing.")
+    ap.add_argument("--extra", help="JSON merged into the request body, for "
+                                    "testing reasoning switches")
     ap.add_argument("--self-test", action="store_true")
     a = ap.parse_args()
     if a.self_test:
@@ -326,7 +365,10 @@ def main() -> int:
     for model in picks:
         for i in range(a.repeat):
             if not a.cli_only:
-                r = probe_http(url, model, timeout=a.timeout)
+                r = probe_http(url, model, timeout=a.timeout,
+                               max_tokens=a.max_tokens,
+                               prompt_chars=a.prompt_chars,
+                               extra=json.loads(a.extra) if a.extra else None)
                 r["kind"] = "http"; results.append(r)
                 print(f"\n[http {i+1}/{a.repeat}] {model}")
                 print(f"  status {r.get('status')}  "
@@ -337,9 +379,20 @@ def main() -> int:
                     print(f"  error {r['error']}")
                 if r.get("body_head"):
                     print(f"  body {r['body_head'][:300]}")
+                if r.get("reasoning_chars") is not None:
+                    print(f"  content {r['content_chars']} chars | "
+                          f"reasoning {r['reasoning_chars']} chars | "
+                          f"finish {r.get('finish_reason')} | "
+                          f"usage {r.get('usage')}")
                 print(f"  -> {r.get('verdict')}")
             if not a.http_only:
-                r = probe_cli(model, timeout=max(30.0, a.timeout))
+                ask = None
+                if a.real_asm:
+                    asm = Path(a.real_asm).read_text(errors="ignore")
+                    ask = ("Write ONE C function that compiles to this MIPS "
+                           "assembly under GCC 2.7.2. Output only C.\n\n"
+                           + asm[:12000])
+                r = probe_cli(model, timeout=max(30.0, a.timeout), ask=ask)
                 r["kind"] = "cli"; results.append(r)
                 print(f"\n[cli  {i+1}/{a.repeat}] {model}")
                 print(f"  rc {r.get('rc')}  total {r.get('total_s')}s  "

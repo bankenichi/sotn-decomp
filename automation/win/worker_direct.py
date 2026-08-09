@@ -702,7 +702,27 @@ ATTEMPT_BUDGET = float(os.environ.get("ATTEMPT_BUDGET", "90"))
 # The net effect is the opposite of a flat cap on both ends: dead calls die in
 # 45s instead of 90s, and a genuinely productive call may run WELL PAST 90s as
 # long as it keeps producing.
-NO_FIRST_BYTE_S = float(os.environ.get("NO_FIRST_BYTE_S", "45"))
+#
+# CORRECTION 2026-08-03, same day: 45 was WRONG and would have made things
+# worse. Probing the endpoint directly (automation/probe_provider.py) showed it
+# is healthy -- HTTP 200, first byte in ~12s, correct answer -- and revealed
+# why our stdout is empty:
+#
+#   "message": {"content": "ok",
+#               "reasoning_content": "We need to respond with exactly ..."}
+#   "completion_tokens_details": {"reasoning_tokens": 12}
+#
+# These are REASONING models. Output lands in `reasoning_content` first and in
+# `content` only when thinking finishes, and opencode streams `content` deltas.
+# So a model that is working hard looks byte-for-byte identical to a dead
+# request from our side: silence.
+#
+# "No first byte" therefore does NOT mean "dead", it means "still thinking",
+# and a 45s guillotine would kill the models doing the most work on the hardest
+# functions. Set high on purpose. The number is provisional until the reasoning
+# time on a REAL decompilation prompt is measured
+# (probe_provider.py --real-asm); treat any value here as a hypothesis.
+NO_FIRST_BYTE_S = float(os.environ.get("NO_FIRST_BYTE_S", "240"))
 STREAM_IDLE_S = float(os.environ.get("STREAM_IDLE_S", "45"))
 
 
