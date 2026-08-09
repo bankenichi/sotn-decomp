@@ -585,6 +585,8 @@ DIAGNOSTICS = [
      "classify escalated records: harness, C89, symbol, or real"),
     ("Member type check", "member_types.py", "--self-test",
      "does x->field exist in the struct x points at (type-aware)"),
+    ("Upstream harvest", "upstream_harvest.py", "",
+     "functions we are still missing that upstream has already decompiled"),
     ("Deferred triage", "deferred_triage.py", "",
      "which deferrals are stale: a tier that could not run, or a seed bug"),
     ("Deferred triage: requeue plan", "deferred_triage.py", "--requeue-plan",

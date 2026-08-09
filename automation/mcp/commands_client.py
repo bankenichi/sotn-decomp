@@ -195,6 +195,7 @@ ANALYSIS_SCRIPTS = {
     "escalation_triage.py",
     "deferred_triage.py",
     "member_types.py",
+    "upstream_harvest.py",
     "test_stub_locate.py",
     "test_permuter_seed.py",
     "permuter_stall.py",
