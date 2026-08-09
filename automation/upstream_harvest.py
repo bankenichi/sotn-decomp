@@ -194,10 +194,29 @@ def _extract(body_src: str, fn: str) -> str:
         import member_types as mt                            # type: ignore
     except ImportError:                                      # pragma: no cover
         return ""
-    for b in mt.function_bodies(mt.RX_COMMENT.sub(" ", body_src)):
-        head = b.split("{", 1)[0]
-        if re.search(r"\b" + re.escape(fn) + r"\s*\(", head):
-            return b
+    # MATCH THE DEFINITION, NOT THE NAME. Searching the head text for the
+    # function name also matches a forward declaration or an entry in a
+    # pointer table, and then returns whatever region the brace matcher
+    # happened to land on. src/boss/bo4/e_init.c only DECLARES
+    # EntityDamageDisplay (line 7) and lists it in a table (line 36); the
+    # loose version extracted 2,136 unrelated chars from it and reported three
+    # raw D_ symbols we do not actually use. That is a fabricated finding, and
+    # it is exactly the class of error this whole comparison exists to avoid.
+    text = mt.RX_COMMENT.sub(" ", body_src)
+    for m in mt.RX_FUNC_HEAD.finditer(text):
+        if m.group(1) != fn:
+            continue
+        i = text.index("{", m.start())
+        depth, j = 0, i
+        while j < len(text):
+            if text[j] == "{":
+                depth += 1
+            elif text[j] == "}":
+                depth -= 1
+                if depth == 0:
+                    break
+            j += 1
+        return text[m.start():j + 1]
     return ""
 
 
@@ -294,9 +313,38 @@ def compare_matched(limit: int = 0) -> int:
     print(f"  ext.ILLEGAL:       worse in {len(ill)}")
     print(f"  raw D_ symbols:    worse in {len(fake)}")
     tot_up = sum(len(r["upgradable"]) for r in rows)
+    # STATE THE ABSOLUTE NUMBERS. "same in 35" is compatible with both sides
+    # being zero, which would make the comparison vacuous while reading as a
+    # clean bill of health. A parity claim has to show what it is parity AT.
+    o_tot = sum(r["our_unk"] for r in rows)
+    u_tot = sum(r["up_unk"] for r in rows)
+    o_ill = sum(r["our_illegal"] for r in rows)
+    u_ill = sum(r["up_illegal"] for r in rows)
+    o_fk = sum(r["our_fake"] for r in rows)
+    u_fk = sum(r["up_fake"] for r in rows)
+    o_ln = sum(r["our_lines"] for r in rows)
+    u_ln = sum(r["up_lines"] for r in rows)
+    print(f"\n{'':22}{'ours':>8}{'upstream':>10}")
+    print(f"  {'unresolved unkNN':20}{o_tot:>8}{u_tot:>10}")
+    print(f"  {'ext.ILLEGAL':20}{o_ill:>8}{u_ill:>10}")
+    print(f"  {'raw D_ symbols':20}{o_fk:>8}{u_fk:>10}")
+    print(f"  {'body lines':20}{o_ln:>8}{u_ln:>10}")
+    if o_tot == 0 and u_tot == 0:
+        print("\n  NOTE: both sides are zero, so the unkNN comparison is "
+              "saturated,\n  not passed. It confirms neither side ships "
+              "unresolved offsets; it does\n  NOT show our naming matches "
+              "theirs.")
+
     print(f"\n{tot_up} field name(s) upstream resolved that we left as unkNN.")
     print("Each is a rename with the answer already known -- no model, no "
           "build risk\nbeyond the usual verify.\n")
+
+    if fake:
+        print("\nfunctions where WE carry a raw D_ symbol and upstream does "
+              "not:")
+        for r in fake:
+            print(f"  {r['fn'][:32]:34}ours {r['our_fake']} vs "
+                  f"theirs {r['up_fake']}   {r['path']}")
 
     for r in sorted(rows, key=lambda x: -(x["our_unk"] - x["up_unk"]))[:20]:
         d = r["our_unk"] - r["up_unk"]
@@ -350,6 +398,12 @@ def self_test() -> int:
     ck("unk1C" in got and "posX" not in got,
        f"only the requested function comes back ({got[:40]!r})")
     ck(_extract(src2, "absent") == "", "a missing function yields nothing")
+    # A declaration and a pointer-table entry are not definitions.
+    decl_only = ("void target(Entity*);\n"
+                 "EInit D_us_80180434 = {1, 2, 3};\n"
+                 "void* tbl[] = { target, other };\n")
+    ck(_extract(decl_only, "target") == "",
+       f"a declaration alone yields nothing ({_extract(decl_only, 'target')[:40]!r})")
 
     print("\nthe comparison metric is the one our own metrics cannot see")
     # Both sides match the same asm, so semantics agree and only naming can
