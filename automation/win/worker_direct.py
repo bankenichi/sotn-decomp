@@ -1834,6 +1834,9 @@ def llama_echo(prompt: str, temperature: float = 0.2,
                                  method="POST")
 
     t0 = time.time()
+    # Mirrors the CLI path's ttfb: the first byte of ANY kind, reasoning
+    # included, because on these models reasoning is what arrives first.
+    first_byte: list[float | None] = [None]
     content: list[str] = []
     reason_buf: list[str] = []
     n_content = n_reason = 0
@@ -1917,6 +1920,8 @@ def llama_echo(prompt: str, temperature: float = 0.2,
 
             think = d.get("reasoning_content") or d.get("reasoning") or ""
             if think:
+                if first_byte[0] is None:
+                    first_byte[0] = time.time() - t0
                 if not in_reasoning:
                     sys.stdout.write("\n[thinking] ")
                     in_reasoning = True
@@ -1936,6 +1941,8 @@ def llama_echo(prompt: str, temperature: float = 0.2,
 
             piece = d.get("content") or ""
             if piece:
+                if first_byte[0] is None:
+                    first_byte[0] = time.time() - t0
                 if in_reasoning:
                     sys.stdout.write("\n[output] ")
                     in_reasoning = False
@@ -1973,6 +1980,23 @@ def llama_echo(prompt: str, temperature: float = 0.2,
         print(f"\n  !! ABORTED: {aborted}", flush=True)
     print(f"  --- done in {el:.0f}s: {n_content} content tokens, "
           f"{n_reason} reasoning tokens, {len(text)} chars ---", flush=True)
+    # TELEMETRY ON THIS PATH TOO. It was only wired into the CLI branch, so the
+    # first zen run produced 0 records in calls.jsonl and every fleet metric
+    # had to be recovered by grepping worker logs. An instrumented backend that
+    # is not instrumented on the path you actually use is not instrumented.
+    emit_call({
+        "model": _active_model(), "backend": MODEL_BACKEND,
+        "prompt_chars": len(prompt), "total_s": round(el, 1),
+        "ttfb_s": first_byte[0], "stream_chars": len(text), "rc": 0,
+        "content_tokens": n_content, "reasoning_tokens": n_reason,
+        "reason_cap": REASON_CAP,
+        # Which lever actually produced the answer. Without this the fact that
+        # 10 of 10 answers came from the force-code pass rather than from the
+        # model's own content is invisible.
+        "forced": bool(n_content == 0 and text.strip()),
+        "outcome": ("produced" if text.strip() else
+                    "empty_after_force" if n_reason else "empty"),
+        "stderr_head": aborted[:200] if aborted else ""})
     if n_content == 0:
         print("  !! model produced no content tokens (only reasoning). "
               "It may have run out of budget while thinking.", flush=True)
