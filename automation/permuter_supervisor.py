@@ -543,7 +543,7 @@ def classify_build_failure(detail: str) -> str:
 
 
 def land_match(work: Path, fn: str, build: str = "us",
-               lock=None) -> tuple[bool, str]:
+               lock=None, body: str = "") -> tuple[bool, str]:
     """Apply a score-0 seed to src/, BUILD it, and revert unless it is green.
 
     A permuter zero is necessary but NOT sufficient. func_us_801BC3E0 scored 0
@@ -567,12 +567,18 @@ def land_match(work: Path, fn: str, build: str = "us",
     # printed "reverted: KeyError: 'overlay'" while func_us_801B1E5C was still
     # applied to src/boss/bo0/2D26C.c, so the tree looked clean in the log and
     # was not, and the next plan called the function a phantom.
-    out0 = work / "output-0-1" / "source.c"
-    if not out0.is_file():
-        return False, f"no output-0-1/source.c in {work.name}"
-    body = extract_function(out0.read_text(errors="ignore"), fn)
+    # `body` lets a caller supply C from somewhere other than a permuter run
+    # -- an upstream transplant, say -- WITHOUT duplicating the apply, build,
+    # verify and revert sequence below. That sequence is the only thing in this
+    # repo that has been hardened against a mid-build crash, and a second copy
+    # of it is a second thing to get wrong. See automation/transplant.py.
     if not body:
-        return False, f"could not extract {fn} from the score-0 source"
+        out0 = work / "output-0-1" / "source.c"
+        if not out0.is_file():
+            return False, f"no output-0-1/source.c in {work.name}"
+        body = extract_function(out0.read_text(errors="ignore"), fn)
+        if not body:
+            return False, f"could not extract {fn} from the score-0 source"
 
     found = find_stub(fn)
     if not found:
