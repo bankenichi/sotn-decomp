@@ -70,6 +70,52 @@ def upstream_body(fn: str) -> tuple[str, str]:
     return uh._extract(whole, base), path
 
 
+def local_twin(base: str, exclude: str = "") -> tuple[str, str]:
+    """(body, path) for a definition of `base` ALREADY IN OUR TREE.
+
+    PREFERRED OVER UPSTREAM, and the reason this whole mechanism works.
+
+    The queue's unmatched record for the inverted castle is
+    `func_us_801CC750_from_no0`, an INCLUDE_ASM stub in
+    src/st/rno0/e_background_pillars.c. But `func_us_801CC750` itself is
+    already decompiled HERE, in src/st/no0/4C750.c, because the normal and
+    inverted stages share an implementation. That copy compiles against this
+    tree's headers and already matches, which upstream's cannot be assumed to
+    do.
+
+    So the first question is never "what does upstream have"; it is "do we
+    already have this function under another name".
+    """
+    import subprocess
+    hits = subprocess.run(
+        ["git", "grep", "-lE", r"^[A-Za-z_][A-Za-z0-9_ \t*]*\b"
+         + re.escape(base) + r"\s*\(", "--", "src/"],
+        capture_output=True, text=True, timeout=120,
+        cwd=str(REPO)).stdout.split()
+    uh = _harv()
+    for h in hits:
+        if exclude and h.endswith(exclude):
+            continue
+        body = uh._extract((REPO / h).read_text(errors="ignore"), base)
+        if body:
+            return body, h
+    return "", ""
+
+
+def rename_function(body: str, old: str, new: str) -> str:
+    """Rename the DEFINITION and any self-recursion, nothing else.
+
+    The twin is the same code under a different symbol; only the name in the
+    signature has to change. Renaming every occurrence would also rewrite an
+    unrelated call that happens to contain the old name as a substring, so the
+    match is anchored on a word boundary and applied to the whole body, which
+    for these functions is the definition plus any recursive call.
+    """
+    if old == new:
+        return body
+    return re.sub(r"\b" + re.escape(old) + r"\b", new, body)
+
+
 def preflight(fn: str) -> tuple[bool, str, str]:
     """Everything checkable before the tree is touched.
 
@@ -83,21 +129,35 @@ def preflight(fn: str) -> tuple[bool, str, str]:
     if dirty:
         return False, "", f"src/ is not clean: {dirty}"
 
-    found = ps.find_stub(base)
+    # LOOK FOR THE STUB UNDER THE QUEUE'S OWN NAME, suffix and all. The first
+    # version stripped `_from_no0` for both lookups and then reported "no
+    # INCLUDE_ASM stub for func_us_801CC750" -- true, and irrelevant: the stub
+    # we are replacing is `func_us_801CC750_from_no0`.
+    found = ps.find_stub(fn)
     if not found:
-        return False, "", (f"no INCLUDE_ASM stub for {base} in src/; it is "
+        return False, "", (f"no INCLUDE_ASM stub for {fn} in src/; it is "
                            f"either already applied or not ours to write")
+    stub_path = str(found[0].relative_to(REPO)) if hasattr(
+        found[0], "relative_to") else str(found[0])
 
-    body, path = upstream_body(base)
+    # OUR OWN TREE FIRST. A twin already compiling here beats upstream's C,
+    # which is written against upstream's headers.
+    body, path = local_twin(base, exclude=Path(stub_path).name)
+    src_kind = "local twin"
     if not body:
-        return False, "", f"upstream has no extractable definition for {base}"
+        body, path = upstream_body(base)
+        src_kind = "upstream"
+    if not body:
+        return False, "", (f"neither this tree nor upstream has an "
+                           f"extractable definition of {base}")
+    body = rename_function(body, base, fn)
 
     # The transplant must define the function we are replacing, not merely
     # mention it. _extract already enforces this, but a wrong body here would
     # be applied to the tree, so it is worth asserting twice.
     head = body.split("{", 1)[0]
-    if not re.search(r"\b" + re.escape(base) + r"\s*\(", head):
-        return False, "", f"extracted body does not define {base}"
+    if not re.search(r"\b" + re.escape(fn) + r"\s*\(", head):
+        return False, "", f"extracted body does not define {fn}"
 
     # Type-check the transplant the same way generated C is checked. Upstream
     # writes against upstream's headers; a member that does not exist here
@@ -110,7 +170,9 @@ def preflight(fn: str) -> tuple[bool, str, str]:
     if bad:
         return False, body, ("upstream's C uses members this tree does not "
                              "have: " + "; ".join(bad[:3]))
-    return True, body, f"ready: {len(body)} chars from {path}"
+    return True, body, (f"ready: {len(body)} chars from the {src_kind} "
+                        f"{path}\n  stub: {stub_path}"
+                        + (f"\n  renamed {base} -> {fn}" if base != fn else ""))
 
 
 def run(fn: str, apply: bool) -> int:
@@ -127,9 +189,8 @@ def run(fn: str, apply: bool) -> int:
         return 0
 
     ps = _sup()
-    base = re.sub(r"_from_\w+$", "", fn)
     print("\n  applying under the fleet's own build lock...")
-    good, why = ps.land_match(Path("."), base, body=body)
+    good, why = ps.land_match(Path("."), fn, body=body)
     print(f"  {'MATCHED' if good else 'not a match'}: {why}")
     if good:
         print("\n  The overlay rebuilt and all 81 SHA-1s verified. Report it "
@@ -203,6 +264,32 @@ def self_test() -> int:
        "a dirty tree is refused before anything else")
     ck(body_fn.index("require_clean_src()") < body_fn.index("find_stub"),
        "and that check comes first")
+
+    print("\nthe stub is looked up under the QUEUE's name, suffix and all")
+    # The unmatched record is func_us_801CC750_from_no0; the stub in
+    # e_background_pillars.c carries that exact name. Stripping the suffix for
+    # this lookup reported "no INCLUDE_ASM stub for func_us_801CC750", which
+    # is true and useless.
+    # Scoped to preflight, not the whole file: the assertion string itself
+    # contains the pattern it is looking for, so a whole-file search matches
+    # the test rather than the code. FOURTH time today. The rule is simple --
+    # a test that greps source text must first cut out its own text.
+    ck("find_stub(fn)" in body_fn and "find_stub(base)" not in body_fn,
+       "find_stub gets the full name")
+
+    print("\nour own tree is preferred over upstream")
+    ck(body_fn.index("local_twin(") < body_fn.index("upstream_body("),
+       "local_twin is tried first")
+
+    print("\nthe twin is renamed to the symbol being replaced")
+    ck(rename_function("void a(Entity* e) { a(e); }", "a", "a_from_no0")
+       == "void a_from_no0(Entity* e) { a_from_no0(e); }",
+       "definition and self-recursion are renamed")
+    ck(rename_function("void ab(void) { abc(); }", "ab", "ab_x")
+       == "void ab_x(void) { abc(); }",
+       "a name that merely CONTAINS the old one is left alone")
+    ck(rename_function("void a(void){}", "a", "a") == "void a(void){}",
+       "renaming to the same name is a no-op")
 
     print("\nthe transplant is type-checked like generated C is")
     ck("member_types" in body_fn,
