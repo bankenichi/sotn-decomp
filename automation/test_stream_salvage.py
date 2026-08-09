@@ -120,9 +120,12 @@ def main() -> int:
     # against the raw text were measuring the explanation, not the code.
     src = "\n".join(l for l in src.splitlines()
                     if not l.lstrip().startswith("#"))
-    to = src[src.index("except subprocess.TimeoutExpired"):]
+    # The salvage used to live in an `except subprocess.TimeoutExpired`. It now
+    # hangs off the adaptive-wait verdict, because a deadline that varies with
+    # what has been received cannot be expressed as proc.wait(timeout=...).
+    to = src[src.index("if kill_reason:"):]
     check("complete_function" in to,
-          "the TimeoutExpired handler consults the gate")
+          "the kill path consults the gate")
     check(to.index("proc.kill()") < to.index("complete_function"),
           "it stops the child before reading the buffer")
     check("done.wait" in to,
@@ -131,6 +134,22 @@ def main() -> int:
           "an incomplete stream still raises, so the attempt is spent")
     check(to.index("complete_function") < to.rindex("raise"),
           "salvage is attempted BEFORE giving up, not after")
+
+    print("\nthe deadline is adaptive, not a flat cap")
+    wait = src[src.index("def _adaptive_wait"):src.index("kill_reason =")]
+    check("ttfb[0] is None" in wait,
+          "silence and slowness are handled as different states")
+    check("NO_FIRST_BYTE_S" in wait and "STREAM_IDLE_S" in wait,
+          "each state has its own deadline")
+    check("last_byte[0]" in wait,
+          "idle time is measured from the LAST BYTE, not from the start, so a "
+          "model that keeps producing is never cut off for taking long")
+    check("hard_cap" in wait,
+          "and an absolute ceiling still exists, so a chatty model cannot hold "
+          "a worker forever")
+    check(wd.NO_FIRST_BYTE_S >= 120,
+          f"the no-first-byte deadline is generous ({wd.NO_FIRST_BYTE_S}s): on "
+          f"a reasoning model no first byte means STILL THINKING, not dead")
 
     print("\nthe cap that made this common is still the measured one")
     check(wd.ATTEMPT_BUDGET <= 120,

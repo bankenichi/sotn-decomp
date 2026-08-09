@@ -899,7 +899,7 @@ FLEET_HOLD = "automation/logs/FLEET_HOLD"
 # reported. Keeping the backend IN the name is what makes a mixed fleet legible:
 # "worker-oc-2.log" says which model produced a given line without cross-
 # referencing anything.
-_BACKEND_TAG = {"http": "llama", "cli": "oc"}
+_BACKEND_TAG = {"http": "llama", "cli": "oc", "zen": "zen"}
 
 
 def opencode_preflight(timeout: int = 90) -> dict:
@@ -953,9 +953,15 @@ def fleet_start(workers: int = 4, max_functions: int = 0,
     with --parallel >= the llama worker count or generation serialises too.
     """
     backend = (backend or "http").strip().lower()
-    if backend not in ("http", "cli", "mixed"):
-        raise Rejected("backend must be http, cli or mixed")
+    if backend not in ("http", "cli", "mixed", "zen"):
+        raise Rejected("backend must be http, cli, zen or mixed")
 
+    # `zen` reuses the HTTP worker path, pointed at OpenCode Zen instead of
+    # localhost. It exists because `opencode run` relays only `content` and
+    # these are reasoning models: while one thinks, our stdout is empty and
+    # indistinguishable from a dead call. Going direct captures
+    # reasoning_content too, and drops opencode's ~14s per-call git snapshot.
+    n_zen = int(workers) if backend == "zen" else 0
     n_http = int(workers) if backend in ("http", "mixed") else 0
     n_cli = (int(workers) if backend == "cli"
              else int(cli_workers) if backend == "mixed" else 0)
@@ -1023,11 +1029,19 @@ def fleet_start(workers: int = 4, max_functions: int = 0,
     # workers across N models and compare hit rates from one fleet. A single
     # value assigns that model to every cli worker, unchanged.
     models = [m.strip() for m in (opencode_model or "").split(",") if m.strip()]
-    for be, count in (("http", n_http), ("cli", n_cli)):
+    for be, count in (("http", n_http), ("cli", n_cli), ("zen", n_zen)):
         if not count:
             continue
         tag = _BACKEND_TAG[be]
-        if be == "cli" and models:
+        if be == "zen" and models:
+            # Same per-worker model rotation as cli. OPENCODE_MODEL is reused
+            # as the selector; worker_direct strips the `opencode/` prefix,
+            # since that prefix is a CLI concept and Zen wants a bare id.
+            arr = " ".join(shlex.quote(m) for m in models)
+            model_setup = f"_m=({arr}); "
+            pick = '_sel=${_m[$(((i-1) % ${#_m[@]}))]}; '
+            env = "MODEL_BACKEND=zen OPENCODE_MODEL=$_sel"
+        elif be == "cli" and models:
             # Bash array indexed by worker number so each gets its own model.
             arr = " ".join(shlex.quote(m) for m in models)
             model_setup = f"_m=({arr}); "

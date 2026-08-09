@@ -66,6 +66,35 @@ _DEFAULT_REPO = os.path.dirname(os.path.dirname(
 WIN_REPO = os.environ.get("SOTN_WIN_REPO", _DEFAULT_REPO)
 DISTRO = os.environ.get("SOTN_WSL_DISTRO", "Ubuntu-24.04")
 LLAMA_URL = os.environ.get("LLAMA_BASE_URL", "http://localhost:8081/v1")
+
+# MODEL_BACKEND=zen: talk to OpenCode Zen over HTTP directly, instead of
+# shelling out to `opencode run`.
+#
+# WHY THIS EXISTS, measured 2026-08-03 with automation/probe_provider.py:
+#
+#   * The endpoint is HEALTHY. HTTP 200, first byte in ~12s, correct answer,
+#     unchanged at an 8000-char prompt. Nothing is refusing us.
+#   * Zen serves REASONING models. The reply carries `reasoning_content`
+#     alongside `content`, and `completion_tokens_details.reasoning_tokens`
+#     counts the thinking.
+#   * `opencode run` relays only `content` to stdout. So while a model thinks
+#     -- which on a hard function is most of the call -- our stdout is EMPTY,
+#     which is byte-for-byte what a dead request looks like. That is the
+#     signature behind 878 of 946 dead calls.
+#   * opencode also spends ~14s per invocation snapshotting this repo through
+#     git, and FAILS at it ("could not open directory 'tools/", exitCode 128),
+#     paid on every single call.
+#
+# Going direct fixes all three: the reasoning stream is captured by the same
+# code that already handles it for llama (see the reasoning_content branch in
+# the streaming reader), time-to-first-byte becomes real rather than an
+# artefact of what opencode chooses to forward, and the per-call snapshot
+# overhead disappears.
+ZEN_URL = os.environ.get("ZEN_BASE_URL", "https://opencode.ai/zen/v1")
+# Headers opencode itself sends. ZEN-FREE-MODELS.md records that Zen
+# identifies clients this way; without them we would be a different, anonymous
+# client and would not be measuring the service the fleet actually uses.
+ZEN_HEADERS = {"User-Agent": "opencode/1.18.12", "x-opencode-client": "cli"}
 # Optional bearer token. Local llama-server needs none, but any hosted
 # OpenAI-compatible endpoint (OpenCode Zen, NVIDIA build.nvidia.com, OpenRouter)
 # will reject unauthenticated requests. Set MODEL_API_KEY to switch providers
@@ -545,8 +574,23 @@ def _opencode_run_once(prompt: str, timeout: float | None = None) -> str:
     return out
 
 
+def _base_url() -> str:
+    """The endpoint for the active backend. One place, so the three call sites
+    cannot drift apart."""
+    return (ZEN_URL if MODEL_BACKEND == "zen" else LLAMA_URL).rstrip("/")
+
+
+def _active_model() -> str:
+    """Zen model ids are bare here; the `opencode/` prefix is a CLI concept."""
+    if MODEL_BACKEND != "zen":
+        return LLAMA_MODEL
+    return (OPENCODE_MODEL or "").split("/")[-1] or "big-pickle"
+
+
 def _api_headers() -> dict:
     h = {"Content-Type": "application/json"}
+    if MODEL_BACKEND == "zen":
+        h.update(ZEN_HEADERS)
     if MODEL_API_KEY:
         h["Authorization"] = f"Bearer {MODEL_API_KEY}"
     return h
@@ -1096,7 +1140,7 @@ def save_candidate(rec: dict, code: str, attempt: int, detail: str,
     try:
         path = candidate_path(rec)
         os.makedirs(os.path.dirname(path), exist_ok=True)
-        model = OPENCODE_MODEL if MODEL_BACKEND == "cli" else LLAMA_MODEL
+        model = OPENCODE_MODEL if MODEL_BACKEND == "cli" else _active_model()
         payload, kind = code, "FUNCTION BODY ONLY"
         if ctx:
             try:
@@ -1597,7 +1641,7 @@ def _force_code(orig_prompt: str, analysis: str,
         # watch; it has had one since Popen streaming landed.)
         return _opencode_run(f"{sys_msg}\n\n{user}")
     body = json.dumps({
-        "model": LLAMA_MODEL,
+        "model": _active_model(),
         "messages": [{"role": "system", "content": sys_msg},
                      {"role": "user", "content": user}],
         "temperature": 0.1, "stream": True,
@@ -1609,7 +1653,7 @@ def _force_code(orig_prompt: str, analysis: str,
         "chat_template_kwargs": {"enable_thinking": False},
         "reasoning_budget": 0,
     }).encode()
-    req = urllib.request.Request(LLAMA_URL.rstrip("/") + "/chat/completions",
+    req = urllib.request.Request(_base_url() + "/chat/completions",
                                  data=body,
                                  headers=_api_headers(),
                                  method="POST")
@@ -1700,12 +1744,12 @@ def llama_echo(prompt: str, temperature: float = 0.2,
     if MODEL_BACKEND == "cli":
         return _opencode_run(prompt, timeout=budget_left)
     body = json.dumps({
-        "model": LLAMA_MODEL,
+        "model": _active_model(),
         "messages": [{"role": "system", "content": SYSTEM},
                      {"role": "user", "content": prompt}],
         "temperature": temperature, "stream": True,
     }).encode()
-    req = urllib.request.Request(LLAMA_URL.rstrip("/") + "/chat/completions",
+    req = urllib.request.Request(_base_url() + "/chat/completions",
                                  data=body,
                                  headers=_api_headers(),
                                  method="POST")
@@ -1849,12 +1893,12 @@ def llama(prompt: str, temperature: float = 0.2, status: "Status|None" = None) -
     arrive, and proves the model is alive.
     """
     body = json.dumps({
-        "model": LLAMA_MODEL,
+        "model": _active_model(),
         "messages": [{"role": "system", "content": SYSTEM},
                      {"role": "user", "content": prompt}],
         "temperature": temperature, "stream": True,
     }).encode()
-    req = urllib.request.Request(LLAMA_URL.rstrip("/") + "/chat/completions",
+    req = urllib.request.Request(_base_url() + "/chat/completions",
                                  data=body,
                                  headers=_api_headers(),
                                  method="POST")
