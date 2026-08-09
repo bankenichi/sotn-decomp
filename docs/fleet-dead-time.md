@@ -35,7 +35,7 @@ output.
 | Slow warm-up / session init | success rate of the first call in each log | 12% vs 10% overall. **No.** |
 | The model rambles past the cap | how many timeouts held a complete answer | 2 of 726. **No.** |
 | Output arrives but we mishandle it | how many timeouts held *any* text | 0 partial, 2 complete. **No.** |
-| A session breaks and stays broken | mean consecutive-failure run vs chance | **Inconclusive** — flips on whether aborted calls count (9.2 vs 9.2, or 12.8 vs 9.9). Longest run is 81, worth a direct look. |
+| A session breaks and stays broken | mean consecutive-failure run vs chance | **Bursty on both readings**: 12.8 vs 9.9 expected counting everything, 12.4 vs 9.2 counting only real model answers. Not an outlier artefact — dropping the single longest run of 81 still leaves 11.9. **This is the live hypothesis.** |
 
 ### Per-model shape (this matters)
 
@@ -126,7 +126,8 @@ neither the queue nor `src/`, so it can run while the fleet is stopped.
 |---|---|---|
 | 2.1 | Same 2k prompt, 20 times, 1 worker | Base failure rate with no other variable |
 | 2.2 | Same prompt padded to 2/4/8/16k, 10 each | Is size causal, or a proxy? |
-| 2.3 | Fixed prompt, concurrency 1 / 2 / 4 / 8 | Is it contention or quota? |
+| 2.3 | Fixed prompt, concurrency 1 / 2 / 4 / 8 | Is it contention or quota? **Highest priority** — burstiness points here. |
+| 2.5 | 60 calls back to back, 1 worker, record run lengths | Does the burst reproduce in isolation? If it does with concurrency 1, it is provider-side, not our contention. |
 | 2.4 | Fixed prompt, one model at a time | Is `ling`'s empty-vs-timeout split a provider difference? |
 
 2.2 is the experiment ChatGPT proposed and the one that settles the prompt-size
@@ -174,3 +175,9 @@ Recorded because they were each asserted confidently and were each wrong.
   1042. Salvage is kept because it is free, not because it is a lever.
 - **"Remarkably flat, so prompt size is not the mechanism"** (ChatGPT, from
   the same 1042 calls). Flat because two opposing slopes cancel.
+- **"Failures are independent, not bursty"** (my own throwaway script, before
+  the tool existed). It dropped aborted calls from the sequence entirely
+  instead of ending a run at them, which shortened every run it measured.
+  `fleet_forensics.py --streaks` says bursty on both of its readings. The
+  lesson is the reason the throwaway became a tool: an ad-hoc count that
+  nobody can re-run is not evidence.
