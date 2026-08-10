@@ -297,6 +297,51 @@ def main() -> int:
         _victim.unlink(missing_ok=True)
         _jf.unlink(missing_ok=True)
 
+    # --- path containment is a PARENT check, not a prefix check -------------
+    #
+    # `_inrepo` guards the paths handed to git. It used to test
+    # str(resolved).startswith(str(REPO)), so with REPO=/repo the sibling
+    # /repo-evil passed: "/repo-evil/x".startswith("/repo") is True. The
+    # correct parent-based test already existed in `_resolve` in the same
+    # file; the two had drifted. Reported by an external audit 2026-08-09 and
+    # confirmed against the code before fixing.
+    print("\nin-repo path containment cannot be defeated by a name prefix")
+    _root = _cc_mod.REPO.resolve()
+    _evil = f"../{_root.name}-evil/x"
+    _rejected = None
+    try:
+        _cc_mod._inrepo(_evil, must_exist=False)
+    except Exception as e:                                  # Rejected
+        _rejected = str(e)
+    check(_rejected is not None,
+          f"a sibling dir whose name merely EXTENDS the repo name is refused "
+          f"({_evil})")
+    _abs = None
+    try:
+        _cc_mod._inrepo("/etc/passwd", must_exist=False)
+    except Exception as e:                                  # Rejected
+        _abs = str(e)
+    check(_abs is not None,
+          "an absolute path outside the repo is refused, even though "
+          "pathlib's `/` lets it replace the base entirely")
+    _dotgit = None
+    try:
+        _cc_mod._inrepo(".git/config", must_exist=False)
+    except Exception as e:                                  # Rejected
+        _dotgit = str(e)
+    check(_dotgit is not None,
+          "and .git is refused: this layer has no business handing git a path "
+          "inside its own object store")
+    _ok = None
+    try:
+        _ok = _cc_mod._inrepo("automation", must_be_dir=True)
+    except Exception as e:                                  # noqa: BLE001
+        _ok = None
+        check(False, f"a genuine in-repo path still works ({e})")
+    if _ok:
+        check(_ok.endswith("automation"),
+              "a genuine in-repo path still resolves normally")
+
     print()
     if FAILS:
         print(f"{len(FAILS)} FAILED:")

@@ -61,9 +61,28 @@ def _ov(overlay: str) -> str:
 
 
 def _inrepo(p: str, must_be_dir: bool = False, must_exist: bool = True) -> str:
+    """An in-repo path, or Rejected.
+
+    CONTAINMENT IS A PARENT CHECK, NOT A PREFIX CHECK. This used to test
+    `str(rp).startswith(str(REPO.resolve()))`, which is a string comparison
+    wearing a path's clothes: with REPO=/repo, the path `../repo-evil/x`
+    resolves to /repo-evil/x, and "/repo-evil/x".startswith("/repo") is True.
+    So a sibling directory whose name merely begins with the repo's name was
+    accepted, and _inrepo guards the arguments handed to git.
+
+    The correct test already existed a few hundred lines down in `_resolve`;
+    the two had simply drifted. Found by an external audit of the fork,
+    2026-08-09. Same rule now, and `.git` is refused as well, because handing
+    git a path inside its own object store is never a legitimate request from
+    this layer.
+    """
     rp = (REPO / p).resolve()
-    if not str(rp).startswith(str(REPO.resolve())):
+    root = REPO.resolve()
+    if rp != root and root not in rp.parents:
         raise Rejected("path must resolve inside the repo")
+    git_dir = root / ".git"
+    if rp == git_dir or git_dir in rp.parents:
+        raise Rejected("path is inside .git")
     if must_exist and not rp.exists():
         raise Rejected(f"path does not exist: {p}")
     if must_be_dir and rp.exists() and not rp.is_dir():
