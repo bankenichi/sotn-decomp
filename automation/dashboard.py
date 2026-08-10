@@ -1088,11 +1088,16 @@ button.danger:hover{border-color:var(--bad);color:var(--bad)}
    entire rest of the window -- which is what a 1058-call table wants. */
 #pane_diag{flex:1 1 auto;min-height:0;overflow:hidden;padding:12px 16px;
            display:flex;flex-direction:column}
-.diagsplit{display:grid;grid-template-columns:minmax(210px,15%) 1fr;gap:12px;
+.diagsplit{display:grid;grid-template-columns:minmax(360px,27%) 1fr;gap:12px;
            flex:1 1 auto;min-height:0;margin-top:10px}
-.diaggrid{display:flex;flex-direction:column;gap:6px;min-height:0;
-          overflow:auto;padding-right:4px}
-.diagbtn{text-align:left;padding:7px 9px;line-height:1.3;flex:0 0 auto}
+/* TWO columns of tools. One column made the list twice as tall as it needed
+   to be, so it always scrolled; two halves the scrolling and still leaves
+   the report roughly three quarters of the window. auto-fill rather than a
+   hard 2, so a narrow window drops to one column instead of clipping. */
+.diaggrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(168px,1fr));
+          gap:6px;align-content:start;min-height:0;overflow:auto;
+          padding-right:4px}
+.diagbtn{text-align:left;padding:7px 9px;line-height:1.3}
 .diagbtn b{display:block;color:var(--fg)}
 .diagbtn span{display:block;color:var(--dim);font-size:10px;
               line-height:1.25;margin-top:2px}
@@ -1659,8 +1664,12 @@ def self_test() -> int:
 
     ck(".diagsplit{" in PAGE and "<div class=diagsplit>" in PAGE,
        "the tab is a split: list beside output, not stacked")
-    ck("grid-template-columns:minmax(210px,15%) 1fr" in _rule(".diagsplit"),
-       "the list takes a narrow fixed column and the output takes the rest")
+    _sp = _rule(".diagsplit")
+    ck(_re.search(r"grid-template-columns:minmax\(\d+px,\d+%\) 1fr", _sp),
+       "the list takes a bounded column and the output takes the rest")
+    ck("repeat(auto-fill" in _rule(".diaggrid"),
+       "the tool list is itself multi-column, so 36 entries do not need "
+       "twice the scrolling they should")
     _out = _rule("#diagout")
     ck(not _re.search(r"max-width\s*:", _out),
        "the output has NO max-width, so a wide window is not left empty")

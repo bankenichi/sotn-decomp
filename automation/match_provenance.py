@@ -66,6 +66,7 @@ import inspect
 import json
 import os
 import re
+import concurrent.futures as cf
 import subprocess
 import sys
 from collections import Counter, defaultdict
@@ -297,14 +298,85 @@ def load_queue(path: Path | None = None) -> list[dict]:
     return out
 
 
-def analyse(records: list[dict], use_git: bool = True) -> list[dict]:
+_GIT_CACHE = REPO / "automation" / "logs" / ".provenance-git-cache.json"
+
+
+def _cache_load(head: str) -> dict:
+    """Pickaxe results from a previous run, valid only for the same HEAD.
+
+    Keyed on HEAD because the answer to "which commit introduced this body"
+    cannot change while HEAD does not, and the whole cost of this report is
+    re-deriving answers that were already correct yesterday.
+    """
+    try:
+        blob = json.loads(_GIT_CACHE.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return blob.get("entries", {}) if blob.get("head") == head else {}
+
+
+def _cache_save(head: str, entries: dict) -> None:
+    try:
+        _GIT_CACHE.parent.mkdir(parents=True, exist_ok=True)
+        _GIT_CACHE.write_text(json.dumps({"head": head, "entries": entries}),
+                              encoding="utf-8")
+    except OSError:
+        pass
+
+
+def _head() -> str:
+    try:
+        r = subprocess.run(["git", "rev-parse", "HEAD"], cwd=str(REPO),
+                           capture_output=True, text=True, timeout=20)
+        return (r.stdout or "").strip()
+    except (OSError, subprocess.SubprocessError):
+        return ""
+
+
+def analyse(records: list[dict], use_git: bool = True,
+            jobs: int = 8, progress: bool = False) -> list[dict]:
+    """Attribute every matched record, optionally consulting git.
+
+    THE GIT LAYER WAS THE WHOLE RUNTIME. One `git log -S` pickaxe per matched
+    record, measured 2026-08-09 at 6.6s each against `-- src`, 198 records:
+    about 22 minutes, sequential, with no progress output, which is
+    indistinguishable from a hang. Reported as "it's taking a long time, I'm
+    not sure it's working".
+
+    Three changes, in order of how much they bought:
+      - run them concurrently. subprocess releases the GIL, so this is
+        threads, not processes, and the work is entirely in git.
+      - cache by HEAD. A second run over an unchanged tree does no git at all.
+      - print progress, so a slow run still looks alive.
+    """
+    todo = [r for r in records if r.get("status") == "matched"]
+    subj_by_fn: dict[str, tuple[str, str]] = {}
+    if use_git and todo:
+        head = _head()
+        cached = _cache_load(head)
+        names = sorted({r.get("function", "") for r in todo} - {""})
+        miss = [n for n in names if n not in cached]
+        subj_by_fn = {n: tuple(cached[n]) for n in names if n in cached}
+        if miss:
+            done = 0
+            with cf.ThreadPoolExecutor(max_workers=max(1, jobs)) as ex:
+                futs = {ex.submit(git_introduced, n): n for n in miss}
+                for f in cf.as_completed(futs):
+                    n = futs[f]
+                    try:
+                        subj_by_fn[n] = f.result()
+                    except Exception:                      # noqa: BLE001
+                        subj_by_fn[n] = ("", "")
+                    done += 1
+                    if progress and done % 10 == 0:
+                        print(f"  ... git {done}/{len(miss)}",
+                              file=sys.stderr, flush=True)
+            if head:
+                _cache_save(head, {**cached,
+                                   **{k: list(v) for k, v in subj_by_fn.items()}})
     out = []
-    for rec in records:
-        if rec.get("status") != "matched":
-            continue
-        subj = auth = ""
-        if use_git:
-            subj, auth = git_introduced(rec.get("function", ""))
+    for rec in todo:
+        subj, auth = subj_by_fn.get(rec.get("function", ""), ("", ""))
         out.append(attribute(rec, subj, auth))
     return out
 
@@ -515,6 +587,9 @@ def main() -> int:
                     help="show only records that could not be attributed")
     ap.add_argument("--no-git", action="store_true",
                     help="skip the git pickaxe; faster, slightly less evidence")
+    ap.add_argument("--jobs", type=int, default=8,
+                    help="concurrent git pickaxes (default 8). The git layer\n"
+                         "was 22 minutes sequential; it is the only slow part")
     ap.add_argument("--json", help="write the full attribution to this file")
     ap.add_argument("--self-test", action="store_true")
     a = ap.parse_args()
@@ -527,7 +602,8 @@ def main() -> int:
         print(f"no queue at {QUEUE}. Set SOTN_QUEUE if it lives elsewhere.",
               file=sys.stderr)
         return 2
-    rows = analyse(recs, use_git=not a.no_git)
+    rows = analyse(recs, use_git=not a.no_git, jobs=a.jobs,
+                   progress=True)
 
     if a.json:
         Path(a.json).write_text(json.dumps(rows, indent=2), encoding="utf-8")
