@@ -150,8 +150,15 @@ def main():
         check("g_EInitCommon" in body, "with the verdict that rejected it")
         check("us:ST/RCEN:func_us_8019F9C0" in body, "and the record id")
         check("src/st/rcen/unk_1F0D8.c" in body, "and where it belongs")
-        check("never compiled" in body,
+        # "never built", not "never compiled". A draft stopped by the
+        # pre-build quality gate never reached gcc at all, so claiming it
+        # failed to compile sends the reader after output that does not exist.
+        # "built" covers both that and a genuine compile failure, and the
+        # header line above it now names which one happened.
+        check("never built" in body,
               "and a warning that it is not a permuter seed")
+        check("REJECTED BEFORE THE BUILD" in body or "did NOT compile" in body,
+              "and the header says which of the two it was")
     finally:
         wd.WIN_REPO = real_repo
         shutil.rmtree(tmp, ignore_errors=True)

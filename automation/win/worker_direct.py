@@ -1300,7 +1300,7 @@ def rejected_path(rec: dict) -> str:
 
 
 def save_rejected(rec: dict, code: str, attempt: int, detail: str,
-                  ctx: dict | None = None) -> str:
+                  ctx: dict | None = None, origin: str = "") -> str:
     """Keep the C that failed to build, instead of throwing it away.
 
     THE ESCALATION PATH USED TO DISCARD IT. It reported the compiler's
@@ -1337,17 +1337,29 @@ def save_rejected(rec: dict, code: str, attempt: int, detail: str,
         # and taking it as a parameter made the escalation call site a
         # NameError waiting for the first build failure to reach it.
         model = OPENCODE_MODEL if MODEL_BACKEND == "cli" else _active_model()
+        # `origin` overrides it for code no model produced. The first archived
+        # m2c-only draft was stamped `model: mimo-v2.5-free` for a run with
+        # ZERO model calls, which is the one thing this header exists to get
+        # right: whether a human should read this as a model's attempt or as
+        # mechanical translator output changes what to do about it.
+        model = origin or model
+        # "did NOT compile" was also wrong on that run. The pre-build quality
+        # gate rejected the draft, so it never reached gcc, and the banner
+        # sent the reader looking for compiler output that does not exist.
+        never_built = "BUILD FAILED" not in (detail or "")
+        verdict_line = ("was REJECTED BEFORE THE BUILD" if never_built
+                        else "did NOT compile")
         with open(path, "w", encoding="utf-8") as f:
             f.write(
-                f"/* REJECTED CANDIDATE -- did NOT compile. Kept on purpose.\n"
+                f"/* REJECTED CANDIDATE -- {verdict_line}. Kept on purpose.\n"
                 f"   record : {rec['id']}\n"
                 f"   attempt: {attempt}/{MAX_ATTEMPTS}\n"
-                f"   model  : {model}\n"
+                f"   from   : {model}\n"
                 f"   origin : {ctx.get('src_rel', '?') if ctx else '?'}\n"
                 f"   verdict: {detail[:400]}\n"
                 f"\n"
                 f"   This is NOT a permuter seed and must never be treated as\n"
-                f"   one: it has never compiled. automation/candidates/ is for\n"
+                f"   one: it has never built. automation/candidates/ is for\n"
                 f"   code that builds and merely misses on bytes.\n"
                 f"\n"
                 f"   Why it is kept: the escalation path used to record only\n"
@@ -4766,6 +4778,7 @@ def process_one(dry: bool = False, only: str | None = None) -> bool:
     # pair the recorded compiler error with whatever the last generation
     # happened to be, which is not necessarily the one that produced it.
     best_build_code = ""
+    last_code = ""
     # Did ANY attempt produce C that compiled and merely missed on bytes?
     # That is a fundamentally different outcome from "never built", and it
     # decides where the record is routed when the attempts run out. See the
@@ -4856,6 +4869,19 @@ def process_one(dry: bool = False, only: str | None = None) -> bool:
                 gen_errors += 1
                 continue
             code = hoist_declarations(clean_code(raw))
+            # THE LAST CANDIDATE, whatever stopped it.
+            #
+            # best_build_code is only assigned after a build runs, so a record
+            # that dies at the pre-build quality gate archived an EMPTY file:
+            # a banner explaining why keeping the code matters, followed by
+            # nothing. Found on the first live m2c-only run, where the whole
+            # point was to keep the draft.
+            #
+            # Kept separate from best_build_code rather than merged: that one
+            # means "the best C that actually compiled" and is what promotes a
+            # record to `near`. This one only answers "what was rejected", and
+            # conflating them would let non-compiling C become a permuter seed.
+            last_code = code
             # Persist every attempt. A failed attempt is reverted to the stub,
             # so without this the model's actual output exists only in the
             # console and is unreviewable afterwards. Being able to tell "wrote
@@ -5037,23 +5063,33 @@ def process_one(dry: bool = False, only: str | None = None) -> bool:
             # something nobody can read. Twelve live records failed on nothing
             # worse than a missing extern and still need a full re-attempt,
             # because the candidate that was one line from compiling is gone.
-            rej = save_rejected(rec, best_build_code or "", attempt,
-                                best_build or best, ctx)
+            rej = save_rejected(rec, best_build_code or last_code, attempt,
+                                best_build or best, ctx,
+                                origin="m2c (no model call)" if m2c_only else "")
             # Named in the note for the same reason `seed=` is: the note is
             # the only index. An archive nothing points at is a directory
             # nobody opens.
             where = f" rejected={rej}" if rej else " rejected=NONE(save failed)"
-            # An oversized record whose m2c draft did not compile is still
+            # An oversized record whose m2c draft did not survive is still
             # too-large for the model, so it keeps that marker rather than
             # being filed as an ordinary escalation. The archived draft is
             # the starting point for whatever tries next.
+            #
+            # "was rejected" rather than "did not compile": the FIRST live run
+            # of this path, on func_us_801C2418, never reached the compiler.
+            # The pre-build review gate stopped it, and the note claiming a
+            # compile failure would have sent the next reader looking at gcc
+            # output that does not exist. best_build is set only when a build
+            # actually ran, so it is the honest discriminator.
+            _why = ("did not compile" if best_build
+                    else "was rejected before it reached the compiler")
             if m2c_only:
                 sched("report", "--id", rec["id"], "--status", "deferred",
                       "--add-iters", str(attempt),
                       "--notes", (f"{DEFER_TOO_LARGE}: asm {_asm_size} chars "
                                   f"> {MAX_FUNC_CHARS}; the m2c draft was "
-                                  f"built with no model call and did not "
-                                  f"compile." + where + " "
+                                  f"built with no model call and "
+                                  f"{_why}." + where + " "
                                   + (best_build or best))[:250])
                 return True
             sched("report", "--id", rec["id"], "--status", "escalated",

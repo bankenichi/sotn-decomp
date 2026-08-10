@@ -106,6 +106,41 @@ def main():
     check("save_rejected(" in tail and "rejected=" in tail,
           "so the next attempt starts from the draft rather than from nothing")
 
+    # WHAT THE FIRST LIVE RUN FOUND, 2026-08-10, func_us_801C2418.
+    # The path worked: m2c produced a draft, no model was called, and the
+    # record was filed deferred with the marker intact. Three things it
+    # reported were false, and all three are the kind that mislead the next
+    # reader rather than break anything.
+    print("\nand the archive says what actually happened")
+    # 1. The file was EMPTY. best_build_code is only assigned after a build
+    #    runs, and this draft died at the pre-build quality gate, so
+    #    `best_build_code or ""` archived a banner and no code -- in the one
+    #    case whose entire purpose was to keep the draft.
+    check("last_code = code" in body,
+          "the cleaned candidate is remembered before any gate can reject it")
+    check("best_build_code or last_code" in body,
+          "and the archive falls back to it, so a pre-build rejection still "
+          "keeps its code")
+    check("best_build_code or \"\"" not in body,
+          "the empty-string fallback that produced a bannered blank is gone")
+    # 2. It was stamped `model: mimo-v2.5-free` for a run with zero model
+    #    calls. Whether output came from a model or from a static translator
+    #    changes what a reader should do about it.
+    check('origin="m2c (no model call)" if m2c_only else ""' in body,
+          "an m2c draft is attributed to m2c, not to whatever model is "
+          "configured")
+    save = src[src.index("def save_rejected("):]
+    save = save[:save.index("\ndef ", 10)]
+    check("origin: str = \"\"" in save and "model = origin or model" in save,
+          "save_rejected takes the override rather than guessing")
+    # 3. The banner said "did NOT compile" for something that never reached
+    #    gcc, sending the reader after compiler output that does not exist.
+    check("BUILD FAILED" in save and "REJECTED BEFORE THE BUILD" in save,
+          "and it distinguishes a compile failure from a pre-build rejection")
+    check('_why = ("did not compile" if best_build' in body,
+          "the queue note draws the same distinction, on best_build, which is "
+          "set only when a build actually ran")
+
     print("\nthe ceiling itself is unchanged for the model path")
     check(wd.MAX_FUNC_CHARS == 20000,
           f"MAX_FUNC_CHARS is still {wd.MAX_FUNC_CHARS}")
