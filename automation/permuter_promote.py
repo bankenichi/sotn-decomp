@@ -103,6 +103,90 @@ def promote(work: Path, dry_run: bool = False) -> str:
             + ("" if orig.is_file() else "  [saved base.c.orig]"))
 
 
+def promote_from(work: Path, donor: Path, dry_run: bool = False) -> str:
+    """Promote the best output of ANOTHER work dir into `work`'s base.c.
+
+    WHY A CROSS-DIR FORM EXISTS
+        A work dir imported from a corrected seed starts its search over. On
+        2026-08-10 sixteen BOSS/BO0 dirs were re-imported after their seeds
+        gained the INCLUDE_ASM stub declarations they were missing, and five
+        came back WORSE than the figure the old dir had reached: 801BA724 went
+        275 -> 765, 801B8B64 2215 -> 2660.
+
+        That is not a real regression. The old figures had accumulated across
+        sessions with promoted bases; the new ones are a single fresh search
+        from the seed. The better code still exists, because the re-import
+        RENAMED the old dir (`<fn>.stale-<ts>`) instead of deleting it, and
+        `workdir_for` deliberately does not match that suffix, so the
+        supervisor cannot see it. Nothing could get the work back.
+
+    WHY IT IS NOT A PLAIN COPY
+        The donor's source predates the declaration fix, so promoting it
+        verbatim would hand the permuter back the undeclared calls its typemap
+        raises KeyError on -- reinstating the exact defect the re-import was
+        for, while looking like an improvement. The declarations are therefore
+        re-applied to the donated source, using worker_direct's own function
+        rather than a copy of the rule.
+
+    The donor is only accepted if it is actually better than what `work` has.
+    """
+    base = work / "base.c"
+    if not base.is_file():
+        return f"skip {work.name}: no base.c"
+    if not donor.is_dir():
+        return f"skip {work.name}: donor {donor.name} is not a directory"
+
+    theirs = best_output(donor)
+    if theirs is None:
+        return f"skip {work.name}: donor {donor.name} has no output-* source.c"
+    their_score, their_dir = theirs
+
+    mine = best_output(work)
+    my_score = mine[0] if mine else current_score(work)
+    if my_score is not None and their_score >= my_score:
+        return (f"skip {work.name}: donor best {their_score} is not better "
+                f"than what this dir already has ({my_score})")
+
+    if dry_run:
+        return (f"would promote {work.name}: base.c <- "
+                f"{donor.name}/{their_dir.name} (score {their_score}, "
+                f"beats {my_score})")
+
+    text = (their_dir / "source.c").read_text(errors="ignore")
+    added = []
+    try:
+        sys.path.insert(0, str(REPO / "automation" / "win"))
+        import os as _os
+        _os.environ.setdefault("MODEL_BACKEND", "zen")
+        import worker_direct as _wd
+        fixed = _wd._declare_stub_siblings(text, text)
+        if fixed != text:
+            added = [l.strip() for l in fixed.splitlines()
+                     if l.strip().startswith("extern")
+                     and l not in text.splitlines()]
+            text = fixed
+    except Exception as e:                                   # noqa: BLE001
+        return (f"REFUSING {work.name}: donor source needs the declaration "
+                f"pass and it could not be run ({type(e).__name__}: {e}). "
+                f"Promoting without it would reinstate the KeyErrors.")
+
+    orig = work / "base.c.orig"
+    if not orig.is_file():
+        shutil.copy2(base, orig)
+    base.write_text(text)
+    (work / ".promoted-score").write_text(str(their_score) + "\n")
+    return (f"promoted {work.name}: base.c <- {donor.name}/{their_dir.name} "
+            f"(score {their_score}, was {my_score})"
+            + (f"  [+{len(added)} declaration(s) re-applied]" if added else ""))
+
+
+def stale_donor(work: Path) -> Path | None:
+    """The most recent `<fn>.stale-<ts>` sibling of `work`, if any."""
+    sibs = sorted(p for p in work.parent.glob(work.name + ".stale-*")
+                  if p.is_dir())
+    return sibs[-1] if sibs else None
+
+
 def revert(work: Path) -> str:
     orig = work / "base.c.orig"
     if not orig.is_file():
@@ -171,6 +255,59 @@ def self_test() -> int:
         promote(w, dry_run=True)
         ck((w / "base.c").read_text() == before, "base.c unchanged after --dry-run")
 
+        print("\ncross-dir promotion from a .stale- donor")
+        # The case: a dir re-imported from a corrected seed searched worse
+        # than the dir it replaced. The better code is in the renamed sibling
+        # and nothing else can reach it.
+        fresh = w.parent / "fn_fresh"
+        fresh.mkdir()
+        (fresh / "base.c").write_text("FRESH_SEED\n")
+        (fresh / "output-900-1").mkdir()
+        (fresh / "output-900-1" / "source.c").write_text("FRESH900\n")
+        old = w.parent / "fn_fresh.stale-20260810-000000"
+        old.mkdir()
+        (old / "base.c").write_text("OLD_SEED\n")
+        (old / "output-200-1").mkdir()
+        (old / "output-200-1" / "source.c").write_text("OLD200\n")
+
+        ck(stale_donor(fresh) == old, "the donor is found by suffix")
+        ck(stale_donor(w) is None, "and a dir with no stale sibling has none")
+
+        msg = promote_from(fresh, old, dry_run=True)
+        ck("would promote" in msg and "200" in msg, f"dry run reports ({msg})")
+        ck((fresh / "base.c").read_text() == "FRESH_SEED\n",
+           "and writes nothing")
+
+        msg = promote_from(fresh, old)
+        ck((fresh / "base.c").read_text().startswith("OLD200"),
+           f"the donor's better source becomes the new base ({msg})")
+        ck((fresh / "base.c.orig").read_text() == "FRESH_SEED\n",
+           "and the fresh seed is preserved, so --revert still works")
+        ck((fresh / ".promoted-score").read_text().strip() == "200",
+           "the stamp records the donated score")
+
+        print("\na donor that is not better is refused")
+        worse = w.parent / "fn_fresh2"
+        worse.mkdir()
+        (worse / "base.c").write_text("X\n")
+        (worse / "output-50-1").mkdir()
+        (worse / "output-50-1" / "source.c").write_text("GOOD50\n")
+        d2 = w.parent / "fn_fresh2.stale-20260810-000000"
+        d2.mkdir()
+        (d2 / "output-800-1").mkdir()
+        (d2 / "output-800-1" / "source.c").write_text("BAD800\n")
+        m2 = promote_from(worse, d2)
+        ck("skip" in m2 and "not better" in m2,
+           f"a worse donor is refused rather than promoted ({m2})")
+        ck((worse / "base.c").read_text() == "X\n", "and nothing is written")
+
+        print("\n.stale- dirs are donors, never targets")
+        msrc = Path(__file__).read_text(errors="ignore")
+        mainb = msrc[msrc.index("def main("):]
+        ck('".stale-" not in p.name' in mainb,
+           "--all skips them, so nothing promotes into a dir no searcher "
+           "can see")
+
     print()
     if fails:
         print(f"{len(fails)} FAILED")
@@ -189,6 +326,11 @@ def main() -> int:
     ap.add_argument("--all", action="store_true")
     ap.add_argument("--revert", action="store_true")
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--from-stale", action="store_true",
+                    help="promote from this dir's `<fn>.stale-<ts>` sibling "
+                         "instead of from its own outputs, re-applying the "
+                         "stub declarations. For dirs re-imported from a "
+                         "corrected seed whose old search had got further")
     ap.add_argument("--self-test", action="store_true")
     a = ap.parse_args()
 
@@ -199,13 +341,26 @@ def main() -> int:
         works = [REPO / a.dir]
     elif a.all:
         root = REPO / "nonmatchings"
+        # `.stale-<ts>` dirs are donors, never targets. They are also
+        # invisible to permuter_supervisor.workdir_for by design, and
+        # promoting INTO one would write code nothing will ever search.
         works = sorted(p for p in root.iterdir()
-                       if p.is_dir() and (p / "base.c").is_file())
+                       if p.is_dir() and (p / "base.c").is_file()
+                       and ".stale-" not in p.name)
     else:
         ap.error("pass --dir <workdir> or --all")
 
     for w in works:
-        print(revert(w) if a.revert else promote(w, a.dry_run))
+        if a.revert:
+            print(revert(w))
+        elif a.from_stale:
+            donor = stale_donor(w)
+            if donor is None:
+                print(f"skip {w.name}: no .stale-* sibling")
+            else:
+                print(promote_from(w, donor, a.dry_run))
+        else:
+            print(promote(w, a.dry_run))
     return 0
 
 
