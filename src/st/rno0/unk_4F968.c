@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #include "rno0.h"
 
+// func_us_801D1BF0's candidate failed to build on this name alone. Defined by
+// THIS overlay at src/st/rno0/e_init.c:229, not borrowed from another one.
+extern EInit g_EInitGorgon;
+
 INCLUDE_ASM("st/rno0/nonmatchings/unk_4F968", func_us_801CF968);
 
 INCLUDE_ASM("st/rno0/nonmatchings/unk_4F968", func_us_801CFB20);

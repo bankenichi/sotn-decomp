@@ -10,6 +10,10 @@ INCLUDE_ASM("st/rcen/nonmatchings/unk_1F0D8", func_us_8019F5F0);
 INCLUDE_ASM("st/rcen/nonmatchings/unk_1F0D8", func_us_8019F9C0);
 
 extern EInit g_EInitCommon;
+// func_us_8019F5F0's candidate failed to build on this name alone. Declared
+// in the shared src/st/e_armor_lord.h:2; kept here so the retry does not hit
+// the same wall. An unused extern emits no code.
+extern EInit g_EInitInteractable;
 
 // Initializes entity animation/priority on first step, mirroring func_us_801B4148 in bo0/no2_bg
 // Verbatim copy of func_us_801B4148 in src/st/no2_bg.h.

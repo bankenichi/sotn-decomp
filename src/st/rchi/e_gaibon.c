@@ -9,6 +9,9 @@
 // place the name appears. EInit objects are overlay-local data; borrowing
 // NZ0's would name a different object.
 extern EInit g_EInitGaibon;
+// EntitySmallGaibonProjectile's candidate failed to build on this name alone.
+// Declared in the shared src/st/e_armor_lord.h:2.
+extern EInit g_EInitInteractable;
 
 INCLUDE_ASM("st/rchi/nonmatchings/e_gaibon", EntityGaibon);
 
