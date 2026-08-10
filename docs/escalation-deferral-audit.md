@@ -1,5 +1,43 @@
 # Audit: 77 escalated, 43 deferred
 
+> **CORRECTIONS, 2026-08-10.** Three claims below were wrong. They were
+> written from reading queue notes rather than reading code, and that shows.
+> Read this box before acting on section 4 or 6.
+>
+> 1. **"Cross-overlay guard is only applied to raw `D_us_` names" (section 5,
+>    item 3) is FALSE.** It has always been applied to every symbol. The real
+>    defect was that nothing looked for a DEFINITION in the record's own
+>    overlay before giving up, which is what hid `g_EInitGaibon` at
+>    `src/st/rchi/e_init.c:96`. Fixed in `5b4f67d2d`; it resolved zero
+>    additional live records.
+>
+> 2. **"A1 missing declaration: the candidate code is already written and
+>    fails only because an `extern` is absent" (sections 2b and 4) is FALSE,
+>    and it invalidates the Stage 2 plan as written.** The escalation path in
+>    `worker_direct` reports only the NOTE:
+>
+>        sched("report", "--id", rec["id"], "--status", "escalated",
+>              "--notes", (best_build or best)[:250])
+>
+>    The failing candidate C is never persisted. `save_candidate` runs only
+>    for compiling-but-differing candidates (permuter seeds). So for all 12
+>    A1 records the function is still an `INCLUDE_ASM` stub and **there is
+>    nothing to write-build-revert**. Stage 2 cannot be "apply the existing
+>    candidate"; see the corrected plan in task #96.
+>
+> 3. **The `26 records, zero model calls` headline in section 4 is
+>    overstated.** 14 of them (the 13 stale `ILLEGAL` rejects and the false
+>    escalation) were genuinely free and have been requeued. `EntityGaibonLeg`
+>    was genuinely free and is matched. The 12 A1 records are NOT free: they
+>    need a re-attempt, which costs model calls. The honest figure is
+>    **15 free, 12 unblocked-but-not-free**.
+>
+> What survives unchanged: the class analysis, the counts, the too-large
+> measurements, and gap 5 (nothing validated candidate text before writing it
+> to `src/`), which turned out to be the most valuable finding in the
+> document.
+
+
 Date: 2026-08-10. Queue: 470 records (149 todo, 0 claimed, 0 near, 201 matched,
 77 escalated, 43 deferred).
 
