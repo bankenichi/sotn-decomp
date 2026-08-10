@@ -9,6 +9,20 @@
 
 enum Palettes {
     PAL_NONE,
+    // Read out of RNO0's OWN asm, not copied from a donor. The two overlays
+    // that already name this constant disagree -- are.h:18 has 0x21A and
+    // no1.h:13 has 0x220 -- which is the proof it is per-overlay, and neither
+    // value appears anywhere in RNO0's assembly.
+    //
+    // Derived from asm/us/st/rno0/nonmatchings/e_armor_lord_guardian/
+    // func_us_801D1388_from_are.s:81-82, the function's only store to the
+    // Primitive's clut field (offset 0x0E, include/primitive.h:62):
+    //
+    //     ori  $v0, $zero, 0x20A
+    //     sh   $v0, 0xE($s0)
+    //
+    // A third distinct value in the same 0x2xx range as both donors.
+    PAL_ARMOR_LORD_UNK = 0x20A,
 };
 
 enum EntityID {
