@@ -737,6 +737,78 @@ def scan(limit: int = 0, overlay: str = "") -> int:
     return 0
 
 
+def _dirty_files() -> set[str]:
+    """Paths under src/ that differ from HEAD."""
+    import subprocess
+    out = subprocess.run(["git", "status", "--porcelain", "--", "src/"],
+                         capture_output=True, text=True, timeout=120,
+                         cwd=str(REPO)).stdout
+    return {l[3:].strip() for l in out.splitlines() if l[3:].strip()}
+
+
+def batch(limit: int = 0, overlay: str = "") -> int:
+    """Apply every `ready` candidate in turn, building each.
+
+    THE TREE IS LEGITIMATELY DIRTY AFTER A MATCH. land_match keeps a green
+    result applied, so a second candidate's clean-tree guard would refuse to
+    run -- and blanket-skipping that guard would let an unrelated edit, or a
+    half-applied crash, ride along into the next build unnoticed.
+
+    So the batch tracks the files IT landed and requires the dirty set to be
+    exactly that. Anything else and it stops, because an unexpected change
+    means the tree is not in the state the next build assumes.
+    """
+    rows = [(fn, ovl) for fn, ovl, _p in candidates()]
+    if overlay:
+        rows = [r for r in rows if overlay.lower() in r[1].lower()]
+
+    start_dirty = _dirty_files()
+    if start_dirty:
+        print(f"src/ is not clean to begin with: {sorted(start_dirty)}")
+        return 1
+
+    landed: set[str] = set()
+    results: list[tuple[str, str, str]] = []
+    done = 0
+    for fn, _ovl in rows:
+        if limit and done >= limit:
+            break
+        now = _dirty_files()
+        if now - landed:
+            print(f"\nSTOPPING: unexpected change in {sorted(now - landed)}")
+            print("The tree is not in the state the next build assumes.")
+            break
+        ok, body, detail = preflight(fn, None, auto=True, skip_clean=True)
+        if not ok:
+            results.append((fn, "skipped", detail.splitlines()[-1].strip()))
+            continue
+        done += 1
+        print(f"\n[{done}] {fn}", flush=True)
+        good, why = _sup().land_match(Path("."), fn, body=body)
+        if good:
+            results.append((fn, "MATCHED", why[:70]))
+            landed |= (_dirty_files() - landed)
+        elif "CHECKSUM MISMATCH" in why:
+            results.append((fn, "compiles-differs", "permuter candidate"))
+        else:
+            results.append((fn, "failed", why.split("\n")[0][:70]))
+        print(f"    {results[-1][1]}: {results[-1][2]}", flush=True)
+
+    print(f"\n{'function':36}{'result':20}detail")
+    print("-" * 92)
+    for fn, res, why in results:
+        print(f"{fn[:34]:36}{res:20}{why[:34]}")
+    n_m = sum(1 for _f, r, _w in results if r == "MATCHED")
+    print(f"\n{n_m} matched, "
+          f"{sum(1 for _f, r, _w in results if r == 'compiles-differs')} "
+          f"compile but differ, "
+          f"{sum(1 for _f, r, _w in results if r == 'failed')} failed")
+    if n_m:
+        print("\nMatches are APPLIED and unreported. Record each with "
+              "queue_report(status='matched', proof=...) and commit.")
+    return 0
+
+
 def self_test() -> int:
     fails = []
 
@@ -922,7 +994,10 @@ def self_test() -> int:
     print("\nthe scan classifies on evidence, and writes nothing")
     # By CALLS, not by text: the scan prints a hint containing "--apply", and
     # a text search matched its own help string. Fifth time today.
-    scan_src = src[src.index("def scan("):src.index("def self_test(")]
+    # Sliced to scan() ALONE. Anchoring the end on self_test swallowed
+    # batch(), which legitimately lands matches, and the assertion then failed
+    # on the wrong function's behaviour.
+    scan_src = src[src.index("def scan("):src.index("def _dirty_files(")]
     _sc = _ast.parse(scan_src.replace("\ndef scan(", "\ndef scan(", 1))
     _scalls = {n.func.attr if isinstance(n.func, _ast.Attribute)
                else getattr(n.func, "id", "")
@@ -959,6 +1034,15 @@ def self_test() -> int:
     ck(any("left alone" in n for n in bn),
        f"and it is reported rather than passed over ({bn})")
 
+    print("\nthe batch tolerates only the matches IT landed")
+    bsrc = src[src.index("def batch("):src.index("def self_test(")]
+    ck("now - landed" in bsrc,
+       "the dirty set is compared against what the batch itself applied")
+    ck("STOPPING" in bsrc, "and it stops rather than building on a surprise")
+    ck("start_dirty" in bsrc, "a tree dirty at the start is refused outright")
+    ck("queue_report" in bsrc,
+       "matches are left for the operator to record, not written here")
+
     print("\nthe transplant is type-checked like generated C is")
     ck("member_types" in body_fn,
        "upstream's members are validated against THIS tree's structs")
@@ -985,6 +1069,8 @@ def main() -> int:
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--list", action="store_true")
+    ap.add_argument("--batch", action="store_true",
+                    help="apply every ready candidate in turn, building each")
     ap.add_argument("--scan", action="store_true",
                     help="classify every unmatched record, unsupervised")
     ap.add_argument("--overlay", default="")
@@ -1015,6 +1101,8 @@ def main() -> int:
         return list_all()
     if a.scan:
         return scan(a.limit, a.overlay)
+    if a.batch:
+        return batch(a.limit, a.overlay)
     if a.function:
         pairs = list(a.map)
         for chunk in a.maps:
