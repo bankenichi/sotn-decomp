@@ -93,17 +93,83 @@ solved three times.
 donor, twenty lines above the stub. The porting pattern is established in
 that very file.
 
-Checked and NOT found anywhere in `src/`: `BO6_RicEntitySubwpnAgunea`,
-`BO6_RicEntitySubwpnReboundStone`, `BO6_RicEntityAguneaHitEnemy`. I had
-guessed all three would be on the same `src/ric/319C4.c` donor as their
-siblings; they are not. BO6 is the only place they exist, so they are
-genuine derivations and belong with the remaining seven.
+Then `transplant.py --list` found a fifth that I had just finished writing off:
 
-`RicEntityAguneaCircle` (`319C4.c:1351`) and the static helpers
-`GetAguneaLightningAngle` / `AguneaShuffleParams` DO exist there, which is
-what made the guess plausible. Two of those are already matched in BO6
-(`BO6_AguneaShuffleParams`, `BO6_GetAguneaLightningAngle` is escalated), so
-the donor relationship is real but does not extend to all of the family.
+| record | asm chars | donor |
+|---|---|---|
+| `us:ST/RNO0:func_us_801D1388_from_are` | 20165 | `src/st/e_armor_lord.h` |
+
+Checked and genuinely absent from `src/`: `BO6_RicEntitySubwpnAgunea`,
+`BO6_RicEntitySubwpnReboundStone`, `BO6_RicEntityAguneaHitEnemy`,
+`func_us_801C9DE8`, `func_us_8019C7B8` (transplant: "no usable twin in this
+tree"), `func_us_801C2418`.
+
+**Final: 5 transplantable, 6 needing derivation.**
+
+I had guessed the three BO6 subweapons would be on the same `src/ric/319C4.c`
+donor as their siblings. They are not. `RicEntityAguneaCircle` and the static
+helpers `GetAguneaLightningAngle` / `AguneaShuffleParams` DO live there, which
+is what made the guess plausible, but the donor relationship does not extend
+to the whole family.
+
+## 4b. The size ceiling is a MODEL limit, and m2c does not have one
+
+The more useful finding, and it needs no new mechanism at all.
+
+`worker_direct` runs `prepare()` BEFORE the size gate. `prepare()` shells out
+to `tools/m2ctx.py` and `tools/m2c/m2c.py` to build a typed C draft. Only
+afterwards does this run:
+
+```python
+_asm_size = ctx.get("asm_full") or len(ctx["asm"])
+if _asm_size > MAX_FUNC_CHARS and not dry:
+    ... status deferred, TIER_HANDOFF_TOO_LARGE ...
+```
+
+So for all 11 records **the m2c draft was already computed and then thrown
+away**. `MAX_FUNC_CHARS` exists because a 68865-char function does not fit in
+a model's context window. m2c is a static translator with no context window;
+it does not care how big the function is.
+
+That gives a path for the 6 that need derivation, with zero model calls:
+
+1. m2c draft (already produced today, just discarded)
+2. run it through the existing draft cleaning
+3. build it
+4. if it compiles, it is a permuter seed by definition ("compiles, bytes
+   differ"), and `save_candidate` already handles exactly that outcome
+5. hand it to the permuter
+
+m2c output usually compiles and rarely matches, which is precisely the input
+the permuter wants. The 20000-char ceiling should gate the MODEL step, not the
+whole record.
+
+## 4c. Can a single function be split? Not into multiple functions
+
+Worth stating plainly because it is the intuitive idea and it does not work.
+
+Splitting one function into two C functions cannot match. Each function gets
+its own prologue and epilogue, registers are allocated per function, and the
+call between them is instructions that are not in the target. The oracle is
+byte equality; two functions are not one function.
+
+What can be split is the WORK, not the output:
+
+- **Chunked drafting, whole-function verification.** Feed the model one basic
+  block at a time, assemble the pieces into a single function body, build
+  once. The prompt is bounded; the output is still one function. Needs the
+  control-flow graph up front, which is compact even for a 68k function.
+- **Diff-driven iteration.** Draft once, build, and feed back only the first
+  divergence. The prompt stays bounded no matter how large the function is.
+  `local_summarize_diff` and `asm_delta.py` already exist for this.
+- **m2c first**, as in 4b, which removes the context problem from the draft
+  step entirely.
+
+`static inline` helpers and macros are NOT a safe way to split: whether GCC
+2.7 inlines is a codegen decision, so it can change the bytes. Macros are safe
+only when the expansion is identical, which makes them a readability tool
+rather than a size tool. This repo already uses them that way (`SELF_BB`,
+`ANIMSET_OVL`, `GIANTBRO_ZPRIORITY_ADJUST`).
 
 ## 5. What to do
 
