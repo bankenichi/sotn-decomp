@@ -272,6 +272,21 @@ def main() -> int:
     _was = _cc_mod.DRYRUN
     try:
         _pend.mkdir(parents=True, exist_ok=True)
+        # STATE THE PRECONDITION. This check went pass/fail/pass/pass across
+        # four runs of unchanged code on 2026-08-10, and the failing run was
+        # self-contradictory: the file WAS restored byte-for-byte and the
+        # journal WAS consumed, but restored_files came back 0.
+        #
+        # replay_pending_journals() walks the WHOLE pending directory, so any
+        # other process that replays first legitimately takes this journal and
+        # leaves fleet_stop nothing to count. That makes the assertion below a
+        # statement about global state unless the directory starts empty. Say
+        # so rather than letting a leftover turn into a mystery failure.
+        _stray = sorted(p.name for p in _pend.glob("*.json"))
+        check(not _stray,
+              f"the pending dir is empty before this test writes to it; a "
+              f"leftover journal would be replayed by this same call and "
+              f"change the count ({_stray})")
         _victim.write_text(_orig, encoding="utf-8")
         _jf.write_text(_j.dumps({
             "src_rel": "automation/logs/selftest-victim.c",
@@ -292,10 +307,43 @@ def main() -> int:
         check("restored 1 source file" in (_r.get("note") or ""),
               "and says so in the note, because a silent restore is "
               "indistinguishable from no restore")
+        check("replay_unaccounted" not in _r,
+              f"and the count agrees with the directory "
+              f"({_r.get('replay_unaccounted', '')[:120]})")
     finally:
         _cc_mod.DRYRUN = _was
         _victim.unlink(missing_ok=True)
         _jf.unlink(missing_ok=True)
+
+    print("\na count of zero against a non-empty pending dir is not silent")
+    # The guard that makes the next occurrence self-diagnosing. Drive it by
+    # leaving a journal owned by a LIVE pid, which replay must skip: pending
+    # is non-empty on entry and the restore count is legitimately 0.
+    _jf2 = _pend / "selftest-live-owner.json"
+    _was2 = _cc_mod.DRYRUN
+    try:
+        _victim.write_text(_orig, encoding="utf-8")
+        _jf2.write_text(_j.dumps({
+            "src_rel": "automation/logs/selftest-victim.c",
+            "original": _orig, "worker": "selftest-live-owner",
+            "pid": __import__("os").getpid(),   # alive by construction
+            "at": _t.time()}), encoding="utf-8")
+        _cc_mod.DRYRUN = False
+        _r2 = _cc_mod.fleet_stop(hold=True)
+        check(_r2.get("restored_files") == 0,
+              f"a live owner's journal is left alone "
+              f"({_r2.get('restored_files')})")
+        check("replay_unaccounted" in _r2,
+              "and the zero is explained rather than reported bare")
+        check("pending on entry" in (_r2.get("replay_unaccounted") or ""),
+              "naming how many journals were there")
+        check("JOURNAL REPLAY FAILED" not in (_r2.get("note") or ""),
+              "without crying failure: the tree is fine, and a false alarm "
+              "here is how a real replay_error stops being believed")
+    finally:
+        _cc_mod.DRYRUN = _was2
+        _jf2.unlink(missing_ok=True)
+        _victim.unlink(missing_ok=True)
 
     # --- path containment is a PARENT check, not a prefix check -------------
     #

@@ -1587,6 +1587,25 @@ def fleet_stop(hold: bool = True) -> dict:
     # already replayed is gone.
     restored = 0
     replay_note = ""
+    unaccounted = ""
+    # COUNT THE JOURNALS FIRST. On 2026-08-10 this reported restored=0 while
+    # the file HAD been restored and the journal HAD been consumed, which is a
+    # contradiction the output could not explain: the count is the only thing
+    # recorded, so a zero is indistinguishable from "there was nothing to do".
+    #
+    # replay_pending_journals() walks the WHOLE pending directory, so the
+    # journal this call was going to restore can legitimately be consumed by
+    # any other process that replays first. That makes the count a property of
+    # global state rather than of this call, and it cannot be fixed by
+    # counting harder. What it can be is SELF-EXPLANATORY: record what was
+    # pending going in, and if the replay claims zero against a non-empty
+    # directory, surface the subprocess's own log instead of a bare number.
+    try:
+        pending_before = sorted(
+            p.name for p in (REPO / "automation" / "logs" / "pending")
+            .glob("*.json"))
+    except OSError:
+        pending_before = []
     try:
         rp = subprocess.run(
             [PYTHON, "automation/win/worker_direct.py", "replay"],
@@ -1597,6 +1616,17 @@ def fleet_stop(hold: bool = True) -> dict:
                 restored = int(json.loads(line).get("restored") or 0)
         if rp.returncode != 0:
             replay_note = (rp.stderr or rp.stdout or "").strip()[-200:]
+        elif pending_before and not restored:
+            # Not necessarily wrong: another process may have got there first,
+            # and the tree can be perfectly fine. So this is NOT routed into
+            # replay_note, which raises "JOURNAL REPLAY FAILED"; it gets its
+            # own field. Crying failure at a benign race is how a real failure
+            # stops being believed.
+            unaccounted = (
+                f"replay restored 0 but {len(pending_before)} journal(s) were "
+                f"pending on entry ({', '.join(pending_before[:4])}). Most "
+                f"likely another process replayed them first. Worker log: "
+                + ((rp.stderr or "").strip()[-400:] or "(silent)"))
     except (subprocess.SubprocessError, OSError, ValueError) as e:
         # A failed replay must not stop the rest of the teardown, but it must
         # be LOUD: the tree may still hold a candidate.
@@ -1630,6 +1660,14 @@ def fleet_stop(hold: bool = True) -> dict:
         out["replay_error"] = replay_note
         out["note"] += ("; JOURNAL REPLAY FAILED, check `git status src/` "
                         "before building")
+    if unaccounted:
+        # Distinct from replay_error on purpose: the tree is probably fine.
+        # This exists so the count and the directory can never disagree
+        # silently again, which is what made the 2026-08-10 occurrence
+        # unexplainable after the fact.
+        out["replay_unaccounted"] = unaccounted
+        out["note"] += ("; journals were pending but this call restored none "
+                        "(see replay_unaccounted)")
     return out
 
 
