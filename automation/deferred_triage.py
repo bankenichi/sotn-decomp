@@ -138,8 +138,50 @@ def seed_was_retrofitted(rec_id: str) -> bool:
         return False
 
 
+RX_ZERO_BLOCKED = re.compile(r"scored 0 but does not compile", re.I)
+RX_UNDECL_ERR = re.compile(r"`(\w+)'\s+undeclared")
+
+
+def overlay_src_dir(rec_id: str) -> Path:
+    """us:ST/RCHI:fn -> src/st/rchi. See matched_audit.overlay_dir."""
+    parts = rec_id.split(":")
+    return REPO / ("src/" + parts[1].lower() if len(parts) >= 3 else "src")
+
+
+def defines_in_own_overlay(symbol: str, rec_id: str) -> str:
+    """`path:line` where THIS overlay defines `symbol`, or "".
+
+    A DEFINITION, not a declaration, and only in the record's own overlay.
+    Both halves matter and both were learned the hard way on EntityGaibonLeg:
+
+      - Searching for `extern[^;]*g_EInitGaibon` finds src/st/nz0/nz0.h, a
+        different overlay. EInit objects are overlay-local data, so borrowing
+        NZ0's declaration would name a different object and the build would
+        be wrong in a way the compiler cannot see.
+      - The right answer, src/st/rchi/e_init.c:96, is a definition
+        (`EInit g_EInitGaibon = {...}`) and matches no `extern` pattern at
+        all, so a declaration-only search misses it entirely.
+    """
+    d = overlay_src_dir(rec_id)
+    if not symbol or not d.is_dir():
+        return ""
+    # A definition: the name at file scope followed by `=` or `[`, not
+    # preceded by `extern`.
+    rx = re.compile(rf"^(?!\s*extern\b)[A-Za-z_][\w \t*]*\b"
+                    rf"{re.escape(symbol)}\s*(\[[^\]]*\])?\s*=")
+    for p in sorted(d.rglob("*.c")) + sorted(d.rglob("*.h")):
+        try:
+            for i, line in enumerate(p.read_text(errors="ignore").splitlines(), 1):
+                if rx.match(line):
+                    return f"{p.relative_to(REPO).as_posix()}:{i}"
+        except OSError:
+            continue
+    return ""
+
+
 def classify(note: str, asm_chars: int | None = None,
-             seed_retrofitted: bool = False) -> tuple[str, str]:
+             seed_retrofitted: bool = False,
+             rec_id: str = "") -> tuple[str, str]:
     """(class, action). Pure, so the self-test can pin every branch."""
     note = note or ""
     if not note.strip():
@@ -159,6 +201,45 @@ def classify(note: str, asm_chars: int | None = None,
                 + "; the hosted tier takes 20000. Requeue as todo")
 
     if RX_EXHAUSTED.search(note):
+        # CHECKED FIRST, BECAUSE IT IS THE OPPOSITE OF A FAILURE.
+        #
+        # This note begins with the same token as 28 genuine exhaustions and
+        # then says the search SUCCEEDED:
+        #
+        #   PERMUTER_EXHAUSTED: scored 0 but does not compile in its real
+        #   file; needs declarations the permuter cannot add. COMPILE ERROR:
+        #   `g_EInitGaibon' undeclared
+        #
+        # EntityGaibonLeg sat in deferred like that until 2026-08-10, and this
+        # function called it `permuter-out: re-derive from the asm`, which is
+        # exactly backwards: there was nothing to re-derive, the answer was
+        # already in the work dir. One extern and a --land turned it into a
+        # match with zero model calls.
+        #
+        # A record carrying a finished search must never share a bucket with
+        # records that need one.
+        if RX_ZERO_BLOCKED.search(note):
+            sym = RX_UNDECL_ERR.search(note)
+            name = sym.group(1) if sym else ""
+            where = defines_in_own_overlay(name, rec_id) if name else ""
+            if where:
+                return ("zero-blocked",
+                        f"THE PERMUTER ALREADY WON. Score 0; it only fails to "
+                        f"compile because `{name}` is undeclared, and this "
+                        f"overlay DEFINES it at {where}. Add `extern` for it, "
+                        f"then permuter_supervisor --land. No model call")
+            if name:
+                return ("zero-blocked",
+                        f"THE PERMUTER ALREADY WON. Score 0, blocked only on "
+                        f"`{name}` being undeclared, but this overlay does "
+                        f"not define it -- resolve it from this overlay's asm "
+                        f"before landing, never by borrowing another "
+                        f"overlay's copy")
+            return ("zero-blocked",
+                    "THE PERMUTER ALREADY WON. Score 0, blocked only on a "
+                    "missing declaration the note does not name; read the "
+                    "COMPILE ERROR, add it, then --land")
+
         m = RX_UNDECLARED.search(note)
         if m:
             return ("seed-bug",
@@ -355,12 +436,15 @@ def report(plan: bool = False, do_requeue: bool = False,
     for r in recs:
         cls, action = classify(r.get("note", ""),
                                real_asm_chars(r["id"]),
-                               seed_was_retrofitted(r["id"]))
+                               seed_was_retrofitted(r["id"]),
+                               r["id"])
         buckets[cls].append((r, action))
 
     print(f"{len(recs)} deferred record(s)\n")
-    order = ["stale-tier", "seed-bug", "degraded-search", "no-note",
-             "permuter-out", "too-large-still", "other"]
+    # zero-blocked leads the order: it is a finished match, and burying it
+    # under the classes that need work is how one stayed invisible.
+    order = ["zero-blocked", "stale-tier", "seed-bug", "degraded-search",
+             "no-note", "permuter-out", "too-large-still", "other"]
     for cls in order:
         if buckets.get(cls):
             print(f"  {cls:16} {len(buckets[cls])}")
@@ -368,6 +452,23 @@ def report(plan: bool = False, do_requeue: bool = False,
     actionable = sum(len(buckets.get(c, [])) for c in REQUEUE_TO)
     print(f"\n{actionable} of {len(recs)} are deferred for a reason that no "
           f"longer holds, or for a mechanical fix.\n")
+
+    # Loud, and above everything else. These are finished searches.
+    # Deliberately NOT in REQUEUE_TO: requeueing one without first adding the
+    # declaration sends it straight back through --land, which fails to
+    # compile and re-defers it with the same note. The code edit comes first,
+    # so this reports and does not act.
+    if buckets.get("zero-blocked"):
+        n = len(buckets["zero-blocked"])
+        print("!" * 78)
+        print(f"\n{n} record(s) HAVE ALREADY BEEN SOLVED and are sitting in "
+              f"deferred.\nThe permuter scored 0; they only fail to compile. "
+              f"Landing one costs a\ndeclaration and a build, and no model "
+              f"call. Do these before anything else.\n")
+        for r, action in buckets["zero-blocked"]:
+            print(f"  {r['id']}\n      {action}")
+        print("\n" + "!" * 78)
+
     print("=" * 78)
 
     for cls in order:
@@ -467,6 +568,52 @@ def self_test() -> int:
     ck("def queue_identity" in src_self
        and "print(f\"queue: {qpath}\")" in src_self,
        "the resolved path and counts are printed first")
+
+    print("\na finished-but-uncompilable search is NOT an exhaustion")
+    # THE VERBATIM NOTE that hid EntityGaibonLeg in `deferred`. Before
+    # 2026-08-10 this classified as permuter-out, "re-derive from the asm",
+    # for a record whose answer was already sitting in its work dir at
+    # score 0. One extern and a --land made it a match.
+    real = ("PERMUTER_EXHAUSTED: scored 0 but does not compile in its real "
+            "file; needs declarations the permuter cannot add. COMPILE "
+            "ERROR: BUILD FAILED: 193:src/st/rchi/e_gaibon.c:12: "
+            "`g_EInitGaibon' undeclared (first use this function) 194:src")
+    cls_z, act_z = classify(real, None, False, "us:ST/RCHI:EntityGaibonLeg")
+    ck(cls_z == "zero-blocked", f"classified zero-blocked ({cls_z})")
+    ck(cls_z != "permuter-out",
+       "and specifically NOT permuter-out, which said re-derive from the asm")
+    ck("ALREADY WON" in act_z, "the action leads with the good news")
+    ck("g_EInitGaibon" in act_z, "and names the blocking symbol")
+    ck("no model call" in act_z.lower() or "--land" in act_z,
+       "and says how to finish it")
+
+    print("\nand it resolves the symbol in the record's OWN overlay")
+    # The trap: `extern EInit g_EInitGaibon;` exists in src/st/nz0/nz0.h, a
+    # different overlay. EInit data is overlay-local, so that declaration
+    # names a different object. The real answer is a DEFINITION in
+    # src/st/rchi/e_init.c and matches no extern pattern at all.
+    where = defines_in_own_overlay("g_EInitGaibon", "us:ST/RCHI:EntityGaibonLeg")
+    if (REPO / "src" / "st" / "rchi").is_dir():
+        ck(where.startswith("src/st/rchi/"),
+           f"found in RCHI, not borrowed from NZ0 ({where})")
+        ck("nz0" not in where, "and nz0 is not consulted at all")
+        ck(defines_in_own_overlay("g_EInitGaibon",
+                                  "us:ST/RNO0:whatever") == "",
+           "a different overlay does not get RCHI's definition")
+    ck(defines_in_own_overlay("", "us:ST/RCHI:x") == "",
+       "an empty symbol resolves to nothing rather than matching everything")
+    ck(defines_in_own_overlay("no_such_symbol_xyz",
+                              "us:ST/RCHI:x") == "",
+       "and an absent symbol is not invented")
+
+    print("\nzero-blocked is reported but never auto-requeued")
+    # Requeueing without the declaration sends it back through --land, which
+    # fails to compile and re-defers it with the same note. Code edit first.
+    ck("zero-blocked" not in REQUEUE_TO,
+       "it is not in the requeue table")
+    ck(src_self.index('"zero-blocked", "stale-tier"')
+       < src_self.index('"permuter-out", "too-large-still"'),
+       "and it is printed before the classes that need work")
 
     print("\na retrofitted seed makes an 'exhausted' verdict untrustworthy")
     # The note is indistinguishable from a clean exhaustion. Only the seed on

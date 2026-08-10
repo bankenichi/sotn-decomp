@@ -59,6 +59,17 @@ PYTHON = os.environ.get("SOTN_PYTHON", sys.executable)
 # even though the note also contains "BUILD FAILED".
 
 _CLASSES = [
+    # FIRST, and its own class. Every quality reject used to fall through to
+    # `unknown: read it` -- 19 of 77 records on 2026-08-10, which made the
+    # largest actionable group in the queue look like a residue nobody had
+    # classified. A quality reject is not a build failure and not a symbol
+    # problem; it is a verdict about STYLE, written by our own gate, and it
+    # can go stale when the gate's cause is fixed upstream of the model.
+    #
+    # Matched before `symbol` deliberately: several of these notes say
+    # "`Entity` has no member `unk80`", which would otherwise be read as a
+    # compiler diagnostic rather than as our own reviewer talking.
+    ("quality", re.compile(r"quality reject", re.I)),
     ("harness", re.compile(
         r"INCLUDE_ASM stub not found|BUILD DIRTY|stub not parsed", re.I)),
     ("nocode", re.compile(
@@ -109,6 +120,32 @@ def is_c89_declaration_error(note: str) -> bool:
     if not (parsed & undecl) and not undecl:
         return False
     return all(declared_at(n) is None for n in parsed)
+
+
+# A quality reject whose CAUSE has since been fixed upstream of the model.
+# The record was never judged on its merits: the gate was describing a prompt
+# that no longer exists.
+#
+# ext.ILLEGAL is the case that matters. Task #82 removed ILLEGAL from the
+# SYSTEM rule, from ENTITY_LAYOUT and from the per-offset hint, and made the
+# offset table pointer-type aware, so the model is no longer being handed the
+# thing this gate rejects it for. 13 of the 19 quality rejects were this.
+#
+# Keyed by the fix that invalidated it, so the next entry has to say WHY it is
+# stale rather than just adding a pattern.
+STALE_QUALITY = [
+    (re.compile(r"ext\.ILLEGAL", re.I),
+     "task #82 removed ILLEGAL from the prompt, the entity layout and the "
+     "per-offset hint, and made the offset table pointer-type aware"),
+]
+
+
+def stale_quality_reason(note: str) -> str:
+    """Why this quality reject no longer describes the current prompt, or ""."""
+    for rx, why in STALE_QUALITY:
+        if rx.search(note or ""):
+            return why
+    return ""
 
 
 def classify(note: str) -> str:
@@ -494,9 +531,13 @@ def triage(records: list[dict]) -> list[dict]:
                            "bag"})
             else:
                 unknowns.append(b)
+        stale = stale_quality_reason(rec.get("note", "")) if cls == "quality" else ""
+        if stale:
+            cls = "quality-stale"
         rows.append({
             "id": rec["id"], "class": cls, "bad_identifiers": bad,
             "resolvable": fixes, "unresolved": unknowns,
+            "stale_reason": stale,
             "action": {
                 "harness": "fix the harness, then requeue as todo",
                 "nocode": "requeue as todo; the note says nothing about the code",
@@ -505,9 +546,95 @@ def triage(records: list[dict]) -> list[dict]:
                 "c89": ("move every declaration to the top of its block; "
                         "GCC 2.7 is C89 and this is NOT a wrong field name"),
                 "real": "needs a strong model or a human",
+                "quality": ("a real style defect against the CURRENT prompt; "
+                            "rework the candidate, do not just requeue it"),
+                "quality-stale": (f"requeue as todo: {stale}. The gate was "
+                                  f"describing a prompt that no longer "
+                                  f"exists, so this was never judged on its "
+                                  f"merits"),
             }.get(cls, "read it"),
         })
     return rows
+
+
+# ---------------------------------------------------------------------------
+# requeue
+#
+# Only classes that are NOT a verdict on the code. Everything else needs a
+# human or a model, and requeueing it would spend a claim to reach the same
+# conclusion.
+#
+# `quality` (as opposed to `quality-stale`) is deliberately absent: it is a
+# real style defect against the CURRENT prompt, so the candidate needs
+# reworking, and requeueing it unchanged invites the same rejection.
+REQUEUE_TO = {
+    "nocode": "todo",
+    "c89": "todo",
+    "quality-stale": "todo",
+}
+
+# Classes that ARE actionable without a model but need a code change FIRST, so
+# requeueing them is premature rather than free. Reported, never written.
+#
+# `harness` was in the table above until the first dry run offered to requeue
+# two records whose own action text reads "fix the harness, THEN requeue as
+# todo". Sending them back before the stub lookup is fixed just re-escalates
+# them, which is the same mistake deferred_triage's zero-blocked class exists
+# to avoid: a class can be free of model cost and still not be free of work.
+REQUEUE_BLOCKED_ON_WORK = {
+    "harness": "the stub lookup has to be fixed before this can succeed",
+    "quality": "the candidate has to be reworked against the current prompt",
+}
+
+
+def requeue(rows: list[dict], apply: bool = False) -> int:
+    """Write the requeueable classes back, THROUGH scheduler.py.
+
+    deferred_triage grew this first, and the reason applies here twice over:
+    its --requeue-plan printed `scheduler.py set <id> --status todo` for
+    months, an invocation that never existed, and nobody found out because
+    printing advice is not the same as taking it. The escalated side has been
+    printing advice for just as long.
+    """
+    blocked = [(r["class"], r["id"]) for r in rows
+               if r["class"] in REQUEUE_BLOCKED_ON_WORK]
+    if blocked:
+        print("\n" + "=" * 78)
+        print("\nNOT requeued, because a code change has to come first:\n")
+        for cls, rid in blocked:
+            print(f"  [{cls}] {rid}\n      {REQUEUE_BLOCKED_ON_WORK[cls]}")
+
+    todo = [(r["class"], r["id"], r["action"]) for r in rows
+            if r["class"] in REQUEUE_TO]
+    if not todo:
+        print("\nnothing to requeue")
+        return 0
+    print("\n" + "=" * 78)
+    print(f"\nrequeue: {len(todo)} record(s)"
+          + ("" if apply else "  [DRY RUN, nothing written]") + "\n")
+    ok = bad = 0
+    for cls, rid, action in todo:
+        status = REQUEUE_TO[cls]
+        if not apply:
+            print(f"  {status:5} <- {cls:14} {rid}")
+            continue
+        note = f"requeued by escalation_triage [{cls}]: {action}"
+        r = subprocess.run(
+            [PYTHON, str(REPO / "automation" / "scheduler.py"), "report",
+             "--id", rid, "--status", status, "--notes", note[:900]],
+            capture_output=True, text=True, timeout=120, cwd=str(REPO))
+        if r.returncode == 0:
+            ok += 1
+            print(f"  {status:5} <- {cls:14} {rid}")
+        else:
+            bad += 1
+            err = (r.stderr or r.stdout or "").strip().splitlines()
+            print(f"  FAILED {rid}: {err[-1] if err else r.returncode}")
+    if apply:
+        print(f"\n{ok} requeued, {bad} failed")
+    else:
+        print("\nRe-run with --apply to write.")
+    return 1 if bad else 0
 
 
 # ---------------------------------------------------------------------------
@@ -535,6 +662,19 @@ def self_test() -> int:
          "symbol"),
         ("compiled, byte mismatch; permuter candidate", "real"),
         ("", "unknown"),
+        # Every one of these used to be `unknown: read it`. 19 of 77 records
+        # on 2026-08-10, the largest actionable group in the queue, sitting in
+        # the bucket that means "nobody has looked at this".
+        ("quality reject: uses `ext.ILLEGAL`; prefer the named ext variant",
+         "quality"),
+        ("quality reject: `self->drawFlags |= 0x20` should use the named "
+         "constant ENTITY_MASK_G", "quality"),
+        ("quality reject: 8 raw byte-pointer cast(s) like `*(u16*)((u8*)p+N)`",
+         "quality"),
+        # Reads like a compiler diagnostic and is not one; our own reviewer
+        # wrote it. Ordering quality before symbol is what gets this right.
+        ("quality reject: `Entity` has no member `unk80`; 0x80 falls inside "
+         "`ext` (0x7C)", "quality"),
     ]
     for note, want in cases:
         got = classify(note)
@@ -598,6 +738,55 @@ def self_test() -> int:
     ck(_overlay_of("us:BOSS/BO0:func_x") == "bo0", "overlay parsed from queue id")
 
     print("\nC89 declaration-after-statement is not a field-name problem")
+    print("\na quality reject can go stale when the PROMPT is fixed")
+    ill = "quality reject: uses `ext.ILLEGAL`; prefer the named ext variant"
+    ck(bool(stale_quality_reason(ill)),
+       "an ILLEGAL reject is stale after #82")
+    ck("#82" in stale_quality_reason(ill),
+       "and the reason cites the change that invalidated it")
+    rows_q = triage([{"id": "us:BOSS/BO0:f", "note": ill}])
+    ck(rows_q[0]["class"] == "quality-stale",
+       f"triage promotes it to quality-stale ({rows_q[0]['class']})")
+    ck("requeue as todo" in rows_q[0]["action"], "and says to requeue it")
+
+    print("\nbut a CURRENT style defect is not stale and is not requeued")
+    mask = ("quality reject: `self->drawFlags |= 0x20` should use the named "
+            "constant ENTITY_MASK_G")
+    ck(stale_quality_reason(mask) == "", "no stale rule matches it")
+    rows_m = triage([{"id": "us:ST/RCHI:EntitySlogra", "note": mask}])
+    ck(rows_m[0]["class"] == "quality", f"stays quality ({rows_m[0]['class']})")
+    ck("rework" in rows_m[0]["action"],
+       "and the action says rework, not requeue")
+    ck("quality" not in REQUEUE_TO,
+       "a live quality reject is NOT in the requeue table")
+    ck(REQUEUE_TO.get("quality-stale") == "todo",
+       "while a stale one is")
+
+    print("\nfree of model cost is not the same as free of work")
+    # The first dry run offered to requeue two `harness` records whose own
+    # action says "fix the harness, THEN requeue as todo". Sending them back
+    # before the stub lookup is fixed just re-escalates them.
+    ck("harness" not in REQUEUE_TO,
+       "harness is not auto-requeued; its own action says fix it first")
+    ck("harness" in REQUEUE_BLOCKED_ON_WORK,
+       "it is reported as blocked-on-work instead of silently dropped")
+    ck("quality" in REQUEUE_BLOCKED_ON_WORK,
+       "and so is a live quality reject")
+    ck(not (set(REQUEUE_TO) & set(REQUEUE_BLOCKED_ON_WORK)),
+       "no class is in both tables")
+
+    print("\nrequeue writes through the scheduler and is a dry run by default")
+    src_esc = Path(__file__).read_text(errors="ignore")
+    rq = src_esc.split("def requeue(")[1].split("\n# ---")[0]
+    ck("scheduler.py" in rq, "writes go through scheduler.py")
+    ck('"report"' in rq, "using the report subcommand, which exists")
+    ck('"set"' not in rq,
+       "not the `set` that deferred_triage advertised for months and that "
+       "no scheduler has ever had")
+    ck("if not apply:" in rq, "and nothing is written without --apply")
+    ck(set(REQUEUE_TO.values()) == {"todo"},
+       f"only todo is reachable ({sorted(set(REQUEUE_TO.values()))})")
+
     c89 = ("BUILD FAILED: us_3E79C.c:1070: parse error before `swapTarget' "
            "us_3E79C.c:1074: `swapTarget' undeclared (first use this function)")
     ck(is_c89_declaration_error(c89),
@@ -641,10 +830,20 @@ def main() -> int:
                     help="classify notes captured elsewhere, one 'id | note' "
                          "per line. Use when the live queue is only reachable "
                          "from another environment (see queue_is_snapshot).")
+    ap.add_argument("--requeue", action="store_true",
+                    help="requeue the classes that are not a verdict on the "
+                         "code (harness, nocode, c89, quality-stale). "
+                         "DRY RUN unless --apply is also given")
+    ap.add_argument("--apply", action="store_true",
+                    help="with --requeue, actually write through scheduler.py")
     a = ap.parse_args()
 
     if a.self_test:
         return self_test()
+    if a.apply and not a.requeue:
+        print("--apply does nothing on its own; it modifies --requeue",
+              file=sys.stderr)
+        return 2
 
     if a.notes_file:
         recs = []
@@ -673,12 +872,12 @@ def main() -> int:
 
     counts = Counter(r["class"] for r in rows)
     print(f"{len(rows)} escalated record(s)\n")
-    for cls in ("harness", "nocode", "c89", "symbol", "real", "unknown"):
+    for cls in ("harness", "nocode", "c89", "quality-stale", "quality",
+                "symbol", "real", "unknown"):
         if counts.get(cls):
-            print(f"  {cls:8} {counts[cls]:3d}")
+            print(f"  {cls:14} {counts[cls]:3d}")
     print()
-    free = (counts.get("harness", 0) + counts.get("nocode", 0)
-            + counts.get("c89", 0))
+    free = sum(counts.get(c, 0) for c in REQUEUE_TO)
     print(f"{free} of {len(rows)} are NOT decompilation problems and can be "
           f"requeued without spending a single model call.\n")
     print("=" * 78)
@@ -689,6 +888,13 @@ def main() -> int:
             print(f"    {f['invented']}  ->  {f['likely']}     ({f['why']})")
         if r["unresolved"]:
             print(f"    unresolved: {', '.join(r['unresolved'][:6])}")
+
+    if a.requeue:
+        if a.notes_file:
+            print("\n--requeue needs the live queue; it is meaningless "
+                  "against --notes-file.", file=sys.stderr)
+            return 2
+        return requeue(rows, apply=a.apply)
     return 0
 
 
