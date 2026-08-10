@@ -4661,15 +4661,39 @@ def process_one(dry: bool = False) -> bool:
     # the condition could never be true: the tier never deferred anything for
     # size, and instead silently decompiled the first 12000 chars of arbitrarily
     # large functions. Found by audit 2026-08-02.
+    # THE CEILING IS ON THE MODEL, NOT ON THE RECORD.
+    #
+    # MAX_FUNC_CHARS exists because 68865 chars of assembly does not fit in a
+    # model's context window. It used to defer the record outright, which
+    # threw away work that had ALREADY BEEN DONE: prepare() runs above this
+    # line and shells out to tools/m2ctx.py and tools/m2c/m2c.py to build a
+    # typed C draft. m2c is a static translator with no context window and
+    # does not care how large the function is.
+    #
+    # So eleven records sat in `deferred` as "too large to attempt" while
+    # their m2c draft was computed and discarded on every pass.
+    #
+    # Now the size only removes the MODEL from the loop. The draft still gets
+    # cleaned, applied, built and judged by the oracle. m2c output usually
+    # compiles and rarely matches, and "compiles, bytes differ" is precisely
+    # a permuter seed, which save_candidate already knows how to record.
     _asm_size = ctx.get("asm_full") or len(ctx["asm"])
+    m2c_only = False
     if _asm_size > MAX_FUNC_CHARS and not dry:
-        print(f"[worker] SKIP: {_asm_size} chars of asm exceeds "
-              f"MAX_FUNC_CHARS={MAX_FUNC_CHARS}; too large for this tier")
-        sched("report", "--id", rec["id"], "--status", "deferred",
-              "--notes", f"{DEFER_TOO_LARGE}: asm {_asm_size} chars > "
-                         f"{MAX_FUNC_CHARS} on backend={MODEL_BACKEND}; "
-                         f"handed off to the next tier")
-        return True
+        if not (ctx.get("draft") or "").strip():
+            print(f"[worker] SKIP: {_asm_size} chars of asm exceeds "
+                  f"MAX_FUNC_CHARS={MAX_FUNC_CHARS} and m2c produced no "
+                  f"draft to fall back on")
+            sched("report", "--id", rec["id"], "--status", "deferred",
+                  "--notes", f"{DEFER_TOO_LARGE}: asm {_asm_size} chars > "
+                             f"{MAX_FUNC_CHARS} on backend={MODEL_BACKEND}, "
+                             f"and m2c produced no usable draft either")
+            return True
+        m2c_only = True
+        print(f"[worker] M2C ONLY: {_asm_size} chars of asm exceeds "
+              f"MAX_FUNC_CHARS={MAX_FUNC_CHARS}; skipping the model and "
+              f"building the m2c draft ({len(ctx['draft'])} chars) instead",
+              flush=True)
     # P6. Ask BEFORE the model, not after: a record whose right answer is a
     # shim must never cost a generation. The blocked-but-not-shimmable case is
     # only annotated, so it stays workable; see shim_gate's docstring.
@@ -4723,6 +4747,12 @@ def process_one(dry: bool = False) -> bool:
     # decides where the record is routed when the attempts run out. See the
     # status choice at the end of this function.
     compiled_once = False
+    # Marks a verdict reached WITHOUT a model call, so a reader of the queue
+    # can tell an m2c-only seed from one a model wrote. They deserve different
+    # trust: m2c output is mechanical and usually ugly, and a `near` from it
+    # says the permuter has somewhere to start, not that anyone reasoned
+    # about the function.
+    _m2c_tag = "M2C-ONLY (no model call): " if m2c_only else ""
     seed_path = ""          # permuter seed written by the last compiling attempt
     produced_code = False   # did ANY attempt yield a candidate to build?
     gen_errors = 0          # attempts that errored during generation
@@ -4765,10 +4795,24 @@ def process_one(dry: bool = False) -> bool:
             # degeneration detector always cut in before any hard timeout. The cli
             # backend has neither, so the timeout IS the normal failure mode:
             # ATTEMPT_BUDGET is 191s by default and OpenCode runs take 120-190s.
+            if m2c_only:
+                # ONE SHOT. There is no feedback loop without a model: every
+                # later attempt would re-clean the same static draft and
+                # reach the same verdict, burning build cycles to learn
+                # nothing. The permuter is what iterates from here.
+                if attempt > 1:
+                    break
+                raw = ctx["draft"]
+                print(f"  using the m2c draft, no model call "
+                      f"({len(raw)} chars)", flush=True)
+                gen_ok = True
+            else:
+                gen_ok = False
             try:
-                raw = llama_echo(build_prompt(rec, ctx, feedback),
-                                 budget_left=min(ATTEMPT_BUDGET,
-                                                 _deadline - time.time()))
+                if not gen_ok:
+                    raw = llama_echo(build_prompt(rec, ctx, feedback),
+                                     budget_left=min(ATTEMPT_BUDGET,
+                                                     _deadline - time.time()))
             except subprocess.TimeoutExpired:
                 print(f"  !! attempt {attempt} timed out after "
                       f"{int(ATTEMPT_BUDGET)}s; trying the next attempt",
@@ -4942,8 +4986,8 @@ def process_one(dry: bool = False) -> bool:
             sched("report", "--id", rec["id"], "--status", "near",
                   "--score", "50", "--tier", "0",
                   "--add-iters", str(attempt),
-                  "--notes", ("compiled, byte mismatch; permuter candidate."
-                              + where + " " + best)[:250])
+                  "--notes", (_m2c_tag + "compiled, byte mismatch; permuter "
+                              "candidate." + where + " " + best)[:250])
         elif not produced_code:
             # The model NEVER produced a candidate: every attempt errored during
             # generation (server error, empty gateway drop, degeneration, or
@@ -4975,6 +5019,19 @@ def process_one(dry: bool = False) -> bool:
             # the only index. An archive nothing points at is a directory
             # nobody opens.
             where = f" rejected={rej}" if rej else " rejected=NONE(save failed)"
+            # An oversized record whose m2c draft did not compile is still
+            # too-large for the model, so it keeps that marker rather than
+            # being filed as an ordinary escalation. The archived draft is
+            # the starting point for whatever tries next.
+            if m2c_only:
+                sched("report", "--id", rec["id"], "--status", "deferred",
+                      "--add-iters", str(attempt),
+                      "--notes", (f"{DEFER_TOO_LARGE}: asm {_asm_size} chars "
+                                  f"> {MAX_FUNC_CHARS}; the m2c draft was "
+                                  f"built with no model call and did not "
+                                  f"compile." + where + " "
+                                  + (best_build or best))[:250])
+                return True
             sched("report", "--id", rec["id"], "--status", "escalated",
                   # Prefer the BUILD verdict. A later generation timeout must
                   # not be what an escalated record is filed under; the

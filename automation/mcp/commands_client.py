@@ -309,6 +309,7 @@ ANALYSIS_SCRIPTS = {
     "test_build_lock.py",
     "test_stub_declarations.py",
     "test_candidate_validation.py",
+    "test_m2c_only.py",
     # Retrofits stub declarations onto seeds written before the fix. Dry-run
     # by default; --apply is what writes.
     "fix_seed_declarations.py",
