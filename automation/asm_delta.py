@@ -156,9 +156,14 @@ def _find_asm(fn: str) -> Path | None:
     return _ASM_INDEX.get(fn)
 
 
-def for_function(fn: str) -> dict:
-    """Delta between a queue function and the local twin it came from."""
-    base = re.sub(r"_from_\w+$", "", fn)
+def for_function(fn: str, twin_name: str = "") -> dict:
+    """Delta between a queue function and a twin.
+
+    `twin_name` lets a caller nominate a twin found by SIMILARITY rather than
+    by the `X_from_Y` naming convention -- asm_twin_finder matches on shape and
+    tokens, and most of the tree's twins do not share a name.
+    """
+    base = twin_name or re.sub(r"_from_\w+$", "", fn)
     tgt, twin = _find_asm(fn), _find_asm(base)
     if not tgt:
         return {"ok": False, "reason": f"no asm for {fn}", "symbols": {},

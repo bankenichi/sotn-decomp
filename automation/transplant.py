@@ -36,6 +36,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import json
 import re
 import sys
 from pathlib import Path
@@ -90,6 +91,70 @@ def _local_def_index() -> dict[str, list[str]]:
         if m:
             out.setdefault(m.group("fn"), []).append(m.group("path"))
     _LOCAL_DEFS = out
+    return out
+
+
+_TWIN_JSON: dict | None = None
+
+
+def twin_sources(fn: str) -> list[str]:
+    """Candidate twin symbols for a stub, best evidence first.
+
+    THE NAMING CONVENTION IS A NARROW SUBSET. `X_from_Y` finds only the
+    inverted-castle copies; the first full scan reported 267 of 279 records as
+    having no twin on that basis alone. asm_twin_finder matches on assembly
+    SHAPE and TOKENS and knows about 152 more.
+
+    A candidate is only useful if THIS TREE ALREADY DEFINES IT. Many of
+    asm_twin_finder's twins are themselves unmatched stubs -- func_us_801B1DDC
+    and func_us_801B1E5C are twins of each other and neither is decompiled --
+    so copying from one would copy an INCLUDE_ASM. They are filtered against
+    the local definition index, which is the same question the transplant
+    already has to answer.
+
+    Ordered: the name-convention base first (it is the strongest signal, and
+    the one the 7 matches so far came from), then identical-constant shape
+    twins, then the rest.
+    """
+    global _TWIN_JSON
+    if _TWIN_JSON is None:
+        try:
+            _TWIN_JSON = json.loads(
+                (REPO / "automation" / "twins.us.json").read_text())
+        except (OSError, ValueError):
+            _TWIN_JSON = {}
+    idx = _local_def_index()
+    out: list[str] = []
+    base = re.sub(r"_from_\w+$", "", fn)
+    if base != fn and base in idx:
+        out.append(base)
+
+    entry = None
+    for key, val in (_TWIN_JSON.get("twins") or {}).items():
+        if key.rsplit("/", 1)[-1] == fn:
+            entry = val
+            break
+    if entry:
+        # THREE SHAPES IN ONE FILE. shape_twins carry `symbol`, while
+        # name_twins and token_twins carry `function` and a file path -- and
+        # token_twins add a similarity `score`. Reading `symbol` from all
+        # three raised KeyError on the first token twin.
+        def _name(t: dict) -> str:
+            return t.get("symbol") or t.get("function") or ""
+
+        exact = [_name(t) for t in entry.get("shape_twins", [])
+                 if t.get("identical_constants")]
+        # token_twins are ranked by a similarity score; take them strongest
+        # first so a 0.556 match is tried before a 0.4 one.
+        toks = sorted(entry.get("token_twins", []),
+                      key=lambda t: -(t.get("score") or 0))
+        rest = ([_name(t) for t in entry.get("name_twins", [])]
+                + [_name(t) for t in entry.get("shape_twins", [])
+                   if not t.get("identical_constants")]
+                + [_name(t) for t in toks])
+        for sym in exact + rest:
+            if sym and sym != fn and sym in idx and sym not in out:
+                out.append(sym)
     return out
 
 
@@ -547,10 +612,30 @@ def preflight(fn: str, mapping: list[str] | None = None,
     # Taking what we need from upstream is a deliberate, occasional act, and
     # it has its own tool: upstream_harvest.py. This one answers a question
     # about OUR tree.
-    body, path = local_twin(base, exclude=Path(stub_path).name)
-    src_kind = "local twin"
+    # EVERY candidate twin, best evidence first: the naming convention, then
+    # asm_twin_finder's shape and token matches. The first is a narrow subset
+    # -- it found 12 candidates where the similarity index knows many more.
+    tried: list[str] = []
+    body = path = src_kind = ""
+    for cand in (twin_sources(fn) or [base]):
+        b, pth = local_twin(cand, exclude=Path(stub_path).name)
+        if not b:
+            tried.append(f"{cand}: no extractable definition")
+            continue
+        # The twin must actually BE a twin. asm_twin_finder matches on shape
+        # and tokens, which is a similarity score, not a proof; asm_delta is
+        # the arbiter and rejects a different-length or different-opcode pair.
+        if auto:
+            import asm_delta as ad                             # type: ignore
+            probe = ad.for_function(fn, twin_name=cand)
+            if not probe["ok"]:
+                tried.append(f"{cand}: {probe['reason']}")
+                continue
+        body, path, src_kind, base = b, pth, "local twin", cand
+        break
     if not body:
-        return False, "", (f"no other definition of {base} in this tree")
+        return False, "", ("no usable twin in this tree; tried "
+                           + ("; ".join(tried) if tried else "nothing"))
     body = rename_function(body, base, fn)
 
     pairs = list(mapping or [])
@@ -560,7 +645,7 @@ def preflight(fn: str, mapping: list[str] | None = None,
         # every symbol rename and constant change between them; the first
         # transplant needed all of that by hand.
         import asm_delta as ad                                # type: ignore
-        d = ad.for_function(fn)
+        d = ad.for_function(fn, twin_name=base)
         auto_notes.append(f"asm delta: {d['reason']} "
                           f"({d['insns']} insns, {d['diffs']} differing)")
         if not d["ok"]:

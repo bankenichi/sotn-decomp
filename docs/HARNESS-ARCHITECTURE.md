@@ -374,3 +374,87 @@ human may have stopped the fleet to reconfigure something.
 5. Never push to `upstream`. This fork ships no PRs.
 6. Don't fix a symptom at the record level when the cause is in the code. The
    `near`/`escalated` misrouting was hand-patched once and came straight back.
+
+---
+
+## 12. Transplant: advancing the decomp without a model (2026-08-09)
+
+The fleet asks models to rediscover functions. For part of the queue that is
+unnecessary work, because the C already exists in this tree under another
+name: the normal and inverted castle stages share implementations, so
+`func_us_801CC750_from_no0` is a stub in rno0 while `func_us_801CC750` is
+decompiled in no0.
+
+Copying is verifiable by BUILD rather than by proxy, which makes it better
+evidence than anything a model produces. No fabricated field names to detect,
+no degeneration to abort, no fidelity score standing in for the truth.
+
+### The pieces
+
+| Script | Answers |
+|---|---|
+| `asm_delta.py` | what differs between a stub's asm and its twin's, and is it a twin at all |
+| `transplant.py` | can that difference be expressed in C, and does the result build |
+| `upstream_harvest.py` | what has upstream decompiled that we have not |
+
+### What is derived, and from where
+
+Nothing below is supplied by an operator.
+
+    the twin        the naming convention, then asm_twin_finder's index
+    the rename      the queue's own name for the stub
+    symbol renames  %hi/%lo and jal operands that differ between the listings
+    constants       differing immediates, EXCLUDING registers, local labels
+                    and branch displacements
+    macro constants a value the C reaches through a macro is rewritten as the
+                    macro ARGUMENT, verified by evaluating the real macro body
+                    out of game.h. ANIMSET_OVL(1) assembles to -0x7FFF; the
+                    target wanted -0x7FFE, which is ANIMSET_OVL(2)
+    declarations    from the destination overlay's own definitions
+    OVL_EXPORT      `#define g_EInitCommon OVL_EXPORT(EInitCommon)` plus the
+                    extern for the expanded name, emitted only when the
+                    overlay really does export it
+    enum ids        by ordinal, cross-checked against the destination's
+                    comment naming the same function
+
+### Safety
+
+`transplant.py` implements no apply, build or revert. It calls
+`permuter_supervisor.land_match`, the one sequence hardened against a mid-build
+crash: the fleet's own `.build.lock`, the journal written BEFORE the edit, a
+rebuild, all 81 SHA-1s verified independently of make's exit code, and an
+unconditional revert PROVEN by `_assert_reverted`. A second copy of that
+sequence would be a second thing to get wrong.
+
+`--batch` additionally tracks the files it landed itself and refuses to
+continue if anything else in `src/` has changed, because a match stays applied
+and a blanket clean-tree skip would let an unrelated edit ride into the next
+build unseen.
+
+### Results
+
+Seven matches, no model calls, roughly three minutes of build per candidate.
+The scan classifies the whole queue in 28 seconds and writes nothing:
+
+    ready       every substitution derived; one build from a verdict
+    needs-defs  clean twin needing file-scope statics the destination lacks
+    not-twin    the assembly genuinely differs
+    no-twin     nothing in the tree defines it under another name
+
+### Honest limits
+
+**asm_twin_finder's similarity index added no new candidates.** Wiring it in
+moved 26 records from `no-twin` to `not-twin` -- it proposes twins, and
+`asm_delta` rejects them. Its `token_twins` in particular offer the
+16-instruction `func_us_801B77D8` as a twin for functions of 28, 138, 150 and
+179 instructions. More information, not more matches.
+
+**Transplanted matches are not annotated.** They are tree-quality named C, not
+raw output, but they carry no provenance comment, their declarations sit at
+file scope rather than where a human would place them, and a prototype is
+sometimes emitted for a function defined in the same file. They are marked
+`METHOD=TRANSPLANT-AUTO` in the queue so `match_provenance` can separate them.
+
+**Upstream is not a dependency.** `upstream_harvest.py` is an occasional
+catch-up tool. transplant answers a question about THIS tree only, and its
+self-test fails if it ever reaches for the upstream ref.
