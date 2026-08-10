@@ -4393,6 +4393,9 @@ def main() -> int:
     p2.add_argument("--dry-run", action="store_true")
     sub.add_parser("preflight",
                    help="check the configured backend is reachable, then exit")
+    sub.add_parser("replay",
+                   help="restore any source left modified by a dead worker, "
+                        "then exit (fleet_stop calls this after reaping)")
     a = ap.parse_args()
 
     if not os.path.isdir(WIN_REPO):
@@ -4416,6 +4419,22 @@ def main() -> int:
                   file=sys.stderr)
     except OSError as e:
         print(f"[worker] artifact audit skipped: {e}", file=sys.stderr)
+
+    if a.cmd == "replay":
+        # RECOVERY MUST NOT DEPEND ON A DYING PROCESS. The SIGTERM handler
+        # already calls replay_pending_journals, but that runs inside the
+        # worker being killed and takes BuildLock first. During a fleet stop
+        # every lock holder is also being killed, so the handler can block on
+        # a lock whose owner is already gone, and fleet_stop's `kill -9`
+        # arrives before it ever restores anything. That is exactly what left
+        # src/st/rchi/e_gaibon.c modified on 2026-08-09 with its journal still
+        # on disk.
+        #
+        # Running it here, from a process nobody is killing and after every
+        # worker is dead, makes the restore unconditional.
+        n = replay_pending_journals()
+        print(json.dumps({"ok": True, "restored": n}))
+        return 0
 
     if a.cmd == "preflight":
         # Machine-readable so the connector can gate a fleet launch on it.

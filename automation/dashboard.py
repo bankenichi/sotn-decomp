@@ -1066,11 +1066,21 @@ button.danger:hover{border-color:var(--bad);color:var(--bad)}
 .tabs{display:flex;gap:6px}
 .tabs button{padding:5px 14px}
 .tabs button.on{border-color:var(--accent);color:var(--accent)}
-/* Diagnostics is a single scrolling pane, not a split: its output is long and
-   wants the full width. */
-#pane_diag{flex:1 1 auto;min-height:0;overflow:auto;padding:12px 16px;
+/* Diagnostics: the BUTTONS scroll, the OUTPUT does not move.
+   This pane used to be overflow:auto with the grid at flex:0 0 auto and the
+   output at flex:1 1 auto;min-height:0. With 36 diagnostics the grid is
+   taller than the viewport, so it took all the height, the output shrank to
+   the zero its own min-height:0 permitted, and the only part left on screen
+   was its horizontal scrollbar -- below the fold, unreachable. Reported
+   2026-08-09: "the response flows off the viewport and cannot even be
+   scrolled to".
+   So: the pane no longer scrolls (overflow:hidden, like pane_build), the grid
+   is capped and scrolls on its own, and the output has a floor it cannot be
+   squeezed under. */
+#pane_diag{flex:1 1 auto;min-height:0;overflow:hidden;padding:12px 16px;
            display:flex;flex-direction:column}
-.diaggrid{display:grid;gap:8px;flex:0 0 auto;
+.diaggrid{display:grid;gap:8px;flex:0 1 auto;min-height:0;overflow:auto;
+          max-height:34vh;padding-right:4px;
           grid-template-columns:repeat(auto-fill,minmax(230px,1fr))}
 .diagbtn{text-align:left;padding:8px 10px;line-height:1.35}
 .diagbtn b{display:block;color:var(--fg)}
@@ -1093,10 +1103,21 @@ button.danger:hover{border-color:var(--bad);color:var(--bad)}
         font-size:11px;white-space:pre;color:var(--fg)}
 #pane_logs{flex:1 1 auto;min-height:0;overflow:hidden;padding:12px 16px;
            display:flex;flex-direction:column}
-#diagout{margin-top:12px;flex:1 1 auto;min-height:0;overflow:auto;
+#diagout{margin-top:12px;flex:1 1 auto;min-height:14em;overflow:auto;
          background:var(--panel);border:1px solid var(--line);
-         border-radius:7px;padding:10px 12px;font-size:11px;
-         white-space:pre;color:var(--fg)}
+         border-radius:7px;padding:10px 12px;font-size:11px;color:var(--fg);
+         /* WRAP TO THE TABLE WIDTH, not the pane width.
+            These reports are mostly aligned tables with a few long prose
+            lines. Measured across the diagnostics on 2026-08-09, the widest
+            aligned row is 85 chars (quality_audit; empty_response_audit 82,
+            fleet_forensics 81, decl_coverage 72, reasoning_audit 58) while
+            prose reaches 251. `pre` refused to wrap the prose, so the box
+            scrolled sideways even though no table needed the width.
+            88ch clears the widest table and wraps everything longer to that
+            same column, so the prose lines up with the tables instead of
+            running past them. overflow-wrap:anywhere covers an unbreakable
+            token such as a long path. */
+         white-space:pre-wrap;overflow-wrap:anywhere;max-width:88ch;}
 /* The build tab had NO rule of its own, so it was not a flex column and
    nothing bounded its height: an 81-line sha1sum report simply grew the
    section past the viewport and the only way to read the end was ctrl+A.
@@ -1104,10 +1125,12 @@ button.danger:hover{border-color:var(--bad);color:var(--bad)}
    shrink below its content and the inner overflow:auto never engages. */
 #pane_build{flex:1 1 auto;min-height:0;overflow:hidden;padding:12px 16px;
             display:flex;flex-direction:column}
-#buildout{margin-top:12px;flex:1 1 auto;min-height:0;overflow:auto;
+/* Same floor as #diagout, for the same reason: min-height:0 lets a flex
+   child be squeezed to nothing by a tall sibling. */
+#buildout{margin-top:12px;flex:1 1 auto;min-height:14em;overflow:auto;
           background:var(--panel);border:1px solid var(--line);
-          border-radius:7px;padding:10px 12px;font-size:11px;
-          white-space:pre;color:var(--fg)}
+          border-radius:7px;padding:10px 12px;font-size:11px;color:var(--fg);
+          white-space:pre-wrap;overflow-wrap:anywhere;max-width:88ch}
 .ctl{display:flex;gap:8px;align-items:center;flex-wrap:wrap;flex:0 0 auto;
      padding-bottom:10px;margin-bottom:4px;border-bottom:1px solid var(--line)}
 .ctl label{color:var(--dim);display:flex;gap:4px;align-items:center;font-size:11px}
@@ -1389,6 +1412,8 @@ async function runDiag(i){
     el('diagout').textContent = err ? err :
       `${j.label||''}${j.secs!=null?'  ('+j.secs+'s)':''}`+
       `${j.ok===false?'   [non-zero exit]':''}\n\n${j.out||'(no output)'}`;
+    // A report replaces one that may have been scrolled; start at its top.
+    el('diagout').scrollTop=0; el('diagout').scrollLeft=0;
   }catch(e){ el('diagout').textContent='request failed: '+e; }
   btns.forEach(b=>b.disabled=false);
 }
@@ -1611,6 +1636,56 @@ def self_test() -> int:
     ck("lines[-tail_lines:]" in rl,
        "it tails rather than heads, because errors are at the END")
     ck("pane_logs" in PAGE and "showLog" in PAGE, "the logs tab renders")
+
+    print("\nthe output pane cannot be squeezed off the viewport")
+    # 36 diagnostics made the button grid taller than the screen. The pane
+    # scrolled, the grid was flex:0 0 auto so it kept every pixel, and the
+    # output was flex:1 1 auto;min-height:0 -- which is an instruction to
+    # shrink to nothing. All that remained on screen was its horizontal
+    # scrollbar, below the fold.
+    ck("#pane_diag{flex:1 1 auto;min-height:0;overflow:hidden" in PAGE,
+       "the diagnostics pane does not scroll; its children do")
+    ck("max-height:34vh" in PAGE and ".diaggrid{display:grid;gap:8px;"
+       "flex:0 1 auto;min-height:0;overflow:auto" in PAGE,
+       "the button grid is capped and scrolls on its own")
+    for _pane in ("#diagout", "#buildout"):
+        _rule = PAGE.split(_pane + "{", 1)[1].split("}", 1)[0]
+        ck("min-height:0" not in _rule,
+           f"{_pane} has no min-height:0 to collapse through")
+        ck("min-height:14em" in _rule,
+           f"{_pane} has a floor it cannot be squeezed under")
+        ck("overflow:auto" in _rule, f"{_pane} scrolls its own content")
+    ck("el('diagout').scrollTop=0" in PAGE,
+       "and a new report starts at its top, not where the last one was left")
+
+    # No horizontal scrollbar at all: with pre-wrap plus overflow-wrap there
+    # is nothing that can exceed the box width, so `overflow:auto` never
+    # renders one. Checked against the REAL report, not an assumption about
+    # how wide its lines are.
+    for _pane in ("#diagout", "#buildout"):
+        _rule = PAGE.split(_pane + "{", 1)[1].split("}", 1)[0]
+        ck("white-space:pre;" not in _rule,
+           f"{_pane} is not white-space:pre, which refused to wrap and was "
+           f"the only reason a sideways scrollbar appeared")
+        ck("white-space:pre-wrap" in _rule, f"{_pane} wraps long lines")
+        ck("overflow-wrap:anywhere" in _rule,
+           f"{_pane} can also break an unbreakable token such as a long path")
+    import subprocess as _sp
+    _rep = _sp.run(
+        [sys.executable, str(REPO / "automation" / "empty_response_audit.py")],
+        cwd=str(REPO), capture_output=True, text=True, timeout=180).stdout
+    _rows = [l for l in _rep.splitlines()
+             if l.strip().startswith(("opencode/", "model", "---"))]
+    if _rows:
+        _w = max(len(l) for l in _rows)
+        ck(_w <= 88,
+           f"and the widest TABLE row ({_w} chars) fits inside the 88ch "
+           f"column, so wrapping cannot disturb the alignment")
+    for _pane in ("#diagout", "#buildout"):
+        ck("max-width:88ch" in PAGE.split(_pane + "{", 1)[1].split("}", 1)[0],
+           f"{_pane} wraps to the table column, not the pane width")
+    ck(len(DIAGNOSTICS) > 20,
+       f"this matters because the grid really is long ({len(DIAGNOSTICS)})")
 
     print("\na rejected request must be VISIBLE, not blank")
     # A stale token was indistinguishable from an empty report. The token is

@@ -1300,6 +1300,34 @@ def fleet_stop(hold: bool = True) -> dict:
             lock.unlink()
         except OSError:
             pass
+    # RESTORE SOURCE HERE, not in the dying workers. Each worker's SIGTERM
+    # handler already calls replay_pending_journals, but it runs inside the
+    # process being killed and takes BuildLock first; during a fleet stop the
+    # lock's owner is also being killed, so the handler can block and the
+    # `kill -9` above lands before it restores anything. On 2026-08-09 that
+    # left src/st/rchi/e_gaibon.c holding a candidate, with its journal still
+    # on disk, after a stop that reported success.
+    #
+    # This runs in a process nobody is killing, after every worker is dead and
+    # after the stale lock is gone, so it cannot lose that race. It is also
+    # idempotent: a journal whose owner is still alive is skipped, and one
+    # already replayed is gone.
+    restored = 0
+    replay_note = ""
+    try:
+        rp = subprocess.run(
+            [PYTHON, "automation/win/worker_direct.py", "replay"],
+            cwd=str(REPO), capture_output=True, text=True, timeout=120)
+        for line in (rp.stdout or "").splitlines():
+            line = line.strip()
+            if line.startswith("{"):
+                restored = int(json.loads(line).get("restored") or 0)
+        if rp.returncode != 0:
+            replay_note = (rp.stderr or rp.stdout or "").strip()[-200:]
+    except (subprocess.SubprocessError, OSError, ValueError) as e:
+        # A failed replay must not stop the rest of the teardown, but it must
+        # be LOUD: the tree may still hold a candidate.
+        replay_note = f"{type(e).__name__}: {e}"
     try:
         (REPO / FLEET_PIDS).unlink()
     except OSError:
@@ -1315,13 +1343,21 @@ def fleet_stop(hold: bool = True) -> dict:
             held = True
         except OSError:
             pass
-    return {"action": "fleet_stop", "stopped": alive, "hold": held,
-            "reclaim": r.stdout.strip(),
+    out = {"action": "fleet_stop", "stopped": alive, "hold": held,
+           "reclaim": r.stdout.strip(),
+           "restored_files": restored,
             # Refreshed here so the NEXT run starts from a current catalogue.
             "models": refresh_zen_models(),
-            "note": "claims released, lock cleared"
-                    + ("; HOLD set, fleet_start will refuse without force"
-                       if held else "; no hold (recycle allowed)")}
+           "note": "claims released, lock cleared"
+                   + (f"; restored {restored} source file(s) from journal"
+                      if restored else "")
+                   + ("; HOLD set, fleet_start will refuse without force"
+                      if held else "; no hold (recycle allowed)")}
+    if replay_note:
+        out["replay_error"] = replay_note
+        out["note"] += ("; JOURNAL REPLAY FAILED, check `git status src/` "
+                        "before building")
+    return out
 
 
 def capabilities() -> dict:

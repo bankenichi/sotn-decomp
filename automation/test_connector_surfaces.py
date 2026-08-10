@@ -248,6 +248,55 @@ def main() -> int:
         check(f'"{name}"' in _fs,
               f"fleet_start help documents the {name} backend")
 
+    # --- teardown must restore source itself ---------------------------------
+    #
+    # Each worker's SIGTERM handler calls replay_pending_journals, but it runs
+    # inside the process being killed and takes BuildLock first. During a
+    # fleet stop the lock's owner is also being killed, so the handler can
+    # block and the `kill -9` lands before it restores anything. On
+    # 2026-08-09 that left src/st/rchi/e_gaibon.c holding a candidate, with
+    # its journal still on disk, after a stop that reported success.
+    #
+    # Driven end to end against a REAL journal and a REAL file, because the
+    # bug was that a code path nobody exercised did not run.
+    import json as _j, time as _t
+    # A THROWAWAY FILE, never a real source file. The first version of this
+    # test dirtied src/st/rchi/e_gaibon.c and restored it in `finally`. That
+    # is one interrupted run away from leaving a candidate in the tree, which
+    # is the exact failure being tested for. logs/ is gitignored, and replay
+    # resolves any repo-relative src_rel, so nothing tracked is ever touched.
+    _victim = _cc_mod.REPO / "automation" / "logs" / "selftest-victim.c"
+    _pend = _cc_mod.REPO / "automation" / "logs" / "pending"
+    _jf = _pend / "selftest-dead-worker.json"
+    _orig = "// self-test fixture, not a real source file\nvoid f(void) {}\n"
+    _was = _cc_mod.DRYRUN
+    try:
+        _pend.mkdir(parents=True, exist_ok=True)
+        _victim.write_text(_orig, encoding="utf-8")
+        _jf.write_text(_j.dumps({
+            "src_rel": "automation/logs/selftest-victim.c",
+            "original": _orig, "worker": "selftest-dead-worker",
+            "pid": 999997,            # a pid that is not alive
+            "at": _t.time()}), encoding="utf-8")
+        _victim.write_text(_orig + "// STRANDED BY A KILLED WORKER\n",
+                           encoding="utf-8")
+        _cc_mod.DRYRUN = False
+        _r = _cc_mod.fleet_stop(hold=True)
+        check(_r.get("restored_files") == 1,
+              f"fleet_stop restores source left by a dead worker "
+              f"(restored_files={_r.get('restored_files')})")
+        check(_victim.read_text(encoding="utf-8") == _orig,
+              "and restores it byte-for-byte, not approximately")
+        check(not _jf.exists(), "and consumes the journal so it cannot be "
+                                "replayed over a later edit")
+        check("restored 1 source file" in (_r.get("note") or ""),
+              "and says so in the note, because a silent restore is "
+              "indistinguishable from no restore")
+    finally:
+        _cc_mod.DRYRUN = _was
+        _victim.unlink(missing_ok=True)
+        _jf.unlink(missing_ok=True)
+
     print()
     if FAILS:
         print(f"{len(FAILS)} FAILED:")
