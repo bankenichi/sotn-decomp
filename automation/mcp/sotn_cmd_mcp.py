@@ -486,9 +486,16 @@ def run_analysis(script: str, args: str = "", timeout: int = 1800) -> dict:
     command after it blew the limit. That was most of the 40 sandbox timeouts
     in a single day, each costing a full re-run.
 
-    Allowed scripts: asm_twin_finder.py, codebase_index.py, quality_audit.py,
-    provenance_check.py, review_checks.py, decl_coverage.py,
-    test_twin_wiring.py. All are read-only.
+    Allowed scripts: whatever is in `commands_client.ANALYSIS_SCRIPTS` (45 of
+    them as of 2026-08-09). A rejected name returns the full list in the
+    error, so ask by being wrong rather than trusting a docstring.
+
+    This paragraph used to enumerate seven scripts and had been wrong for
+    months: empty_response_audit, match_provenance, transplant and thirty
+    others were callable and undocumented. That is the same defect as
+    fleet_start's help omitting `backend="zen"` -- a list maintained by hand
+    beside the real one drifts, and the copy a caller reads is the one that
+    misleads them.
 
     If it might exceed a couple of minutes, use
     job_start('run_analysis', script=..., args=...) instead."""

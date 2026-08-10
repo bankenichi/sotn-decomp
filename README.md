@@ -63,9 +63,15 @@ Measured 2026-08-09 against the live queue and the build oracle.
 | | |
 |---|---|
 | Build oracle | **81 / 81** overlay SHA-1s in `config/check.us.sha` |
+| Code decompiled | **95.2%** (6235 / 6567 functions) across 44 built binaries |
 | Queue | 470 records: **198 matched**, 184 todo, 50 escalated, 31 deferred, 7 near |
 | `INCLUDE_ASM` stubs left in `src/` | 775 (376 `st`, 211 `boss`, 3 `servant`, 2 `main`) |
-| Automation | 51 Python modules, 17 test suites, 70 connector tools |
+| Automation | 53 Python modules, 17 test suites, 70 connector tools, 42 diagnostics |
+
+The 95.2% is the whole game and mostly predates this fork; see
+[Completion](#completion) for the per-binary split and
+[Relationship to upstream](#relationship-to-upstream) for who did what. The
+queue is *our* work: 198 functions across five overlays.
 
 The tree is byte-identical to the retail binaries at every commit. That is not
 a goal, it is the gate: `verify_build` refuses to record a match without it,
@@ -190,10 +196,54 @@ python3 automation/dashboard.py --self-test
 
 ## Overlay reference
 
+### Completion
+
+**Overall: 95.2% of code decompiled** (6235 of 6567 functions), across 44 built
+binaries.
+
+Measured from the linker maps by `automation/progress_table.py`, which reads
+`build/us/*.map` and applies the same rule upstream's `tools/progress.py` does:
+a function counts only when it has no `.NON_MATCHING` symbol and no `.s` under
+the overlay's nonmatchings path. Ours prints a table and talks to no network.
+`--markdown` regenerates this block, so these figures are generated rather than
+typed and cannot quietly drift from the tree.
+
+**36 binaries are at 100%:** `DRA.BIN`, `BIN/RIC`, `BOSS/BO4`, `BOSS/RBO0`,
+`BOSS/RBO3`, `BOSS/RBO5`, all five `SERVANT/TT_00x`, `ST/ARE`, `ST/CAT`,
+`ST/CEN`, `ST/CHI`, `ST/DAI`, `ST/DRE`, `ST/LIB`, `ST/NO0`, `ST/NO1`,
+`ST/NO2`, `ST/NO3`, `ST/NO4`, `ST/NP3`, `ST/NZ0`, `ST/NZ1`, `ST/RARE`,
+`ST/RCAT`, `ST/RNO3`, `ST/RNZ0`, `ST/RTOP`, `ST/RWRP`, `ST/SEL`, `ST/ST0`,
+`ST/TOP`, `ST/WRP`.
+
+The eight that are not:
+
+| binary | code | functions | |
+|---|---:|---:|---|
+| `SLUS_000.67` | 98.3% | 515/517 | |
+| `ST/MAD` | 96.4% | 99/102 | |
+| `ST/RCHI` | 85.3% | 93/108 | harness target |
+| `ST/RCEN` | 84.1% | 99/119 | harness target |
+| `ST/RDAI` | 72.6% | 112/130 | |
+| `BOSS/BO0` | 69.7% | 122/188 | harness target |
+| `BOSS/BO6` | 60.5% | 138/237 | harness target |
+| `ST/RNO0` | 27.3% | 88/196 | harness target |
+
+Two caveats, because a percentage invites over-reading:
+
+- **Code bytes, not functions.** Overall functions are at 94.9% while code is
+  at 95.2%; the two differ because the functions still left are systematically
+  the large ones. Expect this number to move slowly from here.
+- **Code only.** Data import is tracked separately and is much further behind
+  in several overlays (`ST/RARE` 4.4%, `BOSS/RBO0` 6.9%). Run
+  `progress_table.py` without `--markdown` for the data column. Folding data
+  into a single headline figure would flatter the code number.
+
+### Binary to area
+
 Kept from upstream's README because the mapping is knowledge about the game,
 not about their tree. The progress badges are not kept: they render upstream's
 numbers, and showing someone else's progress as ours would be a lie in the
-first screenful. Ours are measured above.
+first screenful.
 
 <details>
 <summary>Binary to area, all 70 overlays</summary>

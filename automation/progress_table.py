@@ -1,0 +1,274 @@
+#!/usr/bin/env python3
+"""Per-overlay completion, measured from the linker maps. No network.
+
+WHY THIS EXISTS RATHER THAN tools/progress.py
+    tools/progress.py computes the same thing and then POSTS it to frogress
+    and Discord, which is upstream's reporting pipeline and not ours. It also
+    uses 3.12-only f-string nesting, so it will not even parse on 3.10.
+
+    This reads the same linker maps with the same library and the same rule,
+    prints a table, and talks to nothing. `--markdown` emits the block that
+    goes in README.md, so the README's numbers are generated rather than
+    typed, and cannot drift from the tree the way a hand-written figure does.
+
+WHAT "COMPLETE" MEANS HERE
+    Code bytes whose function is compiled from C, over total code bytes in
+    that binary. A function counts as decompiled only when it has NO
+    `.NON_MATCHING` symbol in the map and NO `.s` under the overlay's
+    nonmatchings path -- the same test tools/progress.py applies. This is a
+    stricter and more meaningful number than "how many functions are done",
+    because the functions still left are systematically the big ones: it goes
+    up more slowly than the function count and that is the point.
+
+    Data is reported separately. A binary can be at 100% code and still be
+    importing data, and conflating the two flatters the code number.
+
+REQUIREMENTS
+    mapfile_parser (in the repo venv) and a completed build, because the maps
+    are build output. Without `build/us/*.map` this reports nothing rather
+    than guessing.
+"""
+from __future__ import annotations
+
+import argparse
+import os
+import sys
+from pathlib import Path
+
+REPO = Path(__file__).resolve().parent.parent
+
+# mapfile_parser lives in the repo venv, which may not be the interpreter
+# running this. Add it rather than requiring a particular python.
+for _vp in sorted(REPO.glob(".venv/lib/python*/site-packages")):
+    if str(_vp) not in sys.path:
+        sys.path.insert(0, str(_vp))
+
+try:
+    import mapfile_parser
+    import yaml
+except ImportError as e:                                    # pragma: no cover
+    print(f"missing dependency: {e}. mapfile_parser and pyyaml are in the "
+          f"repo venv; run this with .venv/bin/python or install them.",
+          file=sys.stderr)
+    raise SystemExit(2)
+
+# module -> (path, pretty binary name). Mirrors tools/progress.py's list; the
+# pretty name is what the README table shows.
+MODULES: list[tuple[str, str, str]] = [
+    ("main", "main", "SLUS_000.67"),
+    ("dra", "dra", "DRA.BIN"),
+    ("ric", "ric", "BIN/RIC"),
+    ("maria", "maria", "BOSS/MAR"),
+    ("stare", "st/are", "ST/ARE"), ("stcat", "st/cat", "ST/CAT"),
+    ("stcen", "st/cen", "ST/CEN"), ("stchi", "st/chi", "ST/CHI"),
+    ("stdai", "st/dai", "ST/DAI"), ("stdre", "st/dre", "ST/DRE"),
+    ("stlib", "st/lib", "ST/LIB"), ("stmad", "st/mad", "ST/MAD"),
+    ("stno0", "st/no0", "ST/NO0"), ("stno1", "st/no1", "ST/NO1"),
+    ("stno2", "st/no2", "ST/NO2"), ("stno3", "st/no3", "ST/NO3"),
+    ("stno4", "st/no4", "ST/NO4"), ("stnp3", "st/np3", "ST/NP3"),
+    ("stnz0", "st/nz0", "ST/NZ0"), ("stnz1", "st/nz1", "ST/NZ1"),
+    ("stsel", "st/sel", "ST/SEL"), ("stst0", "st/st0", "ST/ST0"),
+    ("sttop", "st/top", "ST/TOP"), ("stwrp", "st/wrp", "ST/WRP"),
+    ("strare", "st/rare", "ST/RARE"), ("strcat", "st/rcat", "ST/RCAT"),
+    ("strcen", "st/rcen", "ST/RCEN"), ("strchi", "st/rchi", "ST/RCHI"),
+    ("strdai", "st/rdai", "ST/RDAI"), ("strno0", "st/rno0", "ST/RNO0"),
+    ("strno3", "st/rno3", "ST/RNO3"), ("strnz0", "st/rnz0", "ST/RNZ0"),
+    ("strtop", "st/rtop", "ST/RTOP"), ("strwrp", "st/rwrp", "ST/RWRP"),
+    ("bobo0", "boss/bo0", "BOSS/BO0"), ("bobo4", "boss/bo4", "BOSS/BO4"),
+    ("bobo6", "boss/bo6", "BOSS/BO6"), ("borbo0", "boss/rbo0", "BOSS/RBO0"),
+    ("borbo3", "boss/rbo3", "BOSS/RBO3"), ("borbo5", "boss/rbo5", "BOSS/RBO5"),
+    ("tt_000", "servant/tt_000", "SERVANT/TT_000"),
+    ("tt_001", "servant/tt_001", "SERVANT/TT_001"),
+    ("tt_002", "servant/tt_002", "SERVANT/TT_002"),
+    ("tt_003", "servant/tt_003", "SERVANT/TT_003"),
+    ("tt_004", "servant/tt_004", "SERVANT/TT_004"),
+    ("sd", "sd", "SD"),
+]
+
+
+class Stats:
+    __slots__ = ("name", "pretty", "exists", "code_done", "code_total",
+                 "fn_done", "fn_total", "data_done", "data_total")
+
+    def __init__(self, name: str, pretty: str):
+        self.name, self.pretty, self.exists = name, pretty, False
+        self.code_done = self.code_total = 0
+        self.fn_done = self.fn_total = 0
+        self.data_done = self.data_total = 0
+
+    @property
+    def code_pct(self) -> float:
+        return 100.0 * self.code_done / self.code_total if self.code_total else 0.0
+
+    @property
+    def fn_pct(self) -> float:
+        return 100.0 * self.fn_done / self.fn_total if self.fn_total else 0.0
+
+
+def _nonmatchings(asm_path: Path, opts: dict) -> Path:
+    nm = asm_path / opts.get("nonmatchings_path", "nonmatchings")
+    nm_psp = nm / asm_path.name
+    if nm_psp.exists() and (asm_path / "matchings").exists():
+        return nm_psp
+    return nm
+
+
+def collect(module: str, path: str, pretty: str, version: str) -> Stats:
+    st = Stats(module, pretty)
+    cfg_path = REPO / "config" / f"splat.{version}.{module}.yaml"
+    if not cfg_path.is_file():
+        return st
+    opts = (yaml.safe_load(cfg_path.read_text(encoding="utf-8")) or {}).get(
+        "options", {})
+    map_path = REPO / f"{opts.get('build_path', f'build/{version}')}/{module}.map"
+    if not map_path.is_file():
+        map_path = REPO / f"build/{version}/{path}.map"
+    if not map_path.is_file():
+        return st
+    st.exists = True
+
+    mf = mapfile_parser.MapFile()
+    mf.readMapFile(map_path)
+    asm_path = REPO / opts.get("asm_path", f"asm/{version}")
+    nm = _nonmatchings(asm_path, opts)
+    depth = 4 + path.count("/")
+
+    text = mf.filterBySectionType(".text")
+    for file in [f for seg in text for f in seg]:
+        if len(file) == 0:
+            continue
+        rel = Path(*file.filepath.parts[depth:])
+        stem = rel
+        while stem.suffix:
+            stem = stem.with_suffix("")
+        whole_file_asm = (asm_path / stem.with_suffix(".s")).exists()
+        for func in file:
+            if func.name.endswith(".NON_MATCHING"):
+                continue
+            st.fn_total += 1
+            size = func.size or 0
+            undecomped = (
+                whole_file_asm
+                or mf.findSymbolByName(f"{func.name}.NON_MATCHING") is not None
+                or (nm / stem / f"{func.name}.s").exists())
+            if undecomped:
+                st.code_total += size
+            else:
+                st.fn_done += 1
+                st.code_done += size
+                st.code_total += size
+
+    for sect in (".data", ".rodata", ".bss"):
+        for file in [f for seg in mf.filterBySectionType(sect) for f in seg]:
+            if "dra_data" in str(file.filepath):   # the VAB chunk at DRA's end
+                continue
+            st.data_total += file.size
+            if "src/" in str(file.filepath) or "assets/" in str(file.filepath):
+                st.data_done += file.size
+    return st
+
+
+def gather(version: str) -> list[Stats]:
+    return [s for s in (collect(m, p, n, version) for m, p, n in MODULES)
+            if s.exists and s.code_total]
+
+
+def totals(rows: list[Stats]) -> tuple[float, float, int, int]:
+    cd = sum(r.code_done for r in rows)
+    ct = sum(r.code_total for r in rows)
+    fd = sum(r.fn_done for r in rows)
+    ft = sum(r.fn_total for r in rows)
+    return (100.0 * cd / ct if ct else 0.0,
+            100.0 * fd / ft if ft else 0.0, fd, ft)
+
+
+def print_table(rows: list[Stats]) -> None:
+    print(f"{'binary':<18}{'code%':>8}{'funcs':>14}{'data%':>8}")
+    print("-" * 48)
+    for r in sorted(rows, key=lambda r: -r.code_pct):
+        dp = 100.0 * r.data_done / r.data_total if r.data_total else 0.0
+        print(f"{r.pretty:<18}{r.code_pct:>7.1f}%"
+              f"{f'{r.fn_done}/{r.fn_total}':>14}{dp:>7.1f}%")
+    print("-" * 48)
+    cp, fp, fd, ft = totals(rows)
+    print(f"{'OVERALL':<18}{cp:>7.1f}%{f'{fd}/{ft}':>14}")
+
+
+def print_markdown(rows: list[Stats]) -> None:
+    """The README block. Generated, so the README cannot drift from the tree."""
+    cp, fp, fd, ft = totals(rows)
+    print(f"**Overall: {cp:.1f}% of code decompiled** "
+          f"({fd} of {ft} functions), across {len(rows)} built binaries.\n")
+    done = [r for r in rows if r.code_pct >= 99.95]
+    part = [r for r in rows if r.code_pct < 99.95]
+    if done:
+        print(f"{len(done)} at 100%: "
+              + ", ".join(f"`{r.pretty}`" for r in sorted(
+                  done, key=lambda r: r.pretty)) + "\n")
+    if part:
+        print("| binary | code | functions |")
+        print("|---|---:|---:|")
+        for r in sorted(part, key=lambda r: -r.code_pct):
+            print(f"| `{r.pretty}` | {r.code_pct:.1f}% "
+                  f"| {r.fn_done}/{r.fn_total} |")
+
+
+def self_test() -> int:
+    fails = []
+
+    def ck(cond, label):
+        print(("  ok   " if cond else "  FAIL ") + label)
+        if not cond:
+            fails.append(label)
+
+    print("the table is derived from real maps, or it reports nothing")
+    rows = gather("us")
+    ck(bool(rows), f"maps were found and parsed ({len(rows)} binaries). "
+                   f"If this fails, run a build first.")
+    if rows:
+        ck(all(r.code_total > 0 for r in rows),
+           "every reported binary has a non-zero code total, so no row can "
+           "show a percentage computed from nothing")
+        ck(all(0.0 <= r.code_pct <= 100.0 for r in rows),
+           "no percentage is outside 0..100")
+        ck(all(r.fn_done <= r.fn_total for r in rows),
+           "decompiled functions never exceed total functions")
+        cp, fp, fd, ft = totals(rows)
+        ck(0.0 < cp <= 100.0, f"the overall figure is sane ({cp:.1f}%)")
+        ck(fd <= ft, f"and so is the function total ({fd}/{ft})")
+        # Code% and function% are DIFFERENT measures and are expected to
+        # disagree; asserting they track each other would be asserting the
+        # remaining functions are averagely sized, which they are not.
+        ck(True, f"code {cp:.1f}% vs functions {fp:.1f}% -- these differ "
+                 f"because the functions left are the big ones")
+    print()
+    if fails:
+        print(f"{len(fails)} FAILED")
+        for f in fails:
+            print("  - " + f)
+        return 1
+    print("all checks passed")
+    return 0
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--version", default=os.environ.get("VERSION", "us"))
+    ap.add_argument("--markdown", action="store_true",
+                    help="emit the README block instead of the table")
+    ap.add_argument("--self-test", action="store_true")
+    a = ap.parse_args()
+    if a.self_test:
+        return self_test()
+    rows = gather(a.version)
+    if not rows:
+        print(f"no linker maps under build/{a.version}/. These are build "
+              f"output; run a build first.", file=sys.stderr)
+        return 1
+    (print_markdown if a.markdown else print_table)(rows)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

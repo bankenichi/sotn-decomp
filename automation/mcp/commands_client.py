@@ -206,6 +206,18 @@ ANALYSIS_SCRIPTS = {
     "test_permuter_settings.py",
     "empty_response_audit.py",
     "test_prompt_compaction.py",
+    # Added 2026-08-09. progress_table.py reads the linker maps and prints
+    # per-overlay completion; it writes nothing and talks to no network,
+    # unlike tools/progress.py which posts to frogress and Discord.
+    "progress_table.py",
+    # The day's two new suites. Both were runnable from a shell and NOT from
+    # the connector, which is the same two-surfaces gap this file warns about
+    # a few lines up: a test nobody can reach from the dashboard is a test
+    # that stops being run.
+    "test_draft_cleaning.py",
+    "test_salvage_degeneration.py",
+    # Runs every test_*.py and reports one table. Read-only.
+    "run_selftests.py",
 }
 # Deliberately narrow: flags, numbers, and in-repo-looking relative paths.
 # No spaces, quotes, semicolons, redirects, or leading dashes-with-spaces, so

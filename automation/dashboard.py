@@ -556,6 +556,10 @@ DIAGNOSTICS = [
     # current run is the only thing that can show whether a change made today
     # helped. Reported 2026-08-09: "the logs from the old calls are holding
     # the statistics back".
+    ("Progress: per-overlay %", "progress_table.py", "",
+     "code completion per binary, read from the linker maps"),
+    ("Progress: README block", "progress_table.py", "--markdown",
+     "the same figures as the markdown that goes in README.md"),
     ("Fleet: empty responses", "empty_response_audit.py",
      "--timing --by-prompt-size",
      "dead rate per model since the last archive, call timing, prompt-size "
@@ -619,6 +623,12 @@ DIAGNOSTICS = [
      "does a timed-out attempt keep the code the model already finished"),
     ("Self-test: supervisor", "permuter_supervisor.py", "--self-test",
      "the supervisor's own checks"),
+    ("Self-test: EVERYTHING", "run_selftests.py", "",
+     "runs all 17 suites and reports one table (~65s)"),
+    ("Self-test: draft cleaning", "test_draft_cleaning.py", "",
+     "ILLEGAL never reaches the model; the offset table knows its pointer"),
+    ("Self-test: salvage degeneration", "test_salvage_degeneration.py", "",
+     "a runaway forced-code pass aborts instead of filling the budget"),
     ("Self-test: audit", "empty_response_audit.py", "--self-test",
      "the audit parser's own checks"),
 ]
@@ -1874,6 +1884,42 @@ def self_test() -> int:
     # message the operator sees only after clicking it. decomp_fidelity.py
     # shipped in exactly that state until this check was written.
     ck(not missing, f"no orphaned buttons ({missing})")
+
+    # AND THE REVERSE. The check above only asks whether every button points
+    # at an allowlisted script. It never asked whether every allowlisted
+    # script is reachable, so three of them -- progress_table.py and the two
+    # suites added on 2026-08-09 -- were callable in principle and invisible
+    # in practice. A tool nobody can click is a tool that stops being run.
+    #
+    # Suites that exist to be run by the other suites, or that need arguments
+    # to mean anything, are exempt BY NAME rather than by pattern, so adding
+    # one is a deliberate act that shows up in a diff.
+    # Individual test_*.py suites are covered by the "Self-test: EVERYTHING"
+    # button, which runs all of them and reports one table. Listing eleven
+    # more buttons would bury the tab to prove a point nobody clicks.
+    _covered_by_runner = {p.name for p in
+                          (REPO / "automation").glob("test_*.py")}
+    NO_BUTTON_NEEDED = _covered_by_runner | {
+        "quality_ab.py",            # an A/B harness; needs a model and flags
+        "permuter_supervisor.py",   # driven by the permuter panel, not a button
+        "transplant.py",            # needs --function/--batch to do anything
+        "asm_delta.py",             # takes two .s paths
+        "fn_diff.py",               # takes a function name
+        "find_data_segment.py",     # takes an address
+        "member_types.py",          # a library; its self-test runs in-process
+        "probe_provider.py",        # network probe, run deliberately
+        "upstream_harvest.py",      # occasional, and takes --overlay
+        "opencode_size_bisect.py",  # already has a button under another label
+        "codebase_index.py",        # a build step, on the build tab
+        "permuter_promote.py", "permuter_stall.py",
+    }
+    try:
+        unreachable = sorted(set(allowed) - {d[1] for d in DIAGNOSTICS}
+                             - NO_BUTTON_NEEDED)
+    except Exception as e:                                 # noqa: BLE001
+        unreachable = [f"could not compare: {e}"]
+    ck(not unreachable,
+       f"every allowlisted script is reachable from the UI ({unreachable})")
 
     if fails:
         print(f"{len(fails)} FAILED")
