@@ -199,7 +199,27 @@ void BO6_RicSetStand(s32 velocityX) {
     BO6_RicSetAnimation(ric_anim_stand);
 }
 
-INCLUDE_ASM("boss/bo6/nonmatchings/us_39144", func_us_801B9D74);
+extern PlayerState g_Ric;
+extern void BO6_RicSetStep(s32);
+extern void BO6_RicSetAnimation(AnimationFrame*);
+extern void BO6_RicSetSpeedX(s32);
+extern Entity* g_CurrentEntity;
+extern s32 RIC_velocityY;
+extern AnimationFrame D_us_801821F8;
+extern void BO6_RicCreateEntFactoryFromEntity(Entity*, u32, s32);
+
+// Sets up Richter's initial state for the BO6 boss fight intro:
+// resets hitParams, sets step 0x1A, plays intro animation,
+// sets walk speed, resets vertical velocity, and spawns entity factory.
+void func_us_801B9D74(void) {
+    g_Ric.unk44 = 0;
+    BO6_RicSetStep(0x1A);
+    BO6_RicSetAnimation(&D_us_801821F8);
+    BO6_RicSetSpeedX(0x24000);
+    g_Ric.timers[0xB] = 0x28;
+    RIC_velocityY = 0;
+    BO6_RicCreateEntFactoryFromEntity(g_CurrentEntity, 0x50001U, 0);
+}
 
 extern AnimationFrame D_us_80182010[];
 void func_us_801B9D74(void);
@@ -228,7 +248,20 @@ INCLUDE_ASM("boss/bo6/nonmatchings/us_39144", func_us_801B9E70);
 
 INCLUDE_ASM("boss/bo6/nonmatchings/us_39144", BO6_RicSetFall);
 
-INCLUDE_ASM("boss/bo6/nonmatchings/us_39144", func_us_801BA050);
+extern AnimationFrame D_us_80182324;
+
+void func_us_801BA050(void) {
+    BO6_RicSetStep(9);
+    RIC_velocityX = 0;
+    BO6_RicSetSpeedX(0x14000);
+    RIC_velocityY = -0x78000;
+    g_Ric.high_jump_timer = 0;
+    BO6_RicSetAnimation(&D_us_80182324);
+    func_us_801B9C14();
+    BO6_RicCreateEntFactoryFromEntity(g_CurrentEntity, 0x2D, 0);
+    g_api_PlaySfx(0x82D);
+    g_Ric.timers[0xC] = 4;
+}
 
 // Richter (BO6): refuse to spawn another subweapon if `limit` of the same id
 // are already live, or if there is no free slot at all.

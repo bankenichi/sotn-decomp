@@ -227,7 +227,36 @@ void BO6_RicStepGenericSubwpnCrash(void) {
     }
 }
 
-INCLUDE_ASM("boss/bo6/nonmatchings/richter", BO6_RicStepThrowDaggers);
+extern s32 D_us_801D07F8;
+
+// BO6 Richter throw daggers step: manages a countdown timer while
+// throwing, and allows cancellation via pad input.
+void BO6_RicStepThrowDaggers(void) {
+    s32 temp_v0;
+
+    if (g_Entities[64].step_s == 0) {
+        D_us_801D07F8 = 0x200;
+        g_Entities[64].step_s += 1;
+    } else {
+        BO6_RicCheckFacing();
+        temp_v0 = D_us_801D07F8 - 1;
+        D_us_801D07F8 = temp_v0;
+        if (temp_v0 == 0) {
+            /* unk46 is an s16 field in PlayerState (not Entity hitboxWidth) */
+            g_Ric.unk46 = 0;
+            BO6_RicSetStand(0);
+            /* unk4E is an s16 field in PlayerState */
+            g_Ric.unk4E = 1;
+        }
+    }
+    /* padTapped is a s32 field in PlayerState at offset 0x31C */
+    if (g_Ric.padTapped & 0x40) {
+        func_us_801B9E70();
+        g_Ric.unk46 = 0;
+        g_Ric.unk4E = 1;
+        D_us_801D07F8 = 0;
+    }
+}
 
 INCLUDE_ASM("boss/bo6/nonmatchings/richter", BO6_RicStepSlide);
 
