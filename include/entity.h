@@ -3897,12 +3897,19 @@ typedef struct {
 typedef struct {
     /* 0x7C */ u32 : 32;
     /* 0x80 */ s16 timer;
-    /* 0x82 */ u16 : 16;
-    /* 0x84 */ u16 : 16;
+    // The Alastor glow effect, drawn by VandalSwordDrawAlastor. These three
+    // were anonymous padding, so that function reached them through
+    // ext.ILLEGAL.s16[3], .u8[8] and .u16[9] -- the generic escape hatch,
+    // which is a placeholder and not a name. Named from their use.
+    /* 0x82 */ s16 alastorAngle;      // fed to rsin/rcos, += 0x30 per frame
+    /* 0x84 */ u8 alastorBrightness;  // scales the glow's RGB, ramps by 0x10
+    /* 0x85 */ u8 : 8;
     /* 0x86 */ u8 flag;
     /* 0x87 */ u8 : 8;
     /* 0x88 */ u32 : 32;
-    /* 0x8C */ u32 : 32;
+    /* 0x8C */ u16 : 16;
+    /* 0x8E */ u16 alastorClut;       // bit 0x4000 is the ping-pong direction,
+                                      // low nibble is the clut offset from 0x210
     /* 0x90 */ s16 angle;
     /* 0x92 */ s16 timer2;
     /* 0x94 */ u32 : 32;
