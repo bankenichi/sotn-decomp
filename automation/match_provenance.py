@@ -19,8 +19,13 @@ WHAT COUNTS AS A SOURCE
                    stubs at once.
     shim-header    a body copied or relocated verbatim from a shared header
                    that needed no segment surgery.
+    transplant     transplant.py moved a twin's body in mechanically, applied,
+                   built and verified it. Tree-quality named C, but MACHINE
+                   PLACED: no provenance comment, declarations injected at file
+                   scope rather than where a human would put them. Task #81 is
+                   the annotation pass, and it needs these countable.
     twin-port      a body ported from a sibling overlay or the RIC twin, with
-                   the divergences worked out by hand.
+                   the divergences worked out BY HAND.
     permuter       decomp-permuter searched an existing compiling body to a
                    score of 0.
     model-fleet    an OpenCode or llama worker generated the C.
@@ -78,8 +83,8 @@ QUEUE = Path(os.path.expanduser(
 
 # ---------------------------------------------------------------- the sources
 
-SOURCES = ("shim-segment", "shim-header", "twin-port", "permuter",
-           "model-fleet", "claude-manual", "unknown")
+SOURCES = ("shim-segment", "shim-header", "transplant", "twin-port",
+           "permuter", "model-fleet", "claude-manual", "unknown")
 
 # Ordered by which step was DECISIVE, not by which happened first.
 #
@@ -89,8 +94,16 @@ SOURCES = ("shim-segment", "shim-header", "twin-port", "permuter",
 # Shims outrank everything because a shimmed function was never generated at
 # all -- attributing it to whatever agent pressed the button would be pure
 # fiction.
-_PRECEDENCE = ("shim-segment", "shim-header", "twin-port", "permuter",
-               "claude-manual", "model-fleet", "unknown")
+#
+# `transplant` outranks `twin-port` and sits beside the shims: like a shim, the
+# body was never generated, it was moved. It is kept SEPARATE from twin-port
+# because the two need different follow-up. A twin-port had its divergences
+# worked out by hand and reads like tree code; a transplant is machine-placed,
+# carries worker-injected declarations at file scope, and has never had an
+# annotation pass. Task #81 is that pass, and it cannot be scoped if the two
+# are counted together.
+_PRECEDENCE = ("shim-segment", "shim-header", "transplant", "twin-port",
+               "permuter", "claude-manual", "model-fleet", "unknown")
 
 # Every pattern below was read off real queue notes on 2026-08-03, not
 # invented. Keep them anchored to phrases the harness and its operators
@@ -104,8 +117,19 @@ _PATTERNS = (
         r"verbatim (copy|from)|copied (the )?body|relocated (body )?verbatim|"
         r"\brelocated verbatim\b|adopted shared body|"
         r"\bcopied body from\b|shared body from", re.I)),
+    # THE TOOL'S OWN NAME WAS MISSING. transplant.py produces these matches and
+    # writes "METHOD=TRANSPLANT-AUTO (not fleet)" into the note, and nothing
+    # here matched the word. Measured 2026-08-10: func_us_801D3700_from_are and
+    # func_us_801D1388_from_are both landed in `unknown` -- the first carrying a
+    # note written expressly to say how it was made.
+    ("transplant", re.compile(
+        r"\btransplant\w*\b|METHOD=TRANSPLANT", re.I)),
     ("twin-port", re.compile(
-        r"\bported from\b|\bmirrored\b|\btwin\b|\bfrom_bo0\b|\bfrom_no4\b|"
+        # `_from_<overlay>` GENERALISED. This enumerated from_bo0 and from_no4
+        # by hand, so from_are, from_no0 and from_rcen -- all live in the queue
+        # -- fell through. A hand-kept list of a naming convention's instances
+        # drifts the moment the convention is used again.
+        r"\bported from\b|\bmirrored\b|\btwin\b|\b_from_[a-z][a-z0-9]*\b|"
         r"sibling overlay", re.I)),
     ("permuter", re.compile(
         r"\bpermuter\b|seed promotion|\bscore-\d+ base\b|"
@@ -397,7 +421,8 @@ def report(rows: list[dict], detail: bool = False) -> None:
     blurb = {
         "shim-segment": "shared header + splat segment work",
         "shim-header":  "body copied from a shared header",
-        "twin-port":    "ported from a sibling overlay / RIC",
+        "transplant":   "transplant.py moved a twin body; NEEDS ANNOTATION",
+        "twin-port":    "ported from a sibling overlay / RIC, by hand",
         "permuter":     "decomp-permuter search reached 0",
         "model-fleet":  "an OpenCode or llama worker wrote it",
         "claude-manual": "written or repaired by hand",

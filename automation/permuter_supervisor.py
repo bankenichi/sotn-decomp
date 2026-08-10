@@ -746,7 +746,34 @@ def land_match(work: Path, fn: str, build: str = "us",
                 return False, ("TREE ALREADY BROKEN: the build fails with the "
                                "seed REVERTED too, so this failure is not "
                                "attributable to " + fn + ". Nothing recorded.")
-            return False, classify_build_failure(detail)
+            verdict = classify_build_failure(detail)
+
+            # COMPILES BUT DIFFERS IS A PERMUTER SEED. Save it.
+            #
+            # This is the one outcome the permuter cannot produce for itself:
+            # a function that compiles and links, with the right callees and
+            # control flow, that merely misses on bytes. A transplant that
+            # reaches this point has produced exactly that -- and until now it
+            # printed "compiles-differs / permuter candidate" and threw the
+            # body away, so the loop from twin to match never closed without a
+            # model.
+            #
+            # save_candidate, not a local writer: it runs virtual_apply so the
+            # seed is the WHOLE file with every include and file-scope
+            # declaration, then declares the INCLUDE_ASM stub siblings the body
+            # calls. Seeds written as a bare body could not be imported at all
+            # (see its docstring), and permuter_supervisor reads exactly this
+            # directory when it picks candidates.
+            if verdict.startswith("CHECKSUM MISMATCH"):
+                seed = wd.save_candidate(rec, body, 1, detail, ctx)
+                if seed:
+                    # Named in the verdict for the same reason the worker names
+                    # it in the queue note: an archive nothing points at is a
+                    # directory nobody opens.
+                    verdict += f" seed={seed}"
+                else:
+                    verdict += " seed=NONE(save failed)"
+            return False, verdict
         except Exception as e:                              # noqa: BLE001
             if original is not None:
                 try:
