@@ -417,9 +417,12 @@ def _import_locked(path: Path, original: str, m, body: str, asm_rel: str,
     try:
         wd.journal_write(src_rel, original)
         path.write_text(original[:m.start()] + body + original[m.end():])
+        # wd.asm_dir, not a second copy of the rule: src/st/mad/D8C8.c uses
+        # the INCLUDE_ASM_OLD form whose FOLDER already carries `asm/us/`,
+        # and hardcoding the prefix here asked for asm/us/asm/us/...
         r = cc.run("permuter_import", timeout=300,
                    c_file=str(path.relative_to(REPO)),
-                   asm_file=f"asm/us/{asm_rel}/{fn}.s")
+                   asm_file=f"{wd.asm_dir(asm_rel)}/{fn}.s")
         ok = r.get("returncode") == 0
         detail = (r.get("stdout") or r.get("stderr") or "")[-300:]
     except Exception as e:                                # noqa: BLE001

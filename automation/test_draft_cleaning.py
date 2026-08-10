@@ -168,6 +168,57 @@ def main():
     check("ILLEGAL" not in wd.ENTITY_LAYOUT,
           "the entity layout section does not mention it at all")
 
+    print("\nILLEGAL never reaches the model, from any direction")
+    # It arrived by THREE routes, and closing only the first left a loop:
+    #   1. the prompt offered it outright            (fixed earlier)
+    #   2. the m2c draft contains it legitimately, because ILLEGAL is a real
+    #      member of the ext union in entity.h
+    #   3. which put "illegal" in the affinity haystack, so ext_variants_for
+    #      selected it and printed "ext.ILLEGAL (ET_Placeholder)" as an
+    #      AVAILABLE VARIANT in the same prompt that forbids it
+    # Live worker logs on 2026-08-09 showed 203, 343 and 36 mentions per log,
+    # reasoning in circles over exactly that contradiction.
+    ill = ("void f(Entity* self) {\n"
+           "    self->ext.ILLEGAL.u8[0x2E] = 1;\n"
+           "    self->ext.ILLEGAL.u16[6] = 2;\n"
+           "    self->ext.ILLEGAL.s32[1] = 3;\n}")
+    out3, notes3 = wd.clean_draft(ill)
+    check("ILLEGAL" not in out3, "the draft is stripped of it")
+    check("self->unkAA" in out3,
+          "u8[0x2E] becomes entity offset 0xAA (0x7C + 0x2E)")
+    check("self->unk88" in out3, "u16[6] becomes 0x88 (0x7C + 6*2)")
+    check("self->unk80" in out3, "s32[1] becomes 0x80 (0x7C + 1*4)")
+    check("ext.unk" not in out3,
+          "and the `ext.` prefix is dropped, because unkNN is an ENTITY "
+          "offset and `self->ext.unkAA` would be neither form")
+    check(len(notes3) == 3, f"all three conversions reported ({len(notes3)})")
+    check(wd.clean_draft(out3)[0] == out3, "still idempotent")
+
+    check(wd.ext_variants_for("EntityFoo", ill) == "",
+          "the placeholder is never listed as an available variant, even "
+          "though the draft mentions it by name")
+
+    print("\nthe variant listing carries offsets, or it cannot be used")
+    ev = wd.ext_variants_for("EntityVenusWeedTendril", "venusWeedTendril")
+    check(bool(ev), "a real variant is still found")
+    check("0x" in ev and "timer" in ev,
+          "and each field is printed WITH its entity offset, so 'the field at "
+          "0xC' is a lookup rather than a puzzle")
+    check("pad_" not in ev, "anonymous padding is not offered as a field")
+
+    print("\nwith no variant list, the instruction is terminal, not a hunt")
+    no_ev = wd.resolve_unk_offsets(out3, have_variants=False)
+    check("NO variant list was supplied" in no_ev,
+          "the prompt admits the section is absent rather than pointing at it")
+    check("Spend no further reasoning" in no_ev,
+          "and tells the model to stop, which is the whole cost being avoided")
+    check("ILLEGAL" in no_ev and "do NOT write ext.ILLEGAL" in no_ev,
+          "the single remaining mention is a prohibition with a stated "
+          "alternative, not an offer")
+    yes_ev = wd.resolve_unk_offsets(out3, have_variants=True)
+    check("NO variant list" not in yes_ev,
+          "and that text does not appear when a list WAS supplied")
+
     print("\nthe gate and the prompt finally agree")
     # Call the REAL gate. An earlier version of this test re-implemented the
     # check inline and so asserted only that its own `if` worked.

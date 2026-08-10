@@ -1324,6 +1324,9 @@ async function runBuild(i){
       headers:{'X-Token':TOKEN,'Content-Type':'application/json'},
       body:JSON.stringify({index:i})});
     const j=await r.json();
+    const berr=apiError(r,j);
+    if(berr){ el('buildout').textContent=berr;
+              btns.forEach(b=>b.disabled=false); return; }
     el('buildout').textContent =
       `${j.label||''}${j.secs!=null?'  ('+j.secs+'s)':''}`+
       `${j.ok===false?'   [FAILED]':'   [ok]'}\n\n${j.out||'(no output)'}`;
@@ -1354,9 +1357,23 @@ async function showLog(i){
       headers:{'X-Token':TOKEN,'Content-Type':'application/json'},
       body:JSON.stringify({index:i})});
     const j=await r.json();
-    el('logout').textContent=j.out||'(empty)';
+    el('logout').textContent=apiError(r,j)||j.out||'(empty)';
     el('logout').scrollTop=el('logout').scrollHeight;   // errors are at the end
   }catch(e){ el('logout').textContent='request failed: '+e; }
+}
+
+// A 403 used to be INVISIBLE. The token is regenerated on every dashboard
+// restart and embedded in the page, so a tab left open across a restart sends
+// a stale one. The server answers {"error":"bad or missing token"} with no
+// `out` field, and every renderer below read only `j.out`, so the panel showed
+// "(no output)" and nothing else. Reported 2026-08-09 as "the empty responses
+// button is broken"; the button, the script and the route were all fine.
+function apiError(r, j){
+  if(r.ok && !j.error) return '';
+  if(r.status===403) return 'THE DASHBOARD RESTARTED SINCE THIS PAGE LOADED.\n\n'+
+    'Its access token changes on every restart and this tab still has the old '+
+    'one, so the server rejected the request (HTTP 403).\n\nReload the page.';
+  return 'request rejected (HTTP '+r.status+'): '+(j.error||'unknown error');
 }
 
 async function runDiag(i){
@@ -1368,7 +1385,8 @@ async function runDiag(i){
       headers:{'X-Token':TOKEN,'Content-Type':'application/json'},
       body:JSON.stringify({index:i})});
     const j=await r.json();
-    el('diagout').textContent =
+    const err=apiError(r,j);
+    el('diagout').textContent = err ? err :
       `${j.label||''}${j.secs!=null?'  ('+j.secs+'s)':''}`+
       `${j.ok===false?'   [non-zero exit]':''}\n\n${j.out||'(no output)'}`;
   }catch(e){ el('diagout').textContent='request failed: '+e; }
@@ -1389,7 +1407,7 @@ async function act(name,params){
       headers:{'X-Token':TOKEN,'Content-Type':'application/json'},
       body:JSON.stringify(params||{})});
     const j=await r.json();
-    el('out').textContent=(j.out||JSON.stringify(j)).trim();
+    el('out').textContent=apiError(r,j)||(j.out||JSON.stringify(j)).trim();
   }catch(e){ el('out').textContent='request failed: '+e; }
   document.querySelectorAll('button').forEach(b=>b.disabled=false);
   refresh();
@@ -1593,6 +1611,44 @@ def self_test() -> int:
     ck("lines[-tail_lines:]" in rl,
        "it tails rather than heads, because errors are at the END")
     ck("pane_logs" in PAGE and "showLog" in PAGE, "the logs tab renders")
+
+    print("\na rejected request must be VISIBLE, not blank")
+    # A stale token was indistinguishable from an empty report. The token is
+    # regenerated on every restart, so any tab left open across one sends the
+    # old one; the server replies 403 with an `error` key and no `out`, and
+    # the renderers only read `out`. The panel said "(no output)" and the user
+    # reasonably concluded the tool was broken.
+    #
+    # Driven against the REAL server with a REAL stale token, because the bug
+    # lived in the gap between the route and the renderer, and a test of
+    # either half alone would have passed while it was live.
+    import threading as _th, urllib.request as _u, urllib.error as _ue
+    from http.server import HTTPServer as _H
+    _srv = _H(("127.0.0.1", 0), Handler)
+    _th.Thread(target=_srv.serve_forever, daemon=True).start()
+    _port = _srv.server_address[1]
+    try:
+        _req = _u.Request(f"http://127.0.0.1:{_port}/api/diag",
+                          data=json.dumps({"index": 0}).encode(),
+                          headers={"X-Token": "stale-token-from-a-restart",
+                                   "Content-Type": "application/json"},
+                          method="POST")
+        try:
+            _b, _st = json.loads(_u.urlopen(_req, timeout=20).read()), 200
+        except _ue.HTTPError as _e:
+            _b, _st = json.loads(_e.read()), _e.code
+        ck(_st == 403, f"a stale token is refused ({_st})")
+        ck("error" in _b, "the refusal carries an `error` key")
+        ck("out" not in _b,
+           "and NO `out` key, which is exactly why it rendered blank")
+    finally:
+        _srv.shutdown()
+    ck(PAGE.count("apiError(r,j)") == 4,
+       f"every POST renderer checks for it "
+       f"({PAGE.count('apiError(r,j)')}/4: diag, build, log, action)")
+    ck("function apiError" in PAGE, "via one shared helper, not four copies")
+    ck("Reload the page" in PAGE,
+       "and a 403 tells the user the actionable thing, which is to reload")
 
     print("\nthe page")
     ck("__TOKEN__" in PAGE, "page carries a token placeholder")

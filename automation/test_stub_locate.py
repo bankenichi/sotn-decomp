@@ -105,6 +105,52 @@ def main() -> int:
     check("RX_INC.finditer(text)" in body,
           "find_source scans whole-file text")
 
+
+    # --- INCLUDE_ASM FOLDER has TWO legal forms -----------------------------
+    #
+    # include/include_asm.h expands FOLDER two ways: the default prepends
+    # `asm/<VERSION>/`, and INCLUDE_ASM_OLD does not, so FOLDER carries the
+    # prefix itself. Only src/st/mad/D8C8.c uses the second form, 3 stubs of
+    # 775, so anything that hardcodes the prefix works 99.6% of the time and
+    # fails silently on the rest. permuter_supervisor did exactly that and
+    # asked for `asm/us/asm/us/st/mad/...`.
+    #
+    # Resolved against the REAL tree, so this fails if either convention
+    # stops working, not merely if the string changes.
+    import re as _re
+    _INC = _re.compile(r'INCLUDE_ASM\(\s*"([^"]+)"\s*,\s*(\w+)\s*\)')
+    # SCOPED TO THE us BUILD, and only because the tree says so. src/servant/
+    # fname is an hd (PSP) target -- config/splat.hd.fname.yaml sets
+    # asm_path: asm/hd/servant/fname -- and asm/ is gitignored and generated
+    # by `make extract`, so only asm/us exists in this checkout. An earlier
+    # version of this check assumed us for every stub and reported those 3 as
+    # broken paths. They are a different version, not a bug.
+    OTHER_BUILD = ("/saturn/", "_psp", "/servant/fname/")
+    missing, seen, prefixed = [], 0, 0
+    for c in (REPO / "src").rglob("*.c"):
+        if any(k in c.as_posix() for k in OTHER_BUILD):
+            continue
+        for folder, fname in _INC.findall(c.read_text(errors="ignore")):
+            d = wd.asm_dir(folder)
+            if folder.startswith("asm/"):
+                prefixed += 1
+            seen += 1
+            if not (REPO / d / f"{fname}.s").exists():
+                missing.append(f"{c.name}:{fname} -> {d}")
+    check(not missing,
+          f"every INCLUDE_ASM folder resolves to a real asm dir "
+          f"({seen} stubs, {len(missing)} unresolved)",
+          "; ".join(missing[:4]))
+    check(prefixed > 0,
+          f"and the prefixed convention is actually exercised ({prefixed} stubs)")
+    check(wd.asm_dir("asm/us/st/mad/nonmatchings/D8C8")
+          == "asm/us/st/mad/nonmatchings/D8C8",
+          "asm_dir does not double a prefix it already has")
+    check(wd.asm_dir("boss/bo0/nonmatchings/2B9EC")
+          == "asm/us/boss/bo0/nonmatchings/2B9EC",
+          "asm_dir still adds the prefix when it is absent")
+
+
     print()
     if FAILS:
         print(f"{len(FAILS)} FAILED:")

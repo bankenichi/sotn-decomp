@@ -1317,9 +1317,32 @@ def save_candidate(rec: dict, code: str, attempt: int, detail: str,
         return ""
 
 
+def asm_dir(asm_rel: str, build: str = "us") -> str:
+    """The real asm directory for an INCLUDE_ASM FOLDER argument.
+
+    TWO CONVENTIONS EXIST IN THE TREE, both legitimate, because
+    include/include_asm.h has two expansions:
+
+        INCLUDE_ASM("boss/bo0/nonmatchings/2B9EC", fn)
+            -> the default macro prepends `asm/<VERSION>/`
+        INCLUDE_ASM("asm/us/st/mad/nonmatchings/D8C8", fn)
+            -> the INCLUDE_ASM_OLD macro does not, so FOLDER carries it
+
+    Only src/st/mad/D8C8.c uses the second form (3 stubs), which is exactly
+    why it goes unnoticed: anything that hardcodes the prefix works on 772 of
+    775 stubs. permuter_supervisor did hardcode it and produced
+
+        path does not exist: asm/us/asm/us/st/mad/nonmatchings/D8C8/...
+
+    worker_direct already had this conditional; the supervisor never got it.
+    One function now, called by both, so the next caller cannot re-derive it
+    wrongly.
+    """
+    return asm_rel if asm_rel.startswith("asm/") else f"asm/{build}/{asm_rel}"
+
+
 def asm_rel_path(rec: dict, asm_rel: str) -> str:
-    base = asm_rel if asm_rel.startswith("asm/") else f"asm/{rec['build']}/{asm_rel}"
-    return f"{base}/{rec['function']}.s"
+    return f"{asm_dir(asm_rel, rec['build'])}/{rec['function']}.s"
 
 
 # Overlays whose artifact is NOT build/<v>/<NAME>.BIN. Verified against
@@ -1485,6 +1508,11 @@ _DRAFT_KEEP = ("Duplicate return", "irregular", "unable to", "Unhandled",
 _RX_ENTITY_PTR = re.compile(r"\bEntity\s*\*\s*(\w+)")
 _RX_UNK_ACCESS = re.compile(r"\b(\w+)->unk([0-9A-Fa-f]{1,3})\b")
 _RX_ANY_PTR = re.compile(r"\b(\w+)\s*\*\s*(\w+)\s*[;,)=]")
+# Matches the WHOLE `ext.ILLEGAL.<type>[<index>]` access including the `ext.`
+# prefix, because the replacement is an ENTITY offset (`unkAA`), not a member
+# of ext. Keeping the prefix produced `self->ext.unkAA`, which is neither.
+_RX_ILLEGAL = re.compile(
+    r"\bext\s*\.\s*ILLEGAL\s*\.\s*([us](?:8|16|32))\s*\[\s*([0-9a-fA-Fx]+)\s*\]")
 
 
 def clean_draft(draft: str) -> tuple[str, list[str]]:
@@ -1508,6 +1536,26 @@ def clean_draft(draft: str) -> tuple[str, list[str]]:
     """
     if not draft:
         return draft, []
+    notes_pre = []
+
+    def _illegal(m):
+        # ext starts at 0x7C, and the index is in units of the member width.
+        width = {"u8": 1, "s8": 1, "u16": 2, "s16": 2, "u32": 4, "s32": 4}
+        w = width.get(m.group(1), 1)
+        try:
+            idx = int(m.group(2), 0)
+        except ValueError:
+            return m.group(0)
+        off = 0x7C + idx * w
+        notes_pre.append(f"ext.ILLEGAL.{m.group(1)}[{m.group(2)}] -> unk{off:02X}")
+        return f"unk{off:02X}"
+
+    # `ext.ILLEGAL.u8[0x2E]` says exactly one thing: entity offset 0xAA, and
+    # no named field. `->unkAA` says the same thing in the form the OFFSETS
+    # section already resolves and explains. Converting here means the model
+    # never sees the placeholder, and there is one mechanism for an
+    # unresolved offset instead of two that contradict each other.
+    draft = _RX_ILLEGAL.sub(_illegal, draft)
     typed = set(_RX_ENTITY_PTR.findall(draft))
     if not typed:
         return draft, []
@@ -1526,7 +1574,7 @@ def clean_draft(draft: str) -> tuple[str, list[str]]:
             notes.append(f"{var}->unk{hexoff} -> ->{fields[off]}")
         return f"{var}->{fields[off]}"
 
-    return _RX_UNK_ACCESS.sub(sub, draft), notes
+    return _RX_UNK_ACCESS.sub(sub, draft), notes_pre + notes
 
 
 def compact_draft(text: str, indent: int = 1) -> str:
@@ -2899,6 +2947,19 @@ def ext_variants_for(function: str, blob: str, limit: int = 4) -> str:
     for vname, meta in variants.items():
         if len(vname) < 4:
             continue
+        # ILLEGAL IS NOT A VARIANT. It is the placeholder member covering the
+        # whole ext range, and the index lists it like any other. Because the
+        # m2c draft legitimately contains `ext.ILLEGAL.u8[0x2E]` -- ILLEGAL is
+        # a real member of the union in entity.h -- the word landed in `hay`,
+        # this loop selected it, and the prompt printed
+        #   ext.ILLEGAL (ET_Placeholder): u8, s8, u16, s16, u32, s32
+        # as an available variant, in the same prompt that forbids it. Live
+        # logs on 2026-08-09 show workers spending hundreds of lines on that
+        # contradiction ("there IS a variant that covers this offset ... but
+        # I'm told NEVER"). Offering and forbidding the same thing is worse
+        # than either alone.
+        if vname.upper() == "ILLEGAL" or meta.get("type") == "ET_Placeholder":
+            continue
         if vname.lower() in hay:
             scored.append((len(vname), vname, meta))
     if not scored:
@@ -2906,11 +2967,22 @@ def ext_variants_for(function: str, blob: str, limit: int = 4) -> str:
     scored.sort(reverse=True)
     out = ["\n=== EXT VARIANTS (the real field names for this entity) ==="]
     for _, vname, meta in scored[:limit]:
-        fields = [f["name"] for f in meta.get("fields", []) if f.get("name")]
+        # WITH OFFSETS. This listed bare names until 2026-08-09, so a worker
+        # asked for "the named field at ext offset 0xC" had no way to find it:
+        # observed reasoning, "those are listed as field names but without
+        # offsets. Let me just figure out which field is at offset 0xC."
+        # The index carries the offsets; not printing them was the whole gap.
+        fields = []
+        for f in meta.get("fields", []):
+            nm = f.get("name")
+            if not nm or nm.startswith("pad_"):
+                continue
+            off = f.get("offset")
+            fields.append(f"{off} {nm}" if off else nm)
         if not fields:
             continue
-        out.append(f"ext.{vname} ({meta.get('type','?')}): "
-                   + ", ".join(fields[:14]))
+        out.append(f"ext.{vname} ({meta.get('type','?')}), "
+                   f"as entity offsets: " + ", ".join(fields[:14]))
     return "\n".join(out) + "\n" if len(out) > 1 else ""
 
 
@@ -3043,7 +3115,7 @@ def _layout_fields() -> list[tuple[int, str, str]]:
     return sorted(out)
 
 
-def resolve_unk_offsets(draft: str) -> str:
+def resolve_unk_offsets(draft: str, have_variants: bool = True) -> str:
     """Pre-resolve every `->unkNN` in the m2c draft to a real field.
 
     THE SINGLE LARGEST CONSUMER OF REASONING. Measured with
@@ -3138,10 +3210,26 @@ def resolve_unk_offsets(draft: str) -> str:
             lines.append(f"  unk{off:02X}  ->  ->{name}    ({typ}){note}")
             continue
         if off >= 0x7C:
-            lines.append(
-                f"  unk{off:02X}  ->  ext union, {off - 0x7C:#04x} bytes in. "
-                f"Use the named field from EXT VARIANTS that sits at this "
-                f"offset. If none does, say so; do NOT invent an access")
+            if have_variants:
+                lines.append(
+                    f"  unk{off:02X}  ->  ext union. Use the field listed at "
+                    f"offset {off:#04x} in EXT VARIANTS above")
+            else:
+                # NO VARIANT LIST EXISTS FOR THIS FUNCTION. Saying "use the
+                # named field" here points at a section that is not in the
+                # prompt, which is how workers ended up arguing with
+                # themselves for hundreds of lines. Give the terminal answer
+                # instead: this offset cannot be named from what we supplied,
+                # so keep the placeholder name and move on rather than
+                # searching for something that was never sent.
+                lines.append(
+                    f"  unk{off:02X}  ->  ext union, {off - 0x7C:#04x} bytes "
+                    f"in. NO variant list was supplied for this entity, so "
+                    f"there is no named field to find and nothing to look up. "
+                    f"Keep `unk{off:02X}` and add a one-line comment giving "
+                    f"the entity offset. Do NOT search for a name, do NOT "
+                    f"invent one, and do NOT write ext.ILLEGAL. Spend no "
+                    f"further reasoning on this offset")
             continue
         prev = [f for f in fields if f[0] < off]
         if prev:
@@ -3206,7 +3294,8 @@ def build_prompt(rec: dict, ctx: dict, feedback: str = "") -> str:
         # Then the pre-resolved lookup. It goes LAST so it is the most recent
         # thing before the task, and it is the section that replaces 34% of
         # the model's reasoning with text it can simply read.
-        entity_sec += resolve_unk_offsets(ctx.get("draft") or "")
+        entity_sec += resolve_unk_offsets(ctx.get("draft") or "",
+                                          have_variants=bool(ev))
     # Index-derived context, independent of whether this is an entity function:
     #   - raw D_ addresses resolved to their real meanings (kills the biggest
     #     review-rejection class: invented externs)
