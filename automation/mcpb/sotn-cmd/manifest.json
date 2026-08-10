@@ -4,30 +4,10 @@
   "display_name": "SOTN Build Commands (allowlisted)",
   "version": "1.0.0",
   "description": "Runs an allowlisted set of SOTN build, diff, permuter, git and queue actions in WSL.",
-  "long_description": "Gives Claude a hard-allowlisted set of repo actions. There is NO general shell.\n\nEvery argument is validated (version enum, strict regexes for symbols and overlays, in-repo path checks), commands run as an argv list rather than through a shell, and output is truncated. Scoped filesystem actions let Claude read and edit the repo when the folder is not connected directly.\n\nShips with dry-run ENABLED: every tool returns the exact command it would run without executing it. Turn dry-run off only after reviewing what it produces.",
+  "long_description": "Gives Claude a hard-allowlisted set of repo actions. There is NO general shell.\n\nEvery argument is validated (version enum, strict regexes for symbols and overlays, in-repo path checks), commands run as an argv list rather than through a shell, and output is truncated. Scoped filesystem actions let Claude read and edit the repo when the folder is not connected directly.\n\nShips with dry-run ENABLED: every tool returns the exact command it would run without executing it. Turn dry-run off only after reviewing what it produces.\n\nTHIS BUNDLE IS A LAUNCHER AND CONTAINS ONLY THIS MANIFEST. The MCPB spec allows that: a manifest.json is the only required file. mcp_config cd's into the repo and runs automation/mcp from there, so the connector always executes the live source and an edit takes effect on the next Claude Desktop restart, with no repack and no reinstall.\n\nIt used to also carry server/commands_client.py and server/sotn_cmd_mcp.py. Those were snapshots taken when the bundle was first built and were never executed again; by 2026-08-09 the client copy had drifted to 18808 bytes against the live 66551 and still contained an _inrepo path-containment bug that an external audit found and that was fixed in the live copy the same day. A stale duplicate of security-relevant code is worse than no copy: it is what a reader or an auditor lands on, and every fix has to be remembered twice. Deleted, so there is one authoritative copy of each tool.\n\nentry_point names the file the launcher runs, which lives in the repo rather than in this archive. Nothing reads it at runtime; mcp_config is what executes. Confirmed by running `mcpb validate`: the manifest is checked against the schema only, never against the archive's contents.",
   "author": {
     "name": "Kenichi"
   },
-  "_comment_bundle_is_a_launcher": [
-    "This bundle contains ONLY this manifest, which the MCPB spec allows:",
-    "'A manifest.json is the only required file.' It ships no server code.",
-    "mcp_config below cd's into the REPO and runs automation/mcp from there,",
-    "so the connector always executes the live source and an edit takes",
-    "effect on the next Claude Desktop restart with no repack, no reinstall.",
-    "",
-    "It used to also carry server/commands_client.py and server/sotn_cmd_mcp.py.",
-    "Those were snapshots taken when the bundle was first built and were never",
-    "executed again. By 2026-08-09 the client copy had drifted to 18808 bytes",
-    "against the live 66551 and still contained an _inrepo path-containment bug",
-    "that an external audit found and that was fixed in the live copy the same",
-    "day. A stale duplicate of security-relevant code is worse than no copy: it",
-    "is what a reader or an auditor lands on, and every fix has to be remembered",
-    "twice. Deleted 2026-08-09; there is now one authoritative copy of each tool.",
-    "",
-    "entry_point below names the file the launcher runs, which lives in the repo",
-    "rather than in this archive. Nothing reads it at runtime; mcp_config is what",
-    "executes."
-  ],
   "server": {
     "type": "binary",
     "entry_point": "automation/mcp/sotn_cmd_mcp.py",

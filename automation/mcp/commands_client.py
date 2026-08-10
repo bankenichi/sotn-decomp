@@ -462,6 +462,15 @@ def _mcpb_launch(binary: str, args: list) -> list:
     return [binary] + args
 
 
+def _mcpb_default_out(directory: str) -> str:
+    """automation/mcpb/sotn-cmd -> automation/mcpb/sotn-cmd.mcpb
+
+    Repo-relative, so _inrepo still gets to vet it.
+    """
+    rel = str(directory).replace("\\", "/").rstrip("/")
+    return f"{rel}.mcpb"
+
+
 def _mcpb_argv(sub: str, path_arg: str, extra: list | None = None) -> list:
     """VALIDATE THE ARGUMENTS FIRST, resolve the binary second.
 
@@ -483,9 +492,16 @@ REGISTRY = {
     # mcpb bundles. Read-only validate/info; pack writes ONE .mcpb beside the
     # manifest it was given.
     "mcpb_validate": lambda directory: _mcpb_argv("validate", directory),
+    # ALWAYS pass an explicit output. `mcpb pack` writes to the CURRENT
+    # DIRECTORY, and this runs with cwd=REPO, so the default dropped
+    # sotn-cmd.mcpb in the repo root -- next to the Makefile, nowhere near the
+    # bundle, and not where the installed one lives. Default it to
+    # <bundle-dir>.mcpb, which is the existing convention:
+    # automation/mcpb/sotn-cmd/ packs to automation/mcpb/sotn-cmd.mcpb.
     "mcpb_pack":     lambda directory, output=None: _mcpb_argv(
         "pack", directory,
-        [_inrepo(output, must_exist=False)] if output else None),
+        [_inrepo(output, must_exist=False)] if output
+        else [_inrepo(_mcpb_default_out(directory), must_exist=False)]),
     "mcpb_info":     lambda path: _mcpb_argv("info", path),
     # make goals
     "make_build":             lambda version="us": _make("build", version),

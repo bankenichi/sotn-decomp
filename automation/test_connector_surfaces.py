@@ -399,6 +399,24 @@ def main() -> int:
     check(_native == ["/usr/local/bin/mcpb", "validate", "/mnt/x"],
           "a native binary is run directly, paths untouched")
 
+    # `mcpb pack` writes to the CURRENT DIRECTORY, and this runs with
+    # cwd=REPO. The first real pack therefore dropped sotn-cmd.mcpb in the
+    # repo root, next to the Makefile, nowhere near the bundle and not where
+    # the installed one lives. An explicit output is always passed now.
+    print("\npack writes beside the bundle, not into the repo root")
+    check(_cc_mod._mcpb_default_out("automation/mcpb/sotn-cmd")
+          == "automation/mcpb/sotn-cmd.mcpb",
+          "the default output sits beside the bundle directory")
+    check(_cc_mod._mcpb_default_out("automation/mcpb/sotn-cmd/")
+          == "automation/mcpb/sotn-cmd.mcpb",
+          "a trailing slash does not produce a doubled name")
+    _packargv = _cc_mod.build_argv("mcpb_pack",
+                                   directory="automation/mcpb/sotn-cmd")
+    check(_packargv[-1].lower().endswith("sotn-cmd.mcpb"),
+          f"so pack always names its output explicitly ({_packargv[-1]!r})")
+    check("mcpb" in _packargv[-1].replace("\\", "/").lower().rsplit("/", 2)[-2],
+          "and that output is inside automation/mcpb, not the repo root")
+
     print("\nin-repo path containment cannot be defeated by a name prefix")
     _root = _cc_mod.REPO.resolve()
     _evil = f"../{_root.name}-evil/x"

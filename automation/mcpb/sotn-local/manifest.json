@@ -4,20 +4,10 @@
   "display_name": "SOTN Local Model Bridge",
   "version": "1.0.0",
   "description": "Bridges Claude to a local llama-server for SOTN decompilation drafts.",
-  "long_description": "Exposes a locally running OpenAI-compatible model (llama.cpp / llama-server) as MCP tools for the Castlevania: Symphony of the Night decompilation project.\n\nLarge assembly and diff text are processed inside the server, so only compact structured results reach Claude's context. Drafting therefore costs zero Claude tokens.\n\nThe server runs inside WSL2 and reaches llama-server on the Windows host. That requires WSL mirrored networking (networkingMode=mirrored in .wslconfig), or a base URL pointing at the host IP instead of localhost.",
+  "long_description": "Exposes a locally running OpenAI-compatible model (llama.cpp / llama-server) as MCP tools for the Castlevania: Symphony of the Night decompilation project.\n\nLarge assembly and diff text are processed inside the server, so only compact structured results reach Claude's context. Drafting therefore costs zero Claude tokens.\n\nThe server runs inside WSL2 and reaches llama-server on the Windows host. That requires WSL mirrored networking (networkingMode=mirrored in .wslconfig), or a base URL pointing at the host IP instead of localhost.\n\nTHIS BUNDLE IS A LAUNCHER AND CONTAINS ONLY THIS MANIFEST, which the MCPB spec allows. mcp_config cd's into the repo and runs automation/mcp from there, so the live source is what executes and an edit takes effect on the next restart with no repack.\n\nserver/llama_client.py and server/sotn_local_mcp.py were stale snapshots that had not been executed since the bundle was first built; deleted 2026-08-09 so there is one authoritative copy of each tool. entry_point names the file the launcher runs, in the repo rather than in this archive, which `mcpb validate` accepts because it checks the manifest against the schema and never against the archive's contents.",
   "author": {
     "name": "Kenichi"
   },
-  "_comment_bundle_is_a_launcher": [
-    "Contains ONLY this manifest. The MCPB spec allows that: 'A manifest.json",
-    "is the only required file.' mcp_config cd's into the REPO and runs",
-    "automation/mcp from there, so the live source is what executes and an",
-    "edit takes effect on the next restart with no repack.",
-    "server/llama_client.py and server/sotn_local_mcp.py were stale snapshots",
-    "that had not been executed since the bundle was first built; deleted",
-    "2026-08-09 so there is one authoritative copy of each tool.",
-    "entry_point names the file the launcher runs, in the repo, not here."
-  ],
   "server": {
     "type": "binary",
     "entry_point": "automation/mcp/sotn_local_mcp.py",
