@@ -189,6 +189,74 @@ def main():
 
     wd.lookup_declarations = real_lookup
 
+    print("\nglobals are recognised, locals and temporaries are not")
+    rx = wd._RX_GLOBALISH
+    for good in ("g_EInitCommon", "g_Entities_224", "D_us_80180600"):
+        check(bool(rx.search(f"x = {good};")), f"{good} looks global")
+    for bad in ("temp_s0", "self", "arg0", "i", "var_v1", "D_x"):
+        check(not rx.search(f"x = {bad};"),
+              f"{bad} is not mistaken for a global")
+
+    print("\nan overlay path is distinguished from a shared one")
+    # _overlay_dir_of, NOT _overlay_of. worker_direct already had an
+    # _overlay_of returning the bare name ("no0") for the inverted-overlay
+    # twin logic; defining a second one shadowed it and broke twin wiring.
+    check(wd._overlay_of("src/st/no0/clock_room.c") == "no0",
+          "the pre-existing _overlay_of still answers its own question")
+    check(wd._overlay_dir_of("src/st/rchi/e_gaibon.c") == "src/st/rchi",
+          "an overlay file maps to its overlay")
+    check(wd._overlay_dir_of("src/boss/bo6/richter.c") == "src/boss/bo6",
+          "and so does a boss overlay")
+    check(wd._overlay_dir_of("src/st/e_fire_warg.h") == "",
+          "a shared src/st header belongs to no overlay, so it is borrowable")
+    check(wd._overlay_dir_of("include/game.h") == "",
+          "and neither does include/")
+
+    print("\nthe declaration is COPIED from the tree, with its real type")
+    # Data has no C89 implicit-declaration rule, so guessing `extern int` for
+    # an EInit or for `Entity g_Entities_224[]` is wrong in a way the
+    # compiler will not always catch where it is used.
+    d1 = wd._symbol_declaration("g_EInitCommon", "src/st/rchi/e_breakable.c")
+    check(d1.startswith("extern ") and "EInit" in d1,
+          f"g_EInitCommon comes back as an EInit ({d1})")
+    d2 = wd._symbol_declaration("g_Entities_224", "src/st/rchi/e_slogra.c")
+    check("[]" in d2, f"the array keeps its brackets ({d2})")
+    check("int " not in d2, "and is not flattened to int")
+    d3 = wd._symbol_declaration("g_EInitGorgon", "src/st/rno0/unk_4F968.c")
+    check(d3 == "extern EInit g_EInitGorgon;",
+          f"a DEFINITION becomes a declaration ({d3})")
+
+    print("\nand a cross-overlay declaration is refused")
+    # The EntityGaibonLeg trap: nz0.h is the only `extern g_EInitGaibon` in
+    # the tree, and EInit data is overlay-local.
+    d4 = wd._symbol_declaration("g_EInitGaibon", "src/st/rchi/e_gaibon.c")
+    check("EInit" in d4,
+          f"RCHI gets its own definition, not nz0's extern ({d4})")
+    d5 = wd._symbol_declaration("g_EInitGorgon", "src/st/rchi/e_gaibon.c")
+    check(d5 == "", f"RNO0's symbol is NOT offered to RCHI ({d5})")
+
+    print("\nnothing is injected for a symbol the file already mentions")
+    have = ('#include "rchi.h"\nextern EInit g_EInitCommon;\n'
+            'INCLUDE_ASM("a/b", Foo);\n')
+    check(wd._declare_used_symbols(have, "void f(void){InitializeEntity("
+                                         "g_EInitCommon);}",
+                                   "src/st/rchi/x.c") == "",
+          "an already-declared symbol is left alone")
+    check(wd._declare_used_symbols('#include "rchi.h"\n',
+                                   "void f(void){ return; }",
+                                   "src/st/rchi/x.c") == "",
+          "and a candidate using no globals injects nothing")
+
+    print("\nthe injection sits at the STUB, which is always above the body")
+    wsrc = open(wd.__file__, encoding="utf-8", errors="replace").read()
+    for fname in ("def apply_code(", "def virtual_apply("):
+        seg = wsrc[wsrc.index(fname):]
+        seg = seg[:seg.index("\ndef ", 10)]
+        check("_declare_used_symbols(" in seg,
+              f"{fname.strip('def (')} injects")
+        check(seg.index("_declare_used_symbols") < seg.index("pattern.sub"),
+              "before the substitution, so it lands where the stub was")
+
     print("\nthe live tree really does not declare func_us_801B171C")
     # This is the premise of the whole fix. If someone later adds a real
     # prototype, this flips and the branch above takes over -- correctly, but

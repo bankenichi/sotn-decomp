@@ -4280,7 +4280,11 @@ def virtual_apply(ctx: dict, fn: str, code: str) -> str:
         r'"\s*,\s*' + re.escape(fn) + r'\s*\);[ \t]*(?=\r?$)', re.M)
     if not pattern.search(original):
         return ""      # stub not found; apply_code will raise with a real message
-    return pattern.sub(lambda _m: code.replace("\r\n", "\n"), original, count=1)
+    # In lockstep with apply_code, including the injected declarations. If the
+    # gate inspected a file without them it would report link and linkage
+    # findings about a state that is never built.
+    body = _declare_used_symbols(original, code, ctx["src_rel"]) + code
+    return pattern.sub(lambda _m: body.replace("\r\n", "\n"), original, count=1)
 
 
 def review_gate(ctx: dict, fn: str, code: str) -> list[str]:
@@ -4331,6 +4335,104 @@ def review_gate(ctx: dict, fn: str, code: str) -> list[str]:
         return []
 
 
+# Names that look like a global object rather than a local. Deliberately
+# narrow: a parameter, a temporary or a struct member never matches, so the
+# injector cannot invent a declaration for `temp_s0`.
+_RX_GLOBALISH = re.compile(r"\b(g_[A-Za-z]\w*|D_us_[0-9A-Fa-f]{6,}|"
+                           r"D_[0-9A-Fa-f]{6,})\b")
+_MAX_INJECTED = 8
+
+
+def _overlay_dir_of(src_rel: str) -> str:
+    """src/st/rchi/x.c -> src/st/rchi. "" when the path is not overlay-shaped.
+
+    A file directly under src/st (e_fire_warg.h) belongs to no overlay and is
+    shared, which is exactly why it is safe to borrow from.
+
+    NOT _overlay_of, which already exists at module scope and answers a
+    different question: it returns the bare name ("no0") for the inverted-
+    overlay twin logic. Defining a second _overlay_of here silently shadowed
+    it and broke twin wiring, caught by test_twin_wiring. Two questions, two
+    names.
+    """
+    p = [x for x in src_rel.replace("\\", "/").split("/") if x]
+    return "/".join(p[:3]) if len(p) >= 4 and p[0] == "src" else ""
+
+
+def _symbol_declaration(name: str, src_rel: str) -> str:
+    """A declaration for `name` that is legitimate in src_rel, or "".
+
+    COPIED, NEVER SYNTHESISED. The stub-sibling fix could emit
+    `extern int f();` because C89 defines that as what an implicitly declared
+    FUNCTION already is. Data has no such rule: eight of the twelve symbols
+    that blocked escalated candidates are `EInit`, and one is
+    `Entity g_Entities_224[]`, an array. Guessing `extern int` for either is
+    wrong in ways the compiler will not always catch where it is used.
+
+    Refuses a declaration from ANOTHER overlay. `extern EInit g_EInitGaibon;`
+    exists in src/st/nz0/nz0.h, and EInit data is overlay-local, so lifting it
+    into an RCHI file would name a different object with no diagnostic. The
+    right source for RCHI was a DEFINITION in its own e_init.c, which no
+    extern-only search can see.
+    """
+    pat = (r"^[[:space:]]*(extern[[:space:]]+)?[A-Za-z_][A-Za-z0-9_ \t*]*\b"
+           + re.escape(name) + r"\b[^;=]*[;=]")
+    rc, out = wsl(f"grep -rnE {shlex.quote(pat)} src include "
+                  f"--include='*.c' --include='*.h' 2>/dev/null | head -40",
+                  timeout=120)
+    if rc != 0:
+        return ""
+    mine = _overlay_dir_of(src_rel)
+    best = ""
+    for hit in (out or "").splitlines():
+        path, _, rest = hit.partition(":")
+        _lineno, _, text = rest.partition(":")
+        text = text.strip()
+        if not text or text.startswith("static"):
+            continue          # a static definition cannot be externed
+        other = _overlay_dir_of(path)
+        if other and mine and other != mine:
+            continue          # another overlay: a different object
+        if text.startswith("extern"):
+            decl = text.split("=")[0].rstrip().rstrip(";") + ";"
+            return decl       # an existing declaration is the best answer
+        if "=" in text:
+            # A definition. Derive the declaration from the text BEFORE the
+            # initialiser, which keeps array brackets and the real type.
+            head = text.split("=")[0].rstrip()
+            if head.endswith(","):
+                continue
+            if re.search(rf"\b{re.escape(name)}\b\s*(\[[^\]]*\])?$", head):
+                best = best or f"extern {head};"
+    return best
+
+
+def _declare_used_symbols(original: str, code: str, src_rel: str) -> str:
+    """Declarations this candidate needs that its destination file lacks.
+
+    The twelve records this exists for each escalated on ONE undeclared
+    global and nothing else. They were fixed by hand in 026f63e05; this is so
+    the thirteenth does not need a human to notice.
+    """
+    bare_file = _strip_comments_and_strings(original)
+    bare_code = _strip_comments_and_strings(code)
+    out = []
+    for name in dict.fromkeys(_RX_GLOBALISH.findall(bare_code)):
+        if re.search(rf"\b{re.escape(name)}\b", bare_file):
+            continue          # the file already mentions it; leave it alone
+        decl = _symbol_declaration(name, src_rel)
+        if decl:
+            out.append(decl)
+        if len(out) >= _MAX_INJECTED:
+            break
+    if not out:
+        return ""
+    return ("/* Declarations injected by the worker: used by the candidate\n"
+            "   below and absent from this file. Copied verbatim from the\n"
+            "   tree, same overlay or a shared header, never another\n"
+            "   overlay's. */\n" + "\n".join(out) + "\n\n")
+
+
 def apply_code(ctx: dict, fn: str, code: str) -> str:
     """Replace the INCLUDE_ASM line with the generated C. Returns the original."""
     path = win_path(ctx["src_rel"])
@@ -4341,8 +4443,14 @@ def apply_code(ctx: dict, fn: str, code: str) -> str:
         r'"\s*,\s*' + re.escape(fn) + r'\s*\);[ \t]*(?=\r?$)', re.M)
     if not pattern.search(original):
         raise RuntimeError(f"INCLUDE_ASM stub for {fn} not found in {ctx['src_rel']}")
+    # Declarations go at the STUB's position, which is the one place
+    # guaranteed to be above the body. Appending them after the last #include
+    # would have been wrong: src/st/rdai/unk_3F6B4.c has an #include BELOW the
+    # func_us_801BF830 stub, so a declaration placed after it is invisible to
+    # exactly the function that needs it.
+    body = _declare_used_symbols(original, code, ctx["src_rel"]) + code
     # The model emits LF; convert the insert to the file's own convention.
-    body = code.replace("\r\n", "\n").replace("\n", nl)
+    body = body.replace("\r\n", "\n").replace("\n", nl)
     journal_write(ctx["src_rel"], original)   # BEFORE the write, not after
     with open(path, "w", encoding="utf-8", newline="") as f:
         f.write(pattern.sub(lambda _m: body, original, count=1))
