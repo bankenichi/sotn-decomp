@@ -133,15 +133,27 @@ proof automatically. It needs no help from you while running.
 
 **Choosing a backend.** `fleet_start` runs either model tier, or both at once:
 
-    fleet_start(workers=4)                                  # local llama (free)
-    fleet_start(workers=4, backend="cli")                   # OpenCode Zen free
-    fleet_start(workers=2, backend="mixed", cli_workers=2)  # both, one queue
+    fleet_start(workers=4)                                  # zen: THE DEFAULT
+    fleet_start(workers=4, backend="llama")                 # local llama (free)
+    fleet_start(workers=2, backend="mixed", cli_workers=2)  # llama + cli, one queue
+
+**This block used to read `fleet_start(workers=4)  # local llama` and
+`backend="cli"  # OpenCode Zen free`. Both were wrong.** The default has been
+zen since 2026-08-09, and cli is not the way to reach the Zen models: it goes
+through `opencode run`, which relays only `content` while these models fill
+`reasoning_content` first, so it returns empty most of the time and more often
+the larger the function. Use `backend="cli"` only to test the CLI path.
 
 llama is free and unlimited but has plateaued on what remains. The Zen free
-models draw on an **account-wide** quota shared across every model, so N cli
+models draw on an **account-wide** quota shared across every model, so N
 workers drain it about N times faster and rotating models buys nothing. Spend
-that quota deliberately: a mixed fleet puts it on functions llama has already
-failed instead of ones llama would have matched anyway.
+that quota deliberately: put it on functions llama has already failed instead
+of ones llama would have matched anyway.
+
+To aim a run at ONE record rather than whatever ranks highest --
+verifying a worker change, say -- use
+`job_start(action="worker_once", only="us:ST/RDAI:func_us_801C2418")`. It runs
+the ordinary worker path, pinned to zen, against exactly that id.
 
 Any cli worker triggers a preflight; if the OpenCode CLI is not usable, NOTHING
 starts, including the llama half. Check it independently with

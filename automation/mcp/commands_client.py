@@ -310,6 +310,7 @@ ANALYSIS_SCRIPTS = {
     "test_stub_declarations.py",
     "test_candidate_validation.py",
     "test_m2c_only.py",
+    "test_targeted_claim.py",
     # Retrofits stub declarations onto seeds written before the fix. Dry-run
     # by default; --apply is what writes.
     "fix_seed_declarations.py",
@@ -385,6 +386,24 @@ def _status(status: str) -> str:
     if status not in STATUSES:
         raise Rejected(f"status must be one of {sorted(STATUSES)}")
     return status
+
+
+# `us:ST/RDAI:func_us_801C2418` -- version, overlay path, symbol.
+QUEUE_ID_RX = re.compile(r"^[a-z0-9]{1,8}:[A-Z0-9/_]{1,32}:[A-Za-z0-9_]{1,64}$")
+
+
+def _queue_id(qid: str) -> str:
+    """Shape check only. Existence is the scheduler's call, not ours.
+
+    Deliberately not validated against the queue file here: this process does
+    not hold the queue lock, so any answer it gave could be stale by the time
+    the worker claims. `scheduler.py next --only` already refuses an id that is
+    missing, already claimed, or already matched, and it decides that inside
+    the transaction where the answer is still true.
+    """
+    if not QUEUE_ID_RX.match(qid or ""):
+        raise Rejected("queue id must look like us:ST/RDAI:func_us_801C2418")
+    return qid
 
 
 def _msg_argv(message: str) -> list[str]:
@@ -659,6 +678,31 @@ REGISTRY = {
     # Run a read-only analysis script in WSL, where there is no 45s ceiling.
     "run_analysis": lambda script, args="": (
         [PYTHON, _script(script)] + _args(args)),
+    # ONE record, named, in the foreground.
+    #
+    # fleet_start was the only way to run a worker, and it launches N detached
+    # loops that claim by rank. That is right for production and useless for
+    # verification: proving the m2c-only path meant working one specific
+    # 68865-char function that sat at the BOTTOM of a 160-record todo list, so
+    # a fleet would have worked something else and reported success. The
+    # options without this were to reorder the live queue or to run the worker
+    # from a sandbox shell, and both are worse than a flag.
+    #
+    # WRITES. It edits the source file, builds, and reports to the queue,
+    # exactly as a fleet worker does -- the point is that it is the SAME code
+    # path, not a simulation of it. So: no default id, and start_job takes the
+    # exclusive lock, which is what stops it racing a fleet or a build.
+    #
+    # MODEL_BACKEND IS PINNED, NOT INHERITED. This runs as a child of the
+    # connector process, so without `env` it would silently take whatever
+    # MODEL_BACKEND that process happens to hold. Every run here goes through
+    # zen: the OpenCode CLI relays only `content` while these models fill
+    # `reasoning_content` first, so it comes back empty most of the time, and
+    # worse the larger the context. worker_once exists to test big functions.
+    "worker_once": lambda only, dry_run=False: (
+        ["env", "MODEL_BACKEND=zen", PYTHON,
+         "automation/win/worker_direct.py", "once",
+         "--only", _queue_id(only)] + (["--dry-run"] if dry_run else [])),
     "queue_annotate": lambda from_file="automation/twins.us.json", apply=False: (
         [PYTHON, "automation/scheduler.py", "annotate",
          "--from", _inrepo(from_file)] + (["--apply"] if apply else [])),
@@ -997,7 +1041,9 @@ except ImportError:                                     # pragma: no cover
 LONG_ACTIONS = {
     "make_build", "make_extract", "make_expected", "make_clean",
     "make_force_symbols", "make_reports", "make_duplicates_report",
-    "make_function_finder", "run_analysis", "permuter",
+    # A worker's per-function budget is minutes: m2c, then up to three
+    # model calls, each followed by a full build. It is never a run() call.
+    "make_function_finder", "run_analysis", "permuter", "worker_once",
 }
 
 

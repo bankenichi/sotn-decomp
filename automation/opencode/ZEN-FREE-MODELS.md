@@ -335,10 +335,22 @@ Use the installed CLI. **No API key and no billing are required.** Verified
 `opencode run --model opencode/big-pickle` still answered.
 
 ```bash
-export MODEL_BACKEND=cli
-export OPENCODE_MODEL=opencode/big-pickle
+export MODEL_BACKEND=zen                          # zen, NOT cli. See below.
+export OPENCODE_MODEL=opencode/mimo-v2.5-free
 python3 automation/win/worker_direct.py once     # smoke test ONE function first
 ```
+
+**Use `zen`, not `cli`.** Both reach the same free Zen models; the difference
+is the transport. The OpenCode CLI relays only `content`, while the models
+worth running here fill `reasoning_content` first, so a cli worker gets an
+empty response roughly 94% of the time, and the rate climbs with the size of
+the context. That is the worst possible failure shape for this project,
+because the functions still unmatched are the large ones. `cli` remains
+selectable for deliberately testing the CLI path and for nothing else.
+
+To aim a run at ONE function rather than whatever ranks highest, use
+`--only <queue id>`, or `worker_once` / `job_start(action="worker_once",
+only=...)` from the connector, which pins the backend to zen.
 
 Then start the fleet from the same shell. Optional but worth it for a fleet: run
 `opencode serve` in another terminal and set
@@ -347,14 +359,23 @@ Then start the fleet from the same shell. Optional but worth it for a fleet: run
 Because these are hosted, the local `--parallel` constraint is gone. The Zen
 usage limit is the binding constraint now, not VRAM.
 
-## Launching a cli or mixed fleet from the connector
+## Launching a fleet from the connector
 
-`fleet_start` takes a `backend` parameter, so no terminal is required:
+`fleet_start` takes a `backend` parameter, so no terminal is required. It
+defaults to `zen`, which is what you want:
+
+```
+fleet_start(workers=4)                                    # 4 zen workers
+fleet_start(workers=4, opencode_model="opencode/hy3-free")
+```
+
+The other backends, for completeness. `cli` is the empty-response path
+described under Setup; reach for it only when the CLI itself is what you are
+testing:
 
 ```
 fleet_start(workers=4, backend="cli")                     # 4 OpenCode workers
 fleet_start(workers=2, backend="mixed", cli_workers=2)    # 2 llama + 2 OpenCode
-fleet_start(workers=4, backend="cli", opencode_model="opencode/hy3-free")
 ```
 
 Workers are named and logged by backend, so a mixed run stays legible:
@@ -429,15 +450,22 @@ See the "What the CLI backend gives up" section, now largely obsolete.
 Launch the survivors:
 
 ```
-fleet_start(workers=3, backend="cli", force=true,
+fleet_start(workers=3, force=true,
   opencode_model="opencode/deepseek-v4-flash-free,opencode/nemotron-3-ultra-free,opencode/mimo-v2.5-free")
 ```
 
-### The HTTP path still works
+That is a bake-off across three models on the DEFAULT zen backend. Run the same
+line with `backend="cli"` and the comparison measures the transport, not the
+models: the empty-response rate swamps the difference between them.
 
-`MODEL_BACKEND=http` (the default) keeps the original OpenAI-compatible path for
-local llama-server, unchanged. `MODEL_API_KEY` exists for hosted OpenAI-compatible
-endpoints but is NOT needed for the CLI route; leave it unset.
+### Backend names
+
+`MODEL_BACKEND=zen` is the default and the only one to use unless you have a
+specific reason. `http` is a legacy alias that now resolves to `zen`; it named
+the original OpenAI-compatible path and was kept working so old shells and
+scripts do not break. `llama` is that path, pointed at a local llama-server.
+`MODEL_API_KEY` exists for hosted OpenAI-compatible endpoints and is NOT needed
+for zen or for the CLI route; leave it unset.
 
 ### What the CLI backend gives up
 

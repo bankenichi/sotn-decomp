@@ -164,6 +164,39 @@ def permuter(work_dir: str, threads: int = 4, stop_on_zero: bool = True,
 
 
 @mcp.tool()
+def worker_once(only: str, dry_run: bool = False, timeout: int = 1800) -> dict:
+    """Run ONE ordinary worker pass against a NAMED queue record.
+
+    Prefer job_start(action="worker_once", only=...) -- a pass is m2c, then up
+    to three model calls, each followed by a full build, so it routinely
+    outlives the MCP transport.
+
+    WHY THIS EXISTS: fleet_start was the only way to run a worker, and it
+    launches detached loops that claim by declaration-coverage rank. That is
+    right for production and useless for verifying a change to the worker,
+    because you cannot aim it. Testing the m2c-only path meant running
+    us:ST/RDAI:func_us_801C2418 (68865 chars); large functions rank badly, so
+    it sat at the bottom of a 160-record todo list and any fleet would have
+    worked something else and reported success.
+
+    only: a queue id from queue_list, e.g. us:ST/RDAI:func_us_801C2418. The
+    scheduler ignores rank, the blocked filter and the deferred-last rule for
+    it, and will claim a record in any state EXCEPT `claimed` (another worker
+    holds it) or `matched` (re-running one can only lose it). A typo claims
+    nothing rather than falling through to some other record.
+
+    Always runs on the zen backend, pinned rather than inherited: the OpenCode
+    CLI relays only `content` while these models fill `reasoning_content`
+    first, so it returns empty most of the time and worse as the context grows
+    -- and large contexts are what this tool is for.
+
+    IT WRITES. Same code path as a fleet worker: it edits the source file,
+    builds, checks the oracle and reports to the queue. Started as a job it
+    takes the exclusive lock, which is what keeps it off a running build."""
+    return cc.run("worker_once", timeout=timeout, only=only, dry_run=dry_run)
+
+
+@mcp.tool()
 def permuter_import(c_file: str, asm_file: str, timeout: int = 300) -> dict:
     """Prepare a permuter work dir from an in-repo C file and target asm file."""
     return cc.run("permuter_import", timeout=timeout, c_file=c_file, asm_file=asm_file)
@@ -401,7 +434,7 @@ def queue_init(from_file: str = "automation/seed.us.txt", timeout: int = 120) ->
 def job_start(action: str, version: str = "us", script: str = "",
               args: str = "", work_dir: str = "", threads: int = 4,
               stop_on_zero: bool = True, better_only: bool = True,
-              algorithm: str = "") -> dict:
+              algorithm: str = "", only: str = "", dry_run: bool = False) -> dict:
     """Start a long command in the background and return a job id immediately.
 
     USE THIS INSTEAD OF make_build. A synchronous build outlives the MCP
@@ -411,8 +444,12 @@ def job_start(action: str, version: str = "us", script: str = "",
 
     action: make_build | make_extract | make_expected | make_clean |
             make_force_symbols | make_reports | make_duplicates_report |
-            make_function_finder | run_analysis | permuter
+            make_function_finder | run_analysis | permuter | worker_once
     For run_analysis, pass script= (e.g. asm_twin_finder.py) and args=.
+    For worker_once, pass only= with a queue id: it runs the ordinary worker
+    against THAT record instead of the highest-ranked todo one. Use it to
+    verify a change to the worker on a chosen function; fleet_start claims by
+    rank and cannot be aimed. It WRITES (edits source, builds, reports).
 
     Refuses to start a second job for the same action while one is running: two
     concurrent builds share one build directory and would produce artifacts
@@ -440,6 +477,16 @@ def job_start(action: str, version: str = "us", script: str = "",
         kw = {"work_dir": work_dir, "threads": threads,
               "stop_on_zero": stop_on_zero, "better_only": better_only,
               "algorithm": algorithm}
+    elif action == "worker_once":
+        # Same defect the permuter branch had: an action reachable in name
+        # only, because the else-branch passes version= and worker_once has no
+        # such parameter. Fail here with the fix in the message rather than
+        # letting build_argv raise on a missing positional.
+        if not only:
+            raise ValueError(
+                "worker_once needs only=<queue id>, e.g. "
+                "us:ST/RDAI:func_us_801C2418 (see queue_list)")
+        kw = {"only": only, "dry_run": dry_run}
     else:
         kw = {"version": version}
     return cc.start_job(action, **kw)

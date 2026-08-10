@@ -833,7 +833,9 @@ DEFER_SHIMMABLE = "SHIM_INSTEAD_OF_GENERATE"
 # consumer of asm-differ feedback, so trading them away makes every attempt a
 # blind first attempt.
 _DEFAULT_FUNC_BUDGET = os.environ.get(
-    "FUNC_BUDGET", "900" if MODEL_BACKEND == "cli" else "900")
+    # Was `"900" if MODEL_BACKEND == "cli" else "900"`. Both arms were 900, so
+    # it did nothing but advertise a cli special case that does not exist.
+    "FUNC_BUDGET", "900")
 FUNC_BUDGET = float(os.environ.get("FUNC_BUDGET", _DEFAULT_FUNC_BUDGET))
 # Per-ATTEMPT ceiling, derived from the function budget so the retries actually
 # happen. Without it a single attempt consumed the whole 900s (observed
@@ -1094,13 +1096,29 @@ def sched(*args: str) -> str:
     return out.strip()
 
 
-def claim_next() -> dict | None:
-    # The cli tier picks up what llama handed off for size. Without this the
+def claim_next(only: str | None = None) -> dict | None:
+    # A hosted tier picks up what llama handed off for size. Without this the
     # deferred records sit forever: llama will never retry them (same gate) and
     # nothing else claims `deferred`.
+    #
+    # THIS TESTED `== "cli"` AND SO DID _DEFAULT_MAX_FUNC EIGHT LINES ABOVE,
+    # which was already fixed to _HOSTED for exactly this reason. Both were
+    # written before zen existed, and both meant the same thing: zen was
+    # treated as a small-context local backend. Here the effect was that the
+    # ONLY consumer of the size-handoff pool was cli, which is the backend that
+    # comes back empty most of the time because it relays `content` while these
+    # models fill `reasoning_content` first, and gets worse as the context
+    # grows. So a record deferred for BEING LARGE was handed to the one backend
+    # that fails hardest on large input, and the zen fleet, which can actually
+    # read 20000 chars, walked straight past it.
     _next_args = ["next", "--worker", WORKER_NAME]
-    if MODEL_BACKEND == "cli":
+    if MODEL_BACKEND in _HOSTED:
         _next_args.append("--include-deferred")
+    # A targeted run. The scheduler ignores rank for this, so the record does
+    # not have to win the fleet's ordering to be worked -- which is the whole
+    # reason the flag exists.
+    if only:
+        _next_args += ["--only", only]
     raw = sched(*_next_args)
     line = [l for l in raw.splitlines() if l.strip().startswith("{")]
     if not line:
@@ -4634,10 +4652,16 @@ def diff_feedback(rec: dict) -> str:
 
 # ---- main loop ---------------------------------------------------------------
 
-def process_one(dry: bool = False) -> bool:
-    rec = claim_next()
+def process_one(dry: bool = False, only: str | None = None) -> bool:
+    rec = claim_next(only)
     if rec is None:
-        print("[worker] queue empty")
+        # Say WHICH question came back empty. "queue empty" after a targeted
+        # run is a lie: the queue is full, that one id was unclaimable.
+        if only:
+            print(f"[worker] cannot claim {only}: no such record, or it is "
+                  f"already claimed or already matched")
+        else:
+            print("[worker] queue empty")
         return False
     global _CURRENT_CLAIM, _CURRENT_CLAIM_FROM
     _CURRENT_CLAIM = rec["id"]
@@ -5071,6 +5095,12 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="Harness-driven SOTN matcher.")
     sub = ap.add_subparsers(dest="cmd", required=True)
     p1 = sub.add_parser("once"); p1.add_argument("--dry-run", action="store_true")
+    # Targeted single run. Deliberately NOT offered on `loop`: a loop with a
+    # fixed id either re-claims the record it just reported or stops after one
+    # pass, and neither is what the flag looks like it does.
+    p1.add_argument("--only", default=None, metavar="ID",
+                    help="work exactly this queue id instead of the "
+                         "highest-ranked todo record")
     p2 = sub.add_parser("loop")
     p2.add_argument("--max", type=int, default=0)
     p2.add_argument("--dry-run", action="store_true")
@@ -5198,7 +5228,7 @@ def main() -> int:
 
     try:
         if a.cmd == "once":
-            process_one(a.dry_run); return 0
+            process_one(a.dry_run, a.only); return 0
         n = 0
         while process_one(a.dry_run):
             n += 1

@@ -42,19 +42,33 @@ run-permuter start         # supervised, self-terminating
 run-permuter status
 run-permuter stop
 
-runfleet-cli start 2       # OpenCode CLI workers
+runfleet start 2           # zen workers -- THE ONE TO USE
 runfleet-llama start 2     # local llama workers
-runfleet-cli stop          # stops ALL workers and reclaims their queue records
+runfleet-cli start 2       # OpenCode CLI workers; see below
+runfleet stop              # stops ALL workers and reclaims their queue records
 
 sotn-dash start            # http://127.0.0.1:8777
 sotn-dash stop
 ```
 
+`stop` and `status` are backend-agnostic: they reap every worker regardless of
+which command started it, so any of the three spellings will do.
+
+`runfleet-cli` reaches the SAME free Zen models as `runfleet`, through
+`opencode run`. That relays only `content`, and these models fill
+`reasoning_content` first, so it comes back empty most of the time and more
+often the bigger the function. Use it only to test the CLI path itself.
+
+`runfleet-llama` used to be spelled `fleet http` internally, and `http` is an
+alias fleet_start resolves to **zen** -- so until 2026-08-10 the command named
+after llama started zen workers, and zen had no name of its own. Checked now by
+`test_connector_surfaces`.
+
 `plan` and `status` never start or stop anything and are always safe to run.
 
-All four commands are symlinks to `automation/bin/sotn-run`, which dispatches on
-`$0`. Adding a command means adding a symlink and a `case` arm, not another copy
-of the argument handling.
+All the commands are symlinks to `automation/bin/sotn-run`, which dispatches on
+`$0`. Adding one means adding it to `COMMANDS` and adding a `case` arm, not
+another copy of the argument handling.
 
 ---
 

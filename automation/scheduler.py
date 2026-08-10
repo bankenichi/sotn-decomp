@@ -272,6 +272,34 @@ def _load_priority() -> dict:
         return {}
 
 
+def _take(records, best, args):
+    """Mark `best` as claimed. THE ONLY PLACE A CLAIM IS WRITTEN.
+
+    Both the ranked path and the --only path come through here, so they cannot
+    drift. The specific thing that must not drift is `claimed_from`: release
+    and reclaim both read it to decide where a stranded record goes back to,
+    and a claim path that forgot to set it would send the record to "todo"
+    regardless of where it started.
+    """
+    for r in records:
+        if r is best:
+            # Remember WHERE this was claimed from. Without it, reclaim and
+            # release both hard-coded "todo", so a `deferred` handoff record
+            # that got claimed and then stranded came back as `todo` and
+            # escaped the deferred pool entirely. That also blocks any
+            # future tier-2 consumer: a dead consumer's escalated record
+            # would silently fall back to Tier 0 and be reworked by the
+            # cheapest model, which is the opposite of escalation.
+            r["claimed_from"] = r["status"]
+            r["status"] = "claimed"
+            r["claimed_by"] = args.worker
+            r["updated_at"] = _now()
+            if args.worktree:
+                make_worktree(r)
+            return records, r
+    return records, None
+
+
 def cmd_next(args):
     q = Queue()
     prio = _load_priority()
@@ -284,6 +312,35 @@ def cmd_next(args):
     HANDOFF = "TIER_HANDOFF_TOO_LARGE"
 
     def fn(records):
+        # A NAMED record bypasses the pool and the ranking entirely.
+        #
+        # Everything below this block exists to CHOOSE a record: coverage rank,
+        # blocked-last, deferred-last. When the caller names an id there is
+        # nothing to choose, and applying the heuristics anyway just means a
+        # targeted run silently claims something else. That is not theoretical:
+        # verifying the m2c-only path meant running one specific 68865-char
+        # function, and it sat at the BOTTOM of a 160-record todo list, so
+        # every ordinary claim reached a different record first.
+        #
+        # Status rules, deliberately narrow:
+        #   - `claimed` is refused; another worker holds it and stealing the
+        #     claim would let two workers edit the same source file.
+        #   - `matched` is refused; re-running a good record can only lose it.
+        #   - anything else is fair game, including `escalated` and plain
+        #     `deferred` WITHOUT the handoff marker. Naming an id is a
+        #     deliberate operator act, unlike the fleet's own scheduling, and
+        #     re-testing a record in an arbitrary state is the entire point.
+        # claimed_from is set below, so a stranded targeted claim goes back to
+        # wherever it came from rather than leaking into `todo`.
+        if getattr(args, "only", None):
+            hit = [r for r in records if r["id"] == args.only]
+            if not hit:
+                return records, None
+            r = hit[0]
+            if r["status"] in ("claimed", "matched"):
+                return records, None
+            return _take(records, r, args)
+
         todo = [r for r in records if r["status"] == "todo"]
         deferred_ids = set()
         if args.include_deferred:
@@ -318,24 +375,7 @@ def cmd_next(args):
             # so the fleet never idles, but never starts there either.
             todo = workable or todo
 
-        best = min(todo, key=key)
-        for r in records:
-            if r is best:
-                # Remember WHERE this was claimed from. Without it, reclaim and
-                # release both hard-coded "todo", so a `deferred` handoff record
-                # that got claimed and then stranded came back as `todo` and
-                # escaped the deferred pool entirely. That also blocks any
-                # future tier-2 consumer: a dead consumer's escalated record
-                # would silently fall back to Tier 0 and be reworked by the
-                # cheapest model, which is the opposite of escalation.
-                r["claimed_from"] = r["status"]
-                r["status"] = "claimed"
-                r["claimed_by"] = args.worker
-                r["updated_at"] = _now()
-                if args.worktree:
-                    make_worktree(r)
-                return records, r
-        return records, None
+        return _take(records, min(todo, key=key), args)
 
     r = q.transaction(fn)
     print(json.dumps(r) if r else json.dumps({"status": "empty"}))
@@ -679,6 +719,11 @@ def main():
     pn.add_argument("--include-deferred", action="store_true",
                     help="also claim records a weaker tier deferred for size "
                          "(notes containing TIER_HANDOFF_TOO_LARGE)")
+    pn.add_argument("--only", default=None, metavar="ID",
+                    help="claim exactly this record id, ignoring rank, the "
+                         "blocked filter and the deferred-last rule. Refused "
+                         "if it is already claimed or already matched. For "
+                         "targeted verification runs; the fleet never uses it")
     pn.set_defaults(func=cmd_next)
 
     pr = sub.add_parser("report")

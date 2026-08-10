@@ -248,6 +248,42 @@ def main() -> int:
         check(f'"{name}"' in _fs,
               f"fleet_start help documents the {name} backend")
 
+    # --- the SHELL wrapper is a third surface ---------------------------------
+    #
+    # automation/bin/sotn-run maps a command NAME to a backend, and nothing
+    # checked that mapping. `runfleet-llama` passed `http`, which fleet_start
+    # resolves to `zen` (tested twelve lines up), so the one command named
+    # after llama was the one command that could not start llama -- and there
+    # was no `runfleet-zen` either, so zen was unreachable by name from the
+    # shell entirely. Both defects are invisible to every Python test, because
+    # the wrapper is bash.
+    _run = (pathlib.Path(__file__).parent / "bin" / "sotn-run").read_text(
+        encoding="utf-8")
+    # Collect the arms by pattern over the WHOLE file rather than by slicing
+    # to the first `esac`: the run-permuter arm contains a nested
+    # `case "$VERB" in ... esac`, so slicing stops before the fleet arms are
+    # reached. The first version of this did exactly that, found nothing, and
+    # reported "no dispatch line" three times while the sibling check
+    # `"http" not in _disp` passed on the same empty slice -- a vacuous pass
+    # sitting next to the failures that explained it.
+    _arms = dict(re.findall(r"^\s*(runfleet[\w-]*)\)\s*fleet\s+(\w+)",
+                            _run, re.M))
+    check(len(_arms) == 3,
+          f"found the fleet dispatch arms ({sorted(_arms)})")
+    for cmd, backend in (("runfleet", "zen"),
+                         ("runfleet-cli", "cli"),
+                         ("runfleet-llama", "llama")):
+        check(_arms.get(cmd) == backend,
+              f"{cmd} launches the {backend} backend "
+              f"(got {_arms.get(cmd)!r})")
+    check("http" not in _arms.values(),
+          "and no wrapper routes through the http alias, which resolves to "
+          "zen and so hides which backend actually starts")
+    _installed = _run.split("COMMANDS=(", 1)[1].split(")", 1)[0].split()
+    for cmd in ("runfleet", "runfleet-cli", "runfleet-llama"):
+        check(cmd in _installed,
+              f"{cmd} is in COMMANDS, so installation puts it on PATH")
+
     # --- teardown must restore source itself ---------------------------------
     #
     # Each worker's SIGTERM handler calls replay_pending_journals, but it runs

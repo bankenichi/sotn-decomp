@@ -51,7 +51,7 @@ shift || true
 # cds there. That is what makes them work from any directory: you never have to
 # be in the repo, and $PWD is never consulted. The only thing installation adds
 # is putting the names on PATH.
-COMMANDS=(run-permuter runfleet-cli runfleet-llama sotn-dash)
+COMMANDS=(run-permuter runfleet runfleet-cli runfleet-llama sotn-dash)
 SELF="$(readlink -f "${BASH_SOURCE[0]}")"
 
 install_cmds() {
@@ -100,14 +100,20 @@ usage() {
 SOTN harness process control.
 
   run-permuter    start|stop|status|plan   supervised permuter over the queue
-  runfleet-cli    start|stop|status        OpenCode CLI worker fleet
+  runfleet        start|stop|status        zen worker fleet -- USE THIS ONE
   runfleet-llama  start|stop|status        local llama worker fleet
+  runfleet-cli    start|stop|status        OpenCode CLI fleet; see below
   sotn-dash       start|stop|status        localhost dashboard
+
+`runfleet` is the default backend. `runfleet-cli` reaches the SAME free Zen
+models through `opencode run`, which relays only `content` while these models
+fill `reasoning_content` first: it comes back empty most of the time, and more
+often the larger the function. Use it only to test the CLI path itself.
 
 Defaults are the measured ones; override with flags after the verb.
 
   run-permuter start --slots 3 --threads 4
-  runfleet-cli start 2            # or: --workers 2
+  runfleet start 2                # or: --workers 2
   sotn-dash start --port 8777
 
 `plan` and `status` never start or stop anything, so they are always safe.
@@ -183,8 +189,14 @@ case "$CMD" in
             status) exec "$PY" automation/permuter_supervisor.py --status ;;
         esac
         ;;
-    runfleet-cli)   fleet cli  "$@" ;;
-    runfleet-llama) fleet http "$@" ;;
+    runfleet)       fleet zen   "$@" ;;
+    runfleet-cli)   fleet cli   "$@" ;;
+    # WAS `fleet http`, WHICH STARTED A ZEN FLEET. `http` is a legacy alias
+    # that fleet_start resolves to `zen` (commands_client, "Legacy alias"), so
+    # the one command named after llama was the one command that could not
+    # launch llama, and `runfleet-zen` did not exist so there was no way to ask
+    # for zen by name either. Both spellings now say what they do.
+    runfleet-llama) fleet llama "$@" ;;
     sotn-dash)
         case "$VERB" in
             start)  exec "$PY" automation/dashboard.py --serve "$@" ;;
