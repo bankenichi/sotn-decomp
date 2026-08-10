@@ -379,6 +379,26 @@ def main() -> int:
                   f"{_label} ({_err[:60]!r})")
     _sh.which, _cc_mod._MCPB_RESOLVED = _real_which, _saved
 
+    # A .cmd is a batch script, not an executable. WSL's binfmt runs .exe
+    # directly but cannot exec a .cmd, and Python reports the unhelpful
+    #   [Errno 8] Exec format error: .../npm/mcpb.cmd
+    # It has to go through cmd.exe, and every path argument has to become a
+    # Windows path because cmd.exe cannot see /mnt.
+    print("\na Windows batch launcher is invoked through cmd.exe")
+    check(_cc_mod._win_path("/mnt/c/a/b") == "C:\\a\\b",
+          "a /mnt path becomes a drive path with backslashes")
+    check(_cc_mod._win_path("/usr/local/bin/mcpb") == "/usr/local/bin/mcpb",
+          "and a native Linux path is left alone")
+    _wrapped = _cc_mod._mcpb_launch("/mnt/c/npm/mcpb.cmd",
+                                    ["validate", "/mnt/c/repo/b"])
+    check(_wrapped[1:2] == ["/c"] and _wrapped[0].endswith("cmd.exe"),
+          f"a .cmd is wrapped in cmd.exe /c ({_wrapped[:2]})")
+    check(all("/mnt/" not in a for a in _wrapped[2:]),
+          f"and no /mnt path survives into the arguments ({_wrapped[2:]})")
+    _native = _cc_mod._mcpb_launch("/usr/local/bin/mcpb", ["validate", "/mnt/x"])
+    check(_native == ["/usr/local/bin/mcpb", "validate", "/mnt/x"],
+          "a native binary is run directly, paths untouched")
+
     print("\nin-repo path containment cannot be defeated by a name prefix")
     _root = _cc_mod.REPO.resolve()
     _evil = f"../{_root.name}-evil/x"

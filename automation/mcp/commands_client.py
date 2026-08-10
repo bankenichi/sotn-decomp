@@ -424,6 +424,44 @@ def _mcpb_dir(p: str) -> str:
     return d
 
 
+def _win_path(p: str) -> str:
+    """/mnt/c/Users/x -> C:\\Users\\x. Unchanged if it is not a /mnt path.
+
+    cmd.exe does not understand WSL paths, so anything handed to a .cmd has to
+    be translated. Done here rather than by shelling out to `wslpath` because
+    this runs on every mcpb call and the mapping is mechanical.
+    """
+    m = re.match(r"^/mnt/([a-zA-Z])/(.*)$", p)
+    if not m:
+        return p
+    return f"{m.group(1).upper()}:\\" + m.group(2).replace("/", "\\")
+
+
+def _mcpb_launch(binary: str, args: list) -> list:
+    """The argv that actually runs mcpb, given how it is installed.
+
+    A `.cmd` IS NOT EXECUTABLE FROM LINUX. WSL's binfmt handler runs `.exe`
+    directly, but a `.cmd` is a batch script: it needs cmd.exe to interpret
+    it, and Python's exec reports the confusing
+
+        [Errno 8] Exec format error: .../npm/mcpb.cmd
+
+    So a Windows batch launcher gets wrapped, and every path argument is
+    translated, because cmd.exe cannot see /mnt paths. A native Linux binary
+    is run as-is.
+    """
+    if os.path.splitext(binary)[1].lower() in (".cmd", ".bat"):
+        cmd = shutil.which("cmd.exe") or "/mnt/c/Windows/System32/cmd.exe"
+        if not Path(cmd).exists():
+            raise Rejected(
+                f"mcpb is installed as a Windows batch launcher ({binary}), "
+                f"which needs cmd.exe to run, and cmd.exe was not found. "
+                f"Either WSL interop is disabled for this distro, or install "
+                f"mcpb natively in WSL and set MCPB_BIN.")
+        return [cmd, "/c", _win_path(binary)] + [_win_path(a) for a in args]
+    return [binary] + args
+
+
 def _mcpb_argv(sub: str, path_arg: str, extra: list | None = None) -> list:
     """VALIDATE THE ARGUMENTS FIRST, resolve the binary second.
 
@@ -438,7 +476,7 @@ def _mcpb_argv(sub: str, path_arg: str, extra: list | None = None) -> list:
     """
     checked = (_mcpb_dir(path_arg) if sub in ("validate", "pack")
                else _inrepo(path_arg))
-    return [resolve_mcpb(), sub, checked] + (extra or [])
+    return _mcpb_launch(resolve_mcpb(), [sub, checked] + (extra or []))
 
 
 REGISTRY = {
