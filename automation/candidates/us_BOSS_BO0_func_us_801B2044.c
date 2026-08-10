@@ -99,6 +99,15 @@ INCLUDE_ASM("boss/bo0/nonmatchings/2D26C", func_us_801B1F5C);
 
 #include "game.h"
 
+/* Added by the permuter-seed writer. INCLUDE_ASM expands to nothing under
+   PERMUTER, so these same-file stubs lose their only mention and the
+   permuter's typemap raises KeyError on every mutation touching them. */
+/* Not declared anywhere in the tree, so the real build compiles these by
+   C89 implicit declaration (6.3.2.2), which is exactly `extern int f();`.
+   Writing it out changes no codegen. */
+extern int func_us_801B163C();
+extern int func_us_801B171C();
+
 // Controls the next-frame update delay of an Entity by calling func_us_801B171C
 // with a per-frame (a1) offset, per-frame (a2) duration, and a1+a2 parameter
 // (a3). When the helper returns nonzero, increments the entity's zPriority frame

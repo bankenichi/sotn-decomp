@@ -1270,6 +1270,94 @@ def candidate_path(rec: dict) -> str:
     return os.path.join(WIN_REPO, "automation", "candidates", f"{slug}.c")
 
 
+_RX_STUB_IN_FILE = re.compile(r'INCLUDE_ASM\(\s*"[^"]+"\s*,\s*(\w+)\s*\)')
+
+
+def _declare_stub_siblings(whole: str, code: str) -> str:
+    """Declare same-file INCLUDE_ASM stubs that the candidate calls.
+
+    THE SEED IS THE WHOLE FILE AND THAT IS STILL NOT ENOUGH. Six BOSS/BO0
+    records sat deferred as `seed-bug`, all six on one symbol:
+
+        UNDECLARED SYMBOL: the seed calls func_us_801B171C without declaring
+        it, so the permuter raised KeyError on 316 mutations (8% of iterations)
+
+    Note what that is NOT. It is not an import failure and not a compile
+    failure -- the seed imported, and the permuter ran thousands of
+    iterations. decomp-permuter keeps a typemap while it mutates, and every
+    mutation that touched the undeclared call died on KeyError. Between 3% and
+    17% of the search was thrown away per record, silently.
+
+    WHY THE SYMBOL IS UNDECLARED IN THE FIRST PLACE
+        include/include_asm.h expands INCLUDE_ASM to nothing under PERMUTER,
+        and to a bare `__asm__(...)` otherwise. Neither is a C declaration, so
+        the REAL BUILD does not declare it either: src/boss/bo0/2D26C.c calls
+        func_us_801B171C at line 80 with the stub at line 55 and no prototype
+        anywhere in the tree. cc1-psx runs with -w, so the warning is hidden.
+        The real build compiles this by C89 implicit declaration.
+
+    WHY THE DECLARATION EMITTED HERE IS SAFE
+        C89 6.3.2.2 defines an implicitly declared function as behaving
+        exactly as if `extern int identifier();` appeared. So for a symbol the
+        tree genuinely does not declare, that line is not a guess about the
+        type -- it IS the type the compiler already assumed, written down.
+        Codegen is unchanged, which is the whole requirement: the permuter has
+        to search the same function that was measured.
+
+        A real declaration always wins. lookup_declarations() greps the tree
+        first, and only when it finds nothing does the implicit form apply --
+        which is precisely the case where implicit declaration was in force.
+        Guessing `void f(Entity*)` for something declared `s32 f(s32, s32)`
+        would change codegen; that is why lookup_declarations refuses to
+        invent, and why this narrow fallback is separate from it.
+
+    Scope is deliberately tight: only INCLUDE_ASM stubs IN THIS FILE, only
+    ones this candidate actually calls, only ones the tree does not declare.
+    """
+    stubs = set(_RX_STUB_IN_FILE.findall(whole))
+    if not stubs:
+        return whole
+    called = sorted(n for n in stubs if re.search(rf"\b{re.escape(n)}\s*\(", code))
+    if not called:
+        return whole
+
+    decls, implicit = [], []
+    found = {}
+    for d in lookup_declarations(called):
+        if d and d.strip():
+            for n in called:
+                if re.search(rf"\b{re.escape(n)}\b", d):
+                    found[n] = d.strip()
+    for n in called:
+        if n in found:
+            decls.append(found[n])
+        elif not re.search(rf"^[^\S\n]*(?:extern[^\S\n]+)?[A-Za-z_]\w*[\s*]+"
+                           rf"{re.escape(n)}\s*\(", whole, re.M):
+            # Nothing in the tree and nothing in this file: the real build
+            # reached it by implicit declaration, so write that down verbatim.
+            implicit.append(f"extern int {n}();")
+    if not decls and not implicit:
+        return whole
+
+    block = ["\n/* Added by the permuter-seed writer. INCLUDE_ASM expands to "
+             "nothing under\n   PERMUTER, so these same-file stubs lose their "
+             "only mention and the\n   permuter's typemap raises KeyError on "
+             "every mutation touching them. */"]
+    if decls:
+        block += ["/* Declared by the tree: */"] + decls
+    if implicit:
+        block += ["/* Not declared anywhere in the tree, so the real build "
+                  "compiles these by\n   C89 implicit declaration (6.3.2.2), "
+                  "which is exactly `extern int f();`.\n   Writing it out "
+                  "changes no codegen. */"] + implicit
+
+    lines = whole.splitlines(keepends=True)
+    last_inc = max((i for i, l in enumerate(lines)
+                    if l.lstrip().startswith("#include")), default=-1)
+    return ("".join(lines[:last_inc + 1]) + "\n".join(block) + "\n"
+            + "".join(lines[last_inc + 1:]))
+
+
 def save_candidate(rec: dict, code: str, attempt: int, detail: str,
                    ctx: dict | None = None) -> str:
     """Preserve C that COMPILED AND LINKED but produced the wrong bytes.
@@ -1325,7 +1413,8 @@ def save_candidate(rec: dict, code: str, attempt: int, detail: str,
             try:
                 whole = virtual_apply(ctx, rec["function"], code)
                 if whole:
-                    payload, kind = whole, "WHOLE FILE (directly importable)"
+                    whole = _declare_stub_siblings(whole, code)
+                    payload, kind = whole, "WHOLE FILE (stubs declared)"
             except Exception as e:                       # never lose the seed
                 print(f"  !! seed fell back to the bare body: {e}", flush=True)
         with open(path, "w", encoding="utf-8") as f:
@@ -1335,8 +1424,32 @@ def save_candidate(rec: dict, code: str, attempt: int, detail: str,
                     f"   model  : {model}\n"
                     f"   verdict: {detail[:160]}\n"
                     f"   content: {kind}\n"
-                    f"   import : python3 tools/decomp-permuter/import.py "
-                    f"<this file> {asm_rel_path(rec, ctx.get('asm_rel', '')) if ctx else '<asm>'}\n"
+                    f"   origin : {ctx.get('src_rel', '?') if ctx else '?'}\n"
+                    f"   asm    : {asm_rel_path(rec, ctx.get('asm_rel', '')) if ctx else '<asm>'}\n"
+                    f"\n"
+                    f"   IMPORT VIA THE SUPERVISOR, NOT DIRECTLY:\n"
+                    f"       permuter_supervisor.py --import-seeds\n"
+                    f"\n"
+                    f"   This banner used to say `import.py <this file> <asm>`,\n"
+                    f"   and that ADVICE CANNOT WORK. The seed is the whole\n"
+                    f"   source file, so it starts with quoted includes like\n"
+                    f"   #include \"bo0.h\" -- and cpp resolves a quoted include\n"
+                    f"   relative to the DIRECTORY OF THE FILE. From\n"
+                    f"   automation/candidates/ there is no bo0.h, so the import\n"
+                    f"   dies with `fatal error: bo0.h: No such file or\n"
+                    f"   directory` before it ever looks at the C.\n"
+                    f"\n"
+                    f"   The supervisor gets this right: it writes the body back\n"
+                    f"   into `origin` above, imports from there so the includes\n"
+                    f"   resolve, and restores the file afterwards (journalled,\n"
+                    f"   so a kill cannot leave the edit behind).\n"
+                    f"\n"
+                    f"   Six BOSS/BO0 records were deferred as `seed-bug` with a\n"
+                    f"   note blaming a missing `extern func_us_801B171C`. That\n"
+                    f"   diagnosis was wrong; the seeds were fine and the import\n"
+                    f"   command in this banner was not. Verified 2026-08-10 by\n"
+                    f"   running the import and reading the actual error.\n"
+                    f"\n"
                     f"   Do NOT apply this to the tree as-is; it does not match.\n"
                     f"   It exists so the permuter has a compiling starting"
                     f" point. */\n")

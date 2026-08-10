@@ -237,6 +237,10 @@ ANALYSIS_SCRIPTS = {
     "test_draft_cleaning.py",
     "test_salvage_degeneration.py",
     "test_build_lock.py",
+    "test_stub_declarations.py",
+    # Retrofits stub declarations onto seeds written before the fix. Dry-run
+    # by default; --apply is what writes.
+    "fix_seed_declarations.py",
     # Runs every test_*.py and reports one table. Read-only.
     "run_selftests.py",
 }

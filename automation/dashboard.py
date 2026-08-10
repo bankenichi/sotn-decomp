@@ -609,6 +609,9 @@ DIAGNOSTICS = [
      "which deferrals are stale: a tier that could not run, or a seed bug"),
     ("Deferred triage: requeue plan", "deferred_triage.py", "--requeue-plan",
      "the exact scheduler commands; prints only, writes nothing"),
+    ("Seed declarations: what is missing", "fix_seed_declarations.py", "",
+     "seeds whose called INCLUDE_ASM stubs are undeclared, so the permuter "
+     "KeyErrors on part of its search; dry run, writes nothing"),
     ("Codebase index", "codebase_index.py", "",
      "rebuild the symbol/function index"),
     ("Prompt compaction", "test_prompt_compaction.py", "",
@@ -624,7 +627,8 @@ DIAGNOSTICS = [
     ("Self-test: supervisor", "permuter_supervisor.py", "--self-test",
      "the supervisor's own checks"),
     ("Self-test: EVERYTHING", "run_selftests.py", "",
-     "runs all 17 suites and reports one table (~65s)"),
+     "every test_*.py plus every module carrying its own --self-test, "
+     "discovered not hand-listed; one table (~90s)"),
     ("Self-test: draft cleaning", "test_draft_cleaning.py", "",
      "ILLEGAL never reaches the model; the offset table knows its pointer"),
     ("Self-test: salvage degeneration", "test_salvage_degeneration.py", "",

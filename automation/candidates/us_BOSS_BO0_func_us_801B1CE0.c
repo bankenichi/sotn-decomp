@@ -13,6 +13,15 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #include "bo0.h"
 
+/* Added by the permuter-seed writer. INCLUDE_ASM expands to nothing under
+   PERMUTER, so these same-file stubs lose their only mention and the
+   permuter's typemap raises KeyError on every mutation touching them. */
+/* Not declared anywhere in the tree, so the real build compiles these by
+   C89 implicit declaration (6.3.2.2), which is exactly `extern int f();`.
+   Writing it out changes no codegen. */
+extern int func_us_801B163C();
+extern int func_us_801B171C();
+
 INCLUDE_ASM("boss/bo0/nonmatchings/2D26C", func_us_801AD26C);
 
 // Checks whether the tile at (x, y) is solid ground.
