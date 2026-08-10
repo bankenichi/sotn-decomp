@@ -627,7 +627,15 @@ def preflight(fn: str, mapping: list[str] | None = None,
         # the arbiter and rejects a different-length or different-opcode pair.
         if auto:
             import asm_delta as ad                             # type: ignore
-            probe = ad.for_function(fn, twin_name=cand)
+            # NAME BOTH OVERLAYS. asm_delta indexes .s files by bare filename,
+            # so a name present in two overlays used to resolve to whichever
+            # the directory walk reached first -- silently, and possibly to a
+            # function with nothing to do with either side of this transplant.
+            # Both paths are in hand here: stub_path is the destination and
+            # pth is the donor local_twin just found.
+            probe = ad.for_function(fn, twin_name=cand,
+                                    overlay=ad.src_overlay(stub_path),
+                                    twin_overlay=ad.src_overlay(pth))
             if not probe["ok"]:
                 tried.append(f"{cand}: {probe['reason']}")
                 continue
@@ -645,7 +653,9 @@ def preflight(fn: str, mapping: list[str] | None = None,
         # every symbol rename and constant change between them; the first
         # transplant needed all of that by hand.
         import asm_delta as ad                                # type: ignore
-        d = ad.for_function(fn, twin_name=base)
+        d = ad.for_function(fn, twin_name=base,
+                            overlay=ad.src_overlay(stub_path),
+                            twin_overlay=ad.src_overlay(path))
         auto_notes.append(f"asm delta: {d['reason']} "
                           f"({d['insns']} insns, {d['diffs']} differing)")
         if not d["ok"]:
