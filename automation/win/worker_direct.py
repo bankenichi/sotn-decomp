@@ -1270,6 +1270,84 @@ def candidate_path(rec: dict) -> str:
     return os.path.join(WIN_REPO, "automation", "candidates", f"{slug}.c")
 
 
+def rejected_path(rec: dict) -> str:
+    """Where a candidate that FAILED TO BUILD is archived.
+
+    Separate from automation/candidates/, which holds compiling seeds for the
+    permuter. Mixing them would mean permuter_supervisor picking up code that
+    has never compiled.
+    """
+    slug = re.sub(r"[^A-Za-z0-9_.-]+", "_", rec["id"]).strip("_")
+    return os.path.join(WIN_REPO, "automation", "rejected", f"{slug}.c")
+
+
+def save_rejected(rec: dict, code: str, attempt: int, detail: str,
+                  ctx: dict | None = None) -> str:
+    """Keep the C that failed to build, instead of throwing it away.
+
+    THE ESCALATION PATH USED TO DISCARD IT. It reported the compiler's
+    message and nothing else:
+
+        sched("report", ..., "--status", "escalated",
+              "--notes", (best_build or best)[:250])
+
+    So an escalated record was a 250-character error string describing code
+    that no longer existed. That is expensive in two directions.
+
+    It wastes the generation. Twelve records in the live queue failed on
+    nothing worse than a missing `extern` -- `g_EInitCommon undeclared`,
+    `D_us_80180600 undeclared` -- and the audit assumed their candidates
+    could simply be re-applied once the declaration was added. They could
+    not: the code was gone, so every one of them is a full re-attempt at
+    full model cost. Archiving turns that class back into what the audit
+    thought it already was.
+
+    It also destroys the evidence. `func_us_8019FD4C_from_rcen` escalated
+    with tool-call markup in the note, and the only reason anyone could tell
+    what had happened is that the markup happened to survive inside the
+    truncated error text. A candidate that fails for an interesting reason
+    is the most informative artefact the fleet produces, and it was the one
+    thing not being kept.
+
+    NOT under automation/logs: that tree is gitignored and periodically
+    cleared, so anything there is disposable by design. This is not.
+    """
+    try:
+        path = rejected_path(rec)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        # Resolved here, not passed in: `model` is local to save_candidate,
+        # and taking it as a parameter made the escalation call site a
+        # NameError waiting for the first build failure to reach it.
+        model = OPENCODE_MODEL if MODEL_BACKEND == "cli" else _active_model()
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(
+                f"/* REJECTED CANDIDATE -- did NOT compile. Kept on purpose.\n"
+                f"   record : {rec['id']}\n"
+                f"   attempt: {attempt}/{MAX_ATTEMPTS}\n"
+                f"   model  : {model}\n"
+                f"   origin : {ctx.get('src_rel', '?') if ctx else '?'}\n"
+                f"   verdict: {detail[:400]}\n"
+                f"\n"
+                f"   This is NOT a permuter seed and must never be treated as\n"
+                f"   one: it has never compiled. automation/candidates/ is for\n"
+                f"   code that builds and merely misses on bytes.\n"
+                f"\n"
+                f"   Why it is kept: the escalation path used to record only\n"
+                f"   the compiler's message, so a record like `g_EInitCommon\n"
+                f"   undeclared` described code nobody could look at any more.\n"
+                f"   Twelve such records were assumed to be one extern away\n"
+                f"   from building, and turned out to need a full re-attempt\n"
+                f"   because the candidate had been discarded.\n"
+                f"\n"
+                f"   Do NOT apply this to the tree. Read it, fix what the\n"
+                f"   verdict names, and re-attempt. */\n")
+            f.write(code)
+        return os.path.relpath(path, WIN_REPO).replace("\\", "/")
+    except OSError as e:
+        print(f"  !! could not archive rejected candidate: {e}", flush=True)
+        return ""
+
+
 _RX_STUB_IN_FILE = re.compile(r'INCLUDE_ASM\(\s*"[^"]+"\s*,\s*(\w+)\s*\)')
 _RX_CALL = re.compile(r"(?<![\w.>])([A-Za-z_]\w*)\s*\(")
 # Keywords and macros that take a parenthesis and are not calls.
@@ -4527,6 +4605,11 @@ def process_one(dry: bool = False) -> bool:
     # the least useful one, and it is why several escalated records read like
     # generation failures when they are really build failures.
     best_build = ""
+    # The candidate that produced `best_build`, so the archive and the note
+    # describe the SAME attempt. Taking `code` at the end of the loop would
+    # pair the recorded compiler error with whatever the last generation
+    # happened to be, which is not necessarily the one that produced it.
+    best_build_code = ""
     # Did ANY attempt produce C that compiled and merely missed on bytes?
     # That is a fundamentally different outcome from "never built", and it
     # decides where the record is routed when the attempts run out. See the
@@ -4700,6 +4783,7 @@ def process_one(dry: bool = False) -> bool:
                     # nothing left to recover.
                     journal_clear()
             best = best_build = detail
+            best_build_code = code
             if matched:
                 return True
             feedback = detail
@@ -4771,6 +4855,18 @@ def process_one(dry: bool = False) -> bool:
         else:
             # A candidate WAS produced and it failed to build. That is a genuine
             # escalation: the model tried and wrote non-compiling C.
+            #
+            # KEEP THE C. Reporting the compiler's message and discarding the
+            # code turns every escalation into a 250-character description of
+            # something nobody can read. Twelve live records failed on nothing
+            # worse than a missing extern and still need a full re-attempt,
+            # because the candidate that was one line from compiling is gone.
+            rej = save_rejected(rec, best_build_code or "", attempt,
+                                best_build or best, ctx)
+            # Named in the note for the same reason `seed=` is: the note is
+            # the only index. An archive nothing points at is a directory
+            # nobody opens.
+            where = f" rejected={rej}" if rej else " rejected=NONE(save failed)"
             sched("report", "--id", rec["id"], "--status", "escalated",
                   # Prefer the BUILD verdict. A later generation timeout must
                   # not be what an escalated record is filed under; the
@@ -4780,7 +4876,7 @@ def process_one(dry: bool = False) -> bool:
                   # `iterations` was permanently 0 and nothing could ever brake
                   # a requeue loop or tell a first attempt from a fifth.
                   "--add-iters", str(attempt),
-                  "--notes", (best_build or best)[:250])
+                  "--notes", (where + " " + (best_build or best))[:250])
     except KeyboardInterrupt:
         # Ctrl-C must never leave a half-applied edit in a real source file.
         print("\n[worker] interrupted; restoring source and releasing record")

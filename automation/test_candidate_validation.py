@@ -119,6 +119,54 @@ def main():
     check("not usable C" in body,
           "and the finding says the text is not C, not that the code is bad")
 
+    print("\na candidate that fails to build is ARCHIVED, not discarded")
+    # The escalation path used to report the compiler's message and throw the
+    # code away, so an escalated record described something nobody could read.
+    # Twelve live records failed on nothing worse than a missing extern and
+    # still need a full re-attempt, because the near-miss C is gone.
+    rec = {"id": "us:ST/RCEN:func_us_8019F9C0"}
+    p = wd.rejected_path(rec)
+    check("rejected" in p, f"archived under automation/rejected ({p})")
+    check("candidates" not in p,
+          "NOT under candidates/, which permuter_supervisor reads as seeds "
+          "and which would hand it code that has never compiled")
+    check("logs" not in p,
+          "and not under logs/, which is gitignored and periodically cleared")
+
+    import shutil
+    import tempfile
+    tmp = tempfile.mkdtemp()
+    real_repo = wd.WIN_REPO
+    try:
+        wd.WIN_REPO = tmp
+        got = wd.save_rejected(rec, "void f(void) { bad_c }", 3,
+                               "BUILD FAILED: `g_EInitCommon' undeclared",
+                               {"src_rel": "src/st/rcen/unk_1F0D8.c"})
+        check(got.startswith("automation/rejected/"),
+              f"returns a repo-relative path ({got})")
+        body = open(os.path.join(tmp, got.replace("/", os.sep)),
+                    encoding="utf-8").read()
+        check("void f(void) { bad_c }" in body, "the C itself is kept")
+        check("g_EInitCommon" in body, "with the verdict that rejected it")
+        check("us:ST/RCEN:func_us_8019F9C0" in body, "and the record id")
+        check("src/st/rcen/unk_1F0D8.c" in body, "and where it belongs")
+        check("never compiled" in body,
+              "and a warning that it is not a permuter seed")
+    finally:
+        wd.WIN_REPO = real_repo
+        shutil.rmtree(tmp, ignore_errors=True)
+
+    print("\nand the queue note points at the archive")
+    # Same lesson as seed=: the note is the only index, so an archive nothing
+    # references is a directory nobody opens.
+    esc = src[src.index("A candidate WAS produced and it failed to build"):]
+    esc = esc[:esc.index("except KeyboardInterrupt")]
+    check("save_rejected(" in esc, "the escalation path archives")
+    check("rejected=" in esc, "and names the file in the note")
+    check("best_build_code" in esc,
+          "archiving the candidate that produced the RECORDED error, not "
+          "whatever the last generation happened to be")
+
     print()
     if FAILS:
         print(f"{len(FAILS)} FAILED:")
