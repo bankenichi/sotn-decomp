@@ -1020,6 +1020,12 @@ _CURRENT_CLAIM: str | None = None
 _CURRENT_CLAIM_FROM: str | None = None
 
 
+# Set the moment an attempt COMPILES, so the interrupt path can see it. The
+# retry loop's own `compiled_once` is a local and is invisible to a signal
+# handler, which is the whole bug below.
+_CURRENT_SEED: str = ""
+
+
 def release_claim_if_held() -> None:
     """Return a still-held claim to WHERE IT CAME FROM. Safe to call twice.
 
@@ -1028,13 +1034,37 @@ def release_claim_if_held() -> None:
     deferred pool. The same hard-coding in cmd_reclaim would make any future
     tier-2 consumer's escalated record fall back to Tier 0 and be reworked by
     the cheapest model, which inverts the whole point of escalation.
+
+    A COMPILING ATTEMPT IS NOT LOST TO A SIGTERM. The `near` promotion lives
+    after the retry loop, so a worker killed mid-loop released straight back
+    to `todo` and threw away the knowledge that an earlier attempt had already
+    compiled. Observed on func_us_801B5E8C (archived zen-3, 2026-08-09):
+    attempts 1 and 3 both reported "compiled, checksum differs" and saved a
+    seed, attempt 4 was interrupted, and the record went to `todo`. The seed
+    file survived on disk with nothing pointing at it, so the permuter -- the
+    tier that exists precisely for compiles-but-differs -- never saw it.
+
+    If a seed was saved, release to `near` instead and name the file. `near`
+    is strictly more informative than `todo`: it says the function is a
+    codegen near-miss rather than untried, and the permuter can pick it up
+    without a model call.
     """
-    global _CURRENT_CLAIM, _CURRENT_CLAIM_FROM
+    global _CURRENT_CLAIM, _CURRENT_CLAIM_FROM, _CURRENT_SEED
     cid, _CURRENT_CLAIM = _CURRENT_CLAIM, None
     back, _CURRENT_CLAIM_FROM = _CURRENT_CLAIM_FROM or "todo", None
+    seed, _CURRENT_SEED = _CURRENT_SEED, ""
     if not cid:
         return
     try:
+        if seed:
+            print(f"[worker] releasing {cid} -> near (an attempt compiled; "
+                  f"seed={seed})", file=sys.stderr)
+            sched("report", "--id", cid, "--status", "near",
+                  "--score", "50", "--tier", "0",
+                  "--notes", ("interrupted, but an earlier attempt compiled "
+                              f"with a byte mismatch; permuter candidate. "
+                              f"seed={seed}")[:250])
+            return
         print(f"[worker] releasing stranded claim {cid} -> {back}",
               file=sys.stderr)
         sched("report", "--id", cid, "--status", back,
@@ -1800,6 +1830,48 @@ SALVAGE_MAX_REASONING = int(os.environ.get("SALVAGE_MAX_REASONING", "24000"))
 SALVAGE_MAX_CONTENT = int(os.environ.get("SALVAGE_MAX_CONTENT", "24000"))
 
 
+_RX_NUM = re.compile(r"(?:0x)?[0-9A-Fa-f]{1,8}")
+
+
+def _enumeration_loop(tail: list[str]) -> str:
+    """"" unless these lines are a LOOP rather than a TABLE.
+
+    THE OLD RULE COUNTED A STRUCT LAYOUT AS DEGENERATION. It normalised every
+    number to `#` and fired when six short lines collapsed to two shapes. But
+
+        - 0x20: s16
+        - 0x22: s16 y3
+        - 0x25: 0x58
+
+    collapses to one shape, and it is not a loop -- it is the model writing
+    out an offset table, which is exactly the work the prompt now asks for.
+
+    Measured over 179 aborts in the archived logs (2026-08-09), the
+    enumeration branch fired ~95 times and the sampled context was productive
+    in the overwhelming majority: trigger strings included `- 0x52: unk52`,
+    `/* 0x16 */ s16 y3;` and `- 0x0A: y0 (s16)`. Those are layouts.
+
+    The distinguishing signal is REPETITION OF THE LINE, which the old rule
+    destroyed by normalising before comparing. A loop emits the same line over
+    and over; a table emits a different line each time that merely has the
+    same shape. So the shape collapse is only the entry condition now, and the
+    abort needs the raw lines to actually repeat.
+
+    A first attempt at this counted distinct NUMBERS instead and was wrong:
+    `- 0x20: s16 x0` repeated six times still yields three distinct numbers
+    (`0x20`, the `16` in s16, the `0` in x0), so a real loop read as a table.
+    Comparing the lines themselves has no such incidental-token problem.
+    """
+    short = [l for l in tail if len(l) < 60]
+    if len(short) < 6:
+        return ""
+    if len({_RX_NUM.sub("#", l) for l in short}) > 2:
+        return ""          # not even the same shape
+    if len(set(short)) > 2:
+        return ""          # same shape, different content: a table
+    return f"enumeration loop ({tail[-1][:44]!r}...)"
+
+
 def _content_degen_reason(text: str) -> str:
     """Why this content stream is degenerate, or "" if it is fine.
 
@@ -1838,10 +1910,9 @@ def make_degeneration_detector():
             tail = lines[-8:]
             if len(set(tail)) <= 2:
                 return "same line repeated 8x"
-            short = [l for l in tail if len(l) < 60]
-            norm = [re.sub(r"(0x)?[0-9A-Fa-f]{1,8}", "#", l) for l in short]
-            if len(short) >= 6 and len(set(norm)) <= 2:
-                return f"enumeration loop ({tail[-1][:44]!r}...)"
+            why = _enumeration_loop(tail)
+            if why:
+                return why
         if len(text) > 4000:
             chunk = re.sub(r"\s+", " ", text[-300:]).strip()
             earlier = re.sub(r"\s+", " ", text[:-300])
@@ -2080,10 +2151,9 @@ def llama_echo(prompt: str, temperature: float = 0.2,
             # Only short, list-shaped lines count as enumeration. Real
             # analysis paragraphs are long and differ in words, not just
             # numbers, so this avoids flagging genuine reasoning.
-            short = [l for l in tail if len(l) < 60]
-            norm = [re.sub(r"(0x)?[0-9A-Fa-f]{1,8}", "#", l) for l in short]
-            if len(short) >= 6 and len(set(norm)) <= 2:
-                return f"enumeration loop ({tail[-1][:44]!r}...)"
+            why = _enumeration_loop(tail)
+            if why:
+                return why
         # Long-cycle repetition: has the recent chunk been said before?
         #
         # THIS CHECK WAS FAR TOO EAGER and was the single largest source of lost
@@ -4298,6 +4368,10 @@ def process_one(dry: bool = False) -> bool:
                 seed_path = save_candidate(rec, code, attempt, detail, ctx) or seed_path
                 if seed_path:
                     print(f"  -> permuter seed saved: {seed_path}", flush=True)
+                    # Publish it NOW, not after the loop. A SIGTERM during a
+                    # later attempt must still be able to file this as `near`.
+                    global _CURRENT_SEED
+                    _CURRENT_SEED = seed_path
                 with Status("asm-differ (collecting feedback)"):
                     feedback += "\n\nDIFF:\n" + diff_feedback(rec)
             for dl in detail.splitlines()[:6]:
@@ -4317,6 +4391,7 @@ def process_one(dry: bool = False) -> bool:
         # unrelated models produced identical, semantically CORRECT C (every
         # struct offset verified by hand against include/game.h) that still
         # missed. No larger model fixes that; a codegen search might.
+        globals()["_CURRENT_SEED"] = ""   # the loop is reporting; release must not
         if compiled_once:
             print(f"[worker] NEAR {fn}: compiled, bytes differ -> permuter",
                   flush=True)

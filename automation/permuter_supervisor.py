@@ -1818,6 +1818,89 @@ def self_test() -> int:
     return 0
 
 
+# ------------------------------------------------------- orphaned seed rescue
+
+_SEED_ID_RX = re.compile(r"^\s*record\s*:\s*(\S+)", re.M)
+
+
+def reconcile_seeds(apply: bool = False) -> int:
+    """Find permuter seeds on disk whose queue record is not `near`.
+
+    WHY THESE EXIST. The worker promotes a record to `near` AFTER its retry
+    loop finishes. A SIGTERM mid-loop skipped that and released the claim
+    straight back to `todo`, so a function whose attempt had already compiled
+    looked untried. The seed file stayed on disk with nothing referring to it,
+    and the permuter -- the tier that exists for exactly this case -- never
+    saw it. Confirmed on func_us_801B5E8C: attempts 1 and 3 both compiled,
+    attempt 4 was interrupted, record went to `todo`.
+
+    worker_direct now releases to `near` when a seed exists, so this should
+    find nothing on a healthy tree. It stays because it is the only way to
+    recover the ones already lost, and because "should find nothing" is a
+    claim worth being able to check.
+
+    Read-only unless apply=True.
+    """
+    seeds = sorted((REPO / "automation" / "candidates").glob("*.c"))
+    if not seeds:
+        print("no seed files under automation/candidates/")
+        return 0
+    by_id = {r.get("id"): r for r in load_queue()}
+    orphans, fine, unknown = [], 0, []
+    for f in seeds:
+        head = f.read_text(encoding="utf-8", errors="ignore")[:600]
+        m = _SEED_ID_RX.search(head)
+        if not m:
+            unknown.append((f.name, "no `record:` line in the seed banner"))
+            continue
+        rid = m.group(1)
+        rec = by_id.get(rid)
+        if rec is None:
+            unknown.append((f.name, f"record {rid} not in the queue"))
+            continue
+        st = rec.get("status")
+        # ONLY todo AND escalated COUNT AS LOST.
+        #
+        # The first version of this treated any non-near status as orphaned
+        # and reported 28. Every one was `deferred`, and the deferral reasons
+        # (deferred_triage: 22 `permuter-out`, 6 `seed-bug`) say the permuter
+        # ALREADY ran on them and exhausted the search. Filing those back to
+        # `near` would hand the permuter work it has finished, forever. A seed
+        # sitting beside a deferred record is the normal end state, not a leak.
+        #
+        # `todo` means nothing knows the function ever compiled -- that is the
+        # SIGTERM leak. `escalated` means it was sent to a more expensive tier
+        # as though it had never built, which is the same mistake costing more.
+        if st in ("todo", "escalated"):
+            orphans.append((rid, st, f))
+        else:
+            fine += 1
+
+    print(f"{len(seeds)} seed file(s): {fine} accounted for "
+          f"(near/matched, or deferred after the permuter ran), "
+          f"{len(orphans)} orphaned, {len(unknown)} unreadable")
+    for name, why in unknown:
+        print(f"  ?  {name}: {why}")
+    if not orphans:
+        return 0
+    print("\norphaned (a compiling candidate the permuter cannot see):")
+    for rid, st, f in orphans:
+        print(f"  {st:<10} {rid:<44} {f.name}")
+    if not apply:
+        print("\nread-only. Re-run with --apply to file these as `near`.")
+        return 0
+    n = 0
+    for rid, st, f in orphans:
+        out = report(rid, "near",
+                     f"seed exists but record was {st}; filed near by "
+                     f"reconcile_seeds. seed=automation/candidates/{f.name}")
+        ok = "FAILED" not in out
+        print(f"  {'ok  ' if ok else 'FAIL'} {rid} -> near")
+        n += ok
+    print(f"\n{n}/{len(orphans)} filed as near")
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(
         description=__doc__,
@@ -1827,6 +1910,11 @@ def main() -> int:
     ap.add_argument("--status", action="store_true")
     ap.add_argument("--stop", action="store_true")
     ap.add_argument("--self-test", action="store_true")
+    ap.add_argument("--reconcile-seeds", action="store_true",
+                    help="find seeds whose record is not near "
+                         "(read-only unless --apply-reconcile)")
+    ap.add_argument("--apply-reconcile", action="store_true",
+                    help="with --reconcile-seeds, actually file them")
     ap.add_argument("--import-seeds", action="store_true",
                     help="import work dirs for candidates that lack one, "
                          "then stop; starts no jobs")
@@ -1860,6 +1948,8 @@ def main() -> int:
     except (AttributeError, ValueError):     # pragma: no cover
         pass
 
+    if a.reconcile_seeds:
+        return reconcile_seeds(apply=a.apply_reconcile)
     if a.self_test:
         return self_test()
     if a.import_seeds:

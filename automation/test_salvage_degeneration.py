@@ -126,6 +126,32 @@ def main():
     else:
         check(False, f"the captured runaway fixture is missing ({cap})")
 
+    print("\nan offset TABLE is not an enumeration loop")
+    # Measured 2026-08-09 over 179 aborts in the archived logs: the
+    # enumeration branch fired ~95 times and the trigger strings were things
+    # like `- 0x52: unk52`, `/* 0x16 */ s16 y3;`, `- 0x0A: y0 (s16)`. Those
+    # are the model writing out a struct layout -- the work the prompt asks
+    # for -- and the old rule killed it, because it normalised every number to
+    # `#` before comparing and a layout then collapses to one shape.
+    table = ["- 0x20: s16 x0", "- 0x22: s16 y0", "- 0x24: s16 x1",
+             "- 0x26: s16 y1", "- 0x28: s16 x2", "- 0x2A: s16 y2",
+             "- 0x2C: s16 x3", "- 0x2E: s16 y3"]
+    check(wd._enumeration_loop(table) == "",
+          "a table of DISTINCT ascending offsets is left alone")
+    layout = ["/* 0x16 */ s16 y3;", "/* 0x18 */ s16 x4;",
+              "/* 0x1A */ s16 y4;", "/* 0x1C */ s16 x5;",
+              "/* 0x1E */ s16 y5;", "/* 0x20 */ s16 x6;"]
+    check(wd._enumeration_loop(layout) == "",
+          "and so is a C struct layout, which was a 100% false-positive shape")
+    loop = ["- 0x20: s16 x0", "- 0x20: s16 x0", "- 0x20: s16 x0",
+            "- 0x20: s16 x0", "- 0x20: s16 x0", "- 0x20: s16 x0"]
+    check("enumeration loop" in wd._enumeration_loop(loop),
+          "but the SAME offset repeated is still caught: repetition is the "
+          "signal, not shape")
+    short_run = ["- 0x20: a", "- 0x22: b", "- 0x24: c"]
+    check(wd._enumeration_loop(short_run) == "",
+          "fewer than 6 short lines is never enough evidence")
+
     print("\nboth streaming paths share one formatter")
     src = open(os.path.join(here, "win", "worker_direct.py"),
                encoding="utf-8").read()

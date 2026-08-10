@@ -48,6 +48,148 @@ RX_TIMEOUT = re.compile(r"attempt \d+ timed out after (\d+)s")
 RX_REQUEUE = re.compile(r"REQUEUE (\S+): no candidate produced")
 
 
+RX_ABORT = re.compile(
+    r"^\s*!!\s*(?:degenerate reasoning|degenerate output|salvage aborted)\s*:?\s*(.*)$",
+    re.M)
+
+
+def degen_audit(paths: list[Path], context: int = 26) -> None:
+    """Are the degeneration aborts CORRECT, or are they cutting off real work?
+
+    WHY THIS IS NOT THE SAME QUESTION AS "does the detector fire"
+        Every existing check on these detectors asks whether they catch a
+        runaway. None asks what they killed. A detector that aborts a model
+        mid-derivation is worse than no detector: the run still costs its
+        tokens, and the answer it was about to produce is gone with no trace
+        that anything was lost.
+
+        So this scores the OPPOSITE direction. For every abort in the logs it
+        pulls the text immediately before it and classifies what the model was
+        actually doing.
+
+    HOW A LINE IS JUDGED
+        The detectors fire on SHAPE, so the audit judges shape too:
+
+          runaway   the preceding lines really are near-identical, ascending,
+                    or a register dump. The abort was right.
+          circling  distinct sentences, but the same question restated. The
+                    abort is defensible: this is the 800-restart failure mode,
+                    and it does not resolve on its own.
+          working   the preceding lines are a normal derivation -- reading the
+                    asm, naming offsets, writing C. A false positive, and the
+                    one that costs matches.
+
+        `working` is the number that matters. Anything above a few percent
+        means the thresholds are too tight.
+    """
+    seen: dict[str, int] = defaultdict(int)
+    examples: dict[str, list] = defaultdict(list)
+    by_reason: dict[str, dict] = defaultdict(lambda: {"n": 0, "working": 0})
+    # The live rule, so this reports on the code as it stands rather than on a
+    # copy that can drift from it.
+    try:
+        sys.path.insert(0, str(REPO / "automation" / "win"))
+        os.environ.setdefault("MODEL_BACKEND", "zen")
+        from worker_direct import _enumeration_loop as _enum_rule  # type: ignore
+    except Exception:                                       # noqa: BLE001
+        _enum_rule = None
+    RX_DECL = re.compile(r"^\s*(?:s32|s16|u8|u16|u32|s8)\s+\w+\d+;\s*$")
+    RX_REG = re.compile(r"^\s*\w+\s+temp_[a-z]\d?(?:_\d+)?;\s*$")
+    RX_ASM = re.compile(r"^\s*/\*\s*[0-9A-F]+\s+[0-9A-F]+\s+[0-9A-F]+\s*\*/")
+    RX_RESTART = re.compile(r"^\s*(Actually|Wait|Hmm|But wait|Alternatively|"
+                            r"Let me|OK|Hold on)\b", re.I)
+    # A derivation looks like this: it names concrete things.
+    RX_WORK = re.compile(r"0x[0-9A-Fa-f]+|->\w+|\b(lw|sw|lh|sh|lbu|addiu|"
+                         r"beq|bne|jal|sll|sra|andi|ori|lui)\b|[;{}]")
+
+    for p in paths:
+        lines = p.read_text(encoding="utf-8", errors="replace").splitlines()
+        for i, line in enumerate(lines):
+            m = RX_ABORT.match(line)
+            if not m:
+                continue
+            why = (m.group(1) or "").strip()[:48]
+            before = [l for l in lines[max(0, i - context):i] if l.strip()]
+            if not before:
+                seen["no-context"] += 1
+                continue
+            tail = before[-14:]
+            structural = sum(bool(RX_DECL.match(l) or RX_REG.match(l)
+                                  or RX_ASM.match(l)) for l in tail)
+            norm = [re.sub(r"\d+", "#", l.strip()) for l in tail]
+            near_same = len(set(norm)) <= max(2, len(norm) // 4)
+            restarts = sum(bool(RX_RESTART.match(l)) for l in tail)
+            worky = sum(bool(RX_WORK.search(l)) for l in tail)
+
+            if structural >= 6 or near_same:
+                kind = "runaway"
+            elif restarts >= 3:
+                kind = "circling"
+            elif worky >= 8:
+                kind = "working"
+            else:
+                kind = "unclear"
+            # WOULD THE CURRENT RULE STILL FIRE? The logs record what the
+            # detector did at the time; replaying the context through today's
+            # code is the only way to tell whether a change actually helped,
+            # as opposed to whether the old aborts are still in the file.
+            if _enum_rule is not None and why.startswith("enumeration loop"):
+                if not _enum_rule(tail):
+                    seen["now-spared"] += 1
+            seen[kind] += 1
+            by_reason[why or "(no reason given)"]["n"] += 1
+            by_reason[why or "(no reason given)"]["working"] += (kind == "working")
+            if len(examples[kind]) < 3:
+                examples[kind].append((p.name, why, tail[-3:]))
+
+    total = sum(seen.values())
+    if not total:
+        print("no degeneration aborts in this window. Nothing to judge.")
+        return
+    print(f"\n{total} degeneration abort(s) examined\n")
+    print(f"{'verdict':<12}{'count':>7}{'share':>8}   what it means")
+    print("-" * 78)
+    order = [("runaway", "correct: the stream really had run away"),
+             ("circling", "defensible: restating, does not self-resolve"),
+             ("unclear", "cannot tell from shape alone; read these"),
+             ("working", "FALSE POSITIVE: killed a real derivation"),
+             ("no-context", "abort with nothing before it; parser gap")]
+    for k, meaning in order:
+        if seen[k]:
+            print(f"{k:<12}{seen[k]:>7}{seen[k]/total:>7.0%}   {meaning}")
+    print("-" * 78)
+    fp = seen["working"] / total
+    print(f"\nfalse-positive rate: {fp:.1%}"
+          + ("  -- acceptable" if fp <= 0.03 else
+             "  -- TOO HIGH, loosen the thresholds"))
+
+    # WHICH DETECTOR is wrong matters more than the total. They have separate
+    # thresholds and separate failure modes; a single rate hides which one to
+    # touch and invites loosening all of them.
+    if seen["now-spared"]:
+        n_enum = sum(c["n"] for r, c in by_reason.items()
+                     if r.startswith("enumeration loop"))
+        print(f"\nreplayed through the CURRENT enumeration rule: "
+              f"{seen['now-spared']} of {n_enum} of those aborts would no "
+              f"longer fire ({seen['now-spared']/max(n_enum,1):.0%}). The rule "
+              f"now requires the numbers to REPEAT; a table of distinct "
+              f"offsets is work, not a loop.")
+
+    print(f"\nby abort reason (the detector that fired):")
+    print(f"{'reason':<44}{'total':>7}{'working':>9}{'FP rate':>9}")
+    print("-" * 78)
+    for reason, c in sorted(by_reason.items(), key=lambda kv: -kv[1]["n"]):
+        n, w = c["n"], c["working"]
+        print(f"{reason[:43]:<44}{n:>7}{w:>9}{w/n:>8.0%}")
+    for k in ("working", "unclear"):
+        if examples[k]:
+            print(f"\n{k} examples (the last 3 lines before each abort):")
+            for name, why, tail in examples[k]:
+                print(f"  {name}  [{why}]")
+                for l in tail:
+                    print(f"      {l.strip()[:96]}")
+
+
 def parse_since(spec: str) -> float:
     """A cutoff timestamp from a human spec. Raises ValueError if unparseable.
 
@@ -376,6 +518,11 @@ def main() -> int:
                     help="duration split by productive vs dead, and what a "
                          "tighter cap would cost")
     ap.add_argument("--self-test", action="store_true")
+    ap.add_argument("--degen-audit", action="store_true",
+                    help="judge the degeneration aborts THEMSELVES: how many "
+                         "killed a runaway vs a real derivation. Every other "
+                         "check asks whether the detector fires; this asks "
+                         "what it hit")
     ap.add_argument("--since", default="",
                     help="only logs at or after this point: 90m, 6h, 3d, "
                          "today, 2026-08-09, or an archive stamp such as "
@@ -433,6 +580,8 @@ def main() -> int:
         by_prompt_size(calls)
     if a.timing:
         timing(calls)
+    if a.degen_audit:
+        degen_audit(paths)
     return 0
 
 
