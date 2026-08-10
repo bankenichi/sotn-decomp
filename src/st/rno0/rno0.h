@@ -46,9 +46,15 @@ enum EntityID {
     E_UNK_1F,                    // OVL_EXPORT(Unused801C2338)
     E_DUMMY_20,                  // EntityDummy
     E_ARMOR_LORD,                // EntityArmorLord
-    E_UNK_22,                    // func_us_801D348C_from_are
+    // Named for src/st/e_armor_lord.h, which refers to these two by name and
+    // expects each including overlay to supply them. RNO0 already HAD both
+    // entities; they were only spelled E_UNK_22 and E_UNK_24, so the shared
+    // header could not compile here. Enumerators are positional, so this
+    // renames without changing a value, and nothing in RNO0 referenced the
+    // old spellings. Same functions ARE names them after: are.h:91 and :93.
+    E_ARMOR_LORD_UNK1,           // func_us_801D348C_from_are
     E_ARMOR_LORD_FIRE_WAVE,      // EntityArmorLordFireWave
-    E_UNK_24,                    // func_us_801D3700_from_are
+    E_ARMOR_LORD_UNK2,           // func_us_801D3700_from_are
     E_UNK_25,                    // OVL_EXPORT(Unused801C2C50)
     E_FLOOR_TRAP,                // EntityFloorTrap
     E_THORNWEED,                 // EntityThornweed
