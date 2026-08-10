@@ -8,9 +8,29 @@
   "author": {
     "name": "Kenichi"
   },
+  "_comment_bundle_is_a_launcher": [
+    "This bundle contains ONLY this manifest, which the MCPB spec allows:",
+    "'A manifest.json is the only required file.' It ships no server code.",
+    "mcp_config below cd's into the REPO and runs automation/mcp from there,",
+    "so the connector always executes the live source and an edit takes",
+    "effect on the next Claude Desktop restart with no repack, no reinstall.",
+    "",
+    "It used to also carry server/commands_client.py and server/sotn_cmd_mcp.py.",
+    "Those were snapshots taken when the bundle was first built and were never",
+    "executed again. By 2026-08-09 the client copy had drifted to 18808 bytes",
+    "against the live 66551 and still contained an _inrepo path-containment bug",
+    "that an external audit found and that was fixed in the live copy the same",
+    "day. A stale duplicate of security-relevant code is worse than no copy: it",
+    "is what a reader or an auditor lands on, and every fix has to be remembered",
+    "twice. Deleted 2026-08-09; there is now one authoritative copy of each tool.",
+    "",
+    "entry_point below names the file the launcher runs, which lives in the repo",
+    "rather than in this archive. Nothing reads it at runtime; mcp_config is what",
+    "executes."
+  ],
   "server": {
     "type": "binary",
-    "entry_point": "server/sotn_cmd_mcp.py",
+    "entry_point": "automation/mcp/sotn_cmd_mcp.py",
     "mcp_config": {
       "command": "wsl.exe",
       "args": [

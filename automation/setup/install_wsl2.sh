@@ -94,7 +94,9 @@ esac
 say "Debian packages"
 DEBS="$(grep -vE '^\s*#|^\s*$' tools/requirements-debian.txt | tr '\n' ' ')"
 sudo apt-get update -qq || die "apt-get update failed"
-# jq for automation/qwen.sh; build tooling helps pip build wheels
+# jq is generally useful for poking at the queue and job JSON by hand (it was
+# originally here for automation/qwen.sh, deleted 2026-08-09); build tooling
+# helps pip build wheels
 sudo apt-get install -y -qq $DEBS jq build-essential python3-dev ca-certificates \
   || die "apt-get install failed (see output above)"
 ok "packages installed"

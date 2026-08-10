@@ -1831,6 +1831,55 @@ SALVAGE_MAX_CONTENT = int(os.environ.get("SALVAGE_MAX_CONTENT", "24000"))
 
 
 _RX_NUM = re.compile(r"(?:0x)?[0-9A-Fa-f]{1,8}")
+# A "token" for novelty purposes: a hex constant or a word long enough to be a
+# symbol. Short words are prose glue and repeat constantly in any English text.
+_RX_TOKEN = re.compile(r"0x[0-9A-Fa-f]+|[A-Za-z_]\w{3,}")
+
+
+def _long_cycle(text: str, strikes: list, window: int = 300) -> str:
+    """"" unless the stream is repeating AND has stopped advancing.
+
+    THE OLD RULE WAS THE SINGLE BIGGEST FALSE-POSITIVE SOURCE. Measured over
+    179 aborts in the archived logs (2026-08-09) it fired 66 times and 52% of
+    those killed a real derivation, e.g.
+
+        "Now I'm verifying the offset calculation: the code multiplies arg1
+         by 188 (0xBC) to get the byte offset..."
+
+    It fired because a 300-character tail appeared verbatim earlier in the
+    stream. But careful decompilation RESTATES constantly: the model re-reads
+    a branch, re-derives an offset, quotes the same instruction again. Verbatim
+    repetition is normal here and is not, by itself, evidence of a loop.
+
+    What distinguishes a loop is that nothing NEW appears. A model going in
+    circles names the same handful of symbols forever; a model working names
+    offsets and identifiers it has not mentioned before. So repetition now
+    only counts when the recent window introduced almost no new tokens.
+
+    Also raised from two strikes to three. A stuck stream trips it repeatedly
+    and loses nothing by the extra check; a working one gets its restatement
+    forgiven.
+    """
+    if len(text) <= 4000:
+        return ""
+    chunk = re.sub(r"\s+", " ", text[-window:]).strip()
+    earlier = re.sub(r"\s+", " ", text[:-window])
+    if len(chunk) <= 120 or chunk not in earlier:
+        strikes[0] = 0
+        return ""
+    # NOVELTY ESCAPE. Compare a wider recent window than the repeated chunk,
+    # because the repeat may be one restated sentence inside otherwise new
+    # material -- which is exactly the shape that was being killed.
+    recent = set(_RX_TOKEN.findall(text[-1500:]))
+    prior = set(_RX_TOKEN.findall(text[:-1500]))
+    if len(recent - prior) >= 5:
+        strikes[0] = 0
+        return ""
+    strikes[0] += 1
+    if strikes[0] >= 3:
+        return ("long-cycle repetition (repeating and no new symbols over "
+                "three checks)")
+    return ""
 
 
 def _enumeration_loop(tail: list[str]) -> str:
@@ -1913,16 +1962,10 @@ def make_degeneration_detector():
             why = _enumeration_loop(tail)
             if why:
                 return why
-        if len(text) > 4000:
-            chunk = re.sub(r"\s+", " ", text[-300:]).strip()
-            earlier = re.sub(r"\s+", " ", text[:-300])
-            if len(chunk) > 120 and chunk in earlier:
-                strikes[0] += 1
-                if strikes[0] >= 2:
-                    return "long-cycle repetition (confirmed over two checks)"
-            else:
-                strikes[0] = 0
-        return ""
+        # _long_cycle owns the strike counter, including resetting it: the
+        # reset used to live in an `else` here, so any future early return
+        # above would have skipped it and let stale strikes accumulate.
+        return _long_cycle(text, strikes)
 
     return degenerating
 
@@ -2169,20 +2212,14 @@ def llama_echo(prompt: str, temperature: float = 0.2,
         # comparing against the ENTIRE history after only 1200 chars, so a single
         # quoted block was enough to kill the generation.
         #
-        # Tightened three ways: only look once the stream is genuinely long,
-        # ignore whitespace-only differences, and require the repeat to persist
-        # across two consecutive checks before believing it. A model that is
-        # really stuck will trip it twice; one that quoted an asm block will not.
-        if len(text) > 4000:
-            chunk = re.sub(r"\s+", " ", text[-300:]).strip()
-            earlier = re.sub(r"\s+", " ", text[:-300])
-            if len(chunk) > 120 and chunk in earlier:
-                _strikes[0] += 1
-                if _strikes[0] >= 2:
-                    return "long-cycle repetition (confirmed over two checks)"
-            else:
-                _strikes[0] = 0
-        return ""
+        # The rule itself now lives in _long_cycle, called from here and from
+        # make_degeneration_detector. It was duplicated inline in both, and
+        # when the novelty escape was added on 2026-08-09 only one copy got
+        # it -- so this stream kept aborting on restatement while the other
+        # had been fixed. Same class of drift as the enumeration rule and the
+        # content-degeneration formatter, both of which are now single
+        # functions for exactly this reason.
+        return _long_cycle(text, _strikes)
 
     print(f"  --- streaming from llama-server "
           f"(prompt {len(prompt)} chars) ---", flush=True)

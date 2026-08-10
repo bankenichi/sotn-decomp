@@ -1,3 +1,0 @@
-# Runtime dependency for the FastMCP bridge server.
-# llama_client.py itself uses only the Python standard library.
-mcp>=1.2

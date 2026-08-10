@@ -88,10 +88,16 @@ python3 automation/empty_response_audit.py --self-test
         test_mock.py                    offline smoke test, no model needed
         claude_desktop_config.snippet.json       registration for sotn-local
         claude_desktop_config.cmd.snippet.json   registration for sotn-cmd
-      qwen.sh                           zero-infra bash wrapper (Section 5.2 fallback)
       scheduler.py                      single writer to ~/sotn-work/queue.jsonl
-      worker.py                         one volume-engine worker (claim, run OpenCode, report)
-      start_fleet.sh                    launch N workers in parallel
+      win/worker_direct.py              THE worker: prompt, gates, build, verify, journal
+      run_selftests.py                  runs every test_*.py, one table
+      progress_table.py                 per-overlay completion from the linker maps
+      mcpb/*/manifest.json              LAUNCHERS ONLY. Each cd's into the repo and
+                                        runs automation/mcp/, so the live source is
+                                        what executes. They carry no server code.
+
+    DELETED 2026-08-09 (see 3.1 and 4): worker.py, start_fleet.sh, qwen.sh,
+    and the mcpb/*/server/ snapshots. One authoritative copy of each tool.
       merge_matched.py                  review and merge matched branches
       queue/
         queue.schema.json               JSON Schema for a queue record
@@ -301,32 +307,31 @@ For several workers, start more than one shell (or a small PowerShell loop);
 each claims a different function from the scheduler. Size the count to your
 cores, remembering the build itself runs in WSL.
 
-The WSL-side `automation/worker.py` and `start_fleet.sh` remain valid if you
-ever install OpenCode inside WSL, but under Topology A you use the Windows
-worker instead.
+### 3.1 The legacy WSL worker is GONE (2026-08-09)
 
-### 3.1 Running the fleet (WSL-resident OpenCode, alternative)
+`automation/worker.py`, `automation/start_fleet.sh` and `automation/qwen.sh`
+were the original OpenCode-in-WSL path. They are stubs now; running one prints
+where to go and exits 2. The implementation is in git history.
 
-`worker.py` is the runnable driver. Each worker claims the next todo via
-`scheduler.py next --worktree`, runs OpenCode headless (`opencode run` with the
-`sotn-matcher` agent from `opencode/opencode.json`) inside that worktree, reads
-the `RESULT.json` the agent writes, and reports the outcome to the scheduler. It
-tries Tier 0 (local model) then Tier 1 (`OPENCODE_MODEL_T1`, if set) before
-marking `escalated`.
+**They were removed because dead code that still looks runnable misleads
+people.** An external audit of the fork read `worker.py`, correctly saw that it
+reports `--status matched` without `--proof`, and filed it as the project's
+single most serious problem:
 
-    # one function, no model call (safe smoke test)
-    WORKER_DRYRUN=1 python3 automation/worker.py once
+> "worker says matched -> scheduler requires proof -> worker doesn't provide
+> it -> match is NOT recorded. Severity: Critical"
 
-    # one real function (needs llama-server + opencode up)
-    python3 automation/worker.py once
+The bug was real in that file. The conclusion was wrong: nothing runs it.
+`fleet_start` launches `automation/win/worker_direct.py`, which does pass
+`--proof`, and 198 matches have been recorded through it. An outside reader
+cannot be expected to know which of two workers is live, and neither can a
+contributor six months from now.
 
-    # a fleet of 3 workers grinding until the queue is empty
-    automation/start_fleet.sh 3
+Use instead:
 
-Key env (see the header of `worker.py`): `OPENCODE_MODEL` (default `llama/qwen`),
-`OPENCODE_MODEL_T1` (cloud fallback), `MAX_ITERS`, `NEAR_THRESHOLD`, `RUN_TIMEOUT`.
-The worker sets `OPENCODE_CONFIG` to `automation/opencode/opencode.json` so the
-provider and agent resolve even from inside a worktree.
+    fleet_start(workers=3)                                    # zen, the default
+    fleet_start(workers=2, backend="llama")                   # local llama-server
+    MODEL_BACKEND=zen python3 automation/win/worker_direct.py loop
 
 The whole loop was verified end to end in a sandbox git repo with a mock
 OpenCode: claim, worktree creation, RESULT.json read, and scheduler report all
@@ -341,14 +346,20 @@ integration branch (dry run first, then `--yes`):
     python3 automation/merge_matched.py merge --into integration --all
     python3 automation/merge_matched.py merge --into integration --all --yes
 
-## 4. qwen.sh fallback
+## 4. qwen.sh fallback (DELETED 2026-08-09)
 
-For shell pipelines and quick manual checks without the MCP layer:
+`automation/qwen.sh` was a curl+jq wrapper for one-shot prompts against a local
+llama-server, from before the Python tooling existed. Everything it did the
+llama backend now does with streaming, degeneration detection, retries and the
+quality gate on top:
 
-    LLAMA_BASE_URL=http://localhost:8080/v1 LLAMA_MODEL=qwen \
-      ./automation/qwen.sh system_prompt.txt user_prompt.txt
+    MODEL_BACKEND=llama python3 automation/win/worker_direct.py once
+    fleet_start(workers=2, backend="llama")
 
-Needs `curl` and `jq`.
+Deleted rather than kept, along with `worker.py` and `start_fleet.sh`, because
+dead code that still looks runnable misleads readers; see 3.1. The `jq` line in
+`setup/install_wsl2.sh` was left alone: jq is generally useful and churning the
+installer for one comment is not worth it.
 
 ## 5. On giving Claude direct access to your machine
 

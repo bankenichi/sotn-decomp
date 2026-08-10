@@ -152,6 +152,37 @@ def main():
     check(wd._enumeration_loop(short_run) == "",
           "fewer than 6 short lines is never enough evidence")
 
+    print("\nrestating while still naming new symbols is not a loop")
+    # 66 of 179 archived aborts came from the long-cycle rule and 52% of those
+    # killed a real derivation, e.g. "Now I'm verifying the offset calculation:
+    # the code multiplies arg1 by 188 (0xBC)...". The rule fired because a
+    # 300-char tail appeared verbatim earlier. Careful decompilation restates
+    # constantly; what distinguishes a loop is that nothing NEW appears.
+    filler = "The function reads the entity and updates its state. " * 90
+    repeated = "Looking at the comparison logic more carefully, the code loads a value from g_Ric and shifts it left by sixteen bits then right again to sign extend the halfword before comparing. " * 2
+    advancing = repeated + filler + repeated + (
+        " Now offset 0x34A holds invincibilityTimer, 0x8C is spriteBank, "
+        "0x1F4 selects the palette, and D_us_80181524 indexes the table, "
+        "while func_us_801B9DE4 does the actual step dispatch.")
+    st = [0]
+    verdicts = [wd._long_cycle(advancing, st) for _ in range(4)]
+    check(all(v == "" for v in verdicts),
+          f"a verbatim repeat is forgiven while new symbols keep appearing "
+          f"({[v[:24] for v in verdicts if v]})")
+
+    stuck = repeated + filler + repeated
+    st2 = [0]
+    outs = [wd._long_cycle(stuck, st2) for _ in range(4)]
+    check(any("long-cycle" in v for v in outs),
+          "but a repeat with NO new symbols is still caught")
+    check(outs[0] == "" and outs[1] == "",
+          "and it takes three strikes, not one, so a single restatement is "
+          "never fatal")
+
+    st3 = [0]
+    check(wd._long_cycle("short stream", st3) == "",
+          "a short stream is never judged at all")
+
     print("\nboth streaming paths share one formatter")
     src = open(os.path.join(here, "win", "worker_direct.py"),
                encoding="utf-8").read()
