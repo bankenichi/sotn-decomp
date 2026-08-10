@@ -13,16 +13,37 @@ WHY THIS EXISTS
     an unknown number of days, and were saved only because the oracle happened
     to be run first.
 
-WHY THE TREE IS THE ONLY RECORD
+THE QUEUE USUALLY KNOWS, AND NOBODY ASKED IT
+    The first version of this file claimed the working tree was the only
+    record. That was wrong, and checking would have taken one command. All
+    three BO6 functions were ALREADY `matched` in the queue, with proof and
+    the BO6.BIN sha1, recorded the night before:
+
+        matched 100.0 us:BOSS/BO6:BO6_RicStepThrowDaggers
+            | build/us/BO6.BIN sha1=fe067af9... verified against check.us.sha
+
+    So the worker did not die before reporting. It reported, and then the
+    files were never COMMITTED. The queue was the durable half; git was the
+    missing half.
+
+    That is worse than the story it replaces, not better. A `matched` record
+    whose body exists only in an uncommitted working tree is a record that
+    goes false the moment anyone restores that file: the queue keeps
+    asserting a verified match, complete with a hash, for a function that is
+    an INCLUDE_ASM stub again. Nothing would notice.
+
+    Hence the queue lookup below. Asking it turns "run a full build to find
+    out what this is" into an instant answer, and it is the check that would
+    have settled the original incident in seconds.
+
+WHY THE TREE CAN STILL BE THE ONLY RECORD
     The journal is an UNDO log, not a record of work. It stores the ORIGINAL
     so a crash can revert an unverified edit, and worker_direct deliberately
     DROPS it on the success path, because a later replay would otherwise write
-    the old INCLUDE_ASM stub back over a landed match.
-
-    That is correct, and it has a consequence: between "build verified" and
-    "reported to the queue" the working tree is the only place the match
-    exists. A worker killed in that window leaves something indistinguishable
-    from a failed attempt.
+    the old INCLUDE_ASM stub back over a landed match. So a worker killed
+    between "build verified" and "reported to the queue" really does leave
+    something indistinguishable from a failed attempt. That window is real;
+    it just was not what happened here.
 
 WHY LOOKING AT THE ARTIFACTS IS NOT ENOUGH
     dashboard.restore_dirty_src already refuses when the tree verifies, but it
@@ -122,6 +143,27 @@ def functions_bodied(path: str) -> list[str]:
     return names
 
 
+def queue_status_by_function() -> dict:
+    """function name -> (status, note), read THROUGH the scheduler.
+
+    Never off disk: SOTN_QUEUE resolves per environment, and a direct read of
+    the wrong file answers confidently and wrongly.
+    """
+    out = {}
+    r = _run([sys.executable, str(REPO / "automation" / "scheduler.py"),
+              "list"], timeout=180)
+    for line in (r.stdout or "").splitlines():
+        parts = line.strip().split(None, 2)
+        if len(parts) < 3:
+            continue
+        status, _score, tail = parts
+        rid, _, note = tail.partition("|")
+        rid = rid.strip()
+        if ":" in rid:
+            out[rid.rsplit(":", 1)[-1]] = (status, note.strip())
+    return out
+
+
 def verify() -> tuple[bool, str]:
     """The oracle, on whatever is currently in build/."""
     r = _run(["sha1sum", "-c", "config/check.us.sha"], timeout=900)
@@ -169,12 +211,39 @@ def report(do_build: bool = False) -> int:
         return 0
 
     print("ORPHANED (no crash journal, so nothing will ever clean these up):")
+    qstat = queue_status_by_function()
+    already_matched = []
     for f in orphans:
         fns = functions_bodied(f)
         print(f"  {f}")
-        if fns:
-            print(f"      stubs given a body: {', '.join(fns)}")
+        for fn in fns:
+            status, note = qstat.get(fn, ("(not in queue)", ""))
+            print(f"      {fn}: queue says {status}")
+            if status == "matched":
+                already_matched.append((f, fn, note))
     print()
+
+    if already_matched:
+        # THE ANSWER, WITHOUT A BUILD. The queue already carries a verified
+        # match for these, hash and all. Restoring the file would not "undo a
+        # failed attempt", it would delete the body that the queue is still
+        # asserting exists, and the record would go quietly false.
+        print("=" * 74)
+        print("\nSTOP. The queue ALREADY records these as matched, with "
+              "proof:\n")
+        for f, fn, note in already_matched:
+            print(f"  {fn}  ({f})")
+            if note:
+                print(f"      {note[:120]}")
+        print("\nSo this is not unverified work and not debris: it is a "
+              "verified match\nthat was never committed. Restoring the file "
+              "would delete the body the\nqueue still claims exists, leaving "
+              "a `matched` record with a hash for a\nfunction that is an "
+              "INCLUDE_ASM stub again, and nothing would notice.\n")
+        print("Commit them:\n")
+        for f in sorted({f for f, _fn, _n in already_matched}):
+            print(f"    git_add {f}")
+        print()
 
     if do_build:
         print("building so the oracle describes THIS source ...")
@@ -230,11 +299,18 @@ def self_test() -> int:
 
     print("this tool cannot destroy anything")
     for bad in ("git checkout", "git restore", "git clean", "rmtree",
-                "unlink", "scheduler.py"):
+                "unlink"):
         ck(bad not in src_self.split("def self_test")[0],
            f"never calls {bad}")
     ck('"make", "build"' in src_self,
        "the only write it performs is a build, and only under --build")
+    # scheduler.py IS invoked now, to read the queue. That is fine only for
+    # as long as it stays a read: `report` is the write verb and must never
+    # appear here, or a diagnostic could start changing statuses.
+    _code0 = src_self.split("def self_test")[0]
+    ck('"list"' in _code0, "the scheduler is called with list")
+    ck('"report"' not in _code0,
+       "and never with report, which is the verb that writes")
 
     print("\nstaleness is checked BEFORE any verdict is given")
     body = src_self[src_self.index("def report("):src_self.index("def self_test")]
@@ -243,6 +319,23 @@ def self_test() -> int:
     ck("NO VERDICT" in body,
        "and a stale tree gets no verdict at all rather than a wrong one")
     ck("return 2" in body, "with its own exit code, distinct from red")
+
+    print("\nthe queue is asked before the oracle is")
+    # The lesson from the incident: all three functions were ALREADY matched
+    # in the queue with proof, and the first version of this tool did not
+    # look, so answering "what is this" needed a 110s build instead of a
+    # lookup.
+    ck(body.index("queue_status_by_function()") < body.index("staleness()"),
+       "the queue lookup happens before the staleness gate")
+    ck("already_matched" in body,
+       "a matched record is called out specifically")
+    ck("STOP" in body and "never committed" in body,
+       "and the message says it is an uncommitted match, not debris")
+    ck("scheduler.py" not in src_self.split("def queue_status_by_function")[0],
+       "the queue is not read anywhere before the scheduler helper")
+    _q = src_self.split("def queue_status_by_function")[1].split("\ndef ")[0]
+    ck("scheduler.py" in _q and "queue.jsonl" not in _q,
+       "and it goes through the scheduler, never at the file")
 
     print("\nthe staleness rule is reused, not reimplemented")
     ck("from relocation_check import staleness_warning" in src_self,
