@@ -75,17 +75,26 @@ HOSTED_MAX_CHARS = 20000
 _ASM_INDEX: dict | None = None
 
 
-def real_asm_chars(rec_id: str) -> int | None:
-    """The size of the actual .s file, not the size the note claims.
+def _compact_asm():
+    """worker_direct.compact_asm, imported rather than reimplemented.
 
-    THE NOTE CANNOT BE TRUSTED FOR THIS. The deferral message reports the
-    length of the asm AFTER the prompt builder truncated it, so eleven records
-    all claimed exactly "asm 12000 chars" -- a cap, not a measurement. Their
-    real sizes ranged from 12,186 to 43,582, and nine of the twenty-five were
-    genuinely over the hosted 20000 ceiling. Requeueing those on the strength
-    of the note would send them straight back to deferred, one wasted claim and
-    scheduler round trip each.
+    A second copy of that regex here would be free to drift from the one the
+    worker actually runs, and the whole point of this function is to predict
+    what the worker will do.
     """
+    global _COMPACT
+    if _COMPACT is None:
+        sys.path.insert(0, str(REPO / "automation" / "win"))
+        os.environ.setdefault("MODEL_BACKEND", "zen")
+        import worker_direct as _wd
+        _COMPACT = _wd.compact_asm
+    return _COMPACT
+
+
+_COMPACT = None
+
+
+def asm_file_for(rec_id: str) -> Path | None:
     global _ASM_INDEX
     if _ASM_INDEX is None:
         _ASM_INDEX = {}
@@ -99,11 +108,56 @@ def real_asm_chars(rec_id: str) -> int | None:
     for cand in (fn, re.sub(r"_from_\w+$", "", fn)):
         f = _ASM_INDEX.get(cand)
         if f:
-            try:
-                return f.stat().st_size
-            except OSError:
-                return None
+            return f
     return None
+
+
+def real_asm_chars(rec_id: str) -> int | None:
+    """The size the SIZE GATE will see. Not the note's number, not the file's.
+
+    Three different numbers get called "the asm size" and only one of them
+    decides anything:
+
+      the note      truncated. The deferral message reports len(ctx["asm"])
+                    after MAX_ASM_CHARS clipped it, so eleven records all
+                    claimed exactly "asm 12000 chars" -- a cap, not a
+                    measurement.
+      the .s file   raw. Every instruction line carries `/* 4B2DC 801CB2DC
+                    C8FFBD27 */` plus alignment padding.
+      THIS          len(compact_asm(file)), which is what prepare() computes
+                    as asm_full and what worker_direct compares to
+                    MAX_FUNC_CHARS.
+
+    THIS FUNCTION RETURNED THE RAW FILE SIZE UNTIL 2026-08-10, and compact_asm
+    strips a MEDIAN 62%. So every record was scored roughly 2.6x too large:
+    func_us_801C2418 is 68865 on disk and 23761 to the gate. The docstring here
+    concluded "nine of the twenty-five were genuinely over the hosted 20000
+    ceiling" on those inflated numbers, and that conclusion is retracted --
+    a raw 25000-char file compacts to about 9500 and the worker would attempt
+    it without hesitating.
+
+    The error was conservative in the worst direction: it held records back
+    from a tier that would have taken them, which is the exact failure this
+    module exists to detect.
+    """
+    f = asm_file_for(rec_id)
+    if not f:
+        return None
+    try:
+        return len(_compact_asm()(f.read_text(errors="ignore")))
+    except OSError:
+        return None
+
+
+def raw_asm_chars(rec_id: str) -> int | None:
+    """The .s file on disk. For the report only; nothing decides on this."""
+    f = asm_file_for(rec_id)
+    if not f:
+        return None
+    try:
+        return f.stat().st_size
+    except OSError:
+        return None
 
 
 # The marker fix_seed_declarations.py / worker_direct._declare_stub_siblings
@@ -722,6 +776,65 @@ def self_test() -> int:
     return 0
 
 
+def sizes_report() -> int:
+    """Every TIER_HANDOFF record, measured three ways. Read-only.
+
+    WHY: on 2026-08-10 I told Kenichi the nine remaining handoff records would
+    take the m2c-only path, cost nothing and finish in 25 seconds each. I had
+    read their notes -- "asm 12000 chars > 6000 on backend=http" -- and never
+    checked. 12000 is MAX_ASM_CHARS, a cap, and the 6000 was the ceiling of a
+    tier that no longer exists. The first record I ran spent ten minutes of
+    model time before being cancelled.
+
+    Printing the three numbers side by side is the whole fix: the note's claim,
+    the file on disk, and what the gate will actually compare.
+    """
+    # `note`, singular: that is the key load() builds. Spelling it `notes`
+    # here matched nothing and printed a confident "no TIER_HANDOFF_TOO_LARGE
+    # records" against a queue holding eleven of them -- the same shape of
+    # wrong answer this whole report exists to prevent.
+    recs = [r for r in load()
+            if RX_TOO_LARGE.search(r.get("note") or "")]
+    if not recs:
+        print("no TIER_HANDOFF_TOO_LARGE records")
+        return 0
+    rows = []
+    for r in recs:
+        note_n = RX_ASM_CHARS.search(r.get("note") or "")
+        rows.append((r["id"],
+                     int(note_n.group(1)) if note_n else None,
+                     raw_asm_chars(r["id"]),
+                     real_asm_chars(r["id"])))
+    rows.sort(key=lambda t: -(t[3] or 0))
+
+    print(f"\nTIER_HANDOFF_TOO_LARGE: {len(rows)} record(s). "
+          f"Gate ceiling is MAX_FUNC_CHARS={HOSTED_MAX_CHARS} on zen.\n")
+    print(f"  {'note':>7}  {'.s file':>8}  {'TO GATE':>8}  path      record")
+    print("  " + "-" * 92)
+    over = under = unknown = 0
+    for rid, note_n, raw, gate in rows:
+        if gate is None:
+            path, unknown = "?", unknown + 1
+        elif gate > HOSTED_MAX_CHARS:
+            path, over = "m2c-only", over + 1
+        else:
+            path, under = "MODEL", under + 1
+        print(f"  {note_n if note_n is not None else '-':>7}  "
+              f"{raw if raw is not None else '-':>8}  "
+              f"{gate if gate is not None else '-':>8}  "
+              f"{path:<9} {rid}")
+    print()
+    print(f"  {over} over the ceiling: m2c-only, no model call, ~25s each.")
+    print(f"  {under} UNDER it: these are ordinary model work now, not a size "
+          f"problem. Minutes each, and they spend quota.")
+    if unknown:
+        print(f"  {unknown} with no .s file found; check the name.")
+    print("\n  `note` is truncated by MAX_ASM_CHARS and decides nothing.")
+    print("  `.s file` is raw; compact_asm strips a median 62% before the "
+          "gate sees it.")
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(
         description=__doc__,
@@ -734,10 +847,16 @@ def main() -> int:
                          "DRY RUN unless --apply is also given")
     ap.add_argument("--apply", action="store_true",
                     help="with --requeue, actually write through scheduler.py")
+    ap.add_argument("--sizes", action="store_true",
+                    help="measure every TIER_HANDOFF record against the real "
+                         "gate ceiling and say which path it would take. "
+                         "Read-only; run it BEFORE planning any batch")
     ap.add_argument("--self-test", action="store_true")
     a = ap.parse_args()
     if a.self_test:
         return self_test()
+    if a.sizes:
+        return sizes_report()
     if a.apply and not a.requeue:
         print("--apply does nothing on its own; it modifies --requeue",
               file=sys.stderr)

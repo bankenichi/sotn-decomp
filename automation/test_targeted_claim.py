@@ -164,6 +164,90 @@ def scheduler_behaviour(tmp):
     check(got.get("claimed_from") == "todo", "still records claimed_from")
 
 
+def run_report(qpath, *extra):
+    env = dict(os.environ, SOTN_QUEUE=qpath)
+    return subprocess.run(
+        [sys.executable, os.path.join(HERE, "scheduler.py"), "report"]
+        + list(extra),
+        capture_output=True, text=True, cwd=REPO, env=env, timeout=120)
+
+
+def note_of(qpath, rid):
+    for line in open(qpath, encoding="utf-8"):
+        r = json.loads(line)
+        if r["id"] == rid:
+            return r.get("notes") or ""
+    return None
+
+
+def release_keeps_the_note(tmp):
+    """A release must not be able to erase the marker it did not write.
+
+    WHY: cancelling one worker on 2026-08-10 turned
+      "TIER_HANDOFF_TOO_LARGE: asm 12000 chars > 6000 on backend=http"
+    into
+      "released: worker interrupted before reporting"
+    on us:ST/RNO0:func_us_801D1388_from_are. The STATUS was restored
+    correctly, to `deferred`, so nothing looked wrong. But the note is the
+    only index -- TIER_HANDOFF_TOO_LARGE, `seed=` and `rejected=` are each
+    recorded nowhere else -- so the record silently dropped out of
+    deferred_triage's handoff class while sitting in the queue in plain sight.
+    """
+    qpath = os.path.join(tmp, "queue2.jsonl")
+    MARKER = "TIER_HANDOFF_TOO_LARGE: asm 12000 chars; seed=automation/x.c"
+
+    print("\n--keep-note preserves what the last real attempt recorded")
+    r = rec("us:ST/RDAI:func_a", "claimed")
+    r["notes"] = MARKER
+    write_queue(qpath, [r])
+    run_report(qpath, "--id", "us:ST/RDAI:func_a", "--status", "deferred",
+               "--keep-note", "--notes", "released: worker interrupted")
+    got = note_of(qpath, "us:ST/RDAI:func_a")
+    check("TIER_HANDOFF_TOO_LARGE" in got,
+          "the handoff marker survives a release")
+    check("seed=automation/x.c" in got, "and so does the seed pointer")
+    check("released: worker interrupted" in got,
+          "while the release still says what happened")
+    check(got.index("released") < got.index("TIER_HANDOFF"),
+          "with the new text first, since that is the latest event")
+
+    print("\nwithout it, a report still REPLACES; a verdict supersedes")
+    # Not a bug to fix: a build failure or a match is a verdict about the
+    # function and should overwrite the note it supersedes. Only reports that
+    # say nothing about the function need --keep-note.
+    r = rec("us:ST/RDAI:func_b", "claimed")
+    r["notes"] = MARKER
+    write_queue(qpath, [r])
+    run_report(qpath, "--id", "us:ST/RDAI:func_b", "--status", "escalated",
+               "--notes", "BUILD FAILED: undefined reference")
+    got = note_of(qpath, "us:ST/RDAI:func_b")
+    check(got == "BUILD FAILED: undefined reference",
+          f"a verdict replaces the note outright ({got!r})")
+
+    print("\nand --keep-note on an empty note does not leave a dangling joiner")
+    r = rec("us:ST/RDAI:func_c", "claimed")
+    r["notes"] = ""
+    write_queue(qpath, [r])
+    run_report(qpath, "--id", "us:ST/RDAI:func_c", "--status", "todo",
+               "--keep-note", "--notes", "released")
+    check(note_of(qpath, "us:ST/RDAI:func_c") == "released",
+          "just the new text")
+
+    print("\nthe worker's release path uses it")
+    src = open(os.path.join(HERE, "win", "worker_direct.py"),
+               encoding="utf-8", errors="replace").read()
+    rel = src[src.index("def release_claim_if_held("):]
+    rel = rel[:rel.index("\ndef ", 10)]
+    check('"--keep-note"' in rel,
+          "release_claim_if_held passes --keep-note")
+    # The seed branch deliberately does NOT: it writes seed= itself and is
+    # reporting a real finding, so it supersedes.
+    seed_branch = rel[rel.index("if seed:"):rel.index("print(f\"[worker] releasing stranded")]
+    check("--keep-note" not in seed_branch,
+          "but the seed branch does not, because it writes seed= itself and "
+          "is reporting a genuine outcome")
+
+
 def scheduler_structure():
     src = open(os.path.join(HERE, "scheduler.py"), encoding="utf-8").read()
 
@@ -272,6 +356,7 @@ def connector_structure():
 def main():
     with tempfile.TemporaryDirectory() as tmp:
         scheduler_behaviour(tmp)
+        release_keeps_the_note(tmp)
     scheduler_structure()
     worker_structure()
     connector_structure()

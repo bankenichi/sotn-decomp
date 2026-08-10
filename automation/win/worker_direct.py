@@ -1069,7 +1069,15 @@ def release_claim_if_held() -> None:
             return
         print(f"[worker] releasing stranded claim {cid} -> {back}",
               file=sys.stderr)
-        sched("report", "--id", cid, "--status", back,
+        # --keep-note: a release reports NOTHING about the function, so it
+        # must not overwrite what the last real attempt recorded. Cancelling
+        # one worker on 2026-08-10 replaced
+        #   "TIER_HANDOFF_TOO_LARGE: asm 12000 chars > 6000 on backend=http"
+        # with "released: worker interrupted before reporting", and the record
+        # dropped out of deferred_triage's handoff class while sitting in the
+        # queue in plain sight. The status was restored correctly and the note,
+        # which is the only index, was destroyed.
+        sched("report", "--id", cid, "--status", back, "--keep-note",
               "--notes", "released: worker interrupted before reporting")
     except Exception as e:
         print(f"[worker] could not release {cid}: {e}", file=sys.stderr)

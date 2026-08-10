@@ -479,7 +479,26 @@ def cmd_report(args):
                 if args.tier is not None:
                     r["tier_reached"] = args.tier
                 if args.notes is not None:
-                    r["notes"] = args.notes
+                    # THE NOTE IS THE ONLY INDEX. Nothing else records that a
+                    # record is a size handoff, carries a permuter seed, or
+                    # was rescued from a false escalation: `seed=`,
+                    # `rejected=` and TIER_HANDOFF_TOO_LARGE are all parsed
+                    # back out of this string.
+                    #
+                    # A plain overwrite is right for a verdict, which
+                    # supersedes what came before. It is WRONG for a release,
+                    # which reports nothing about the function and should not
+                    # be able to erase what the last real attempt learned. On
+                    # 2026-08-10 cancelling one worker turned
+                    #   "TIER_HANDOFF_TOO_LARGE: asm 12000 chars > 6000 ..."
+                    # into
+                    #   "released: worker interrupted before reporting"
+                    # and the record vanished from deferred_triage's handoff
+                    # class while sitting in plain sight in the queue.
+                    if args.keep_note and (r.get("notes") or "").strip():
+                        r["notes"] = (args.notes + " || " + r["notes"])[:1000]
+                    else:
+                        r["notes"] = args.notes
                 if args.proof:
                     r["proof"] = args.proof
                     r["verified_at"] = _now()
@@ -732,6 +751,12 @@ def main():
     pr.add_argument("--score", type=float, default=None)
     pr.add_argument("--tier", type=int, default=None)
     pr.add_argument("--notes", default=None)
+    pr.add_argument("--keep-note", action="store_true",
+                    help="PREPEND --notes to the existing note instead of "
+                         "replacing it. For reports that say nothing about "
+                         "the function (a release, a reclaim): they must not "
+                         "erase seed=, rejected= or TIER_HANDOFF_TOO_LARGE, "
+                         "which are only ever recorded in the note")
     pr.add_argument("--proof", default=None,
                     help="machine proof of a match; REQUIRED for status=matched")
     pr.add_argument("--add-iters", type=int, default=0)
