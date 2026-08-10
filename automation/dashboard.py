@@ -609,6 +609,9 @@ DIAGNOSTICS = [
      "which deferrals are stale: a tier that could not run, or a seed bug"),
     ("Deferred triage: requeue plan", "deferred_triage.py", "--requeue-plan",
      "the exact scheduler commands; prints only, writes nothing"),
+    ("Orphaned src work: match or debris?", "orphan_check.py", "",
+     "uncommitted src/ files with no crash journal, classified by the "
+     "oracle; read-only, never restores"),
     ("Seed declarations: what is missing", "fix_seed_declarations.py", "",
      "seeds whose called INCLUDE_ASM stubs are undeclared, so the permuter "
      "KeyErrors on part of its search; dry run, writes nothing"),
@@ -710,6 +713,14 @@ def restore_dirty_src() -> dict:
         that passes the checksums is a landed match awaiting commit, and
         throwing that away is the exact mistake this dashboard already made
         once by advising it.
+      - and it refuses when build/ is STALE, because that second property was
+        unsound on its own. `sha1sum -c` grades whatever is in build/, and a
+        worker that fails restores the source while leaving the artifact
+        behind, so build/ routinely describes a source state that no longer
+        exists. Stale-red artifacts plus a real match in src/ meant the guard
+        opened and the match was destroyed -- the precise accident it was
+        written to prevent. Three BO6 matches were found this way on
+        2026-08-10, saved only because a build was run before restoring.
     """
     import subprocess
     try:
@@ -723,6 +734,24 @@ def restore_dirty_src() -> dict:
     files = [l[3:].strip() for l in (r.stdout or "").splitlines() if l.strip()]
     if not files:
         return {"ok": True, "out": "src/ already matches HEAD. Nothing to do."}
+
+    sys.path.insert(0, str(REPO / "automation"))
+    try:
+        from relocation_check import staleness_warning
+        stale = staleness_warning()
+    except Exception as e:                                     # noqa: BLE001
+        stale = f"could not determine build staleness ({e})"
+    if stale:
+        return {"ok": False, "out":
+                "REFUSING: " + stale + "\n\nsrc/ differs from HEAD, but the "
+                "artifacts in build/ were produced from\ndifferent sources, "
+                "so the 81/81 check below would be answering a question\n"
+                "about code that no longer exists. If those stale artifacts "
+                "read red while\nsrc/ actually holds a landed match, "
+                "restoring would destroy it.\n\nFiles:\n  "
+                + "\n  ".join(files)
+                + "\n\nRun `orphan_check.py --build` to get a real verdict "
+                  "first."}
 
     v = subprocess.run(["sha1sum", "-c", "config/check.us.sha"], cwd=str(REPO),
                        capture_output=True, text=True, timeout=900)

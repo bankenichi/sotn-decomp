@@ -474,7 +474,8 @@ def job_cancel(job_id: str) -> dict:
 
 
 @mcp.tool()
-def git_restore(path: str, timeout: int = 120) -> dict:
+def git_restore(path: str, timeout: int = 120,
+                confirm_orphan: bool = False) -> dict:
     """`git checkout -- <path>`: discard uncommitted changes to ONE path.
 
     DESTRUCTIVE. It throws away working-tree edits that are not committed, so
@@ -485,15 +486,25 @@ def git_restore(path: str, timeout: int = 120) -> dict:
     not report the expected N/N, restore the file and rebuild so the tree is
     never left in a half-changed state.
 
+    REFUSES ON ORPHANED src/ WORK. A file under src/ that is modified and has
+    no crash journal covering it is work whose only record is the file itself.
+    On 2026-08-10 two such files held three genuine matches (the tree verified
+    81/81 with them applied) and this command would have destroyed them
+    without comment. Run `run_analysis orphan_check.py --build` to find out
+    what you have; pass confirm_orphan=True to discard it anyway. A journalled
+    file is normal in-flight recovery and is not blocked.
+
     Run it HERE, not from a sandbox shell. The Cowork sandbox tears down its PID
     namespace when a bash call ends or hits its 45s cap. Doing this there once
     killed git mid-operation and left a stale .git/index.lock that blocked every
     later commit until it was removed by hand."""
-    return cc.run("git_restore", timeout=timeout, path=path)
+    return cc.run("git_restore", timeout=timeout, path=path,
+                  confirm_orphan=confirm_orphan)
 
 
 @mcp.tool()
-def git_restore_from_head(path: str, timeout: int = 120) -> dict:
+def git_restore_from_head(path: str, timeout: int = 120,
+                          confirm_orphan: bool = False) -> dict:
     """`git checkout HEAD -- <path>`: restore ONE path to its committed state.
 
     Different from git_restore, and the difference matters. git_restore restores
@@ -508,8 +519,12 @@ def git_restore_from_head(path: str, timeout: int = 120) -> dict:
     three source files meant reaching for sandbox git, which hit a stale
     .git/index.lock left by an earlier sandbox git that the 45s cap had killed
     mid-rebase. Git writes belong on this side, which means the git writes we
-    actually need have to live on this side."""
-    return cc.run("git_restore_from_head", timeout=timeout, path=path)
+    actually need have to live on this side.
+
+    Refuses on orphaned src/ work for the same reason git_restore does; see
+    that docstring. confirm_orphan=True overrides."""
+    return cc.run("git_restore_from_head", timeout=timeout, path=path,
+                  confirm_orphan=confirm_orphan)
 
 
 @mcp.tool()

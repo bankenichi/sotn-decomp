@@ -91,6 +91,76 @@ def _inrepo(p: str, must_be_dir: bool = False, must_exist: bool = True) -> str:
     return str(rp)
 
 
+def _restorable(path: str, confirm_orphan: bool = False) -> str:
+    """An in-repo path safe to discard, or Rejected.
+
+    THE DANGEROUS CASE IS UNEXPLAINED WORK UNDER src/. On 2026-08-10 two files
+    sat modified with candidate bodies over three INCLUDE_ASM stubs and no
+    crash journal. Everything about them said "debris from a killed worker".
+    They were three genuine matches: the tree verified 81/81 with them
+    applied. A single git_restore would have destroyed all three, and nothing
+    here would have objected.
+
+    So the test is not "is this a match" -- proving that needs a full build,
+    which does not belong in an argv builder and must not be forced on every
+    restore. The test is whether anything still KNOWS what this edit is:
+
+      - not under src/          -> not our concern; automation/ churns
+                                   constantly and its edits are disposable.
+      - unmodified              -> nothing to lose.
+      - a crash journal covers it -> this is normal recovery of an
+                                   in-flight apply. The journal holds the
+                                   original and the worker or the replay will
+                                   deal with it. Allowed, unchanged.
+      - modified, under src/,
+        and NOTHING references it -> REFUSE. This is the exact shape of the
+                                   near-miss: work whose only record is the
+                                   file itself.
+
+    Refusal is not a veto, it is a speed bump: pass confirm_orphan=True to
+    proceed. The point is that discarding an orphan should be a decision
+    somebody made, not a default.
+    """
+    p = _inrepo(path, must_exist=False)
+    if confirm_orphan:
+        return p
+    try:
+        rel = Path(p).resolve().relative_to(REPO.resolve()).as_posix()
+    except (ValueError, OSError):
+        return p
+    if not rel.startswith("src/"):
+        return p
+    try:
+        r = subprocess.run(["git", "status", "--porcelain", "--", rel],
+                           cwd=str(REPO), capture_output=True, text=True,
+                           timeout=60)
+        if r.returncode != 0 or not (r.stdout or "").strip():
+            return p                      # clean, or git could not say
+    except (OSError, subprocess.SubprocessError):
+        return p                          # never block on a broken check
+
+    pending = REPO / "automation" / "logs" / "pending"
+    try:
+        for jf in pending.glob("*.json"):
+            try:
+                with open(jf, encoding="utf-8") as f:
+                    if json.load(f).get("src_rel", "") == rel:
+                        return p          # in flight; normal recovery
+            except (OSError, ValueError, AttributeError):
+                continue
+    except OSError:
+        pass
+
+    raise Rejected(
+        f"refusing to discard {rel}: it is modified and NO crash journal "
+        f"covers it, so the file itself is the only record of whatever is in "
+        f"it. That is the shape of a landed match nobody committed -- three "
+        f"were found that way on 2026-08-10 and would have been destroyed by "
+        f"this command. Run `run_analysis orphan_check.py --build` to find "
+        f"out whether it matches. If you already know it is worthless, pass "
+        f"confirm_orphan=True.")
+
+
 def _reject_fmt(fmt):
     raise Rejected(f"fmt must be one of {sorted(FMT)}")
 
@@ -241,6 +311,9 @@ ANALYSIS_SCRIPTS = {
     # Retrofits stub declarations onto seeds written before the fix. Dry-run
     # by default; --apply is what writes.
     "fix_seed_declarations.py",
+    # Classifies uncommitted src/ work as a landed match or as debris. Never
+    # writes; --build only builds. This is the tool _restorable points at.
+    "orphan_check.py",
     # Runs every test_*.py and reports one table. Read-only.
     "run_selftests.py",
 }
@@ -575,8 +648,9 @@ REGISTRY = {
     # mid-operation and left a stale .git/index.lock that blocked every
     # subsequent commit. Git WRITES must run on this side; the sandbox may read
     # the repo but must never mutate it.
-    "git_restore": lambda path: (
-        ["git", "checkout", "--", _inrepo(path, must_exist=False)]),
+    "git_restore": lambda path, confirm_orphan=False: (
+        ["git", "checkout", "--",
+         _restorable(path, confirm_orphan)]),
     # Run a read-only analysis script in WSL, where there is no 45s ceiling.
     "run_analysis": lambda script, args="": (
         [PYTHON, _script(script)] + _args(args)),
@@ -606,8 +680,9 @@ REGISTRY = {
     # index.lock left by an earlier sandbox git that the 45s cap had killed.
     # Every git write belongs on this side; that means every git write we
     # actually need has to exist here.
-    "git_restore_from_head": lambda path: (
-        ["git", "checkout", "HEAD", "--", _inrepo(path, must_exist=False)]),
+    "git_restore_from_head": lambda path, confirm_orphan=False: (
+        ["git", "checkout", "HEAD", "--",
+         _restorable(path, confirm_orphan)]),
 
     # ---- the rest of git ----
     #

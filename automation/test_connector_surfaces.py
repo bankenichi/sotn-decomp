@@ -454,6 +454,77 @@ def main() -> int:
         check(_ok.endswith("automation"),
               "a genuine in-repo path still resolves normally")
 
+    print("\ndiscarding ORPHANED src/ work is refused, not silently done")
+    # The near-miss this guards: src/boss/bo6/richter.c and us_39144.c sat
+    # modified with three matching function bodies and no crash journal. A
+    # single git_restore would have destroyed all three; nothing objected.
+    import json as _json
+    import subprocess as _sp
+    _repo = _cc_mod.REPO
+    _victim_rel = "src/_orphan_guard_probe.c"
+    _victim = _repo / _victim_rel
+    _pending = _repo / "automation" / "logs" / "pending"
+    _jf = _pending / "_orphan_guard_probe.json"
+    _had = _victim.exists()
+    try:
+        # A file git reports as modified/untracked under src/, with no journal.
+        _victim.write_text("/* probe */\n", encoding="utf-8")
+        _sp.run(["git", "add", "-N", "--", _victim_rel], cwd=str(_repo),
+                capture_output=True, text=True, timeout=60)
+        _blocked = None
+        try:
+            _cc_mod._restorable(_victim_rel)
+        except Exception as e:                                  # Rejected
+            _blocked = str(e)
+        check(_blocked is not None,
+              "an orphaned, modified src/ file is refused")
+        if _blocked:
+            check("orphan_check" in _blocked,
+                  "and the refusal names the tool that answers the question")
+            check("confirm_orphan" in _blocked,
+                  "and says how to override deliberately")
+
+        check(_cc_mod._restorable(_victim_rel, True).endswith(
+            "_orphan_guard_probe.c"),
+            "confirm_orphan=True lets it through: a speed bump, not a veto")
+
+        # A journalled file is ordinary in-flight recovery and must NOT block,
+        # or every failed apply would need a confirmation flag.
+        _pending.mkdir(parents=True, exist_ok=True)
+        _jf.write_text(_json.dumps({"src_rel": _victim_rel,
+                                    "original": ""}), encoding="utf-8")
+        _passed = None
+        try:
+            _passed = _cc_mod._restorable(_victim_rel)
+        except Exception as e:                                  # noqa: BLE001
+            _passed = None
+            check(False, f"a journalled file should not be blocked ({e})")
+        check(bool(_passed),
+              "a file covered by a crash journal restores without friction")
+    finally:
+        _jf.unlink(missing_ok=True)
+        _sp.run(["git", "rm", "--cached", "-q", "--", _victim_rel],
+                cwd=str(_repo), capture_output=True, text=True, timeout=60)
+        if not _had:
+            _victim.unlink(missing_ok=True)
+
+    # Files outside src/ are disposable; automation/ churns constantly.
+    _auto = None
+    try:
+        _auto = _cc_mod._restorable("automation/dashboard.py")
+    except Exception as e:                                      # noqa: BLE001
+        check(False, f"a non-src path must never be blocked ({e})")
+    check(bool(_auto), "a path outside src/ is never blocked")
+
+    print("\nboth destructive git entry points carry the guard")
+    _src_cc = pathlib.Path(_cc_mod.__file__).read_text(errors="ignore")
+    for _name in ("git_restore", "git_restore_from_head"):
+        _seg = _src_cc.split(f'"{_name}": lambda')[1].split("),\n")[0]
+        check("_restorable(" in _seg,
+              f"{_name} routes its path through _restorable")
+        check("_inrepo(" not in _seg,
+              f"and {_name} no longer bypasses it with a bare _inrepo")
+
     print()
     if FAILS:
         print(f"{len(FAILS)} FAILED:")
