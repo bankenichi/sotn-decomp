@@ -158,7 +158,39 @@ def best_score(work: Path) -> int | None:
     return best
 
 
-def _why_skip(rec: dict, work) -> str:
+def workdir_is_stale(work, seed: str) -> bool:
+    """Was this work dir imported from an OLDER version of its seed?
+
+    A WORK DIR IS A SNAPSHOT, NOT A LINK. import.py copies the seed into
+    base.c once; nothing afterwards notices that the seed changed. The only
+    re-import trigger used to be the work dir not existing at all, so fixing a
+    seed had no effect on any function that had already been permuted.
+
+    That is not hypothetical. Sixteen BOSS/BO0 seeds were rewritten to declare
+    the INCLUDE_ASM stub siblings they call, without which decomp-permuter's
+    typemap raises KeyError on a share of every mutation set. All sixteen
+    already had work dirs, so a re-run would have re-searched the identical
+    undeclared base.c and produced the same degraded verdict, while the queue
+    and the seed both said the problem was fixed.
+
+    mtime is the right comparison here: import.py writes base.c at import
+    time, and the permuter never rewrites it afterwards (candidates go to
+    output-*/source.c). A base.c older than its seed therefore means exactly
+    one thing.
+    """
+    if not work or not seed:
+        return False
+    base = Path(work) / "base.c"
+    s = REPO / seed
+    try:
+        if not base.is_file() or not s.is_file():
+            return False
+        return base.stat().st_mtime < s.stat().st_mtime
+    except OSError:
+        return False
+
+
+def _why_skip(rec: dict, work, seed: str = "") -> str:
     """Reasons not to spend a slot on this record."""
     notes = rec.get("notes", "") or ""
     if MATCH_PENDING in notes:
@@ -167,6 +199,12 @@ def _why_skip(rec: dict, work) -> str:
         return "permuter already scored 0; apply it and build"
     if not work:
         return "no work dir; will import from seed"
+    if workdir_is_stale(work, seed):
+        # Deliberately phrased to start with "no work dir" so the two import
+        # paths, which both test startswith("no work dir"), pick it up with no
+        # further change. There is effectively no usable work dir here.
+        return ("no work dir worth keeping: it was imported from an older "
+                "seed than the one on disk; will re-import")
     return ""
 
 
@@ -264,13 +302,20 @@ def candidates(statuses: tuple[str, ...] = ("near",),
             "function": fn,
             "id": rec.get("id", ""),
             "workdir": str(work) if work else "",
-            "score": best_score(work) if work else None,
+            # A stale work dir must not report the old best score either: that
+            # number was produced by the degraded search and would order the
+            # run queue by a figure about to be thrown away.
+            "score": (best_score(work)
+                      if work and not workdir_is_stale(
+                          work, seed_from_notes(rec.get("notes", "")))
+                      else None),
             "seed": seed_from_notes(rec.get("notes", "")),
             "notes": rec.get("notes", "") or "",
             # A record with no work dir is not dropped: --run imports one from
             # the seed named in its notes. --plan still reports it as blocked,
             # because planning must not write to src/.
-            "skip": _why_skip(rec, work),
+            "skip": _why_skip(rec, work,
+                              seed_from_notes(rec.get("notes", ""))),
         })
 
     runnable = [c for c in out if not c["skip"]]
@@ -343,6 +388,26 @@ def import_workdir(fn: str, seed_rel: str, lock=None) -> tuple[Path | None, str]
     seed = REPO / seed_rel
     if not seed.is_file():
         return None, f"seed not found: {seed_rel}"
+
+    # A stale work dir has to be moved out of the way first: import.py writes
+    # into nonmatchings/<fn>/ and will not overwrite one that already exists,
+    # so without this the re-import silently no-ops and the old base.c stays.
+    #
+    # Renamed, never deleted. The old dir holds every output-<score>-<n>/ the
+    # previous search produced, and a promoted seed in there may still be the
+    # best code anyone has for this function. Losing that to a housekeeping
+    # step would be worse than the stale import it is fixing.
+    existing = workdir_for(fn)
+    if existing is not None and workdir_is_stale(existing, seed_rel):
+        aside = existing.with_name(
+            f"{existing.name}.stale-{time.strftime('%Y%m%d-%H%M%S')}")
+        try:
+            existing.rename(aside)
+            print(f"[import] {fn}: work dir predates its seed; moved to "
+                  f"{aside.name} and re-importing")
+        except OSError as e:
+            return None, (f"work dir is stale but could not be moved aside: "
+                          f"{e}")
 
     # Whitespace-tolerant on BOTH sides of the opening paren and the comma.
     # clang-format wraps a stub whose name is long enough:
@@ -1744,6 +1809,52 @@ def self_test() -> int:
        "an ordinary near record is still runnable")
     ck(_why_skip({"notes": ""}, None) == "no work dir; will import from seed",
        "the missing-work-dir reason still works")
+
+    print("\na work dir imported from an older seed is treated as unusable")
+    # The bug this pins: sixteen seeds were fixed, all sixteen already had
+    # work dirs, and the only re-import trigger was the dir not existing. A
+    # re-run would have searched the identical undeclared base.c.
+    import tempfile as _tf
+    _d = Path(_tf.mkdtemp())
+    _w = _d / "fn_stale"
+    _w.mkdir()
+    (_w / "base.c").write_text("old\n")
+    time.sleep(0.02)
+    _seedrel = "automation/candidates/_selftest_seed.c"
+    _seed = REPO / _seedrel
+    _seed.parent.mkdir(parents=True, exist_ok=True)
+    _seed.write_text("new\n")
+    try:
+        ck(workdir_is_stale(_w, _seedrel) is True,
+           "base.c older than the seed is stale")
+        why = _why_skip({"notes": ""}, _w, _seedrel)
+        ck(why.startswith("no work dir"),
+           f"and the reason starts with 'no work dir' so BOTH import paths "
+           f"already act on it ({why[:40]}...)")
+        ck("re-import" in why, "and says it will re-import")
+        # Now make base.c the newer of the two.
+        time.sleep(0.02)
+        (_w / "base.c").write_text("fresh\n")
+        ck(workdir_is_stale(_w, _seedrel) is False,
+           "a work dir newer than its seed is NOT stale")
+        ck(_why_skip({"notes": ""}, _w, _seedrel) == "",
+           "and is runnable again")
+        ck(workdir_is_stale(_w, "") is False,
+           "a record with no seed= is never called stale")
+        ck(workdir_is_stale(_w, "automation/candidates/_no_such.c") is False,
+           "and a missing seed file does not make it stale either")
+    finally:
+        _seed.unlink(missing_ok=True)
+
+    print("\nthe re-import moves the old dir aside rather than deleting it")
+    _iw = src_sup[src_sup.index("def import_workdir"):]
+    _iw = _iw[:_iw.index("\ndef _import_locked")]
+    ck("existing.rename(aside)" in _iw, "it renames")
+    ck("rmtree" not in _iw and "unlink" not in _iw,
+       "and never deletes: the old dir holds promoted seeds and every "
+       "output-<score>-<n> the previous search produced")
+    ck(_iw.index("workdir_is_stale") < _iw.index("existing.rename"),
+       "and only when the dir is actually stale")
 
     print("\nread_log works for a RUNNING job, not just a finished one")
     # The bug this guards: jobs.status() only includes a "log" key once the job

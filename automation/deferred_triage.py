@@ -106,7 +106,40 @@ def real_asm_chars(rec_id: str) -> int | None:
     return None
 
 
-def classify(note: str, asm_chars: int | None = None) -> tuple[str, str]:
+# The marker fix_seed_declarations.py / worker_direct._declare_stub_siblings
+# leave in a seed whose INCLUDE_ASM stub siblings had to be declared.
+SEED_RETROFIT_MARKER = "Added by the permuter-seed writer"
+SEEDS = REPO / "automation" / "candidates"
+
+
+def seed_path(rec_id: str) -> Path:
+    """automation/candidates/ name for a record id.
+
+    us:BOSS/BO0:func_us_801B1DDC -> us_BOSS_BO0_func_us_801B1DDC.c
+    """
+    return SEEDS / (rec_id.replace(":", "_").replace("/", "_") + ".c")
+
+
+def seed_was_retrofitted(rec_id: str) -> bool:
+    """Did this record's seed need stub declarations added after it ran?
+
+    If so, the permuter searched it while decomp-permuter's typemap was
+    raising KeyError on every mutation that touched an undeclared call --
+    between 3% and 17% of iterations on the BOSS/BO0 records. A
+    PERMUTER_EXHAUSTED verdict reached under that handicap is not evidence
+    that the function is hard, so it must not keep sitting in the same bucket
+    as a search that really did run to completion.
+    """
+    p = seed_path(rec_id)
+    try:
+        return SEED_RETROFIT_MARKER in p.read_text(encoding="utf-8",
+                                                   errors="replace")
+    except OSError:
+        return False
+
+
+def classify(note: str, asm_chars: int | None = None,
+             seed_retrofitted: bool = False) -> tuple[str, str]:
     """(class, action). Pure, so the self-test can pin every branch."""
     note = note or ""
     if not note.strip():
@@ -129,8 +162,20 @@ def classify(note: str, asm_chars: int | None = None) -> tuple[str, str]:
         m = RX_UNDECLARED.search(note)
         if m:
             return ("seed-bug",
-                    f"permuter seed omits `extern {m.group(1)}`; add it to "
-                    f"base.c and re-import. NOT a decompilation failure")
+                    f"the seed did not declare `{m.group(1)}`, so the "
+                    f"permuter's typemap raised KeyError on part of the "
+                    f"search. The seed is fixed; requeue as near")
+        if seed_retrofitted:
+            # The note reads like a clean exhaustion, and it is not. Only the
+            # seed on disk knows: it carries the retrofit marker, so the run
+            # that produced this verdict was missing a declaration the note
+            # never mentioned. On BOSS/BO0 that was func_us_801B163C, named in
+            # no note at all.
+            return ("degraded-search",
+                    "reported as exhausted, but its seed was missing stub "
+                    "declarations at the time, so part of every mutation set "
+                    "died on KeyError. Verdict not trustworthy; requeue as "
+                    "near")
         return ("permuter-out",
                 "permuter genuinely exhausted; re-derive from the asm")
 
@@ -191,7 +236,108 @@ def queue_identity() -> tuple[str, dict]:
     return q, counts
 
 
-def report(plan: bool = False) -> int:
+# class -> the status a requeue should file it under.
+#   near  the seed is good and the permuter should pick it up again
+#   todo  no usable seed; a worker has to derive it from the asm
+REQUEUE_TO = {"seed-bug": "near", "degraded-search": "near",
+              "stale-tier": "todo"}
+
+# Overwrites the stale deferral note. Leaving the old one in place would keep
+# telling the next reader that the permuter is exhausted, which is the belief
+# this requeue exists to correct.
+REQUEUE_NOTE = {
+    "seed-bug":
+        "requeued by deferred_triage: the seed did not declare an "
+        "INCLUDE_ASM stub sibling it calls, so the permuter's typemap raised "
+        "KeyError on part of the search. Seed fixed by "
+        "fix_seed_declarations.py; this was never a decompilation failure.",
+    "degraded-search":
+        "requeued by deferred_triage: the earlier PERMUTER_EXHAUSTED verdict "
+        "was reached on a seed missing stub declarations, so a share of every "
+        "mutation set died on KeyError. Seed fixed; the exhaustion figure in "
+        "the previous note does not describe a complete search.",
+    "stale-tier":
+        "requeued by deferred_triage: deferred at the local llama 6000-char "
+        "ceiling, which the hosted tier does not have.",
+}
+
+
+def requeue_note(cls: str, rec_id: str) -> str:
+    """The replacement note, WITH the seed reference preserved.
+
+    THE NOTE IS NOT JUST PROSE. permuter_supervisor.candidates() finds a
+    record's starting point by parsing `seed=<path>` out of this field; there
+    is nowhere else it is recorded. Overwriting the note with a tidy
+    explanation and no seed= would file sixteen records as `near` that the
+    supervisor then could not import, which is a worse state than leaving them
+    deferred, because it looks like progress.
+
+    A deferral note may or may not carry seed=, so it is regenerated from the
+    file on disk rather than salvaged from the old text.
+    """
+    note = REQUEUE_NOTE[cls]
+    p = seed_path(rec_id)
+    if p.exists():
+        note += f" seed={p.relative_to(REPO).as_posix()}"
+    return note
+
+
+def requeue(buckets: dict, apply: bool = False) -> int:
+    """Move the actionable classes back into circulation.
+
+    Writes THROUGH scheduler.py, never to the queue file. The scheduler is the
+    single writer, it is the thing that refuses `matched` without --proof, and
+    going around it is how two processes end up with different ideas of the
+    same record.
+
+    Nothing here can produce `matched`; the only reachable statuses are `near`
+    and `todo`, both of which mean "someone should look at this again".
+    """
+    todo = [(cls, r["id"]) for cls in REQUEUE_TO
+            for r, _a in buckets.get(cls, [])]
+    if not todo:
+        print("\nnothing to requeue")
+        return 0
+
+    print("\n" + "=" * 78)
+    print(f"\nrequeue: {len(todo)} record(s)"
+          + ("" if apply else "  [DRY RUN, nothing written]") + "\n")
+    ok = bad = 0
+    for cls, rid in todo:
+        status = REQUEUE_TO[cls]
+        if not apply:
+            print(f"  {status:5} <- {cls:16} {rid}")
+            continue
+        # `report`, not `set`. There is no `set` subcommand and there never
+        # was; --requeue-plan printed `scheduler.py set <id> --status todo`
+        # for months and anyone who pasted it got
+        # "invalid choice: 'set'". The plan was never executed, so nothing
+        # caught it. That is the argument for the tool doing the write rather
+        # than printing instructions for a human to run.
+        r = subprocess.run(
+            [PYTHON, str(REPO / "automation" / "scheduler.py"), "report",
+             "--id", rid, "--status", status,
+             "--notes", requeue_note(cls, rid)],
+            capture_output=True, text=True, timeout=120, cwd=str(REPO))
+        if r.returncode == 0:
+            ok += 1
+            print(f"  {status:5} <- {cls:16} {rid}")
+        else:
+            bad += 1
+            err = (r.stderr or r.stdout or "").strip().splitlines()
+            print(f"  FAILED {rid}: {err[-1] if err else r.returncode}")
+    if apply:
+        print(f"\n{ok} requeued, {bad} failed")
+        if ok:
+            print("Run permuter_supervisor.py --plan to see what it will "
+                  "pick up.")
+    else:
+        print("\nRe-run with --apply to write.")
+    return 1 if bad else 0
+
+
+def report(plan: bool = False, do_requeue: bool = False,
+           apply: bool = False) -> int:
     qpath, counts = queue_identity()
     print(f"queue: {qpath}")
     print("       " + "  ".join(f"{k} {v}" for k, v in counts.items()))
@@ -208,18 +354,18 @@ def report(plan: bool = False) -> int:
     buckets: dict[str, list] = collections.defaultdict(list)
     for r in recs:
         cls, action = classify(r.get("note", ""),
-                               real_asm_chars(r["id"]))
+                               real_asm_chars(r["id"]),
+                               seed_was_retrofitted(r["id"]))
         buckets[cls].append((r, action))
 
     print(f"{len(recs)} deferred record(s)\n")
-    order = ["stale-tier", "seed-bug", "no-note", "permuter-out",
-             "too-large-still", "other"]
+    order = ["stale-tier", "seed-bug", "degraded-search", "no-note",
+             "permuter-out", "too-large-still", "other"]
     for cls in order:
         if buckets.get(cls):
             print(f"  {cls:16} {len(buckets[cls])}")
 
-    actionable = len(buckets.get("stale-tier", [])) + \
-        len(buckets.get("seed-bug", []))
+    actionable = sum(len(buckets.get(c, [])) for c in REQUEUE_TO)
     print(f"\n{actionable} of {len(recs)} are deferred for a reason that no "
           f"longer holds, or for a mechanical fix.\n")
     print("=" * 78)
@@ -244,8 +390,12 @@ def report(plan: bool = False) -> int:
     if plan:
         print("\n" + "=" * 78)
         print("\nrequeue plan (nothing has been written):\n")
-        for r, _a in buckets.get("stale-tier", []):
-            print(f"  scheduler.py set {r['id']} --status todo")
+        for cls in REQUEUE_TO:
+            for r, _a in buckets.get(cls, []):
+                print(f"  scheduler.py report --id {r['id']} "
+                      f"--status {REQUEUE_TO[cls]}")
+    if do_requeue:
+        return requeue(buckets, apply=apply)
     return 0
 
 
@@ -318,6 +468,84 @@ def self_test() -> int:
        and "print(f\"queue: {qpath}\")" in src_self,
        "the resolved path and counts are printed first")
 
+    print("\na retrofitted seed makes an 'exhausted' verdict untrustworthy")
+    # The note is indistinguishable from a clean exhaustion. Only the seed on
+    # disk records that the search was handicapped, which is why classify
+    # takes the seed state as a separate input rather than parsing for it.
+    clean = ("PERMUTER_EXHAUSTED: best 1770 after 2701 iterations, "
+             "3 promotion(s), no improvement for 2662.")
+    ck(classify(clean, None, False)[0] == "permuter-out",
+       "without the marker it stays permuter-out")
+    cls_d, act_d = classify(clean, None, True)
+    ck(cls_d == "degraded-search", f"with it, degraded-search ({cls_d})")
+    ck("not trustworthy" in act_d, "and the action says why")
+    ck(REQUEUE_TO.get("degraded-search") == "near",
+       "which requeues to near, not todo: the seed is now good")
+
+    print("\nrequeue can never produce a matched record")
+    ck(set(REQUEUE_TO.values()) <= {"near", "todo"},
+       f"only near/todo are reachable ({sorted(set(REQUEUE_TO.values()))})")
+    # Anchor on the full signature: `def requeue_note` sorts before
+    # `def requeue(` in this file, and a loose "def requeue" split silently
+    # measured the wrong function.
+    ck("def requeue(buckets" in src_self, "the requeue function is findable")
+    src_rq = src_self.split("def requeue(buckets")[1].split("\ndef ")[0]
+    ck("scheduler.py" in src_rq, "writes go through scheduler.py")
+    ck("queue.jsonl" not in src_rq, "and never straight to the queue file")
+    ck("apply" in src_rq and 'if not apply' in src_rq,
+       "and it is a dry run unless --apply")
+
+    print("\nthe subcommand it calls actually exists in scheduler.py")
+    # --requeue-plan printed `scheduler.py set <id> --status todo` for months.
+    # There is no `set` subcommand. Nobody noticed because the plan was only
+    # ever printed, never run. Pin the name against the real parser.
+    ssrc = (REPO / "automation" / "scheduler.py").read_text(errors="ignore")
+    subs = set(re.findall(r'sub\.add_parser\("(\w+)"', ssrc))
+    called = set(re.findall(r'"scheduler\.py"\), "(\w+)"', src_self))
+    ck(called and called <= subs,
+       f"every subcommand this module invokes exists ({sorted(called)} "
+       f"against {sorted(subs)})")
+    ck("set" not in called, "and it is not the `set` that never existed")
+    for flag in ("--id", "--status", "--notes"):
+        ck(f'pr.add_argument("{flag}"' in ssrc,
+           f"scheduler report accepts {flag}")
+
+    print("\nthe requeue note keeps the seed= the supervisor parses for")
+    # permuter_supervisor.candidates() finds the seed ONLY by parsing seed=
+    # out of the note. A tidy replacement note without it would file records
+    # as near that cannot then be imported.
+    real_id = "us:BOSS/BO0:func_us_801B1DDC"
+    if seed_path(real_id).exists():
+        n = requeue_note("degraded-search", real_id)
+        ck("seed=automation/candidates/" in n, f"seed= is present ({n[-60:]})")
+        ck(seed_path(real_id).name in n, "and names this record's own seed")
+        sup = (REPO / "automation" / "permuter_supervisor.py").read_text(
+            errors="ignore")
+        m = re.search(r'seed=\S*?\(\[^\\s\]\+\)|seed=', sup)
+        ck(bool(m), "the supervisor really does parse seed= from the note")
+    else:
+        print("  skip  no seed on disk for the sample record")
+    ck("seed=" not in REQUEUE_NOTE["degraded-search"],
+       "the template itself has no hardcoded seed path")
+    ck(requeue_note("stale-tier", "us:NO/SUCH:function").count("seed=") == 0,
+       "and a record with no seed file gets no seed= at all")
+
+    print("\nthe seed path derived from a record id is the real one")
+    ck(seed_path("us:BOSS/BO0:func_us_801B1DDC").name
+       == "us_BOSS_BO0_func_us_801B1DDC.c", "id maps to the seed filename")
+    ck(seed_was_retrofitted("us:NO/SUCH:function") is False,
+       "a missing seed is not treated as retrofitted")
+
+    print("\nthe marker matches what the seed writer actually emits")
+    wsrc = (REPO / "automation" / "win" / "worker_direct.py").read_text(
+        errors="ignore")
+    ck(SEED_RETROFIT_MARKER in wsrc,
+       "worker_direct emits the string this module looks for")
+    fsrc = (REPO / "automation" / "fix_seed_declarations.py").read_text(
+        errors="ignore")
+    ck("_declare_stub_siblings" in fsrc,
+       "and the retrofit tool calls the same function rather than copying it")
+
     print("\nthe hosted ceiling matches the worker's own constant")
     src = (REPO / "automation" / "win" / "worker_direct.py").read_text(
         errors="ignore")
@@ -342,11 +570,21 @@ def main() -> int:
         formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--requeue-plan", action="store_true",
                     help="print the scheduler commands; writes nothing")
+    ap.add_argument("--requeue", action="store_true",
+                    help="requeue the actionable classes (seed-bug and "
+                         "degraded-search to near, stale-tier to todo). "
+                         "DRY RUN unless --apply is also given")
+    ap.add_argument("--apply", action="store_true",
+                    help="with --requeue, actually write through scheduler.py")
     ap.add_argument("--self-test", action="store_true")
     a = ap.parse_args()
     if a.self_test:
         return self_test()
-    return report(a.requeue_plan)
+    if a.apply and not a.requeue:
+        print("--apply does nothing on its own; it modifies --requeue",
+              file=sys.stderr)
+        return 2
+    return report(a.requeue_plan, do_requeue=a.requeue, apply=a.apply)
 
 
 if __name__ == "__main__":
