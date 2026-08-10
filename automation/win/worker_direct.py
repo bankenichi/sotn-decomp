@@ -1747,6 +1747,29 @@ ENTITY_LAYOUT = (
 # Hard ceiling on salvage reasoning. Even with degeneration detection, a model
 # that rambles without repeating verbatim can run to the budget producing nothing.
 SALVAGE_MAX_REASONING = int(os.environ.get("SALVAGE_MAX_REASONING", "24000"))
+# Same ceiling for the salvage CONTENT channel. A real function is a few
+# thousand characters; anything past this is a runaway, not an answer.
+SALVAGE_MAX_CONTENT = int(os.environ.get("SALVAGE_MAX_CONTENT", "24000"))
+
+
+def _content_degen_reason(text: str) -> str:
+    """Why this content stream is degenerate, or "" if it is fine.
+
+    ONE formatter for BOTH streaming paths. The main loop had this inline and
+    the salvage pass had nothing at all, so a forced code pass could emit
+    `s32 temp5008;` for 84KB and its whole budget with no check whatsoever --
+    observed on worker-zen-2, 2026-08-09. The detector itself was never the
+    problem: replayed against that log it fires at 30 lines / 506 chars. It
+    was simply never called on the content channel of the salvage.
+    """
+    d = _content_degenerate(text)
+    if not d.get("degenerate"):
+        return ""
+    if d.get("decl_run", 0) >= 20:
+        return f"declaration loop ({d['decl_stem']}{d['decl_run']})"
+    if d.get("reg_decls", 0) >= 15:
+        return f"register-file dump ({d['reg_decls']} declarations)"
+    return f"echoing the input asm ({d['asm_echo']} lines)"
 
 
 def make_degeneration_detector():
@@ -1858,6 +1881,8 @@ def _force_code(orig_prompt: str, analysis: str,
                                  method="POST")
     out: list[str] = []
     reasoning: list[str] = []
+    n_out = 0
+    sal_aborted = ""
     _sal_degen = make_degeneration_detector()
     print("  --- forced code pass ---", flush=True)
     # Bounded by the caller's remaining budget, not a flat GEN_TIMEOUT. The
@@ -1880,6 +1905,21 @@ def _force_code(orig_prompt: str, analysis: str,
             piece = delta.get("content") or ""
             if piece:
                 sys.stdout.write(piece); sys.stdout.flush(); out.append(piece)
+                # THE SALVAGE CONTENT CHANNEL WAS UNWATCHED. Only `reasoning`
+                # below was checked, so a forced pass that degenerated on
+                # `content` ran unbounded: worker-zen-2 reached `s32 temp5008;`
+                # and 84KB before the function budget cut it off. Same shared
+                # detector, same cadence as the main loop.
+                n_out += 1
+                if n_out % CONTENT_CHECK_EVERY == 0:
+                    _why = _content_degen_reason("".join(out))
+                    if not _why and sum(map(len, out)) > SALVAGE_MAX_CONTENT:
+                        _why = f"exceeded {SALVAGE_MAX_CONTENT} chars"
+                    if _why:
+                        sal_aborted = _why
+                        print(f"\n  !! salvage aborted: degenerate output: "
+                              f"{_why}", flush=True)
+                        break
             # ALSO capture reasoning. This model is reasoning-distilled: told to
             # "write the function immediately, do not think", it STILL emits
             # reasoning_content, and the C it writes ends up inside that stream.
@@ -1912,6 +1952,13 @@ def _force_code(orig_prompt: str, analysis: str,
                         f"({sum(map(len, reasoning))} chars)   ")
                     sys.stdout.flush()
     content = "".join(out)
+    if sal_aborted:
+        # Returning the partial text here would hand a 5000-line declaration
+        # list to the gate as though it were a candidate function. It is not
+        # a function, so the salvage produced nothing and says so.
+        print(f"\n  --- forced pass discarded {len(content)} degenerate chars "
+              f"({sal_aborted}) ---", flush=True)
+        return ""
     if content.strip():
         print(f"\n  --- forced pass produced {len(content)} chars ---", flush=True)
         return content
@@ -2081,16 +2128,8 @@ def llama_echo(prompt: str, temperature: float = 0.2,
                 # MIPS register file, or a verbatim echo of the input assembly.
                 # Each burned its entire budget producing nothing.
                 if n_content % CONTENT_CHECK_EVERY == 0:
-                    d = _content_degenerate("".join(content))
-                    if d.get("degenerate"):
-                        if d.get("decl_run", 0) >= 20:
-                            why = (f"declaration loop "
-                                   f"({d['decl_stem']}{d['decl_run']})")
-                        elif d.get("reg_decls", 0) >= 15:
-                            why = (f"register-file dump "
-                                   f"({d['reg_decls']} declarations)")
-                        else:
-                            why = f"echoing the input asm ({d['asm_echo']} lines)"
+                    why = _content_degen_reason("".join(content))
+                    if why:
                         aborted = f"degenerate output: {why}"
                         break
 
