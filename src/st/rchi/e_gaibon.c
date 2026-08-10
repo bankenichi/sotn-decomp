@@ -12,7 +12,41 @@ extern EInit g_EInitGaibon;
 
 INCLUDE_ASM("st/rchi/nonmatchings/e_gaibon", EntityGaibon);
 
-INCLUDE_ASM("st/rchi/nonmatchings/e_gaibon", EntityGaibonLeg);
+void EntityGaibonLeg(Entity *self)
+{
+  Entity *parent;
+  unsigned long parentAnimFrame;
+  if (self->step == 0)
+  {
+    InitializeEntity(&g_EInitGaibon);
+    self->hitboxState = 0;
+  }
+  self->facingLeft = (self - 1)->facingLeft;
+  parent = self - 1;
+  self->palette = (self - 1)->palette;
+  ;
+  self->animCurFrame = 0;
+  self->posX.i.hi = (self - 1)->posX.i.hi;
+  self->posY.i.hi = parent->posY.i.hi;
+  if (((u32) (parent->animCurFrame - 0x20)) < 3)
+  {
+    self->animCurFrame = 0x26;
+  }
+  else
+    if (parent->animCurFrame == 0x23)
+  {
+    self->animCurFrame = 0x27;
+  }
+  else
+    if (((u32) (parent->animCurFrame - 0x24)) < 2)
+  {
+    self->animCurFrame = 0x28;
+  }
+  if (parent->entityId != 0x19)
+  {
+    DestroyEntity(self);
+  }
+}
 
 INCLUDE_ASM("st/rchi/nonmatchings/e_gaibon", EntitySmallGaibonProjectile);
 
