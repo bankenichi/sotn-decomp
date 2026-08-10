@@ -1088,15 +1088,20 @@ button.danger:hover{border-color:var(--bad);color:var(--bad)}
    entire rest of the window -- which is what a 1058-call table wants. */
 #pane_diag{flex:1 1 auto;min-height:0;overflow:hidden;padding:12px 16px;
            display:flex;flex-direction:column}
-.diagsplit{display:grid;grid-template-columns:minmax(360px,27%) 1fr;gap:12px;
+.diagsplit{display:grid;grid-template-columns:minmax(320px,26%) 1fr;gap:12px;
            flex:1 1 auto;min-height:0;margin-top:10px}
-/* TWO columns of tools. One column made the list twice as tall as it needed
-   to be, so it always scrolled; two halves the scrolling and still leaves
-   the report roughly three quarters of the window. auto-fill rather than a
-   hard 2, so a narrow window drops to one column instead of clipping. */
-.diaggrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(168px,1fr));
+/* EXACTLY TWO columns of tools. `repeat(auto-fill,minmax(168px,1fr))` was the
+   wrong tool: auto-fill fits as many 168px tracks as the column happens to
+   allow, so at any browser zoom where the column measures under ~342 CSS px
+   it silently collapses to ONE double-wide button per row -- which is what it
+   did, and is not what "two columns" means.
+   A hard 2 always gives 2. minmax(0,1fr) rather than 1fr because a grid
+   track's default min is min-content, and a long unbroken label would
+   otherwise widen the track and push the report out of the window. */
+.diaggrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));
           gap:6px;align-content:start;min-height:0;overflow:auto;
           padding-right:4px}
+.diagbtn b{overflow-wrap:anywhere}
 .diagbtn{text-align:left;padding:7px 9px;line-height:1.3}
 .diagbtn b{display:block;color:var(--fg)}
 .diagbtn span{display:block;color:var(--dim);font-size:10px;
@@ -1667,9 +1672,15 @@ def self_test() -> int:
     _sp = _rule(".diagsplit")
     ck(_re.search(r"grid-template-columns:minmax\(\d+px,\d+%\) 1fr", _sp),
        "the list takes a bounded column and the output takes the rest")
-    ck("repeat(auto-fill" in _rule(".diaggrid"),
-       "the tool list is itself multi-column, so 36 entries do not need "
-       "twice the scrolling they should")
+    _g = _rule(".diaggrid")
+    ck("repeat(2,minmax(0,1fr))" in _g,
+       "the tool list is EXACTLY two columns")
+    ck("auto-fill" not in _g,
+       "not auto-fill, which collapsed to one double-wide button per row at "
+       "any zoom where the column measured under ~342 CSS px")
+    ck("minmax(0," in _g,
+       "and the tracks can shrink below min-content, so a long label cannot "
+       "widen the list and push the report out of the window")
     _out = _rule("#diagout")
     ck(not _re.search(r"max-width\s*:", _out),
        "the output has NO max-width, so a wide window is not left empty")

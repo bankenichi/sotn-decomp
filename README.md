@@ -1,114 +1,322 @@
-# Castlevania: Symphony of the Night Decompilation
+# SOTN-Decomp (bankenichi fork)
 
-A work-in-progress decompilation of Castlevania Symphony of the Night for Sony PlayStation 1, Sony PlayStation Portable and Sega Saturn. It aims to recreate the source code from the existing binaries using static and/or dynamic analysis. The code compiles byte-for-byte to the same binaries of the game, effectively being a matching decompilation.
+**This is an AI project that happens to be pointed at a decompilation.**
 
-It currently supports the following versions of the game:
+I am an AI enthusiast, not a programmer and not a decomp person. I did not fork
+this because I wanted to decompile *Symphony of the Night*; I forked it because
+matching decompilation is a near-perfect testbed for agentic AI and it makes
+for a genuinely fun proof of concept.
 
-* `us` the reference build with the serial number SLUS-00067
-* `hd` an unreleased PS1 Japanese build found in Castlevania: Dracula X Chronicles game data
-* `pspeu` European build from Castlevania: Dracula X Chronicles
-* `saturn` the port created by an external development team
+Why it is such a good testbed: the correctness oracle is **binary, external and
+incorruptible**. Either the compiled bytes are identical to the retail disc or
+they are not. There is no partial credit, no plausible-looking answer that
+sneaks through, no rubric a model can talk its way around. Almost every other
+AI benchmark grades on resemblance. This one does not, and that makes every
+number in this repo mean something.
 
-This repo does not include any assets or assembly code necessary for compiling the binaries. A prior copy of the game is required to extract the required assets.
+So the question the fork exists to answer is: **how far can models, tooling and
+scripting get on their own, with a human setting direction rather than writing
+function bodies?** The harness, the queue, the gates, the measurement and the
+recovery paths are the actual product. The matched functions are how you know
+it works.
 
-## Bins decomp progress
+That framing decides everything else here. When a mechanism only lands
+functions with a human babysitting it, it does not count until it runs
+unsupervised. When a metric flatters the fleet, it gets rewritten. When a
+number turns out to be an artefact, it gets retracted in place with the
+measurement that killed it. Several of the documents in `docs/` are mostly
+records of me being wrong about my own results, which is the part that has
+taught me the most.
 
-| File name  | Code coverage | Decomp functions | Description
-|------------|----------|-----------|-------------
-| SLUS_000.67   | ![code coverage SLUS_000.67](https://img.shields.io/endpoint?label=SLUS_000.67%20code&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Fcode%2F%3Fmode%3Dshield%26measure%3Dmain) | ![decompiled functions](https://img.shields.io/endpoint?label=SLUS_000.67%20funcs&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Ffunctions%2F%3Fmode%3Dshield%26measure%3Dmain) | Shared libraries
-| DRA.BIN    | ![code coverage DRA.BIN](https://img.shields.io/endpoint?label=DRA%20code&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Fcode%2F%3Fmode%3Dshield%26measure%3Ddra) | ![decompiled functions](https://img.shields.io/endpoint?label=DRA%20funcs&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Ffunctions%2F%3Fmode%3Dshield%26measure%3Ddra) | Game engine
-| BIN/RIC.BIN    | ![code coverage RIC.BIN](https://img.shields.io/endpoint?label=RIC%20code&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Fcode%2F%3Fmode%3Dshield%26measure%3Dric) | ![decompiled functions](https://img.shields.io/endpoint?label=RIC%20funcs&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Ffunctions%2F%3Fmode%3Dshield%26measure%3Dric) | Playable Richter
-| BIN/WEAPON0.BIN    | ![code coverage WEAPON0.BIN](https://img.shields.io/endpoint?label=WEAPON0%20code&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Fcode%2F%3Fmode%3Dshield%26measure%3Dweapon) | ![decompiled functions](https://img.shields.io/endpoint?label=WEAPON0%20funcs&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Ffunctions%2F%3Fmode%3Dshield%26measure%3Dweapon) | Equippables
-| BIN/WEAPON1.BIN | ![code coverage WEAPON1.BIN](https://img.shields.io/endpoint?label=WEAPON1%20code&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Fcode%2F%3Fmode%3Dshield%26measure%3Dweapon1) | ![decompiled functions](https://img.shields.io/endpoint?label=WEAPON1%20funcs&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Ffunctions%2F%3Fmode%3Dshield%26measure%3Dweapon1) | Equippables 1
-| ST/ARE/ARE.BIN | ![code coverage ARE.BIN](https://img.shields.io/endpoint?label=ARE%20code&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Fcode%2F%3Fmode%3Dshield%26measure%3Dstare) | ![decompiled functions](https://img.shields.io/endpoint?label=ARE%20funcs&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Ffunctions%2F%3Fmode%3Dshield%26measure%3Dstare) | Colosseum
-| ST/CAT/CAT.BIN | ![code coverage CAT.BIN](https://img.shields.io/endpoint?label=CAT%20code&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Fcode%2F%3Fmode%3Dshield%26measure%3Dstcat) | ![decompiled functions](https://img.shields.io/endpoint?label=CAT%20funcs&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Ffunctions%2F%3Fmode%3Dshield%26measure%3Dstcat) | Catacombs
-| ST/CEN/CEN.BIN | ![code coverage CEN.BIN](https://img.shields.io/endpoint?label=CEN%20code&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Fcode%2F%3Fmode%3Dshield%26measure%3Dstcen) | ![decompiled functions](https://img.shields.io/endpoint?label=CEN%20funcs&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Ffunctions%2F%3Fmode%3Dshield%26measure%3Dstcen) | Center
-| ST/CHI/CHI.BIN | ![code coverage CHI.BIN](https://img.shields.io/endpoint?label=CHI%20code&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Fcode%2F%3Fmode%3Dshield%26measure%3Dstchi) | ![decompiled functions](https://img.shields.io/endpoint?label=CHI%20funcs&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Ffunctions%2F%3Fmode%3Dshield%26measure%3Dstchi) | Abandoned Mine
-| ST/DAI/DAI.BIN | ![code coverage DAI.BIN](https://img.shields.io/endpoint?label=DAI%20code&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Fcode%2F%3Fmode%3Dshield%26measure%3Dstdai) | ![decompiled functions](https://img.shields.io/endpoint?label=DAI%20funcs&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Ffunctions%2F%3Fmode%3Dshield%26measure%3Dstdai) | Royal Chapel
-| ST/DRE/DRE.BIN | ![code coverage DRE.BIN](https://img.shields.io/endpoint?label=DRE%20code&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Fcode%2F%3Fmode%3Dshield%26measure%3Dstdre) | ![decompiled functions](https://img.shields.io/endpoint?label=DRE%20funcs&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Ffunctions%2F%3Fmode%3Dshield%26measure%3Dstdre) | Nightmare
-| ST/LIB/LIB.BIN | ![code coverage LIB.BIN](https://img.shields.io/endpoint?label=LIB%20code&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Fcode%2F%3Fmode%3Dshield%26measure%3Dstlib) | ![decompiled functions](https://img.shields.io/endpoint?label=LIB%20funcs&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Ffunctions%2F%3Fmode%3Dshield%26measure%3Dstlib) | Long Library
-| ST/MAD/MAD.BIN | ![code coverage MAD.BIN](https://img.shields.io/endpoint?label=MAD%20code&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Fcode%2F%3Fmode%3Dshield%26measure%3Dstmad) | ![decompiled functions](https://img.shields.io/endpoint?label=MAD%20funcs&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Ffunctions%2F%3Fmode%3Dshield%26measure%3Dstmad) | Debug Room
-| ST/NO0/NO0.BIN | ![code coverage NO0.BIN](https://img.shields.io/endpoint?label=NO0%20code&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Fcode%2F%3Fmode%3Dshield%26measure%3Dstno0) | ![decompiled functions](https://img.shields.io/endpoint?label=NO0%20funcs&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Ffunctions%2F%3Fmode%3Dshield%26measure%3Dstno0) | Marble Gallery
-| ST/NO1/NO1.BIN | ![code coverage NO1.BIN](https://img.shields.io/endpoint?label=NO1%20code&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Fcode%2F%3Fmode%3Dshield%26measure%3Dstno1) | ![decompiled functions](https://img.shields.io/endpoint?label=NO1%20funcs&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Ffunctions%2F%3Fmode%3Dshield%26measure%3Dstno1) | Outer Wall
-| ST/NO2/NO2.BIN | ![code coverage NO2.BIN](https://img.shields.io/endpoint?label=NO2%20code&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Fcode%2F%3Fmode%3Dshield%26measure%3Dstno2) | ![decompiled functions](https://img.shields.io/endpoint?label=NO2%20funcs&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Ffunctions%2F%3Fmode%3Dshield%26measure%3Dstno2) | Olrox's Quarters
-| ST/NO3/NO3.BIN | ![code coverage NO3.BIN](https://img.shields.io/endpoint?label=NO3%20code&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Fcode%2F%3Fmode%3Dshield%26measure%3Dstno3) | ![decompiled functions](https://img.shields.io/endpoint?label=NO3%20funcs&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Ffunctions%2F%3Fmode%3Dshield%26measure%3Dstno3) | Entrance (first visit)
-| ST/NO4/NO4.BIN | ![code coverage NO4.BIN](https://img.shields.io/endpoint?label=NO4%20code&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Fcode%2F%3Fmode%3Dshield%26measure%3Dstno4) | ![decompiled functions](https://img.shields.io/endpoint?label=NO4%20funcs&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Ffunctions%2F%3Fmode%3Dshield%26measure%3Dstno4) | Underground Caverns
-| ST/NP3/NP3.BIN | ![code coverage NP3.BIN](https://img.shields.io/endpoint?label=NP3%20code&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Fcode%2F%3Fmode%3Dshield%26measure%3Dstnp3) | ![decompiled functions](https://img.shields.io/endpoint?label=NP3%20funcs&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Ffunctions%2F%3Fmode%3Dshield%26measure%3Dstnp3) | Entrance
-| ST/NZ0/NZ0.BIN | ![code coverage NZ0.BIN](https://img.shields.io/endpoint?label=NZ0%20code&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Fcode%2F%3Fmode%3Dshield%26measure%3Dstnz0) | ![decompiled functions](https://img.shields.io/endpoint?label=NZ0%20funcs&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Ffunctions%2F%3Fmode%3Dshield%26measure%3Dstnz0) | Alchemy Laboratory
-| ST/NZ1/NZ1.BIN | ![code coverage NZ1.BIN](https://img.shields.io/endpoint?label=NZ1%20code&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Fcode%2F%3Fmode%3Dshield%26measure%3Dstnz1) | ![decompiled functions](https://img.shields.io/endpoint?label=NZ1%20funcs&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Ffunctions%2F%3Fmode%3Dshield%26measure%3Dstnz1) | Clock Tower
-| ST/SEL/SEL.BIN | ![code coverage SEL.BIN](https://img.shields.io/endpoint?label=SEL%20code&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Fcode%2F%3Fmode%3Dshield%26measure%3Dstsel) | ![decompiled functions](https://img.shields.io/endpoint?label=SEL%20funcs&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Ffunctions%2F%3Fmode%3Dshield%26measure%3Dstsel) | Title screen
-| ST/ST0/ST0.BIN | ![code coverage ST0.BIN](https://img.shields.io/endpoint?label=ST0%20code&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Fcode%2F%3Fmode%3Dshield%26measure%3Dstst0) | ![decompiled functions](https://img.shields.io/endpoint?label=ST0%20funcs&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Ffunctions%2F%3Fmode%3Dshield%26measure%3Dstst0) | Final Stage: Bloodlines
-| ST/TOP/TOP.BIN | ![code coverage TOP.BIN](https://img.shields.io/endpoint?label=TOP%20code&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Fcode%2F%3Fmode%3Dshield%26measure%3Dsttop) | ![decompiled functions](https://img.shields.io/endpoint?label=TOP%20funcs&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Ffunctions%2F%3Fmode%3Dshield%26measure%3Dsttop) | Castle Keep
-| ST/WRP/WRP.BIN | ![code coverage WRP.BIN](https://img.shields.io/endpoint?label=WRP%20code&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Fcode%2F%3Fmode%3Dshield%26measure%3Dstwrp) | ![decompiled functions](https://img.shields.io/endpoint?label=WRP%20funcs&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Ffunctions%2F%3Fmode%3Dshield%26measure%3Dstwrp) | Warp Room
-| ST/RARE/RARE.BIN | ![code coverage RARE.BIN](https://img.shields.io/endpoint?label=RARE%20code&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Fcode%2F%3Fmode%3Dshield%26measure%3Dstrare) | ![decompiled functions](https://img.shields.io/endpoint?label=RARE%20funcs&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Ffunctions%2F%3Fmode%3Dshield%26measure%3Dstrare) | Reverse Colosseum
-| ST/RCAT/RCAT.BIN | ![code coverage RCAT.BIN](https://img.shields.io/endpoint?label=RCAT%20code&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Fcode%2F%3Fmode%3Dshield%26measure%3Dstrcat) | ![decompiled functions](https://img.shields.io/endpoint?label=RCAT%20funcs&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Ffunctions%2F%3Fmode%3Dshield%26measure%3Dstrat) | Floating Catacombs
-| ST/RCEN/RCEN.BIN | ![code coverage RCEN.BIN](https://img.shields.io/endpoint?label=RCEN%20code&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Fcode%2F%3Fmode%3Dshield%26measure%3Dstrcen) | ![decompiled functions](https://img.shields.io/endpoint?label=RCEN%20funcs&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Ffunctions%2F%3Fmode%3Dshield%26measure%3Dstrcen) | Reverse Center
-| ST/RCHI/RCHI.BIN | ![code coverage RCHI.BIN](https://img.shields.io/endpoint?label=RCHI%20code&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Fcode%2F%3Fmode%3Dshield%26measure%3Dstrchi) | ![decompiled functions](https://img.shields.io/endpoint?label=RCHI%20funcs&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Ffunctions%2F%3Fmode%3Dshield%26measure%3Dstrchi) | Cave
-| ST/RDAI/RDAI.BIN | ![code coverage RDAI.BIN](https://img.shields.io/endpoint?label=RDAI%20code&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Fcode%2F%3Fmode%3Dshield%26measure%3Dstrdai) | ![decompiled functions](https://img.shields.io/endpoint?label=RDAI%20funcs&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Ffunctions%2F%3Fmode%3Dshield%26measure%3Dstrdai) | Anti-Chapel
-| ST/RLIB/RLIB.BIN | ![code coverage RLIB.BIN](https://img.shields.io/endpoint?label=RLIB%20code&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Fcode%2F%3Fmode%3Dshield%26measure%3Dstrlib) | ![decompiled functions](https://img.shields.io/endpoint?label=RLIB%20funcs&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Ffunctions%2F%3Fmode%3Dshield%26measure%3Dstrlib) | Forbidden Library
-| ST/RNO0/RNO0.BIN | ![code coverage RNO0.BIN](https://img.shields.io/endpoint?label=RNO0%20code&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Fcode%2F%3Fmode%3Dshield%26measure%3Dstrno0) | ![decompiled functions](https://img.shields.io/endpoint?label=RNO0%20funcs&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Ffunctions%2F%3Fmode%3Dshield%26measure%3Dstrno0) | Black Marble Gallery
-| ST/RNO1/RNO1.BIN | ![code coverage RNO1.BIN](https://img.shields.io/endpoint?label=RNO1%20code&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Fcode%2F%3Fmode%3Dshield%26measure%3Dstrno1) | ![decompiled functions](https://img.shields.io/endpoint?label=RNO1%20funcs&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Ffunctions%2F%3Fmode%3Dshield%26measure%3Dstrno1) | Reverse Outer Wall
-| ST/RNO2/RNO2.BIN | ![code coverage RNO2.BIN](https://img.shields.io/endpoint?label=RNO2%20code&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Fcode%2F%3Fmode%3Dshield%26measure%3Dstrno2) | ![decompiled functions](https://img.shields.io/endpoint?label=RNO2%20funcs&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Ffunctions%2F%3Fmode%3Dshield%26measure%3Dstrno2) | Death Wing's Lair
-| ST/RNO3/RNO3.BIN | ![code coverage RNO3.BIN](https://img.shields.io/endpoint?label=RNO3%20code&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Fcode%2F%3Fmode%3Dshield%26measure%3Dstrno3) | ![decompiled functions](https://img.shields.io/endpoint?label=RNO3%20funcs&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Ffunctions%2F%3Fmode%3Dshield%26measure%3Dstrno3) | Reverse Entrance
-| ST/RNO4/RNO4.BIN | ![code coverage RNO4.BIN](https://img.shields.io/endpoint?label=RNO4%20code&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Fcode%2F%3Fmode%3Dshield%26measure%3Dstrno4) | ![decompiled functions](https://img.shields.io/endpoint?label=RNO4%20funcs&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Ffunctions%2F%3Fmode%3Dshield%26measure%3Dstrno4) | Reverse Caverns
-| ST/RNZ0/RNZ0.BIN | ![code coverage RNZ0.BIN](https://img.shields.io/endpoint?label=RNZ0%20code&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Fcode%2F%3Fmode%3Dshield%26measure%3Dstrnz0) | ![decompiled functions](https://img.shields.io/endpoint?label=RNZ0%20funcs&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Ffunctions%2F%3Fmode%3Dshield%26measure%3Dstrnz0) | Necromancy Laboratory
-| ST/RNZ1/RNZ1.BIN | ![code coverage RNZ1.BIN](https://img.shields.io/endpoint?label=RNZ1%20code&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Fcode%2F%3Fmode%3Dshield%26measure%3Dstrnz1) | ![decompiled functions](https://img.shields.io/endpoint?label=RNZ1%20funcs&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Ffunctions%2F%3Fmode%3Dshield%26measure%3Dstrnz1) | Reverse Clock Tower
-| ST/RTOP/RTOP.BIN | ![code coverage RTOP.BIN](https://img.shields.io/endpoint?label=RTOP%20code&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Fcode%2F%3Fmode%3Dshield%26measure%3Dstrtop) | ![decompiled functions](https://img.shields.io/endpoint?label=RTOP%20funcs&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Ffunctions%2F%3Fmode%3Dshield%26measure%3Dstrtop) | Reverse Keep
-| ST/RWRP/RWRP.BIN | ![code coverage RWRP.BIN](https://img.shields.io/endpoint?label=RWRP%20code&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Fcode%2F%3Fmode%3Dshield%26measure%3Dstrwrp) | ![decompiled functions](https://img.shields.io/endpoint?label=RWRP%20funcs&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Ffunctions%2F%3Fmode%3Dshield%26measure%3Dstrwrp) | Warp Room (reverse)
-| ST/TE1/TE1.BIN | ![code coverage TE1.BIN](https://img.shields.io/endpoint?label=TE1%20code&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Fcode%2F%3Fmode%3Dshield%26measure%3Dstte1) | ![decompiled functions](https://img.shields.io/endpoint?label=TE1%20funcs&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Ffunctions%2F%3Fmode%3Dshield%26measure%3Dstte1) | Test Room 1
-| ST/TE2/TE2.BIN | ![code coverage TE2.BIN](https://img.shields.io/endpoint?label=TE2%20code&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Fcode%2F%3Fmode%3Dshield%26measure%3Dstte2) | ![decompiled functions](https://img.shields.io/endpoint?label=TE2%20funcs&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Ffunctions%2F%3Fmode%3Dshield%26measure%3Dstte2) | Test Room 2
-| ST/TE3/TE3.BIN | ![code coverage TE3.BIN](https://img.shields.io/endpoint?label=TE3%20code&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Fcode%2F%3Fmode%3Dshield%26measure%3Dstte3) | ![decompiled functions](https://img.shields.io/endpoint?label=TE3%20funcs&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Ffunctions%2F%3Fmode%3Dshield%26measure%3Dstte3) | Test Room 3
-| ST/TE4/TE4.BIN | ![code coverage TE4.BIN](https://img.shields.io/endpoint?label=TE4%20code&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Fcode%2F%3Fmode%3Dshield%26measure%3Dstte4) | ![decompiled functions](https://img.shields.io/endpoint?label=TE4%20funcs&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Ffunctions%2F%3Fmode%3Dshield%26measure%3Dstte4) | Test Room 4
-| ST/TE5/TE5.BIN | ![code coverage TE5.BIN](https://img.shields.io/endpoint?label=TE5%20code&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Fcode%2F%3Fmode%3Dshield%26measure%3Dstte5) | ![decompiled functions](https://img.shields.io/endpoint?label=TE5%20funcs&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Ffunctions%2F%3Fmode%3Dshield%26measure%3Dstte5) | Test Room 5
-| BOSS/MAR/MAR.BIN | ![code coverage MAR.BIN](https://img.shields.io/endpoint?label=MAR%20code&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Fcode%2F%3Fmode%3Dshield%26measure%3Dbomar) | ![decompiled functions](https://img.shields.io/endpoint?label=MAR%20funcs&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Ffunctions%2F%3Fmode%3Dshield%26measure%3Dbomar) | Maria cutscene
-| BOSS/BO0/BO0.BIN | ![code coverage BO0.BIN](https://img.shields.io/endpoint?label=BO0%20code&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Fcode%2F%3Fmode%3Dshield%26measure%3Dbobo0) | ![decompiled functions](https://img.shields.io/endpoint?label=BO0%20funcs&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Ffunctions%2F%3Fmode%3Dshield%26measure%3Dbobo0) | Olrox
-| BOSS/BO1/BO1.BIN | ![code coverage BO1.BIN](https://img.shields.io/endpoint?label=BO1%20code&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Fcode%2F%3Fmode%3Dshield%26measure%3Dbobo1) | ![decompiled functions](https://img.shields.io/endpoint?label=BO1%20funcs&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Ffunctions%2F%3Fmode%3Dshield%26measure%3Dbobo1) | Granfaloon
-| BOSS/BO2/BO2.BIN | ![code coverage BO2.BIN](https://img.shields.io/endpoint?label=BO2%20code&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Fcode%2F%3Fmode%3Dshield%26measure%3Dbobo2) | ![decompiled functions](https://img.shields.io/endpoint?label=BO2%20funcs&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Ffunctions%2F%3Fmode%3Dshield%26measure%3Dbobo2) | Minotaur & Werewolf
-| BOSS/BO3/BO3.BIN | ![code coverage BO3.BIN](https://img.shields.io/endpoint?label=BO3%20code&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Fcode%2F%3Fmode%3Dshield%26measure%3Dbobo3) | ![decompiled functions](https://img.shields.io/endpoint?label=BO3%20funcs&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Ffunctions%2F%3Fmode%3Dshield%26measure%3Dbobo3) | Scylla
-| BOSS/BO4/BO4.BIN | ![code coverage BO4.BIN](https://img.shields.io/endpoint?label=BO4%20code&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Fcode%2F%3Fmode%3Dshield%26measure%3Dbobo4) | ![decompiled functions](https://img.shields.io/endpoint?label=BO4%20funcs&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Ffunctions%2F%3Fmode%3Dshield%26measure%3Dbobo4) | Doppleganger 10
-| BOSS/BO5/BO5.BIN | ![code coverage BO5.BIN](https://img.shields.io/endpoint?label=BO5%20code&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Fcode%2F%3Fmode%3Dshield%26measure%3Dbobo5) | ![decompiled functions](https://img.shields.io/endpoint?label=BO5%20funcs&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Ffunctions%2F%3Fmode%3Dshield%26measure%3Dbobo5) | Hippogryph
-| BOSS/BO6/BO6.BIN | ![code coverage BO6.BIN](https://img.shields.io/endpoint?label=BO6%20code&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Fcode%2F%3Fmode%3Dshield%26measure%3Dbobo6) | ![decompiled functions](https://img.shields.io/endpoint?label=BO6%20funcs&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Ffunctions%2F%3Fmode%3Dshield%26measure%3Dbobo6) | Richter
-| BOSS/BO7/BO7.BIN | ![code coverage BO7.BIN](https://img.shields.io/endpoint?label=BO7%20code&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Fcode%2F%3Fmode%3Dshield%26measure%3Dbobo7) | ![decompiled functions](https://img.shields.io/endpoint?label=BO7%20funcs&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Ffunctions%2F%3Fmode%3Dshield%26measure%3Dbobo7) | Cerberus
-| BOSS/RBO0/RBO0.BIN | ![code coverage RBO0.BIN](https://img.shields.io/endpoint?label=RBO0%20code&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Fcode%2F%3Fmode%3Dshield%26measure%3Dborbo0) | ![decompiled functions](https://img.shields.io/endpoint?label=RBO0%20funcs&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Ffunctions%2F%3Fmode%3Dshield%26measure%3Dborbo0) | Ralph, Grant, & Sypha
-| BOSS/RBO1/RBO1.BIN | ![code coverage RBO1.BIN](https://img.shields.io/endpoint?label=RBO1%20code&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Fcode%2F%3Fmode%3Dshield%26measure%3Dborbo1) | ![decompiled functions](https://img.shields.io/endpoint?label=RBO1%20funcs&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Ffunctions%2F%3Fmode%3Dshield%26measure%3Dborbo1) | Beelzebub
-| BOSS/RBO2/RBO2.BIN | ![code coverage RBO2.BIN](https://img.shields.io/endpoint?label=RBO2%20code&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Fcode%2F%3Fmode%3Dshield%26measure%3Dborbo2) | ![decompiled functions](https://img.shields.io/endpoint?label=RBO2%20funcs&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Ffunctions%2F%3Fmode%3Dshield%26measure%3Dborbo2) | Death
-| BOSS/RBO3/RBO3.BIN | ![code coverage RBO3.BIN](https://img.shields.io/endpoint?label=RBO3%20code&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Fcode%2F%3Fmode%3Dshield%26measure%3Dborbo3) | ![decompiled functions](https://img.shields.io/endpoint?label=RBO3%20funcs&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Ffunctions%2F%3Fmode%3Dshield%26measure%3Dborbo3) | Medusa boss
-| BOSS/RBO4/RBO4.BIN | ![code coverage RBO4.BIN](https://img.shields.io/endpoint?label=RBO4%20code&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Fcode%2F%3Fmode%3Dshield%26measure%3Dborbo4) | ![decompiled functions](https://img.shields.io/endpoint?label=RBO4%20funcs&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Ffunctions%2F%3Fmode%3Dshield%26measure%3Dborbo4) | The Creature
-| BOSS/RBO5/RBO5.BIN | ![code coverage RBO5.BIN](https://img.shields.io/endpoint?label=RBO5%20code&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Fcode%2F%3Fmode%3Dshield%26measure%3Dborbo5) | ![decompiled functions](https://img.shields.io/endpoint?label=RBO5%20funcs&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Ffunctions%2F%3Fmode%3Dshield%26measure%3Dborbo5) | Doppleganger 40
-| BOSS/RBO6/RBO6.BIN | ![code coverage RBO6.BIN](https://img.shields.io/endpoint?label=RBO6%20code&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Fcode%2F%3Fmode%3Dshield%26measure%3Dborbo6) | ![decompiled functions](https://img.shields.io/endpoint?label=RBO6%20funcs&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Ffunctions%2F%3Fmode%3Dshield%26measure%3Dborbo6) | Dracula
-| BOSS/RBO7/RBO7.BIN | ![code coverage RBO7.BIN](https://img.shields.io/endpoint?label=RBO7%20code&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Fcode%2F%3Fmode%3Dshield%26measure%3Dborbo7) | ![decompiled functions](https://img.shields.io/endpoint?label=RBO7%20funcs&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Ffunctions%2F%3Fmode%3Dshield%26measure%3Dborbo7) | Akmodan II
-| BOSS/RBO8/RBO8.BIN | ![code coverage RBO8.BIN](https://img.shields.io/endpoint?label=RBO8%20code&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Fcode%2F%3Fmode%3Dshield%26measure%3Dborbo8) | ![decompiled functions](https://img.shields.io/endpoint?label=RBO8%20funcs&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Ffunctions%2F%3Fmode%3Dshield%26measure%3Dborbo8) | Galamoth
-| SERVANT/TT_000.BIN | ![code coverage TT_000.BIN](https://img.shields.io/endpoint?label=TT_000%20code&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Fcode%2F%3Fmode%3Dshield%26measure%3Dtt_000) | ![decompiled functions](https://img.shields.io/endpoint?label=TT_000%20funcs&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Ffunctions%2F%3Fmode%3Dshield%26measure%3Dtt_000) | Bat Familiar
-| SERVANT/TT_001.BIN | ![code coverage TT_001.BIN](https://img.shields.io/endpoint?label=TT_001%20code&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Fcode%2F%3Fmode%3Dshield%26measure%3Dtt_001) | ![decompiled functions](https://img.shields.io/endpoint?label=TT_001%20funcs&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Ffunctions%2F%3Fmode%3Dshield%26measure%3Dtt_001) | Ghost Familiar
-| SERVANT/TT_002.BIN | ![code coverage TT_002.BIN](https://img.shields.io/endpoint?label=TT_002%20code&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Fcode%2F%3Fmode%3Dshield%26measure%3Dtt_002) | ![decompiled functions](https://img.shields.io/endpoint?label=TT_002%20funcs&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Ffunctions%2F%3Fmode%3Dshield%26measure%3Dtt_002) | Faerie Familiar
-| SERVANT/TT_003.BIN | ![code coverage TT_003.BIN](https://img.shields.io/endpoint?label=TT_003%20code&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Fcode%2F%3Fmode%3Dshield%26measure%3Dtt_003) | ![decompiled functions](https://img.shields.io/endpoint?label=TT_003%20funcs&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Ffunctions%2F%3Fmode%3Dshield%26measure%3Dtt_003) | Demon Familiar
-| SERVANT/TT_004.BIN | ![code coverage TT_004.BIN](https://img.shields.io/endpoint?label=TT_004%20code&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Fcode%2F%3Fmode%3Dshield%26measure%3Dtt_004) | ![decompiled functions](https://img.shields.io/endpoint?label=TT_004%20funcs&url=https%3A%2F%2Fprogress.deco.mp%2Fdata%2Fsotn%2Fus%2Ffunctions%2F%3Fmode%3Dshield%26measure%3Dtt_004) | Sword Familiar
+**This fork is independent.** It is not a staging area for pull requests
+upstream and nothing here is shaped to suit upstream's preferences. Upstream is
+occasionally harvested for progress we would otherwise redo, and that is the
+whole of the relationship. See [Relationship to upstream](#relationship-to-upstream).
 
-Code coverage means how many bytes of code have been successfully converted from assembly into C code, while decomp
-function is how many functions have been successfully decompiled.
+**On the decompilation itself:** the credit belongs to upstream and to the
+decomp community's tooling. This fork's contribution is the automation around
+it, not insight into the game.
 
-Overlays listed as *invalid* have not yet been started.
+### Versions in the tree
 
-## Useful links
+The decompilation recreates the source from the shipped binaries; the code
+compiles byte-for-byte back to them.
+
+* `us` — the reference build, `SLUS-00067`. **This is what the harness targets.**
+* `hd` — an unreleased PS1 Japanese build found in the Dracula X Chronicles data
+* `pspeu` — the European Dracula X Chronicles build
+* `saturn` — the Sega Saturn port, by an external team
+
+`hd`, `pspeu` and `saturn` are present and build, but the queue, the oracle and
+every measurement in this README are `us`.
+
+**No assets or assembly are committed here.** `asm/` and the extracted data are
+gitignored and generated by `make extract` from your own copy of the game. You
+need one.
+
+---
+
+## Where it stands
+
+Measured 2026-08-09 against the live queue and the build oracle.
+
+| | |
+|---|---|
+| Build oracle | **81 / 81** overlay SHA-1s in `config/check.us.sha` |
+| Queue | 470 records: **198 matched**, 184 todo, 50 escalated, 31 deferred, 7 near |
+| `INCLUDE_ASM` stubs left in `src/` | 775 (376 `st`, 211 `boss`, 3 `servant`, 2 `main`) |
+| Automation | 51 Python modules, 17 test suites, 70 connector tools |
+
+The tree is byte-identical to the retail binaries at every commit. That is not
+a goal, it is the gate: `verify_build` refuses to record a match without it,
+and `scheduler.py` refuses the `matched` status without `--proof`.
+
+### How those 198 were actually solved
+
+From `automation/match_provenance.py`, which reads the queue and the git
+history rather than anyone's recollection:
+
+| source | count | share | what it means |
+|---|---|---|---|
+| shim-header | 55 | 28% | body copied from a shared header |
+| shim-segment | 38 | 19% | shared header plus splat segment work |
+| model-fleet | 34 | 17% | an OpenCode or llama worker wrote it |
+| twin-port | 14 | 7% | ported from a sibling overlay or from RIC |
+| permuter | 11 | 6% | decomp-permuter search reached 0 |
+| claude-manual | 4 | 2% | written or repaired by hand |
+| unknown | 42 | 21% | evidence insufficient; **not** a guess |
+
+Two things this table is honest about, because a progress number that flatters
+itself is useless for deciding what to build next:
+
+- **21% is unattributed.** 36 of those had their method note overwritten by a
+  build receipt (`scheduler.py report` replaces `notes` wholesale) and 51 never
+  carried a note at all. Recoverable going forward, not recoverable for those
+  records.
+- **The categories overlap.** Counted as contributors rather than primary
+  source, the model fleet touched 91 of 198. "17%" is its share of sole
+  authorship, not of involvement.
+
+---
+
+## The harness
+
+Five mechanisms, in rough order of how many functions each has landed. They are
+independent: any one can be run alone, and a function that resists one is
+routed to the next.
+
+**1. Shims.** Many overlays are near-copies. If a function already exists in a
+shared header, the work is segment surgery in splat config, not decompilation.
+This is the largest single source and needs no model at all.
+`automation/shim_sweep.py`, `automation/overlay_size_check.py`.
+
+**2. The model fleet.** N detached workers claim queue records, build a prompt
+from the assembly plus harvested declarations plus an Entity layout table,
+generate C, and put it through a quality gate before it is ever compiled. The
+gate rejects invented symbols, `ext.ILLEGAL`, fabricated struct members and
+degenerate output. Backend is `zen` (the OpenCode Zen HTTP API) on
+`mimo-v2.5-free`. `automation/win/worker_direct.py`.
+
+**3. Transplants.** Model-free. When a twin of the target exists in another
+overlay, `automation/asm_delta.py` derives every substitution from the two `.s`
+listings, and `automation/transplant.py` applies them simultaneously and builds.
+Runs unsupervised; one 15-minute batch produced 5 matches with zero model calls.
+
+**4. The permuter.** `automation/permuter_supervisor.py` wraps decomp-permuter
+with auto-queueing, seed promotion and self-termination. A permuter zero is
+necessary but not sufficient: it compiles in isolation, so the tree must still
+build.
+
+**5. Hand work.** Rare, and tracked separately so it never inflates the
+automated numbers.
+
+### Measurement
+
+The harness measures itself, and several of these exist because a number we
+were quoting turned out to be an artefact:
+
+- `empty_response_audit.py` — dead-call rate per model, timing, prompt-size
+  correlation. Archived runs are opt-in (`--archived`); pooling all history
+  buries any recent change.
+- `decomp_fidelity.py` — the first *positive* metric: callee recall and
+  precision, constant coverage, control-flow ratio, scored against what the
+  assembly demands rather than counting defects.
+- `member_types.py` — type-aware struct member validation over 54 structs
+  measured at zero false positives across 2,006 known-good files.
+- `degeneracy.py` — shared runaway detectors, deliberately in one module so the
+  worker and the A/B harness cannot drift apart.
+- `match_provenance.py` — the table above.
+- `quality_audit.py`, `review_checks.py`, `relocation_check.py`,
+  `provenance_check.py`.
+
+### Control
+
+- **Dashboard** — `automation/dashboard.py`, a local web UI: live queue
+  counters, worker logs, 37 read-only diagnostics, build actions, permuter
+  control. Token-gated, regenerated per restart.
+- **MCP connector** — `automation/mcp/`, 70 allowlisted tools. Every git
+  operation on this repo goes through it; running git from a sandbox is
+  forbidden after a 45-second cap killed a rebase mid-flight and corrupted the
+  tree.
+- **Crash safety** — a `BuildLock` serialises apply/build/verify, and a
+  journal in `automation/logs/pending/` survives SIGKILL. `fleet_stop` replays
+  it after reaping, because a handler inside a dying worker can lose the race
+  for the lock it needs.
+
+---
+
+## Running it
+
+Requires WSL2 or Linux, a copy of the game to extract from, and Python 3.10+.
+
+```bash
+make extract                      # assets and asm from your own disc image
+make -j$(nproc)                   # build; must reproduce 81/81 SHA-1s
+python3 automation/dashboard.py   # then open the URL it prints
+```
+
+Fleet, permuter and diagnostics are all driven from the dashboard or the
+connector. `automation/README.md` has the operational detail; `docs/` has the
+design notes.
+
+Every test suite is standalone and prints its own reasoning:
+
+```bash
+for t in automation/test_*.py; do python3 "$t"; done
+python3 automation/dashboard.py --self-test
+```
+
+---
+
+## Overlay reference
+
+Kept from upstream's README because the mapping is knowledge about the game,
+not about their tree. The progress badges are not kept: they render upstream's
+numbers, and showing someone else's progress as ours would be a lie in the
+first screenful. Ours are measured above.
+
+<details>
+<summary>Binary to area, all 70 overlays</summary>
+
+| binary | what it is | | binary | what it is |
+|---|---|---|---|---|
+| `SLUS_000.67` | shared libraries | | `ST/RARE` | Reverse Colosseum |
+| `DRA.BIN` | game engine | | `ST/RCAT` | Floating Catacombs |
+| `BIN/RIC` | playable Richter | | `ST/RCEN` | Reverse Center |
+| `BIN/WEAPON0` | equippables | | `ST/RCHI` | Cave |
+| `BIN/WEAPON1` | equippables 1 | | `ST/RDAI` | Anti-Chapel |
+| `ST/ARE` | Colosseum | | `ST/RLIB` | Forbidden Library |
+| `ST/CAT` | Catacombs | | `ST/RNO0` | Black Marble Gallery |
+| `ST/CEN` | Center | | `ST/RNO1` | Reverse Outer Wall |
+| `ST/CHI` | Abandoned Mine | | `ST/RNO2` | Death Wing's Lair |
+| `ST/DAI` | Royal Chapel | | `ST/RNO3` | Reverse Entrance |
+| `ST/DRE` | Nightmare | | `ST/RNO4` | Reverse Caverns |
+| `ST/LIB` | Long Library | | `ST/RNZ0` | Necromancy Laboratory |
+| `ST/MAD` | Debug Room | | `ST/RNZ1` | Reverse Clock Tower |
+| `ST/NO0` | Marble Gallery | | `ST/RTOP` | Reverse Keep |
+| `ST/NO1` | Outer Wall | | `ST/RWRP` | Warp Room (reverse) |
+| `ST/NO2` | Olrox's Quarters | | `ST/TE1`..`TE5` | Test Rooms 1-5 |
+| `ST/NO3` | Entrance (first visit) | | `BOSS/MAR` | Maria cutscene |
+| `ST/NO4` | Underground Caverns | | `BOSS/BO0` | Olrox |
+| `ST/NP3` | Entrance | | `BOSS/BO1` | Granfaloon |
+| `ST/NZ0` | Alchemy Laboratory | | `BOSS/BO2` | Minotaur & Werewolf |
+| `ST/NZ1` | Clock Tower | | `BOSS/BO3` | Scylla |
+| `ST/SEL` | title screen | | `BOSS/BO4` | Doppleganger 10 |
+| `ST/ST0` | Final Stage: Bloodlines | | `BOSS/BO5` | Hippogryph |
+| `ST/TOP` | Castle Keep | | `BOSS/BO6` | Richter |
+| `ST/WRP` | Warp Room | | `BOSS/BO7` | Cerberus |
+| `SERVANT/TT_000` | Bat familiar | | `BOSS/RBO0` | Ralph, Grant & Sypha |
+| `SERVANT/TT_001` | Ghost familiar | | `BOSS/RBO1` | Beelzebub |
+| `SERVANT/TT_002` | Faerie familiar | | `BOSS/RBO2` | Death |
+| `SERVANT/TT_003` | Demon familiar | | `BOSS/RBO3` | Medusa |
+| `SERVANT/TT_004` | Sword familiar | | `BOSS/RBO4` | The Creature |
+| | | | `BOSS/RBO5` | Doppleganger 40 |
+| | | | `BOSS/RBO6` | Dracula |
+| | | | `BOSS/RBO7` | Akmodan II |
+| | | | `BOSS/RBO8` | Galamoth |
+
+</details>
+
+The harness currently works `ST/RNO0`, `BOSS/BO6`, `BOSS/BO0`, `ST/RCEN` and
+`ST/RCHI`; those are the overlays the provenance table above breaks down.
+
+---
+
+## Documentation
+
+| file | what it is for |
+|---|---|
+| `automation/README.md` | operating the harness day to day |
+| `docs/HARNESS-ARCHITECTURE.md` | how the pieces fit and why |
+| `docs/harness-control.md` | supervisor, connector, dashboard |
+| `docs/fleet-dead-time.md` | where fleet time actually goes |
+| `MATCHING-LESSONS.md` | evidence-backed matching notes, with retractions |
+| `docs/NAMING.md`, `docs/STYLE.md` | conventions |
+| `ROADMAP.md` | what is next and what was abandoned |
+
+A standing rule across all of them: **when a claim turns out to be wrong it is
+retracted in place, with the measurement that disproved it.** Several documents
+carry corrections to their own earlier numbers. That is deliberate. A doc that
+only records successes cannot be trusted about the failures.
+
+---
+
+## Relationship to upstream
+
+Derived from [Xeeynamo/sotn-decomp](https://github.com/Xeeynamo/sotn-decomp),
+which remains the reference for the game itself and deserves the credit for the
+decompilation this builds on.
+
+The two projects are not doing the same thing. Upstream is decompiling a game.
+This fork is testing how far AI automation can go, and is using their
+decompilation as the problem to solve because it comes with an oracle that
+cannot be fooled. That difference is why the divergences below are not
+criticisms of upstream: a project built for human contributors should not be
+shaped around an unattended fleet, and vice versa.
+
+Divergences, all intentional:
+
+- **No pull requests.** Nothing here is shaped for upstream review.
+- **Progress numbers are ours**, measured locally against
+  `config/check.us.sha` and the queue. Upstream's badges track upstream's tree
+  and were removed rather than left to report someone else's work as ours.
+- **Harvesting is occasional and one-way.** `automation/upstream_harvest.py`
+  compares overlays and reports what upstream has decompiled that we have not.
+  It reads through the scheduler and is never a build or test dependency. The
+  fork must stand alone.
+- **`us` only, for now.** `hd`, `pspeu` and `saturn` remain in the tree and
+  build, but the harness, the queue and the oracle are all `us`.
+
+Upstream's build and decompilation guides still apply to this tree, since the
+build system is theirs:
 
 * [Build guide](https://github.com/Xeeynamo/sotn-decomp/wiki/Build)
 * [Decompilation guide](https://github.com/Xeeynamo/sotn-decomp/wiki/Decompilation)
-* [Progress report](https://sotn.xee.dev/)
+* [Upstream progress report](https://sotn.xee.dev/) — theirs, not ours
 
-Decompiling a game is a mastodontic task. If you have some basic programming skills, please join us in this journey. Any contribution will be very appreciated!
+### Credit where it is due
 
-[![Join to our Discord server](https://discord.com/api/guilds/1079389589950705684/widget.png?style=banner2)](https://sotn-discord.xee.dev/)
+This project rests on the decompilation community's tools, and the harness is
+a layer on top of them rather than a replacement for any of them:
 
-## Special thanks
+* [m2c](https://github.com/matt-kempster/m2c) by @matt-kempster — MIPS to C.
+  Every prompt in the fleet starts from an m2c draft.
+* [splat](https://github.com/ethteck/splat) by @ethteck — disassembly and data
+  extraction with a symbol map. The shim mechanism is entirely splat segment
+  work.
+* [asm-differ](https://github.com/simonlindholm/asm-differ) by @simonlindholm —
+  how close the candidate is.
+* [decomp-permuter](https://github.com/simonlindholm/decomp-permuter) by
+  @simonlindholm — mechanism 4 is a supervisor around it.
+* [maspsx](https://github.com/mkst/maspsx) by @mkst — replicates the PSX SDK
+  assembler.
+* [decomp.me](https://github.com/decompme/decomp.me/) by @ethteck, @nanaian and
+  @mkst.
+* [frogress](https://github.com/decompals/frogress) by @ethteck.
+* [esa-new](https://github.com/mkst/esa-new) by @mkst, and
+  [oot](https://github.com/zeldaret/oot), as demonstrations of what a complete
+  decompilation looks like.
 
-This project is possible thanks to the hard work of tools provided by the Decompilation community:
-
-* [mips2c](https://github.com/matt-kempster/m2c) from @matt-kempster to decompile MIPS assembly into C. This has proven to be more accurate than Hexrays IDA and Ghidra.
-* [splat](https://github.com/ethteck/splat) from @ethteck to disassemble code and extract data with a symbol map. This tool provides the fundamentals of the SOTN decomp.
-* [asm-differ](https://github.com/simonlindholm/asm-differ) from @simonlindholm to know how the decompiled code compares to the original binary.
-* [decomp-permuter](https://github.com/simonlindholm/decomp-permuter) from @simonlindholm to pick different versions of the same code that better matches the original binary.
-* [maspsx](https://github.com/mkst/maspsx) by @mkst to replicate the customized assembler used in the official PSX SDK.
-* [decomp.me](https://github.com/decompme/decomp.me/) by @ethteck, @nanaian and @mkst to provide a collaborative decompilation site to share and contribute to work-in-progress decompiled functions.
-* [frogress](https://github.com/decompals/frogress) by @ethteck to store and retrieve progression data.
-* [esa-new](https://github.com/mkst/esa-new) by @mkst as an inspiration on how to set-up a PS1 decompilation project.
-* [oot](https://github.com/zeldaret/oot) as an inspiration of what it is possible to achieve with a complete decompiled video game.
+Above all, [Xeeynamo/sotn-decomp](https://github.com/Xeeynamo/sotn-decomp) and
+its contributors: the build system, the splat configuration, the symbol maps
+and the great majority of the decompiled game are theirs.

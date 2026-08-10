@@ -1,9 +1,79 @@
 # SOTN Decomp Automation
 
 The orchestration stack from `SOTN-Orchestration-Stack.md`, built and tested.
-Coordination is files and git only, no app puppeting. Two engines share one
-queue: the OpenCode fleet grinds volume on local Qwen and a cheap cloud model,
-and the Claude harness handles escalation, match closing, and merge review.
+Coordination is files and git only, no app puppeting.
+
+> **Start here, updated 2026-08-09.** The sections below were written as the
+> stack was built and describe it in build order. For what to actually run
+> today, read *Operating it now* immediately below; where the two disagree,
+> this section wins and the older one is history.
+
+## Operating it now
+
+```
+fleet_start(workers=3)          # backend defaults to zen. force=True after a
+                                # deliberate stop (a FLEET_HOLD file is set)
+fleet_status(tail=4)            # read the LOG TAILS; a stuck worker looks alive
+fleet_stop()                    # ALWAYS. Releases claims, clears the lock, and
+                                # replays crash journals (reports restored_files)
+```
+
+* **Backend is `zen`**, the Zen HTTP API, on `opencode/mimo-v2.5-free`. Not
+  `cli`: the OpenCode CLI relays only `content`, and the models worth running
+  fill `reasoning_content` first, so through the CLI they return empty. The
+  local llama backend is now called `llama`; it used to be called `http`,
+  which named the wrong backend entirely. `http` still works and resolves to
+  `zen`.
+* **The dashboard is the front end.** `python3 automation/dashboard.py`, then
+  open the URL it prints. Live queue counters, worker logs, 37 read-only
+  diagnostics, build actions, permuter control. The token is regenerated on
+  every restart and embedded in the page, so **a tab left open across a
+  restart will be rejected**; reload it. (Until 2026-08-09 that rejection
+  rendered as a blank panel, which is not a helpful way to learn this.)
+* **Log windows matter.** `empty_response_audit.py` reads only current logs by
+  default; pass `--archived` for the full history. Every run prints its window
+  as the first line. Pooling all history buries any change made today, which
+  is exactly what it did before the default was inverted. The pre-zen baseline
+  is preserved under `logs/archive/20260809-pre-zen-baseline/`.
+
+### The mechanisms, by how many functions each has landed
+
+| # | mechanism | entry point | model calls |
+|---|---|---|---|
+| 1 | shims (shared header + splat segments) | `shim_sweep.py`, `overlay_size_check.py` | none |
+| 2 | the model fleet | `win/worker_direct.py` | many |
+| 3 | transplants from a sibling overlay | `transplant.py`, `asm_delta.py` | **none** |
+| 4 | decomp-permuter search | `permuter_supervisor.py` | none |
+| 5 | hand work | tracked separately, never folded into the automated count |
+
+### Measurement and audit
+
+| script | answers |
+|---|---|
+| `match_provenance.py` | which mechanism produced each match, and what is unattributed |
+| `empty_response_audit.py` | dead-call rate per model, timing, prompt-size correlation |
+| `decomp_fidelity.py` | callee recall/precision and constant coverage against the asm |
+| `member_types.py` | is this struct member real, on THIS struct |
+| `degeneracy.py` | shared runaway detectors (one module so callers cannot drift) |
+| `deferred_triage.py` | why each deferred record was deferred, and whether it still holds |
+| `upstream_harvest.py` | what upstream has that we do not. Occasional, never a dependency |
+| `quality_audit.py`, `review_checks.py`, `relocation_check.py`, `provenance_check.py` | review gates |
+
+`match_provenance.py` runs its git pickaxes concurrently and caches by HEAD:
+420s sequential, 73s cold, 8s warm, measured on the live 198-record queue.
+Pass `--no-git` to skip the git layer entirely.
+
+### Tests
+
+Every suite is standalone, prints its reasoning, and explains why it exists:
+
+```
+for t in automation/test_*.py; do python3 "$t"; done
+python3 automation/dashboard.py --self-test
+python3 automation/empty_response_audit.py --self-test
+```
+
+---
 
 ## Layout
 

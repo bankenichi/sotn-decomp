@@ -1,16 +1,35 @@
 # Roadmap
 
-State as of 2026-08-02. Companion to `ORCHESTRATOR.md` (how to dispatch) and
-`MATCHING-LESSONS.md` (what has already gone wrong and why).
+Companion to `ORCHESTRATOR.md` (how to dispatch) and `MATCHING-LESSONS.md`
+(what has already gone wrong and why).
 
-This fork is not preparing a pull request. Upstream has been offered the fork to
-take what it wants. Success here means the harness produces work that is correct
-and structurally idiomatic, and that the database makes the same mistake
-impossible twice.
+This fork is not preparing a pull request, ever. It is an AI proof of concept
+that uses a matching decompilation as its problem, because the oracle is binary
+and cannot be argued with. Success means the harness produces work that is
+correct and structurally idiomatic, and that the database makes the same
+mistake impossible twice.
 
 ---
 
-## Where things actually stand
+## Where things actually stand (2026-08-09)
+
+| | |
+|---|---|
+| Oracle | **81/81** |
+| Queue | **198 matched**, 184 todo, 50 escalated, 31 deferred, 7 near (470 total) |
+| `INCLUDE_ASM` stubs in `src/` | 775 (376 `st`, 211 `boss`, 3 `servant`, 2 `main`) |
+| Automation | 51 modules, 17 test suites, 70 connector tools, 37 dashboard diagnostics |
+| Provenance | shim-header 55, shim-segment 38, model-fleet 34, twin-port 14, permuter 11, hand 4, **unknown 42 (21%)** |
+| Fleet backend | `zen` on `mimo-v2.5-free`; `cli` returns empty for reasoning models |
+
+The 21% unattributed is not a rounding error and is worth reading as a finding:
+36 of those records had their method note overwritten by a build receipt
+(`scheduler.py report` replaces `notes` wholesale) and 51 never carried one.
+Fixable going forward by appending rather than replacing; not recoverable for
+those records. Counted as *contributors* rather than sole author, the model
+fleet touched 91 of 198.
+
+### Snapshot as of 2026-08-02 (superseded, kept for the trend)
 
 | | |
 |---|---|

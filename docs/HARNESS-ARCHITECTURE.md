@@ -95,10 +95,86 @@ reproduces the whole thing on demand.
 ### Model choice is not cosmetic
 
 Free Zen models split cleanly into ones that answer and ones that return an
-empty body. Use `deepseek-v4-flash-free`, `nemotron-3-ultra-free`,
-`mimo-v2.5-free`. Do not use `big-pickle`, `north-mini-code-free`,
-`ling-3.0-flash-free`, `laguna-s-2.1-free`. Evidence and the measurement method
-are in `automation/opencode/ZEN-FREE-MODELS.md`.
+empty body. Use `mimo-v2.5-free` (the current default),
+`deepseek-v4-flash-free` or `nemotron-3-ultra-free`. Do not use `big-pickle`,
+`north-mini-code-free`, `ling-3.0-flash-free`, `laguna-s-2.1-free`. Evidence
+and the measurement method are in `automation/opencode/ZEN-FREE-MODELS.md`.
+
+### Backend choice is not cosmetic either (updated 2026-08-09)
+
+`backend="zen"` is the configuration to use. It posts to the Zen HTTP API
+directly. `backend="cli"` reaches the same models through `opencode run`,
+which relays only `content` -- and the models worth running fill
+`reasoning_content` first, so through the CLI they come back empty.
+
+**The names were renamed on 2026-08-09 because they described the wrong
+things.** `http` used to mean the LOCAL LLAMA backend, while `zen` was the one
+actually speaking HTTP, and `fleet_start`'s help listed `http/cli/mixed` and
+never mentioned `zen` at all. An agent read that help, saw no zen, and started
+a cli fleet when zen was the agreed configuration. Now:
+
+| name | what it is |
+|---|---|
+| `zen` | Zen HTTP API. **The default.** |
+| `llama` | local llama-server. Was called `http`. |
+| `cli` | `opencode run`. Only for testing the CLI path. |
+| `mixed` | llama workers plus `cli_workers` CLI workers |
+
+`http` is still accepted and resolves to `zen`, since that is what the word
+describes. `test_connector_surfaces.py` asserts which worker type each name
+actually launches, in DRYRUN, rather than grepping the help text.
+
+---
+
+### The prompt must not offer what the gate rejects (2026-08-09)
+
+Three places in `worker_direct.py` taught the model `ext.ILLEGAL` while
+`quality_gate` rejected it unconditionally. Worker logs showed one degenerating
+in a loop emitting the exact template the prompt had supplied. Closing the
+offer was not enough, because it arrived by **three** routes:
+
+1. the SYSTEM rule, `ENTITY_LAYOUT` and the per-offset hint all offered it;
+2. the m2c draft legitimately contains `ext.ILLEGAL.u8[0x2E]`, because
+   `ILLEGAL` is a real member of the ext union in `entity.h`;
+3. which put "illegal" in the name-affinity haystack, so `ext_variants_for`
+   selected it and printed **`ext.ILLEGAL (ET_Placeholder)`** as an available
+   variant, in the same prompt that forbids it.
+
+Live logs carried 203, 343 and 36 mentions per worker of the model arguing with
+itself about that contradiction. Offering and forbidding the same thing is
+worse than either alone. Now: the placeholder is never listed as a variant, the
+draft's `ext.ILLEGAL.u8[0x2E]` is rewritten to `self->unkAA` (0x7C + 0x2E) so
+there is one unresolved-offset mechanism instead of two, `EXT VARIANTS` prints
+each field **with its entity offset** so "the field at 0xC" is a lookup rather
+than a puzzle, and when no variant list exists the prompt says so and tells the
+model to stop rather than pointing at a section that is not there.
+
+### The offset table was type-blind
+
+`resolve_unk_offsets` applied the Entity layout to every `->unkNN` in the
+draft regardless of what the pointer actually was, so it would answer
+`unk24 -> zPriority` for a `Primitive *`. That is the harness manufacturing the
+exact defect `member_types.py` exists to catch.
+
+Measured over 45 real m2c drafts, 554 accesses: `Entity *` 3.6%, another named
+type 85.4% (`void*` 422, `SeqStruct` 26, `Primitive` 20), undeclared 11.0%.
+
+**Do not quote 85% as the defect rate.** That is per access; the table is per
+offset, and `void *` is m2c's "could not type it", which for an entity function
+usually IS the entity. Per table line over the same drafts, 262 lines: 15 (6%)
+were provably wrong, 4 more were reached through a mix. The split is now
+three-way -- translate for `Entity *`, refuse and name the real type for a
+known other struct, translate with the uncertainty stated for `void *`.
+
+### Every stream needs a degeneration check, not just the ones we remembered
+
+`_force_code` (the salvage pass) checked the `reasoning` channel and left
+`content` completely unwatched. A forced pass emitted `s32 temp2;` through
+`s32 temp5008;` for 84KB until the function budget cut it off. The detector was
+never the problem: replayed against that captured log it fires at 30 lines /
+506 characters. It was pure wiring. Both streaming paths now call one
+`_content_degen_reason`, and a degenerate salvage returns nothing rather than
+handing a 5000-line declaration list to the gate as a candidate.
 
 ---
 
@@ -335,10 +411,11 @@ is hard-coded and upstream's push URL is separately disabled.
 queue_stats()                      # todo / near / matched / escalated
 fleet_status(tail=4)               # check the log tails, not just the count
 
-# run the fleet (cli backend, known-good models only)
-fleet_start(workers=4, backend="cli",
-            opencode_model="opencode/deepseek-v4-flash-free,opencode/nemotron-3-ultra-free")
+# run the fleet. zen is the default; workers>~4 mostly queue on the build lock
+fleet_start(workers=3)
+fleet_start(workers=3, backend="zen", force=True)   # after a deliberate stop
 fleet_stop()                       # ALWAYS; a killed worker strands its claim
+                                   # (also replays journals; see below)
 
 # analysis (read-only, safe while the fleet runs)
 run_analysis(script="asm_twin_finder.py", args="--audit-matched")
@@ -357,6 +434,16 @@ verify_build(version="us")         # THE ORACLE
 `fleet_stop(hold=True)` marks the stop as deliberate and makes `fleet_start`
 refuse without `force=True`. Use it whenever a human asked for the stop; a
 human may have stopped the fleet to reconfigure something.
+
+`fleet_stop` also **replays the crash journals itself**, after reaping and
+after clearing the stale lock, and reports `restored_files`. It did not always:
+each worker's SIGTERM handler calls `replay_pending_journals`, but that runs
+inside the process being killed and takes `BuildLock` first, so during a stop
+it can block on a lock whose owner is also dying and the `kill -9` lands first.
+On 2026-08-09 that left `src/st/rchi/e_gaibon.c` holding a candidate, journal
+still on disk, after a stop that reported success. Recovery must not depend on
+a dying process winning a lock race. If the replay fails, the result carries
+`replay_error` and the note says to check `git status src/`.
 
 ---
 

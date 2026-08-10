@@ -153,6 +153,44 @@ Below 900px they stack.
 
 Polls `/api/status` every 3 seconds.
 
+Four tabs: **monitor** (the above), **diagnostics**, **build**, **logs**.
+
+#### Diagnostics tab layout (rewritten 2026-08-09, twice)
+
+37 read-only tools beside their output. The list is a two-column grid in a
+narrow scrolling column on the left; the report takes the entire rest of the
+window.
+
+Both earlier layouts were wrong, in opposite directions, and both were caught
+by looking at the screen rather than at the CSS:
+
+1. **Stacked, full width.** The button grid was taller than the viewport, so
+   it took all the height, and the output -- `flex:1 1 auto; min-height:0`,
+   which is an instruction to shrink to nothing -- collapsed to just its
+   horizontal scrollbar, below the fold and unreachable.
+2. **Grid capped at 34vh, output capped at 88ch.** Fixed the collapse by
+   making the list permanently cramped and always scrolling, while the 88ch
+   column left most of a wide screen empty.
+
+Now: the pane itself does not scroll, the list scrolls in its own column, and
+the output has a floor it cannot be squeezed under. The output is
+`white-space:pre-wrap` with `overflow-wrap:anywhere` and **no max-width**: the
+widest aligned table row across all the diagnostics is 85 characters
+(`quality_audit`), while prose reaches 251, so `pre` forced a sideways
+scrollbar that no table ever needed.
+
+#### A rejected request must be visible
+
+The token is regenerated per process and embedded in the page, so a tab left
+open across a restart sends a stale one. The server answers 403 with an
+`error` key and **no `out` key**, and every renderer read only `out` -- so the
+panel showed `(no output)` and the user reasonably concluded the tool was
+broken. All four POST renderers now go through one `apiError()` helper that
+names the 403 and says to reload. `--self-test` drives a real server with a
+real stale token and asserts the response shape, because the bug lived in the
+gap between the route and the renderer and a test of either half alone would
+have passed while it was live.
+
 The progress bar shows how far a job is into its **stall window**, not progress
 toward a match. There is no such number: the search is unbounded, and any bar
 claiming otherwise would be inventing one.
@@ -193,7 +231,11 @@ cannot be talked into running anything arbitrary.
 4. **Token is random per process** and invalidated by a restart.
 5. **Stop paths are idempotent** and always pass `hold=True`, because a killed
    worker cannot release its own queue claim and those records would otherwise
-   sit `claimed` forever, invisible to every later run.
+   sit `claimed` forever, invisible to every later run. `fleet_stop` also
+   replays the crash journals itself and reports `restored_files`: the SIGTERM
+   handler inside a dying worker takes `BuildLock` first and can lose that race
+   to the `kill -9`, which on 2026-08-09 left a source file holding a candidate
+   after a stop that reported success.
 6. **Log text is escaped** before it reaches the DOM.
 7. **Buttons disable in flight** and destructive ones confirm, so a double click
    cannot start two fleets.
