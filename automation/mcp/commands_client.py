@@ -943,7 +943,7 @@ FLEET_HOLD = "automation/logs/FLEET_HOLD"
 # reported. Keeping the backend IN the name is what makes a mixed fleet legible:
 # "worker-oc-2.log" says which model produced a given line without cross-
 # referencing anything.
-_BACKEND_TAG = {"http": "llama", "cli": "oc", "zen": "zen"}
+_BACKEND_TAG = {"llama": "llama", "cli": "oc", "zen": "zen"}
 
 
 def opencode_preflight(timeout: int = 90) -> dict:
@@ -971,7 +971,7 @@ def opencode_preflight(timeout: int = 90) -> dict:
 
 
 def fleet_start(workers: int = 4, max_functions: int = 0,
-                force: bool = False, backend: str = "http",
+                force: bool = False, backend: str = "zen",
                 cli_workers: int = 0, opencode_model: str = "") -> dict:
     """Launch detached worker_direct.py processes inside WSL.
 
@@ -981,10 +981,18 @@ def fleet_start(workers: int = 4, max_functions: int = 0,
     reap them.
 
     backend:
-      "http"  - `workers` local llama workers (the original behaviour)
-      "cli"   - `workers` OpenCode CLI workers on the free Zen models
+      "zen"   - `workers` workers on the Zen HTTP API. THE DEFAULT AND THE
+                ONE TO USE.
+      "llama" - `workers` local llama workers (the original behaviour)
+      "cli"   - `workers` OpenCode CLI workers, same models via the CLI
       "mixed" - `workers` llama workers AND `cli_workers` OpenCode workers,
                 against the same queue
+
+    THE NAME NOW MATCHES THE THING. "http" used to mean local llama, which was
+    backwards: zen is the backend that talks HTTP, llama is the one that is
+    llama. The old name misled a caller into starting a cli fleet on
+    2026-08-09. "http" is still accepted and now resolves to "zen", because
+    that is what the word describes.
 
     Why mixed is worth having: the two backends fail differently. llama is free
     and unlimited but has plateaued; the Zen models may be stronger but draw on
@@ -996,9 +1004,14 @@ def fleet_start(workers: int = 4, max_functions: int = 0,
     a lock, so beyond ~4 the extras mostly queue. llama-server must be started
     with --parallel >= the llama worker count or generation serialises too.
     """
-    backend = (backend or "http").strip().lower()
-    if backend not in ("http", "cli", "mixed", "zen"):
-        raise Rejected("backend must be http, cli, zen or mixed")
+    backend = (backend or "zen").strip().lower()
+    # Legacy alias. Resolve it before validation so exactly one spelling
+    # reaches the rest of the function and the returned plan reports the
+    # backend that actually ran.
+    if backend == "http":
+        backend = "zen"
+    if backend not in ("llama", "cli", "mixed", "zen"):
+        raise Rejected("backend must be zen, llama, cli or mixed")
 
     # `zen` reuses the HTTP worker path, pointed at OpenCode Zen instead of
     # localhost. It exists because `opencode run` relays only `content` and
@@ -1006,7 +1019,7 @@ def fleet_start(workers: int = 4, max_functions: int = 0,
     # indistinguishable from a dead call. Going direct captures
     # reasoning_content too, and drops opencode's ~14s per-call git snapshot.
     n_zen = int(workers) if backend == "zen" else 0
-    n_http = int(workers) if backend in ("http", "mixed") else 0
+    n_llama = int(workers) if backend in ("llama", "mixed") else 0
     n_cli = (int(workers) if backend == "cli"
              else int(cli_workers) if backend == "mixed" else 0)
     if backend == "mixed" and n_cli < 1:
@@ -1014,11 +1027,11 @@ def fleet_start(workers: int = 4, max_functions: int = 0,
     # n_zen belongs in the total. Omitting it made backend="zen" fail the
     # 1-16 check with "got 0" even though workers=2 was requested: the
     # count existed, it just was not being counted.
-    total = n_http + n_cli + n_zen
+    total = n_llama + n_cli + n_zen
     if not 1 <= total <= 16:
         raise Rejected(f"total workers must be 1-16 (got {total})")
 
-    plan = {"backend": backend, "llama_workers": n_http, "zen_workers": n_zen, "cli_workers": n_cli,
+    plan = {"backend": backend, "llama_workers": n_llama, "zen_workers": n_zen, "cli_workers": n_cli,
             "opencode_model": opencode_model or "(worker default)"}
     if DRYRUN:
         return {"action": "fleet_start", "dry_run": True, **plan,
@@ -1076,7 +1089,7 @@ def fleet_start(workers: int = 4, max_functions: int = 0,
     # workers across N models and compare hit rates from one fleet. A single
     # value assigns that model to every cli worker, unchanged.
     models = [m.strip() for m in (opencode_model or "").split(",") if m.strip()]
-    for be, count in (("http", n_http), ("cli", n_cli), ("zen", n_zen)):
+    for be, count in (("llama", n_llama), ("cli", n_cli), ("zen", n_zen)):
         if not count:
             continue
         tag = _BACKEND_TAG[be]

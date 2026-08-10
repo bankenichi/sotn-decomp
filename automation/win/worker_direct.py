@@ -213,7 +213,10 @@ RATE_LIMIT_RETRIES = int(os.environ.get("RATE_LIMIT_RETRIES", "5"))
 RATE_LIMIT_BACKOFF = float(os.environ.get("RATE_LIMIT_BACKOFF", "20"))
 
 # Backend selection.
-#   "http" (default) -> POST to an OpenAI-compatible endpoint. Local llama-server.
+#   "zen" (default)  -> POST to the OpenCode Zen API. The configuration to use.
+#   "llama"          -> POST to an OpenAI-compatible endpoint. Local
+#                       llama-server. Was called "http" until 2026-08-09,
+#                       which named the wrong backend: zen is the HTTP one.
 #   "cli"            -> shell out to `opencode run`. Uses OpenCode's own auth, so
 #                       the free Zen models work with NO API key and NO billing.
 #                       Verified 2026-07-20: `opencode auth list` showed 0
@@ -222,7 +225,14 @@ RATE_LIMIT_BACKOFF = float(os.environ.get("RATE_LIMIT_BACKOFF", "20"))
 # token stream. The live degeneration detector and REASON_CAP both watch the
 # stream and cannot function here. FUNC_BUDGET is the only remaining backstop
 # against a wedged generation, so keep it set.
-MODEL_BACKEND = os.environ.get("MODEL_BACKEND", "http").strip().lower()
+MODEL_BACKEND = os.environ.get("MODEL_BACKEND", "zen").strip().lower()
+# "http" was the old name for the LOCAL LLAMA backend, which was backwards:
+# zen is the one that speaks HTTP. The names now match the things --
+# "llama" for llama-server, "zen" for the Zen API -- and the stale spelling
+# resolves to what the word actually describes. Normalised here, once, so no
+# call site has to know about the rename.
+if MODEL_BACKEND == "http":
+    MODEL_BACKEND = "zen"
 # Free Zen models split cleanly into ones that answer and ones that return an
 # empty body. Measured 2026-08-02, one model per worker on real queue functions:
 #
@@ -4285,8 +4295,9 @@ def main() -> int:
             if MODEL_BACKEND == "cli":
                 r = opencode_preflight()
             else:
-                r = {"ok": True, "backend": "http", "url": LLAMA_URL,
-                     "note": "http backend is checked per-request, not here"}
+                r = {"ok": True, "backend": MODEL_BACKEND, "url": _base_url(),
+                     "note": f"{MODEL_BACKEND} backend is checked "
+                             f"per-request, not here"}
         except (OpencodeMissing, subprocess.SubprocessError, OSError) as e:
             r = {"ok": False, "error": f"{type(e).__name__}: {e}"}
         r["backend"] = MODEL_BACKEND

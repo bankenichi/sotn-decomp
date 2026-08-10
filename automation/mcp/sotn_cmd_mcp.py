@@ -171,21 +171,41 @@ def permuter_import(c_file: str, asm_file: str, timeout: int = 300) -> dict:
 
 @mcp.tool()
 def fleet_start(workers: int = 4, max_functions: int = 0,
-                force: bool = False, backend: str = "http",
+                force: bool = False, backend: str = "zen",
                 cli_workers: int = 0, opencode_model: str = "") -> dict:
     """Launch detached volume workers in WSL. Returns immediately.
 
     backend picks the model tier:
-      "http"  (default) - `workers` local llama workers. Free, unlimited, but
-                          has plateaued on the remaining functions.
-      "cli"             - `workers` OpenCode CLI workers on the free Zen models.
-                          Quota is ACCOUNT-WIDE and shared across every model, so
-                          N parallel workers drain it about N times faster.
-      "mixed"           - `workers` llama workers AND `cli_workers` OpenCode
-                          workers against the same queue.
+      "zen"  (default) - `workers` workers talking straight to the Zen HTTP
+                         API. THIS IS THE CONFIGURATION TO USE. Preferred over
+                         "cli" because the OpenCode CLI relays only `content`,
+                         while the models worth running fill
+                         `reasoning_content` first and so come back empty
+                         through the CLI.
+      "llama"          - `workers` local llama workers. Free and unlimited,
+                         but plateaued on the functions that remain. This was
+                         called "http" until 2026-08-09, which was backwards:
+                         zen is the backend that speaks HTTP. "http" is still
+                         accepted and now resolves to "zen".
+      "cli"            - `workers` OpenCode CLI workers. Same free Zen models
+                         reached through the CLI. Use only when deliberately
+                         testing the CLI path. Quota is ACCOUNT-WIDE and shared
+                         across every model, so N parallel workers drain it
+                         about N times faster.
+      "mixed"          - `workers` llama workers AND `cli_workers` OpenCode
+                         workers against the same queue.
 
-    opencode_model overrides the worker default (opencode/big-pickle). Rotating
-    models does NOT grant fresh quota; see automation/opencode/ZEN-FREE-MODELS.md.
+    This list omitted "zen" until 2026-08-09, and defaulted to "http", even
+    though the code has accepted "zen" throughout and zen is the agreed
+    configuration. An agent read the help, saw no zen, and started a cli
+    fleet. A supported value missing from its own help is a defect, and so is
+    a name that describes a different backend than the one it selects.
+
+    opencode_model overrides the worker default, which is
+    opencode/mimo-v2.5-free (this line said big-pickle long after that stopped
+    being true). Rotating models does NOT grant fresh quota; see
+    automation/opencode/ZEN-FREE-MODELS.md. Pass a comma-separated list to
+    round-robin one model per worker, which is how a bake-off is run.
 
     Total workers 1-16 = generations in flight. apply/build/verify is lock-
     serialised, so beyond ~4 the extras mostly queue. llama workers need

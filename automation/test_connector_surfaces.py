@@ -28,6 +28,8 @@ REPO = Path(__file__).resolve().parent.parent
 MCP = REPO / "automation" / "mcp"
 sys.path.insert(0, str(MCP))
 
+import pathlib
+
 FAILS: list[str] = []
 
 
@@ -191,6 +193,60 @@ def main() -> int:
           "fetch cannot target an arbitrary remote")
     check("_rev_range(rng)" in _cc and "_RANGE_RX" in _cc,
           "a revision range is validated, not passed through")
+
+    # --- backend names must match the backends they select -----------------
+    #
+    # "http" used to select LOCAL LLAMA while "zen" selected the HTTP API.
+    # The fleet_start help then listed http/cli/mixed and never mentioned zen
+    # at all, so an agent reading it started a cli fleet when zen was the
+    # agreed configuration. Three separate defects: a supported value missing
+    # from its own help, a default pointing at the wrong tier, and a name
+    # describing a different backend than the one it picks.
+    #
+    # These assertions call the real thing in DRYRUN rather than grepping for
+    # the words, because the words are also in this comment.
+    import importlib
+    _cc_mod = importlib.import_module("mcp.commands_client")
+    _was = _cc_mod.DRYRUN
+    _cc_mod.DRYRUN = True
+    try:
+        plans = {b: _cc_mod.fleet_start(workers=2, backend=b)
+                 for b in ("zen", "llama", "cli", "http")}
+        default = _cc_mod.fleet_start(workers=2)
+    finally:
+        _cc_mod.DRYRUN = _was
+
+    check(default["backend"] == "zen",
+          f"fleet_start defaults to zen (got {default['backend']})")
+    check(plans["zen"]["zen_workers"] == 2 and plans["zen"]["llama_workers"] == 0,
+          "backend=zen starts zen workers and no llama workers")
+    check(plans["llama"]["llama_workers"] == 2 and plans["llama"]["zen_workers"] == 0,
+          "backend=llama starts llama workers, so the name matches the thing")
+    check(plans["cli"]["cli_workers"] == 2, "backend=cli still starts cli workers")
+    check(plans["http"]["backend"] == "zen" and plans["http"]["zen_workers"] == 2,
+          "the legacy name http resolves to zen, since zen is the HTTP backend")
+    check(plans["http"]["backend"] != "http",
+          "and the returned plan reports what actually ran, not the alias")
+    bad = None
+    try:
+        _cc_mod.DRYRUN = True
+        _cc_mod.fleet_start(workers=1, backend="nonsense")
+    except Exception as e:            # Rejected
+        bad = str(e)
+    finally:
+        _cc_mod.DRYRUN = _was
+    check(bad is not None and "llama" in bad and "zen" in bad,
+          f"an unknown backend is rejected and the error lists the real names "
+          f"({bad!r})")
+
+    # The MCP surface is what an agent reads, so it must name every accepted
+    # value. This one IS a text check, because the text is the defect.
+    _help = (pathlib.Path(__file__).parent / "mcp" / "sotn_cmd_mcp.py").read_text(
+        encoding="utf-8")
+    _fs = _help.split("def fleet_start(", 1)[1].split('"""')[1]
+    for name in ("zen", "llama", "cli", "mixed"):
+        check(f'"{name}"' in _fs,
+              f"fleet_start help documents the {name} backend")
 
     print()
     if FAILS:

@@ -516,7 +516,7 @@ ACTIONS = {
     # captures reasoning_content and drops opencode's ~14s per-call git
     # snapshot. It is the backend the 2026-08-03 run validated.
     "fleet_zen_start": _fleet("zen", 2),
-    "fleet_llama_start": _fleet("http", 2),
+    "fleet_llama_start": _fleet("llama", 2),
     "fleet_stop": _fleet_stop,
 }
 
