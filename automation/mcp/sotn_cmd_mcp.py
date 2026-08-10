@@ -227,6 +227,42 @@ def fleet_start(workers: int = 4, max_functions: int = 0,
 
 
 @mcp.tool()
+def mcpb_validate(directory: str, timeout: int = 120) -> dict:
+    """Validate a bundle's manifest.json against the MCPB schema. Read-only.
+
+    `directory` is a bundle source inside the repo, e.g.
+    automation/mcpb/sotn-cmd. It must contain a manifest.json; that is checked
+    here rather than left to mcpb, because pointing the tool at the wrong
+    directory is the mistake worth catching."""
+    return cc.run("mcpb_validate", timeout=timeout, directory=directory)
+
+
+@mcp.tool()
+def mcpb_pack(directory: str, output: str = "", timeout: int = 300) -> dict:
+    """Pack a bundle directory into a .mcpb, writing it beside the manifest.
+
+    WHY THIS EXISTS. Rebuilding a bundle was the one routine job that needed a
+    human at a shell, and that gap cost three failed reinstalls of the ChatGPT
+    share reader: the source was edited, the stale .mcpb next to it was not
+    rebuilt, and every reinstall restored the old code.
+
+    Per the MCPB spec, `pack` validates the manifest against the SCHEMA, not
+    against the filesystem, and a bundle may legitimately contain nothing but
+    manifest.json. Our sotn-cmd and sotn-local bundles are exactly that: pure
+    launchers whose mcp_config cd's into the repo and runs automation/mcp
+    live. That claim is now checkable by running this rather than by reading
+    documentation."""
+    return cc.run("mcpb_pack", timeout=timeout, directory=directory,
+                  output=output or None)
+
+
+@mcp.tool()
+def mcpb_info(path: str, timeout: int = 60) -> dict:
+    """Size and signature status of a built .mcpb. Read-only."""
+    return cc.run("mcpb_info", timeout=timeout, path=path)
+
+
+@mcp.tool()
 def opencode_preflight() -> dict:
     """Check the OpenCode CLI is reachable from the worker environment.
 

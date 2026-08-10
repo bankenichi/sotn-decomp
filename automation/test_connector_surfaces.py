@@ -305,6 +305,48 @@ def main() -> int:
     # correct parent-based test already existed in `_resolve` in the same
     # file; the two had drifted. Reported by an external audit 2026-08-09 and
     # confirmed against the code before fixing.
+    # --- mcpb: the connector can rebuild its own bundles ---------------------
+    #
+    # Packing a bundle used to require a human at a shell. That gap cost three
+    # failed reinstalls of the ChatGPT share reader: the source was edited, the
+    # stale .mcpb beside it was not rebuilt, and each reinstall restored the
+    # old code. A capability that can be built should not be a manual step.
+    print("\nmcpb bundles can be validated and packed through the connector")
+    for _n in ("mcpb_validate", "mcpb_pack", "mcpb_info"):
+        check(_n in _cc_mod.REGISTRY, f"{_n} is in REGISTRY")
+        check(_n in decorated_tools(), f"{_n} is callable (@mcp.tool)")
+
+    # ARGUMENT ERRORS BEAT ENVIRONMENT ERRORS. The natural
+    # [resolve_mcpb(), sub, check(path)] evaluates left to right, so a bad
+    # directory reports "mcpb CLI not found" on a machine without mcpb and the
+    # real problem on a machine with it -- the error would depend on unrelated
+    # state. These assertions hold either way, which is the point.
+    for _bad, _want in (("automation", "no manifest.json"),
+                        ("src", "no manifest.json"),
+                        ("../evil", "inside the repo"),
+                        ("automation/mcpb/nope", "does not exist")):
+        _err = ""
+        try:
+            _cc_mod.build_argv("mcpb_pack", directory=_bad)
+        except Exception as e:                              # Rejected
+            _err = str(e)
+        check(_want in _err and "mcpb CLI" not in _err,
+              f"{_bad!r} is refused for the RIGHT reason ({_err[:52]!r})")
+
+    # A real bundle dir must clear the argument checks. It may still fail on a
+    # missing binary, and that is a correct, different failure.
+    _real = ""
+    try:
+        _cc_mod.build_argv("mcpb_pack", directory="automation/mcpb/sotn-cmd")
+    except Exception as e:                                  # noqa: BLE001
+        _real = str(e)
+    check(_real == "" or "mcpb CLI" in _real,
+          f"a real bundle dir passes validation and only the binary can stop "
+          f"it ({_real[:52]!r})")
+    check((_cc_mod.REPO / "automation/mcpb/sotn-cmd/manifest.json").is_file(),
+          "and that bundle dir really does hold a manifest, so the check above "
+          "is not passing vacuously")
+
     print("\nin-repo path containment cannot be defeated by a name prefix")
     _root = _cc_mod.REPO.resolve()
     _evil = f"../{_root.name}-evil/x"

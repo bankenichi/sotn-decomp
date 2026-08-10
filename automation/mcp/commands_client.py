@@ -14,6 +14,7 @@ from __future__ import annotations
 import datetime as dt
 import json
 import os
+import shutil
 import re
 import shlex
 import subprocess
@@ -343,7 +344,79 @@ def _make(goal: str, version: str | None = None):
     return argv
 
 
+# ------------------------------------------------------------------ mcpb CLI
+#
+# The connector bundles itself. Packing and validating them was the one routine
+# job that could only be done by asking a human to run a command, which is a
+# capability gap, not a fact of life.
+#
+# Resolution mirrors the OpenCode one in worker_direct: mcpb is an npm global
+# installed on WINDOWS, and this runs inside WSL. WSL appends the Windows PATH
+# so the file is reachable, but Linux exec has no PATHEXT, so a bare `mcpb`
+# never matches and you get FileNotFoundError. The extensions must be listed.
+MCPB_BIN = os.environ.get("MCPB_BIN", "").strip()
+_MCPB_RESOLVED: str | None = None
+
+
+def resolve_mcpb() -> str:
+    """An executable path for the mcpb CLI, or Rejected with how to install it."""
+    global _MCPB_RESOLVED
+    if _MCPB_RESOLVED:
+        return _MCPB_RESOLVED
+    if MCPB_BIN:
+        _MCPB_RESOLVED = MCPB_BIN
+        return _MCPB_RESOLVED
+    for name in ("mcpb", "mcpb.cmd", "mcpb.CMD", "mcpb.exe", "mcpb.bat"):
+        found = shutil.which(name)
+        if found:
+            _MCPB_RESOLVED = found
+            return found
+    raise Rejected(
+        "the mcpb CLI was not found on PATH. Install it with "
+        "`npm install -g @anthropic-ai/mcpb`, or set MCPB_BIN to its full "
+        "path. Inside WSL a Windows npm global usually lives at "
+        "/mnt/c/Users/<you>/AppData/Roaming/npm/mcpb.cmd")
+
+
+def _mcpb_dir(p: str) -> str:
+    """A bundle directory inside the repo that actually holds a manifest.
+
+    Checked here rather than letting mcpb fail: `mcpb pack` on the wrong
+    directory silently produces a bundle of whatever it found, and a bundle
+    with the wrong contents is exactly the failure this whole exercise was
+    about.
+    """
+    d = _inrepo(p, must_be_dir=True)
+    if not (Path(d) / "manifest.json").is_file():
+        raise Rejected(f"no manifest.json in {p}; that is not a bundle source")
+    return d
+
+
+def _mcpb_argv(sub: str, path_arg: str, extra: list | None = None) -> list:
+    """VALIDATE THE ARGUMENTS FIRST, resolve the binary second.
+
+    The obvious `[resolve_mcpb(), sub, _check(path)]` evaluates left to right,
+    so a caller who passes a directory with no manifest, or one outside the
+    repo, is told "the mcpb CLI was not found on PATH". That is a true
+    statement about a machine without mcpb and a completely misleading answer
+    to what they actually got wrong -- and on a machine WITH mcpb the same
+    call would report the real problem, so the error would depend on
+    unrelated state. Argument errors are the caller's; a missing binary is
+    the environment's. Report the caller's first, always.
+    """
+    checked = (_mcpb_dir(path_arg) if sub in ("validate", "pack")
+               else _inrepo(path_arg))
+    return [resolve_mcpb(), sub, checked] + (extra or [])
+
+
 REGISTRY = {
+    # mcpb bundles. Read-only validate/info; pack writes ONE .mcpb beside the
+    # manifest it was given.
+    "mcpb_validate": lambda directory: _mcpb_argv("validate", directory),
+    "mcpb_pack":     lambda directory, output=None: _mcpb_argv(
+        "pack", directory,
+        [_inrepo(output, must_exist=False)] if output else None),
+    "mcpb_info":     lambda path: _mcpb_argv("info", path),
     # make goals
     "make_build":             lambda version="us": _make("build", version),
     "make_extract":           lambda version="us": _make("extract", version),
