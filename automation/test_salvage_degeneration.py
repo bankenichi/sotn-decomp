@@ -152,6 +152,25 @@ def main():
     check(wd._enumeration_loop(short_run) == "",
           "fewer than 6 short lines is never enough evidence")
 
+    print("\nthe abort NAMES the line that repeated, not the last line seen")
+    # TASK #85 asked for a false-positive rate measured from the logs. It could
+    # not be answered, because the one recorded field was misattributed: the
+    # message quoted tail[-1], and the tail usually ends with a sentence of
+    # prose AFTER the repeating run. So the archives are full of aborts reading
+    #   enumeration loop ('Actually wait - looking at the code more car'...)
+    #   enumeration loop ("Hmm, without the Primitive struct definition"...)
+    # which look exactly like the detector killing live reasoning and are no
+    # evidence either way.
+    trailing_prose = loop + ["Actually wait, let me re-check the layout here."]
+    v = wd._enumeration_loop(trailing_prose)
+    check("0x20" in v,
+          f"the repeated line is quoted ({v!r})")
+    check("Actually wait" not in v,
+          "and the trailing prose, which did NOT repeat, is not")
+    check("x6" in v,
+          "with the repeat count, so a tight loop reads differently from a "
+          "line that merely occurs twice")
+
     print("\nrestating while still naming new symbols is not a loop")
     # 66 of 179 archived aborts came from the long-cycle rule and 52% of those
     # killed a real derivation, e.g. "Now I'm verifying the offset calculation:
@@ -178,6 +197,23 @@ def main():
     check(outs[0] == "" and outs[1] == "",
           "and it takes three strikes, not one, so a single restatement is "
           "never fatal")
+
+    print("\nand THAT abort records what it decided on")
+    # Same defect as the enumeration branch quoting tail[-1]: this said only
+    # "repeating and no new symbols over three checks", which records no
+    # evidence at all. Nobody can second-guess the call without the raw log,
+    # and the raw logs are what #85 had to work from.
+    msg = next((v for v in outs if v), "")
+    # A WINDOW, so it starts mid-sentence: the rule compares the last `window`
+    # characters, not whole sentences. My first version of this asserted the
+    # opening words of the repeated sentence and failed for that reason. What
+    # matters is that the quote is real stream content, so check a distinctive
+    # symbol from inside the window rather than its start.
+    check("g_Ric" in msg,
+          f"the repeated chunk is quoted verbatim ({msg[:60]!r})")
+    check("new tokens" in msg,
+          "and the novelty count that failed the escape, which is the other "
+          "half of the decision")
 
     st3 = [0]
     check(wd._long_cycle("short stream", st3) == "",

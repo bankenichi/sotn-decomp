@@ -174,6 +174,34 @@ def main():
           "archiving the candidate that produced the RECORDED error, not "
           "whatever the last generation happened to be")
 
+    print("\na later BUILD FAILED does not overwrite an earlier compile")
+    # TASK #83. The original report was "a candidate that compiled on attempt 3
+    # was discarded when attempt 4 failed". The SEED half of that is fixed and
+    # has been for a while: seed_path persists via `or seed_path` and
+    # compiled_once is sticky, so the record still routes to `near`.
+    #
+    # The VERDICT half was not. `best = best_build = detail` ran after every
+    # build, so attempt 4's "BUILD FAILED" replaced attempt 3's "compiled,
+    # checksum differs", and the record was filed `near` with a note that
+    # contradicted its own status. escalation_triage and deferred_triage both
+    # bucket on that text.
+    loop = src[src.index("best = detail"):]
+    loop = loop[:loop.index("if original is not None:")]
+    check('best = best_build = detail' not in src,
+          "the single assignment that clobbered the good verdict is gone")
+    check('if "BUILD FAILED" not in detail or not compiled_once:' in loop,
+          "best_build only updates on a compile, or before any compile")
+    # compiled_once must still be the PREVIOUS attempts' value at that point,
+    # otherwise the guard reads "this attempt compiled" twice and never fires.
+    check(loop.index('if "BUILD FAILED" not in detail or not compiled_once:')
+          < loop.index("compiled_once = True"),
+          "and it is read BEFORE this attempt sets it, so it means 'an "
+          "earlier attempt compiled'")
+    near = src[src.index("compiled, byte mismatch; permuter"):]
+    near = near[:near.index("elif not produced_code:")]
+    check("best_build or best" in near,
+          "and the `near` note reports the compiling attempt, not the last one")
+
     print()
     if FAILS:
         print(f"{len(FAILS)} FAILED:")

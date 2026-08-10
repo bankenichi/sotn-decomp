@@ -140,6 +140,24 @@ def _alive(pid: int) -> bool:
         return False
 
 
+def slug_of(job_id: str) -> str:
+    """The slug a job id carries, or "" if it has none.
+
+    ONE parser, because there were two. A job id is
+
+        <action>-<HHMMSS>-<pid>[-<slug>][~<n>]
+
+    and both jobs.py and dashboard.py picked the slug out by hand. The
+    dashboard's copy was `jid.split("-", 3)[3]`, which keeps the `~<n>`
+    collision bump inside the name, so a bumped job renders as a work dir that
+    does not exist. Actions never contain a hyphen (make_build, run_analysis,
+    worker_once), so splitting on the first three is safe.
+    """
+    base = job_id.rsplit("~", 1)[0]
+    parts = base.split("-", 3)
+    return parts[3] if len(parts) == 4 else ""
+
+
 def running_jobs(action: str | None = None) -> list[str]:
     """Job ids that have not finished, optionally filtered by action."""
     out = []
@@ -183,6 +201,8 @@ def start(action: str, argv: list[str], cwd: str,
     """
     JOBS_DIR.mkdir(parents=True, exist_ok=True)
 
+    safe = re.sub(r"[^A-Za-z0-9_.-]+", "_", slug).strip("_")[:40]
+
     if exclusive:
         busy = running_jobs(action)
         if busy:
@@ -190,8 +210,30 @@ def start(action: str, argv: list[str], cwd: str,
                     "action": action, "running": busy,
                     "hint": f"poll job_status('{busy[0]}') instead of starting "
                             f"another {action}"}
-
-    safe = re.sub(r"[^A-Za-z0-9_.-]+", "_", slug).strip("_")[:40]
+    elif safe:
+        # NOT EXCLUSIVE BY ACTION, BUT STILL EXCLUSIVE BY SLUG.
+        #
+        # `exclusive=False` exists so several permuter searches can run at
+        # once, because each owns a separate work dir and shares nothing. It
+        # was reading as "no exclusion at all", which also permitted two jobs
+        # on the SAME work dir. That is not concurrency, it is two processes
+        # writing output-<score>-<n>/ into one directory and racing each
+        # other's promotions.
+        #
+        # Its visible symptom was task #87: duplicate dashboard rows for
+        # func_us_801B8E80 and func_us_8019AA04-2 showing DIFFERENT iteration
+        # counts. They were not phantoms and the row-rendering was not at
+        # fault -- the panel faithfully showed two real jobs that should never
+        # both have existed. The supervisor already guards this with
+        # already_busy(); nothing guarded a job started from the dashboard
+        # button or from job_start() directly.
+        same = [j for j in running_jobs(action) if slug_of(j) == safe]
+        if same:
+            return {"started": False, "reason": "slug_already_running",
+                    "action": action, "slug": safe, "running": same,
+                    "hint": f"a {action} job is already working {safe}; poll "
+                            f"job_status('{same[0]}'). Two jobs on one work "
+                            f"dir interleave their output dirs."}
     job_id = f"{action}-{time.strftime('%H%M%S')}-{os.getpid()}"
     if safe:
         job_id += f"-{safe}"

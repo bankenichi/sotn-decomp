@@ -284,6 +284,71 @@ def main() -> int:
         check(cmd in _installed,
               f"{cmd} is in COMMANDS, so installation puts it on PATH")
 
+    # --- two permuter jobs must not share one work dir ----------------------
+    #
+    # TASK #87, "phantom permuter candidates": the dashboard showed duplicate
+    # func_us_801B8E80 and func_us_8019AA04-2 rows with DIFFERENT iteration
+    # counts. Neither the rows nor the work dirs were phantoms -- func_us_
+    # 8019AA04-2 is a real directory, and the panel faithfully rendered two
+    # real jobs. The defect was upstream: permuter passes exclusive=False so
+    # that separate work dirs can search concurrently, and that read as no
+    # exclusion at all, so two jobs could be started on the SAME dir. They then
+    # interleave output-<score>-<n>/ writes and race each other's promotions.
+    # permuter_supervisor guarded this with already_busy(); the dashboard
+    # button and job_start() did not.
+    import importlib.util as _ilu2
+    _js = _ilu2.spec_from_file_location("jobs_t", MCP / "jobs.py")
+    _jobs_t = _ilu2.module_from_spec(_js)
+    _js.loader.exec_module(_jobs_t)
+
+    print("\none parser for the slug in a job id")
+    # Two copies existed and they disagreed: the dashboard's kept the `~<n>`
+    # collision bump inside the name, so a bumped job rendered as a work dir
+    # that does not exist and its all-time best silently read as None.
+    check(_jobs_t.slug_of("permuter-143902-55599-func_us_8019AA04-2")
+          == "func_us_8019AA04-2",
+          "a slug containing a hyphen survives intact")
+    check(_jobs_t.slug_of("permuter-143902-55599-func_us_801B8E80~1")
+          == "func_us_801B8E80",
+          "and the ~n collision bump is stripped, not left in the name")
+    check(_jobs_t.slug_of("make_build-110820-9159") == "",
+          "a job with no slug reports none rather than a pid fragment")
+    _dash = (pathlib.Path(__file__).parent / "dashboard.py").read_text(
+        encoding="utf-8")
+    # CODE ONLY. The comment recording why the old parse was wrong quotes it
+    # verbatim, so searching the raw file finds the string it is asserting is
+    # gone and the check fails on its own documentation. Exactly the trap that
+    # made `extern int declaration();` out of a sentence about C89.
+    _dash_code = "\n".join(l for l in _dash.splitlines()
+                           if not l.lstrip().startswith("#"))
+    check("jobs.slug_of(jid)" in _dash_code,
+          "the dashboard calls the shared parser")
+    check('jid.split("-", 3)' not in _dash_code,
+          "and no longer carries its own copy")
+
+    print("\nand a second job on the same work dir is refused")
+    _real_running = _jobs_t.running_jobs
+    try:
+        _jobs_t.running_jobs = lambda a=None: [
+            "permuter-143902-55599-func_us_801B8E80"]
+        r = _jobs_t.start("permuter", ["true"], cwd=str(_cc_mod.REPO),
+                          exclusive=False, slug="func_us_801B8E80")
+        check(r.get("started") is False
+              and r.get("reason") == "slug_already_running",
+              f"refused, with the reason ({r.get('reason')})")
+        check("work dir" in (r.get("hint") or ""),
+              "and the hint says why two on one dir is wrong")
+        # The whole point of exclusive=False survives: a DIFFERENT seed still
+        # starts, which is what makes parallel searching possible.
+        r2 = _jobs_t.start("permuter", ["true"], cwd=str(_cc_mod.REPO),
+                           exclusive=False, slug="func_us_801C4B2C")
+        check(r2.get("started") is True,
+              f"while a different work dir still starts ({r2.get('reason')})")
+        if r2.get("job_id"):
+            _jobs_t.cancel(r2["job_id"])
+    finally:
+        _jobs_t.running_jobs = _real_running
+
     # --- teardown must restore source itself ---------------------------------
     #
     # Each worker's SIGTERM handler calls replay_pending_journals, but it runs

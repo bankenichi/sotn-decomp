@@ -40,6 +40,7 @@ import argparse
 import json
 import os
 import re
+from collections import Counter
 import shlex
 import shutil
 import signal
@@ -2190,8 +2191,17 @@ def _long_cycle(text: str, strikes: list, window: int = 300) -> str:
         return ""
     strikes[0] += 1
     if strikes[0] >= 3:
-        return ("long-cycle repetition (repeating and no new symbols over "
-                "three checks)")
+        # QUOTE THE REPEAT AND COUNT THE NOVELTY. This said only "repeating
+        # and no new symbols over three checks", which records no evidence at
+        # all: you cannot tell from it whether the model was stuck or was
+        # restating one sentence in the middle of real work. Both numbers here
+        # are the ones the rule actually decided on, so a reader can second-
+        # guess the call without the raw log. Same defect as the enumeration
+        # branch quoting tail[-1], and the same reason #85 could not be
+        # answered from the archives.
+        return (f"long-cycle repetition ({chunk[:44]!r} seen earlier, "
+                f"{len(recent - prior)} new tokens in the last 1500 chars, "
+                f"3 checks)")
     return ""
 
 
@@ -2231,7 +2241,23 @@ def _enumeration_loop(tail: list[str]) -> str:
         return ""          # not even the same shape
     if len(set(short)) > 2:
         return ""          # same shape, different content: a table
-    return f"enumeration loop ({tail[-1][:44]!r}...)"
+    # NAME THE LINE THAT REPEATED, not tail[-1].
+    #
+    # This reported the last line of the window, which is usually NOT the
+    # repeating one: the trigger is a run of short identical lines, and the
+    # tail often ends with a sentence of prose after them. So the archived
+    # logs are full of aborts labelled
+    #     enumeration loop ('Actually wait - looking at the code more car'...)
+    #     enumeration loop ("Hmm, without the Primitive struct definition"...)
+    # which read as the detector killing live reasoning. They are not evidence
+    # of that. They are evidence that the message quotes the wrong line, and
+    # that made task #85 -- measure the false-positive rate from the logs --
+    # unanswerable, because the one recorded field is misattributed.
+    #
+    # Count as well as quote: "x12" separates a tight loop from a line that
+    # merely occurs twice, and the reader can judge without the raw log.
+    worst, n = Counter(short).most_common(1)[0]
+    return f"enumeration loop ({worst[:44]!r} x{n})"
 
 
 def _content_degen_reason(text: str) -> str:
@@ -4992,8 +5018,26 @@ def process_one(dry: bool = False, only: str | None = None) -> bool:
                     # applied content is now the intended state, so there is
                     # nothing left to recover.
                     journal_clear()
-            best = best_build = detail
-            best_build_code = code
+            # `best` is the LAST verdict; `best_build` is the BEST one.
+            #
+            # These were one assignment, so a later BUILD FAILED overwrote a
+            # successful compile. The seed itself was never lost -- seed_path
+            # persists via `or seed_path` and compiled_once is sticky, so the
+            # record still routes to `near` (task #83's original report, which
+            # is fixed). What was lost is the VERDICT: attempt 3 compiling and
+            # attempt 4 failing filed `near` with a note reading
+            #   "compiled, byte mismatch; permuter candidate. seed=... BUILD
+            #    FAILED: ..."
+            # which contradicts its own status and is what escalation_triage
+            # and deferred_triage bucket on.
+            #
+            # compiled_once is still the PREVIOUS attempts' value here; it is
+            # set below. So this reads "an earlier attempt compiled and this
+            # one did not" exactly.
+            best = detail
+            if "BUILD FAILED" not in detail or not compiled_once:
+                best_build = detail
+                best_build_code = code
             if matched:
                 return True
             feedback = detail
@@ -5044,8 +5088,12 @@ def process_one(dry: bool = False, only: str | None = None) -> bool:
             sched("report", "--id", rec["id"], "--status", "near",
                   "--score", "50", "--tier", "0",
                   "--add-iters", str(attempt),
+                  # best_build, not best: this branch only runs because
+                  # something COMPILED, so the note must describe that attempt
+                  # and not whatever the last one happened to do.
                   "--notes", (_m2c_tag + "compiled, byte mismatch; permuter "
-                              "candidate." + where + " " + best)[:250])
+                              "candidate." + where + " "
+                              + (best_build or best))[:250])
         elif not produced_code:
             # The model NEVER produced a candidate: every attempt errored during
             # generation (server error, empty gateway drop, degeneration, or

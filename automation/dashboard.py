@@ -180,8 +180,11 @@ def permuter_panels() -> list[dict]:
         d = parse(log.read_text(errors="ignore")) if log.is_file() else {
             "best": None, "iterations": 0, "since_improvement": 0,
             "failures": 0}
-        parts = jid.split("-", 3)
-        fn = parts[3] if len(parts) == 4 else jid
+        # jobs.slug_of, not a second copy of the parse. This was
+        # `jid.split("-", 3)[3]`, which keeps the `~<n>` collision bump in the
+        # name, so a bumped job rendered as a work dir that does not exist and
+        # its all-time best silently read as None.
+        fn = jobs.slug_of(jid) or jid
         # All-time best for the WORK DIR, not just this run. Without it the
         # panel reads as a regression whenever a fresh run has not yet beaten a
         # score an earlier run already banked: BO6_AguneaShuffleParams showed
