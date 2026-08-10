@@ -1271,6 +1271,91 @@ def candidate_path(rec: dict) -> str:
 
 
 _RX_STUB_IN_FILE = re.compile(r'INCLUDE_ASM\(\s*"[^"]+"\s*,\s*(\w+)\s*\)')
+_RX_CALL = re.compile(r"(?<![\w.>])([A-Za-z_]\w*)\s*\(")
+# Keywords and macros that take a parenthesis and are not calls.
+_NOT_CALLS = {
+    "if", "for", "while", "switch", "return", "sizeof", "do", "else",
+    "INCLUDE_ASM", "INCLUDE_RODATA", "defined", "static", "case",
+}
+
+
+def _strip_comments_and_strings(text: str) -> str:
+    """Blank out comments and literals, preserving offsets and newlines.
+
+    Scanning raw text for `name(` finds prose. The idempotence test caught
+    this immediately: the declaration block this module writes contains the
+    sentence "C89 implicit declaration (6.3.2.2)", and `declaration(` looks
+    exactly like a call, so a second pass would have emitted
+    `extern int declaration();` into the seed. Running it twice was not
+    idempotent, and running it once on any commented candidate would have
+    invented externs from English.
+    """
+    out, i, n = [], 0, len(text)
+    while i < n:
+        c = text[i]
+        if c == "/" and i + 1 < n and text[i + 1] == "/":
+            j = text.find("\n", i)
+            j = n if j < 0 else j
+            out.append(" " * (j - i))
+            i = j
+            continue
+        if c == "/" and i + 1 < n and text[i + 1] == "*":
+            j = text.find("*/", i + 2)
+            j = n if j < 0 else j + 2
+            out.append("".join(ch if ch == "\n" else " " for ch in text[i:j]))
+            i = j
+            continue
+        if c in "\"'":
+            q, j = c, i + 1
+            while j < n and text[j] != q:
+                j += 2 if text[j] == "\\" else 1
+            j = min(j + 1, n)
+            out.append(" " * (j - i))
+            i = j
+            continue
+        out.append(c)
+        i += 1
+    return "".join(out)
+
+
+def _undeclared_calls(whole: str, code: str, skip: set) -> list:
+    """Functions `code` calls that NOTHING in `whole` declares or defines.
+
+    THE SAME-FILE STUB RULE WAS NOT THE WHOLE RULE. _declare_stub_siblings
+    was written for INCLUDE_ASM siblings, because that is the case that
+    produced six deferred BOSS/BO0 records. It is not the only case:
+
+        us:ST/RDAI:func_us_801C5AA0
+        PERMUTER_EXHAUSTED: UNDECLARED SYMBOL: the seed calls
+        GetSideToPlayer without declaring it, so the permuter raised
+        KeyError on 4 mutations (1% of iterations)
+
+    GetSideToPlayer is not a stub in that file and has no prototype anywhere
+    in src/. It is reached, like the stub siblings, by C89 implicit
+    declaration, and decomp-permuter's typemap raises KeyError on it just the
+    same. The seed fix landed in 08f1465c7 and missed it entirely.
+
+    Conservative by construction: a name is only reported when the file gives
+    NO evidence of it -- no prototype, no definition, no stub -- because the
+    declaration emitted for it is `extern int f();`, which is only correct
+    where implicit declaration was already in force.
+    """
+    bare_code = _strip_comments_and_strings(code)
+    bare_whole = _strip_comments_and_strings(whole)
+    out = []
+    for name in dict.fromkeys(_RX_CALL.findall(bare_code)):
+        if name in skip or name in _NOT_CALLS or name.isupper():
+            continue
+        # Any declaration, definition or stub of it in this file is evidence.
+        # Checked against the STRIPPED file for the same reason: prose that
+        # happens to read like a prototype is not one.
+        if re.search(rf"^[^\S\n]*(?:extern[^\S\n]+)?[A-Za-z_]\w*[\s*]+"
+                     rf"{re.escape(name)}\s*\(", bare_whole, re.M):
+            continue
+        if re.search(rf'INCLUDE_ASM\([^)]*\b{re.escape(name)}\s*\)', whole):
+            continue
+        out.append(name)
+    return out
 
 
 def _declare_stub_siblings(whole: str, code: str) -> str:
@@ -1315,9 +1400,8 @@ def _declare_stub_siblings(whole: str, code: str) -> str:
     ones this candidate actually calls, only ones the tree does not declare.
     """
     stubs = set(_RX_STUB_IN_FILE.findall(whole))
-    if not stubs:
-        return whole
     called = sorted(n for n in stubs if re.search(rf"\b{re.escape(n)}\s*\(", code))
+    called += _undeclared_calls(whole, code, skip=set(called))
     if not called:
         return whole
 
@@ -4022,6 +4106,83 @@ def _review_checks_module():
     return _REVIEW_MOD
 
 
+_RX_MARKUP = re.compile(
+    r"<\s*/?\s*(?:tool_call|arg_key|arg_value|function|invoke|parameter|"
+    r"antml:\w+|think|reasoning)\b", re.I)
+# MIPS mnemonics that are also plausible C identifiers, used as a CALL.
+# Kept narrow on purpose: only ones actually observed leaking, plus their
+# immediate family. A false positive here rejects a real candidate.
+_RX_MNEMONIC_CALL = re.compile(
+    r"(?<![\w.>])(sw|lw|sh|lh|sb|lb|lbu|lhu|lui|jal|jr|addiu|addu|subu|"
+    r"sll|srl|sra|mflo|mfhi|nop)\s*\(")
+
+
+def validate_candidate(code: str) -> str:
+    """"" if this text is safe to write into src/, else why it is not.
+
+    NOTHING CHECKED WHAT THE WORKER WROTE. Three escalations in the live
+    queue are not decompilation failures at all, they are corrupted output
+    that reached a build:
+
+      - src/st/rno0/ holds a .c file containing
+        `earch_text<arg_key>pattern</arg_key><arg_value>func_us_8019FD4C`.
+        Raw tool-call markup was written into a source file.
+      - BO6_RicStepSlide: `stray '\\' in program`, four times, at
+        richter.c:232.
+      - func_us_801CF24C: `undefined reference to 'sw'` -- the model emitted
+        a MIPS store instruction as a C function call, and it got as far as
+        the LINKER before anyone noticed.
+
+    Each cost a full build to discover and then sat in `escalated` looking
+    like a hard function. These are cheap, high-confidence checks; anything
+    ambiguous is deliberately left out, because a false positive here throws
+    away a real candidate.
+    """
+    if not code or not code.strip():
+        return "empty"
+
+    m = _RX_MARKUP.search(code)
+    if m:
+        return (f"contains tool-call/markup text ({m.group(0)!r}); this is "
+                f"raw model output, not C")
+
+    m = _RX_MNEMONIC_CALL.search(code)
+    if m:
+        return (f"calls `{m.group(1)}(` -- that is a MIPS mnemonic, not a C "
+                f"function. The asm leaked into the C")
+
+    # Braces, ignoring string and char literals and comments, because a brace
+    # inside "{" is not a brace. Cheap scanner rather than a parser.
+    depth, i, n = 0, 0, len(code)
+    while i < n:
+        c = code[i]
+        if c == "/" and i + 1 < n and code[i + 1] == "/":
+            i = code.find("\n", i)
+            if i < 0:
+                break
+            continue
+        if c == "/" and i + 1 < n and code[i + 1] == "*":
+            j = code.find("*/", i + 2)
+            i = n if j < 0 else j + 2
+            continue
+        if c in "\"'":
+            q, i = c, i + 1
+            while i < n and code[i] != q:
+                i += 2 if code[i] == "\\" else 1
+            i += 1
+            continue
+        if c == "{":
+            depth += 1
+        elif c == "}":
+            depth -= 1
+            if depth < 0:
+                return "unbalanced braces: a `}` with no opener"
+        i += 1
+    if depth:
+        return f"unbalanced braces: {depth} unclosed `{{`"
+    return ""
+
+
 def virtual_apply(ctx: dict, fn: str, code: str) -> str:
     """The file as it WOULD look after apply_code, without writing anything.
 
@@ -4057,6 +4218,12 @@ def review_gate(ctx: dict, fn: str, code: str) -> list[str]:
     Never raises. A crash in an advisory check must not fail a good candidate.
     """
     try:
+        # FIRST, and not advisory. Everything below reasons about C; if the
+        # text is not C, the right answer is to say so rather than to run
+        # linkage analysis over tool-call markup and report nothing.
+        bad = validate_candidate(code)
+        if bad:
+            return [f"candidate is not usable C: {bad}"]
         src = virtual_apply(ctx, fn, code)
         if not src:
             return []

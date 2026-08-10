@@ -148,6 +148,9 @@ def overlay_src_dir(rec_id: str) -> Path:
     return REPO / ("src/" + parts[1].lower() if len(parts) >= 3 else "src")
 
 
+_DEF_CACHE: dict[tuple[str, str], str] = {}
+
+
 def defines_in_own_overlay(symbol: str, rec_id: str) -> str:
     """`path:line` where THIS overlay defines `symbol`, or "".
 
@@ -165,18 +168,26 @@ def defines_in_own_overlay(symbol: str, rec_id: str) -> str:
     d = overlay_src_dir(rec_id)
     if not symbol or not d.is_dir():
         return ""
+    key = (symbol, str(d))
+    if key in _DEF_CACHE:
+        return _DEF_CACHE[key]
     # A definition: the name at file scope followed by `=` or `[`, not
     # preceded by `extern`.
     rx = re.compile(rf"^(?!\s*extern\b)[A-Za-z_][\w \t*]*\b"
                     rf"{re.escape(symbol)}\s*(\[[^\]]*\])?\s*=")
+    hit = ""
     for p in sorted(d.rglob("*.c")) + sorted(d.rglob("*.h")):
         try:
             for i, line in enumerate(p.read_text(errors="ignore").splitlines(), 1):
                 if rx.match(line):
-                    return f"{p.relative_to(REPO).as_posix()}:{i}"
+                    hit = f"{p.relative_to(REPO).as_posix()}:{i}"
+                    break
         except OSError:
             continue
-    return ""
+        if hit:
+            break
+    _DEF_CACHE[key] = hit
+    return hit
 
 
 def classify(note: str, asm_chars: int | None = None,

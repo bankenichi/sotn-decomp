@@ -117,6 +117,66 @@ def main():
     check("extern int func_us_801B171C();" not in out3,
           "the existing prototype is left as the only declaration")
 
+    print("\nan undeclared call that is NOT a same-file stub is also declared")
+    # func_us_801C5AA0 was deferred with "the seed calls GetSideToPlayer
+    # without declaring it", 1% of iterations lost to KeyError. It is not an
+    # INCLUDE_ASM sibling, so the original fix walked straight past it.
+    nonstub = ('#include "rdai.h"\n\n'
+               'INCLUDE_ASM("st/rdai/nonmatchings/x", func_other);\n\n'
+               's32 f(Entity* e) { return GetSideToPlayer(e); }\n')
+    out5 = wd._declare_stub_siblings(nonstub, nonstub)
+    check("extern int GetSideToPlayer();" in out5,
+          "a called function the file never declares gets the implicit form")
+
+    print("\nbut anything the file DOES account for in C is left alone")
+    # NOT a stub: a stub in this file is exactly the case the whole function
+    # exists for, and asserting it stays undeclared was my own error, caught
+    # by this suite.
+    for src_ok, why in (
+        ('#include "x.h"\ns32 Known(Entity*);\n'
+         's32 f(Entity* e){return Known(e);}\n', "already prototyped"),
+        ('#include "x.h"\ns32 Known(Entity* e){return 1;}\n'
+         's32 f(Entity* e){return Known(e);}\n', "defined in this file"),
+    ):
+        got = wd._declare_stub_siblings(src_ok, src_ok)
+        check("extern int Known();" not in got, f"not re-declared: {why}")
+
+    print("\nprose is not code: comments and strings are never scanned")
+    # The idempotence check in fix_seed_declarations caught this. The block
+    # this module writes contains "C89 implicit declaration (6.3.2.2)", and
+    # `declaration(` reads as a call, so a second pass emitted
+    # `extern int declaration();` into the seed. Running it once on any
+    # commented candidate would have invented externs out of English.
+    prose = ('#include "x.h"\n'
+             '// see the implicit declaration (6.3.2.2) note\n'
+             '/* another mention (here) of wording (again) */\n'
+             's32 f(Entity* e) { const char* s = "call_me(1)"; return 0; }\n')
+    got_p = wd._declare_stub_siblings(prose, prose)
+    for ghost in ("declaration", "here", "again", "call_me"):
+        check(f"extern int {ghost}();" not in got_p,
+              f"`{ghost}(` in prose is not treated as a call")
+    check(got_p == prose, "and the file is returned unchanged")
+
+    print("\nthe stripper keeps offsets and lines intact")
+    st = wd._strip_comments_and_strings('a /* x */ b\n// y\nc "z" d\n')
+    check(len(st) == len('a /* x */ b\n// y\nc "z" d\n'),
+          "length is preserved, so line numbers still line up")
+    check(st.count("\n") == 3, "and newlines survive")
+    check("x" not in st and "y" not in st and "z" not in st,
+          "while the contents are gone")
+
+    print("\nand control flow is never mistaken for a call")
+    ctrl = ('#include "x.h"\n'
+            's32 f(Entity* e) {\n'
+            '    if (e->step) { while (1) { break; } }\n'
+            '    switch (e->step) { case 0: break; }\n'
+            '    return sizeof(Entity);\n}\n')
+    got_c = wd._declare_stub_siblings(ctrl, ctrl)
+    for kw in ("if", "while", "switch", "sizeof", "return"):
+        check(f"extern int {kw}();" not in got_c,
+              f"`{kw}(` is not treated as a call")
+    check(got_c == ctrl, "a file needing nothing is returned unchanged")
+
     print("\na declaration found in the TREE wins over the implicit form")
     wd.lookup_declarations = lambda syms, limit=40: [
         "extern s32 func_us_801B171C(Entity*, s32, s32, s32);"]

@@ -50,6 +50,12 @@ from pathlib import Path
 REPO = Path(os.environ.get("SOTN_REPO", Path(__file__).resolve().parents[1]))
 PYTHON = os.environ.get("SOTN_PYTHON", sys.executable)
 
+# One authoritative copy of "does this overlay define the symbol itself".
+# deferred_triage needed it first, for the zero-blocked class; the rule is the
+# same on both sides and a second implementation would drift.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from deferred_triage import defines_in_own_overlay  # noqa: E402
+
 # ---------------------------------------------------------------------------
 # classification
 #
@@ -489,11 +495,45 @@ def triage(records: list[dict]) -> list[dict]:
             #
             # Same-overlay hits stay trustworthy: RIC_step in bo6 pointing at
             # another bo6 file is the real missing-declaration case.
+            # BEFORE giving up: does THIS overlay define it?
+            #
+            # declared_at finds `extern` declarations. A symbol that exists
+            # only as a DEFINITION -- `EInit g_EInitGaibon = {...}` -- matches
+            # no extern pattern, so it reads as "declared nowhere" or, worse,
+            # resolves to some other overlay's extern and gets refused as
+            # cross-overlay. Both outcomes say "unresolved" about a symbol
+            # sitting in the record's own directory.
+            #
+            # That is exactly what happened to EntityGaibonLeg. The only
+            # `extern ... g_EInitGaibon` in the tree is src/st/nz0/nz0.h, a
+            # different overlay, so the guard correctly refused it -- and
+            # stopped, having never looked at src/st/rchi/e_init.c:96 where
+            # RCHI defines its own. The record sat deferred for want of one
+            # line that a directory listing would have found.
+            own = defines_in_own_overlay(b, rec["id"])
             if where and _cross_overlay(rec["id"], where):
+                if own:
+                    fixes.append({
+                        "invented": b,
+                        "likely": f"THIS overlay defines it at {own}; add "
+                                  f"`extern` for it to this file",
+                        "why": f"the only declaration in the tree is at "
+                               f"{where}, a DIFFERENT overlay, and borrowing "
+                               f"it would name a different object; the "
+                               f"definition here is the right one"})
+                    continue
                 unknowns.append(
                     f"{b} (only declared in another overlay at {where}; "
                     f"raw-address names are overlay-local, so this is NOT the "
                     f"same object -- resolve it from this overlay's asm)")
+                continue
+            if not where and own:
+                fixes.append({
+                    "invented": b,
+                    "likely": f"defined in this overlay at {own}; add "
+                              f"`extern` for it to this file",
+                    "why": "a DEFINITION with no extern anywhere, which a "
+                           "declaration-only search cannot see"})
                 continue
             if where:
                 fixes.append({
@@ -762,6 +802,39 @@ def self_test() -> int:
     ck(REQUEUE_TO.get("quality-stale") == "todo",
        "while a stale one is")
 
+    print("\nan own-overlay DEFINITION beats a cross-overlay declaration")
+    # The EntityGaibonLeg shape. `extern ... g_EInitGaibon` exists only in
+    # src/st/nz0/nz0.h, a different overlay, so the cross-overlay guard
+    # correctly refused it and then stopped -- never looking at
+    # src/st/rchi/e_init.c:96 where RCHI defines its own.
+    if (REPO / "src" / "st" / "rchi").is_dir():
+        rows_g = triage([{
+            "id": "us:ST/RCHI:EntityGaibonLeg",
+            "note": "BUILD FAILED: src/st/rchi/e_gaibon.c:12: "
+                    "`g_EInitGaibon' undeclared (first use this function)"}])
+        fx = rows_g[0]["resolvable"]
+        ck(bool(fx), f"it resolves instead of going unresolved ({rows_g[0]})")
+        if fx:
+            ck("rchi" in fx[0]["likely"],
+               f"and points at RCHI's own definition ({fx[0]['likely']})")
+            ck("nz0" not in fx[0]["likely"],
+               "not at nz0's extern, which would name a different object")
+        ck(not rows_g[0]["unresolved"],
+           f"and nothing is left unresolved ({rows_g[0]['unresolved']})")
+
+    print("\nthe cross-overlay refusal still stands when there is no local one")
+    # Retraction check. The audit claimed the guard covered only raw D_us_
+    # names; it never did, it covers every symbol. What it lacked was the
+    # local-definition fallback above. Both halves are pinned here.
+    src_esc0 = Path(__file__).read_text(errors="ignore")
+    tb = src_esc0.split("def triage(")[1].split("\ndef ")[0]
+    ck("_cross_overlay(rec[\"id\"], where)" in tb,
+       "the guard is applied to every symbol, not a D_us_ subset")
+    ck(tb.index("defines_in_own_overlay") < tb.index("_cross_overlay"),
+       "and the local definition is looked up BEFORE the refusal is written")
+    ck("only declared in another overlay" in tb,
+       "the refusal message still exists for the no-local-definition case")
+
     print("\nfree of model cost is not the same as free of work")
     # The first dry run offered to requeue two `harness` records whose own
     # action says "fix the harness, THEN requeue as todo". Sending them back
@@ -878,8 +951,17 @@ def main() -> int:
             print(f"  {cls:14} {counts[cls]:3d}")
     print()
     free = sum(counts.get(c, 0) for c in REQUEUE_TO)
-    print(f"{free} of {len(rows)} are NOT decompilation problems and can be "
-          f"requeued without spending a single model call.\n")
+    blocked_n = sum(counts.get(c, 0) for c in REQUEUE_BLOCKED_ON_WORK)
+    print(f"{free} of {len(rows)} can be requeued right now with no model "
+          f"call.")
+    if blocked_n:
+        # Distinguished on purpose: these are also not decompilation
+        # problems, but requeueing one before its code change just sends it
+        # back to the same wall.
+        print(f"{blocked_n} more are not decompilation problems either, but "
+              f"need a code change first\n(see the blocked-on-work list under "
+              f"--requeue).")
+    print()
     print("=" * 78)
     for r in sorted(rows, key=lambda x: x["class"]):
         print(f"\n[{r['class']}] {r['id']}")

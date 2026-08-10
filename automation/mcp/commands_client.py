@@ -308,6 +308,7 @@ ANALYSIS_SCRIPTS = {
     "test_salvage_degeneration.py",
     "test_build_lock.py",
     "test_stub_declarations.py",
+    "test_candidate_validation.py",
     # Retrofits stub declarations onto seeds written before the fix. Dry-run
     # by default; --apply is what writes.
     "fix_seed_declarations.py",
