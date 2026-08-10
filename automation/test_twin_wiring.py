@@ -137,12 +137,31 @@ def main() -> int:
     # implementation or not, so its presence carries no information about the
     # stem. If per-stem routing is ever added, the second assertion here fails
     # and this comment stops being true.
-    bat = wd.twin_for("EntityBat", "st/rchi")
-    ric = wd.twin_for("BO6_RicStepStand", "boss/bo6")
-    check("shim advice is present on a shared-impl twin", "#include shim" in bat)
+    # NAMING A SPECIFIC STUB DATES THE TEST. This block used to call
+    # twin_for("EntityBat", "st/rchi"); EntityBat was later decompiled, so it
+    # dropped out of twins.us.json, twin_for returned "" and the assertion
+    # failed for a reason that had nothing to do with twin wiring. Pick the
+    # examples out of the current record instead, so the test tracks the tree.
+    same_name = other_name = ""
+    for key in wd._load_twins():
+        # keys are "<overlay>/<symbol>", e.g. "boss/bo0/func_us_801B1DDC"
+        ov, _, sym = key.rpartition("/")
+        sec = wd.twin_for(sym, ov)
+        if not sec:
+            continue
+        if "same name:" in sec:
+            same_name = same_name or sec
+        else:
+            other_name = other_name or sec
+        if same_name and other_name:
+            break
+    check("the record still has a same-name (shared-impl) twin to test with",
+          bool(same_name))
+    check("shim advice is present on a shared-impl twin",
+          "#include shim" in same_name, repr(same_name[:120]))
     check("shim advice is present on a NON-shared-impl twin too, so it is a "
           "constant trailer and not evidence of routing",
-          "#include shim" in ric, repr(ric[:120]))
+          "#include shim" in other_name, repr(other_name[:120]))
 
     # --- a missing or corrupt record file must never break a run ------------
     wd._TWINS = None

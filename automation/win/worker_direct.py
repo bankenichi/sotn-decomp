@@ -1472,6 +1472,53 @@ _DRAFT_KEEP = ("Duplicate return", "irregular", "unable to", "Unhandled",
                "Read from unset", "unknown", "warning")
 
 
+_RX_ENTITY_PTR = re.compile(r"\bEntity\s*\*\s*(\w+)")
+_RX_UNK_ACCESS = re.compile(r"\b(\w+)->unk([0-9A-Fa-f]{1,3})\b")
+_RX_ANY_PTR = re.compile(r"\b(\w+)\s*\*\s*(\w+)\s*[;,)=]")
+
+
+def clean_draft(draft: str) -> tuple[str, list[str]]:
+    """Resolve `->unkNN` in the m2c draft to real Entity fields.
+
+    THE DRAFT IS THE MODEL'S STARTING POINT and it arrives full of the exact
+    thing the prompt then forbids. Telling a model "translate ->unk24 to
+    ->zPriority" and handing it a draft saying `->unk24` spends its attention
+    on a mechanical lookup the harness can do perfectly, and every offset it
+    fails to translate is a build failure: `structure has no member named
+    unk24`.
+
+    ONLY VARIABLES m2c ACTUALLY TYPED AS `Entity*`. m2c emits `->unkNN` for
+    any struct it could not resolve, so a blind rewrite would paste Entity's
+    field names onto a Primitive or a Collider -- which is precisely the
+    failure member_types.py was written to catch, and it would be this file
+    creating it rather than the model.
+
+    Offsets at 0x7C+ are left alone: that is the ext union, whose field names
+    depend on the entity variant and cannot be read off the Entity layout.
+    """
+    if not draft:
+        return draft, []
+    typed = set(_RX_ENTITY_PTR.findall(draft))
+    if not typed:
+        return draft, []
+    fields = {off: name for off, name, _t in _layout_fields()}
+    notes, seen = [], set()
+
+    def sub(m):
+        var, hexoff = m.group(1), m.group(2)
+        if var not in typed:
+            return m.group(0)
+        off = int(hexoff, 16)
+        if off >= 0x7C or off not in fields:
+            return m.group(0)
+        if (var, hexoff) not in seen:
+            seen.add((var, hexoff))
+            notes.append(f"{var}->unk{hexoff} -> ->{fields[off]}")
+        return f"{var}->{fields[off]}"
+
+    return _RX_UNK_ACCESS.sub(sub, draft), notes
+
+
 def compact_draft(text: str, indent: int = 1) -> str:
     """Trim m2c's output without losing anything that helps write C.
 
@@ -1588,6 +1635,10 @@ def prepare(rec: dict, located) -> dict:
         rc, draft = wsl(f"python3 tools/m2c/m2c.py --target mipsel-gcc-c "
                         f"-f {fn} {asm_file}", timeout=300)
     draft = compact_draft(draft)[:MAX_CTX_CHARS]
+    draft, _cleaned = clean_draft(draft)
+    if _cleaned:
+        print(f"[prep] draft: resolved {len(_cleaned)} unkNN access(es) "
+              f"before the model sees them")
     decls = lookup_declarations(extract_asm_symbols(asm_text, exclude=fn))
     print(f"[prep] draft: {len(draft)} chars, asm: {len(asm_text)} chars, "
           f"decls: {len(decls)}")
@@ -1626,10 +1677,11 @@ SYSTEM = (
     "STRUCT FIELDS: m2c writes a synthetic `->unkNN` when it cannot type a "
     "pointer (usually a parameter); `unkNN` is not a real field. Translate it "
     "via the ENTITY LAYOUT section: `->unk24` -> `->zPriority`. Offsets 0x7C+ "
-    "are the `ext` union: prefer the named variant from the EXT VARIANTS "
-    "section (`ext.reboundStone.stoneAngle`). `ext.ILLEGAL.u16[N]` only if no "
-    "named variant fits, with a comment saying so; index (offset-0x7C)/width "
-    "and use a concrete array name (u8/u16/s16/s32), never `uN`. Match the "
+    "are the `ext` union: use the named variant from the EXT VARIANTS "
+    "section (`ext.reboundStone.stoneAngle`). NEVER write `ext.ILLEGAL`; it "
+    "is a placeholder, not a name, and the gate rejects it. If no named "
+    "field covers the offset, say so in one line and stop: the union needs a "
+    "field added, which is a header change and not yours to guess. Match the "
     "asm's access width. Keep accesses the draft already named. Never write a "
     "`->field` absent from both the draft and ENTITY LAYOUT.\n"
     "C89 ONLY:\n"
@@ -1667,9 +1719,8 @@ ENTITY_LAYOUT = (
     "=== ENTITY LAYOUT (offset: field, from include/game.h) ===\n"
     "Use this to translate m2c's `->unkNN` (which means offset 0xNN on an "
     "Entity the decompiler could not type). Anything at 0x7C+ is the `ext` "
-    "union; for an unknown variant use the generic arrays, e.g. "
-    "`ext.ILLEGAL.u16[(0xNN-0x7C)/2]` (or .u8[], .s16[], .s32[] to match the "
-    "asm load width). Write a concrete array name, never the placeholder uN.\n"
+    "union: use the named field from EXT VARIANTS. If none covers the "
+    "offset, report that rather than inventing an access.\n"
     "0x00 posX(f32) 0x04 posY(f32) 0x08 velocityX(s32) 0x0C velocityY(s32)\n"
     "0x10 hitboxOffX(s16) 0x12 hitboxOffY(s16) 0x14 facingLeft(u16) 0x16 palette(u16)\n"
     "0x18 blendMode(u8) 0x19 drawFlags(u8) 0x1A scaleX(s16) 0x1C scaleY(s16) 0x1E rotate(s16)\n"
@@ -2775,9 +2826,13 @@ def ext_variants_for(function: str, blob: str, limit: int = 4) -> str:
     BO6_RicDoSubweapon -> `subweapon`. Only a handful are injected, because the
     union has 461 variants and dumping them would bury the prompt.
 
-    Without this the "prefer the named variant" rule is unactionable: the model
+    Without this the "use the named variant" rule is unactionable: the model
     has no way to know `stoneAngle` exists, so it falls back to
-    `ext.ILLEGAL.u16[0]`, which upstream rejects.
+    `ext.ILLEGAL.u16[0]` -- which the gate rejects, so the attempt is wasted.
+
+    Selection is by NAME AFFINITY and that is a real weakness: a function whose
+    name shares nothing with its variant gets no list at all, and then the
+    prompt asks for a name it never supplied.
     """
     global _EXT_INDEX_CACHE
     if _EXT_INDEX_CACHE is None:
@@ -2800,7 +2855,7 @@ def ext_variants_for(function: str, blob: str, limit: int = 4) -> str:
     if not scored:
         return ""
     scored.sort(reverse=True)
-    out = ["\n=== EXT VARIANTS (real field names; prefer these over ILLEGAL) ==="]
+    out = ["\n=== EXT VARIANTS (the real field names for this entity) ==="]
     for _, vname, meta in scored[:limit]:
         fields = [f["name"] for f in meta.get("fields", []) if f.get("name")]
         if not fields:
@@ -2964,22 +3019,80 @@ def resolve_unk_offsets(draft: str) -> str:
     if not draft:
         return ""
     fields = _layout_fields()
-    wanted = sorted({int(h, 16) for h in _UNK_RX.findall(draft)})
+    # WHICH POINTER an offset was reached through decides what it means.
+    # m2c emits `->unkNN` for every struct it could not type, so a table that
+    # says "unk24 -> zPriority" is right for an Entity and WRONG for a
+    # Primitive. Emitting that would be the harness fabricating exactly the
+    # defect member_types.py exists to catch.
+    #
+    # MEASURED over 45 real m2c drafts (2026-08-09), 554 `->unkNN` accesses:
+    #
+    #     Entity *              20   3.6%
+    #     another named type   473  85.4%   (void* 422, SeqStruct 26,
+    #                                        Primitive 20, Collider 1, ...)
+    #     undeclared            61  11.0%
+    #
+    # That 85% is per ACCESS and overstates the damage: the table is per
+    # OFFSET, and `void *` is m2c's "could not type it", which for an entity
+    # function usually IS the entity. Scored per table line over the same 45
+    # drafts, 262 lines: 15 (6%) asserted an Entity field for a provably
+    # different struct, 4 more were reached through a mix. On
+    # func_us_801A7DC0 that is 3 wrong lines of 29, not 24.
+    #
+    # `void *` is the case that makes a two-way split wrong. It is not
+    # "another struct", it is m2c's fallback when m2ctx did not resolve the
+    # parameter, and for an entity function it usually IS the entity. So it
+    # gets the translation with the uncertainty stated, rather than either a
+    # confident wrong answer or nothing.
+    typed_entity = set(_RX_ENTITY_PTR.findall(draft))
+    declared = {v: t for t, v in _RX_ANY_PTR.findall(draft)}
+    named_other = {v for v, t in declared.items()
+                   if t not in ("Entity", "void") and v not in typed_entity}
+    unsure = {v for v, t in declared.items() if t == "void"}
+    by_off: dict[int, set[str]] = {}
+    for var, h in _RX_UNK_ACCESS.findall(draft):
+        by_off.setdefault(int(h, 16), set()).add(var)
+    # A bare `unkNN` with no `var->` in front has no pointer to judge.
+    for h in _UNK_RX.findall(draft):
+        by_off.setdefault(int(h, 16), set())
+    wanted = sorted(by_off)
     if not wanted:
         return ""
     lines = []
     for off in wanted:
+        vs = by_off[off]
+        if vs and vs <= named_other:
+            ts = sorted({declared[v] for v in vs})
+            lines.append(
+                f"  unk{off:02X}  ->  reached only through {', '.join(sorted(vs))} "
+                f"({'/'.join(ts)} *), NOT an Entity. The Entity layout does not "
+                f"apply. Look 0x{off:02X} up in that struct; do NOT paste an "
+                f"Entity field name here.")
+    skip = {o for o in wanted if by_off[o] and by_off[o] <= named_other}
+    wanted = [o for o in wanted if o not in skip]
+    hedge = {o for o in wanted if by_off[o] and by_off[o] & unsure}
+    # An offset reached through a MIX of pointer types (some `u8 *`, some
+    # `void *`) is not a subset of named_other, so the branch above lets it
+    # through and it gets a confident Entity translation. On the measurement
+    # draft that is how `unk01` became "inside ->posX" while the sibling
+    # offsets unk02..unk04, reached through the same `u8 *` script pointers,
+    # were correctly refused. Name the offenders rather than pick a side.
+    mixed = {o: sorted(by_off[o] & named_other)
+             for o in wanted if by_off[o] & named_other}
+    for off in wanted:
         exact = [f for f in fields if f[0] == off]
         if exact:
             _o, name, typ = exact[0]
-            lines.append(f"  unk{off:02X}  ->  ->{name}    ({typ})")
+            note = ("   [m2c typed this pointer `void *`, i.e. it does not "
+                    "know. Use this only if the asm shows it is the entity]"
+                    if off in hedge else "")
+            lines.append(f"  unk{off:02X}  ->  ->{name}    ({typ}){note}")
             continue
         if off >= 0x7C:
-            idx2, idx4 = (off - 0x7C) // 2, (off - 0x7C) // 4
             lines.append(
-                f"  unk{off:02X}  ->  ext union. Prefer a named variant from "
-                f"EXT VARIANTS; otherwise ext.ILLEGAL.u16[{idx2}] "
-                f"or .u32[{idx4}], matching the asm load width")
+                f"  unk{off:02X}  ->  ext union, {off - 0x7C:#04x} bytes in. "
+                f"Use the named field from EXT VARIANTS that sits at this "
+                f"offset. If none does, say so; do NOT invent an access")
             continue
         prev = [f for f in fields if f[0] < off]
         if prev:
@@ -2995,10 +3108,21 @@ def resolve_unk_offsets(draft: str) -> str:
         lines.append(
             f"  unk{off:02X}  ->  NO named field at this offset and it is not "
             f"inside one. Keep unk{off:02X}. Do NOT invent a field.")
+    if mixed:
+        note = {}
+        for o, vs in mixed.items():
+            ts = "/".join(sorted({declared[v] for v in vs}))
+            note[f"  unk{o:02X}  "] = (
+                f"   [CAUTION: also reached through {', '.join(vs)} ({ts} *), "
+                f"which is not an Entity. This translation applies only to the "
+                f"entity accesses]")
+        lines = [l + next((n for k, n in note.items() if l.startswith(k)), "")
+                 for l in lines]
     return ("\n=== OFFSETS ALREADY RESOLVED FOR YOU ===\n"
-            "Every `->unkNN` in the draft, looked up in the Entity layout so "
-            "you do not have to.\nThis is authoritative: use it verbatim and "
-            "spend no time re-deriving it.\n" + "\n".join(lines) + "\n")
+            "Every `->unkNN` in the draft, resolved against the Entity layout "
+            "where the pointer is actually an Entity.\nLines that say a "
+            "pointer is NOT an Entity are as important as the translations: "
+            "do not paste an Entity field name there.\n" + "\n".join(lines) + "\n")
 
 
 def build_prompt(rec: dict, ctx: dict, feedback: str = "") -> str:
