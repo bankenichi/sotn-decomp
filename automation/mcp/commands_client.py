@@ -1110,16 +1110,43 @@ def fs_search(query: str, path: str = ".", max_results: int = 200) -> dict:
         raise Rejected("query must be 1-200 chars")
     rp = _resolve(path, must_exist=True, want_dir=None)
     # ripgrep if available, else grep; query passed as argv (no shell).
+    #
+    # -E IS LOAD-BEARING. `grep -e` is BASIC regular expressions, where `|`
+    # and `()` are ordinary characters, so `a|b` searched for the literal
+    # three-character string "a|b" and returned nothing. ripgrep uses Rust
+    # regex and treats the same pattern as alternation, so the two backends
+    # silently disagreed and the answer depended on whether rg happened to be
+    # installed.
+    #
+    # It failed toward FALSE NEGATIVES, which is the worst direction for a
+    # search tool: "0 matches" reads as "this symbol does not exist". On
+    # 2026-08-10 that produced four wrong conclusions in one session,
+    # including a claim in a commit message that three BO6 functions had no
+    # twin anywhere in the tree. `PAL_ARMOR_LORD_UNK|E_ARMOR_LORD_UNK2`
+    # returned 0 while the plain substring `ARMOR_LORD_UNK` returned 18.
+    #
+    # --no-ignore for the same reason: rg honours .gitignore and grep does
+    # not, so a search under a gitignored path (nonmatchings/, build/) found
+    # results or not depending on the backend. Both now see the same files.
     tool = "rg" if _has("rg") else "grep"
     if tool == "rg":
-        argv = ["rg", "-n", "--no-heading", "-e", query, str(rp)]
+        argv = ["rg", "-n", "--no-heading", "--no-ignore", "-e", query,
+                str(rp)]
     else:
-        argv = ["grep", "-rn", "-e", query, str(rp)]
+        argv = ["grep", "-rnE", "-e", query, str(rp)]
     p = subprocess.run(argv, cwd=str(REPO), capture_output=True, text=True,
                        timeout=120)
     lines = [ln for ln in p.stdout.splitlines() if ln][:max_results]
-    return {"query": query, "path": path, "matches": lines,
-            "count": len(lines), "truncated": len(p.stdout.splitlines()) > max_results}
+    out = {"query": query, "path": path, "matches": lines,
+           "count": len(lines), "engine": tool,
+           "truncated": len(p.stdout.splitlines()) > max_results}
+    # grep exits 1 for "no match" and >=2 for a REAL error (bad regex,
+    # unreadable path). Those were indistinguishable before: both surfaced as
+    # a clean, confident zero.
+    if p.returncode >= 2:
+        out["error"] = (p.stderr or "").strip()[:300] or f"rc={p.returncode}"
+        out["count"] = -1
+    return out
 
 
 def _has(prog: str) -> bool:

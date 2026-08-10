@@ -502,6 +502,35 @@ def main() -> int:
         check(_ok.endswith("automation"),
               "a genuine in-repo path still resolves normally")
 
+    print("\nsearch alternation actually alternates")
+    # `grep -e` is BRE, where `|` and `()` are literal characters, so `a|b`
+    # searched for the three-character string "a|b" and returned nothing while
+    # ripgrep, if installed, treated it as alternation. Silent false
+    # negatives: "0 matches" reads as "does not exist". Four wrong conclusions
+    # in one session on 2026-08-10, one of them in a commit message.
+    _one = _cc_mod.fs_search("PAL_ARMOR_LORD_UNK", "src/st")
+    _two = _cc_mod.fs_search("E_ARMOR_LORD_UNK2", "src/st")
+    _alt = _cc_mod.fs_search("PAL_ARMOR_LORD_UNK|E_ARMOR_LORD_UNK2", "src/st")
+    if _one["count"] > 0 and _two["count"] > 0:
+        check(_alt["count"] >= max(_one["count"], _two["count"]),
+              f"alternation finds at least as much as either branch "
+              f"({_one['count']} | {_two['count']} -> {_alt['count']})")
+        check(_alt["count"] > 0,
+              "and is not the silent zero that started this")
+    else:
+        print(f"  skip  the probe symbols are gone from the tree "
+              f"({_one['count']}, {_two['count']})")
+
+    _grp = _cc_mod.fs_search("(EInit|Entity) g_EInit", "src/st")
+    check(_grp["count"] > 0,
+          f"a parenthesised group is a group, not literal parens "
+          f"({_grp['count']})")
+
+    print("\nand a broken pattern is an error, not a confident zero")
+    _bad = _cc_mod.fs_search("[unterminated", "src/st")
+    check(_bad["count"] == -1 and "error" in _bad,
+          f"a bad regex reports an error rather than 0 matches ({_bad})")
+
     print("\ndiscarding ORPHANED src/ work is refused, not silently done")
     # The near-miss this guards: src/boss/bo6/richter.c and us_39144.c sat
     # modified with three matching function bodies and no crash journal. A
