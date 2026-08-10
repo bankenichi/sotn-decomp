@@ -551,9 +551,19 @@ DIAGNOSTICS = [
      "where the reasoning budget goes, and which gaps are prompt fixes"),
     ("Fleet: WHY calls fail", "fleet_forensics.py", "--by-model --streaks",
      "replays the logs: what each dead call actually contained"),
+    # TWO WINDOWS, because they answer different questions and pooling them
+    # answers neither. All-time ranks models over thousands of calls; the
+    # current run is the only thing that can show whether a change made today
+    # helped. Reported 2026-08-09: "the logs from the old calls are holding
+    # the statistics back".
     ("Fleet: empty responses", "empty_response_audit.py",
      "--timing --by-prompt-size",
-     "dead rate per model, call timing, prompt-size correlation"),
+     "dead rate per model since the last archive, call timing, prompt-size "
+     "correlation"),
+    ("Fleet: empty responses (all history)", "empty_response_audit.py",
+     "--archived --timing --by-prompt-size",
+     "the same over every archived run, including the pre-zen baseline: "
+     "ranks models, but buries a recent change"),
     # Model selection evidence. These three answer "which model, and is the
     # output actually a decompilation" -- the questions the defect-counting
     # metrics structurally could not.
@@ -1066,25 +1076,26 @@ button.danger:hover{border-color:var(--bad);color:var(--bad)}
 .tabs{display:flex;gap:6px}
 .tabs button{padding:5px 14px}
 .tabs button.on{border-color:var(--accent);color:var(--accent)}
-/* Diagnostics: the BUTTONS scroll, the OUTPUT does not move.
-   This pane used to be overflow:auto with the grid at flex:0 0 auto and the
-   output at flex:1 1 auto;min-height:0. With 36 diagnostics the grid is
-   taller than the viewport, so it took all the height, the output shrank to
-   the zero its own min-height:0 permitted, and the only part left on screen
-   was its horizontal scrollbar -- below the fold, unreachable. Reported
-   2026-08-09: "the response flows off the viewport and cannot even be
-   scrolled to".
-   So: the pane no longer scrolls (overflow:hidden, like pane_build), the grid
-   is capped and scrolls on its own, and the output has a floor it cannot be
-   squeezed under. */
+/* Diagnostics: SIDE BY SIDE, like the logs tab, for the same reason.
+   Two earlier layouts were wrong in opposite directions. As a full-width
+   column the 36-button grid was taller than the viewport, took all the
+   height, and squeezed the output to nothing but a scrollbar below the fold.
+   Capping the grid at 34vh fixed that by making the list permanently cramped
+   AND always scrolling, and an 88ch cap on the output left most of a wide
+   screen empty.
+   A vertical list beside a full-height output solves both: the list scrolls
+   in its own narrow column without stealing height, and the report gets the
+   entire rest of the window -- which is what a 1058-call table wants. */
 #pane_diag{flex:1 1 auto;min-height:0;overflow:hidden;padding:12px 16px;
            display:flex;flex-direction:column}
-.diaggrid{display:grid;gap:8px;flex:0 1 auto;min-height:0;overflow:auto;
-          max-height:34vh;padding-right:4px;
-          grid-template-columns:repeat(auto-fill,minmax(230px,1fr))}
-.diagbtn{text-align:left;padding:8px 10px;line-height:1.35}
+.diagsplit{display:grid;grid-template-columns:minmax(210px,15%) 1fr;gap:12px;
+           flex:1 1 auto;min-height:0;margin-top:10px}
+.diaggrid{display:flex;flex-direction:column;gap:6px;min-height:0;
+          overflow:auto;padding-right:4px}
+.diagbtn{text-align:left;padding:7px 9px;line-height:1.3;flex:0 0 auto}
 .diagbtn b{display:block;color:var(--fg)}
-.diagbtn span{color:var(--dim);font-size:10px}
+.diagbtn span{display:block;color:var(--dim);font-size:10px;
+              line-height:1.25;margin-top:2px}
 /* List on the left, contents on the right: picking a log must not scroll the
    list away, which is the whole point of being able to compare two of them. */
 .logsplit{display:grid;grid-template-columns:340px 1fr;gap:12px;
@@ -1103,21 +1114,13 @@ button.danger:hover{border-color:var(--bad);color:var(--bad)}
         font-size:11px;white-space:pre;color:var(--fg)}
 #pane_logs{flex:1 1 auto;min-height:0;overflow:hidden;padding:12px 16px;
            display:flex;flex-direction:column}
-#diagout{margin-top:12px;flex:1 1 auto;min-height:14em;overflow:auto;
+#diagout{margin:0;min-height:0;overflow:auto;
          background:var(--panel);border:1px solid var(--line);
          border-radius:7px;padding:10px 12px;font-size:11px;color:var(--fg);
-         /* WRAP TO THE TABLE WIDTH, not the pane width.
-            These reports are mostly aligned tables with a few long prose
-            lines. Measured across the diagnostics on 2026-08-09, the widest
-            aligned row is 85 chars (quality_audit; empty_response_audit 82,
-            fleet_forensics 81, decl_coverage 72, reasoning_audit 58) while
-            prose reaches 251. `pre` refused to wrap the prose, so the box
-            scrolled sideways even though no table needed the width.
-            88ch clears the widest table and wraps everything longer to that
-            same column, so the prose lines up with the tables instead of
-            running past them. overflow-wrap:anywhere covers an unbreakable
-            token such as a long path. */
-         white-space:pre-wrap;overflow-wrap:anywhere;max-width:88ch;}
+         /* pre-wrap so the few long prose lines fold instead of forcing a
+            sideways scrollbar; no max-width, because the pane IS the width
+            and an 82-char table has room to spare in it. */
+         white-space:pre-wrap;overflow-wrap:anywhere}
 /* The build tab had NO rule of its own, so it was not a flex column and
    nothing bounded its height: an 81-line sha1sum report simply grew the
    section past the viewport and the only way to read the end was ctrl+A.
@@ -1130,7 +1133,7 @@ button.danger:hover{border-color:var(--bad);color:var(--bad)}
 #buildout{margin-top:12px;flex:1 1 auto;min-height:14em;overflow:auto;
           background:var(--panel);border:1px solid var(--line);
           border-radius:7px;padding:10px 12px;font-size:11px;color:var(--fg);
-          white-space:pre-wrap;overflow-wrap:anywhere;max-width:88ch}
+          white-space:pre-wrap;overflow-wrap:anywhere}
 .ctl{display:flex;gap:8px;align-items:center;flex-wrap:wrap;flex:0 0 auto;
      padding-bottom:10px;margin-bottom:4px;border-bottom:1px solid var(--line)}
 .ctl label{color:var(--dim);display:flex;gap:4px;align-items:center;font-size:11px}
@@ -1252,8 +1255,10 @@ pre{margin:0;padding:8px 10px;flex:1 1 auto;min-height:0;overflow:auto;font-size
 </div>
 <section id=pane_diag style="display:none">
   <h2>Diagnostics</h2>
-  <div class=diaggrid id=diagbtns></div>
-  <pre id=diagout>Pick a tool. Everything here is read-only.</pre>
+  <div class=diagsplit>
+    <div class=diaggrid id=diagbtns></div>
+    <pre id=diagout>Pick a tool. Everything here is read-only.</pre>
+  </div>
 </section>
 <section id=pane_build style="display:none">
   <h2>Build</h2>
@@ -1637,55 +1642,41 @@ def self_test() -> int:
        "it tails rather than heads, because errors are at the END")
     ck("pane_logs" in PAGE and "showLog" in PAGE, "the logs tab renders")
 
-    print("\nthe output pane cannot be squeezed off the viewport")
-    # 36 diagnostics made the button grid taller than the screen. The pane
-    # scrolled, the grid was flex:0 0 auto so it kept every pixel, and the
-    # output was flex:1 1 auto;min-height:0 -- which is an instruction to
-    # shrink to nothing. All that remained on screen was its horizontal
-    # scrollbar, below the fold.
-    ck("#pane_diag{flex:1 1 auto;min-height:0;overflow:hidden" in PAGE,
-       "the diagnostics pane does not scroll; its children do")
-    ck("max-height:34vh" in PAGE and ".diaggrid{display:grid;gap:8px;"
-       "flex:0 1 auto;min-height:0;overflow:auto" in PAGE,
-       "the button grid is capped and scrolls on its own")
-    for _pane in ("#diagout", "#buildout"):
-        _rule = PAGE.split(_pane + "{", 1)[1].split("}", 1)[0]
-        ck("min-height:0" not in _rule,
-           f"{_pane} has no min-height:0 to collapse through")
-        ck("min-height:14em" in _rule,
-           f"{_pane} has a floor it cannot be squeezed under")
-        ck("overflow:auto" in _rule, f"{_pane} scrolls its own content")
-    ck("el('diagout').scrollTop=0" in PAGE,
-       "and a new report starts at its top, not where the last one was left")
+    print("\nthe diagnostics layout uses the window it is given")
+    # Two earlier attempts failed in opposite directions and both were
+    # reported: a full-width column let the 36-button grid take every pixel
+    # and squeeze the output to a scrollbar below the fold; capping the grid
+    # at 34vh made the list permanently cramped and always scrolling, while
+    # an 88ch cap on the output left most of a wide screen empty.
+    #
+    # Asserted against the RULES, with comments stripped, because the words
+    # "max-width" and "34vh" both appear in the commentary explaining why
+    # they are gone -- a plain substring check passes on the explanation.
+    import re as _re
+    def _rule(sel):
+        r = PAGE.split(sel + "{", 1)[1].split("}", 1)[0]
+        return _re.sub(r"/\*.*?\*/", "", r, flags=_re.S)
 
-    # No horizontal scrollbar at all: with pre-wrap plus overflow-wrap there
-    # is nothing that can exceed the box width, so `overflow:auto` never
-    # renders one. Checked against the REAL report, not an assumption about
-    # how wide its lines are.
-    for _pane in ("#diagout", "#buildout"):
-        _rule = PAGE.split(_pane + "{", 1)[1].split("}", 1)[0]
-        ck("white-space:pre;" not in _rule,
-           f"{_pane} is not white-space:pre, which refused to wrap and was "
-           f"the only reason a sideways scrollbar appeared")
-        ck("white-space:pre-wrap" in _rule, f"{_pane} wraps long lines")
-        ck("overflow-wrap:anywhere" in _rule,
-           f"{_pane} can also break an unbreakable token such as a long path")
-    import subprocess as _sp
-    _rep = _sp.run(
-        [sys.executable, str(REPO / "automation" / "empty_response_audit.py")],
-        cwd=str(REPO), capture_output=True, text=True, timeout=180).stdout
-    _rows = [l for l in _rep.splitlines()
-             if l.strip().startswith(("opencode/", "model", "---"))]
-    if _rows:
-        _w = max(len(l) for l in _rows)
-        ck(_w <= 88,
-           f"and the widest TABLE row ({_w} chars) fits inside the 88ch "
-           f"column, so wrapping cannot disturb the alignment")
-    for _pane in ("#diagout", "#buildout"):
-        ck("max-width:88ch" in PAGE.split(_pane + "{", 1)[1].split("}", 1)[0],
-           f"{_pane} wraps to the table column, not the pane width")
+    ck(".diagsplit{" in PAGE and "<div class=diagsplit>" in PAGE,
+       "the tab is a split: list beside output, not stacked")
+    ck("grid-template-columns:minmax(210px,15%) 1fr" in _rule(".diagsplit"),
+       "the list takes a narrow fixed column and the output takes the rest")
+    _out = _rule("#diagout")
+    ck(not _re.search(r"max-width\s*:", _out),
+       "the output has NO max-width, so a wide window is not left empty")
+    ck("overflow:auto" in _out and "min-height:0" in _out,
+       "it scrolls inside its grid cell rather than growing the page")
+    ck("white-space:pre-wrap" in _out and "white-space:pre;" not in _out,
+       "long prose folds instead of forcing a sideways scrollbar")
+    _grid = _rule(".diaggrid")
+    ck(not _re.search(r"max-height\s*:", _grid),
+       "the button list is not height-capped; it simply scrolls its column")
+    ck("overflow:auto" in _grid,
+       "and it does scroll, so 36 entries cannot push the output away")
+    ck("el('diagout').scrollTop=0" in PAGE,
+       "a new report starts at its top, not where the last one was left")
     ck(len(DIAGNOSTICS) > 20,
-       f"this matters because the grid really is long ({len(DIAGNOSTICS)})")
+       f"this matters because the list really is long ({len(DIAGNOSTICS)})")
 
     print("\na rejected request must be VISIBLE, not blank")
     # A stale token was indistinguishable from an empty report. The token is

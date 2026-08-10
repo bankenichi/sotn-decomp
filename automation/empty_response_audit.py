@@ -33,6 +33,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import time
 import re
 import sys
 from collections import defaultdict
@@ -47,11 +48,73 @@ RX_TIMEOUT = re.compile(r"attempt \d+ timed out after (\d+)s")
 RX_REQUEUE = re.compile(r"REQUEUE (\S+): no candidate produced")
 
 
-def log_files() -> list[Path]:
+def parse_since(spec: str) -> float:
+    """A cutoff timestamp from a human spec. Raises ValueError if unparseable.
+
+    Accepts `90m`, `6h`, `3d`, `today`, `2026-08-09`, or a fleet archive stamp
+    `20260809-200431`. The stamp form matters because that is exactly how
+    fleet_start names its archive directories, so "since the run before last"
+    is a value you can read straight off the log tab.
+    """
+    spec = (spec or "").strip().lower()
+    now = time.time()
+    if spec in ("", "all"):
+        return 0.0
+    if spec == "today":
+        t = time.localtime(now)
+        return time.mktime((t.tm_year, t.tm_mon, t.tm_mday, 0, 0, 0, 0, 0, -1))
+    m = re.fullmatch(r"(\d+)\s*([mhd])", spec)
+    if m:
+        n, unit = int(m.group(1)), m.group(2)
+        return now - n * {"m": 60, "h": 3600, "d": 86400}[unit]
+    for fmt in ("%Y%m%d-%H%M%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"):
+        try:
+            return time.mktime(time.strptime(spec, fmt))
+        except ValueError:
+            continue
+    raise ValueError(
+        f"cannot read --since {spec!r}; use 90m, 6h, 3d, today, "
+        f"2026-08-09, or an archive stamp like 20260809-200431")
+
+
+def log_files(since: float = 0.0, current_only: bool = False,
+              archived: bool = False) -> list[Path]:
+    """Worker logs, optionally windowed.
+
+    ARCHIVED HISTORY IS OPT-IN. This used to pool logs/archive/ into every
+    report by default, so a change made today was averaged against thousands
+    of calls from runs that predate it. Reported 2026-08-09: "the logs from
+    the old calls are holding the statistics back". Pooling is right for
+    "which model is best" and wrong for "did that fix work", and the common
+    question is the second one, so the common case is now the default. Pass
+    archived=True to get the whole history back.
+
+    current_only means the run that fleet.pids describes, anchored on that
+    file's mtime because fleet_start rewrites it at launch.
+
+    "the live logs" alone is NOT that run, which is the trap here:
+    fleet_start archives only the tags it is about to start, so after a cli
+    fleet is replaced by a zen fleet the old worker-oc-*.log files are still
+    sitting in logs/ untouched. Taking every live log therefore mixed 68
+    laguna calls from a previous cli run into what claimed to be the current
+    zen run. Filtering by the pidfile's mtime keeps only workers that have
+    written since this fleet started.
+    """
     out = list(LOGS.glob("worker-*.log"))
-    arch = LOGS / "archive"
-    if arch.is_dir():
-        out += list(arch.rglob("worker-*.log"))
+    if current_only:
+        pids = LOGS / "fleet.pids"
+        anchor = pids.stat().st_mtime if pids.exists() else 0.0
+        if not anchor and out:
+            # No pidfile (a stopped fleet clears it). Fall back to the newest
+            # log and a short trailing window, and the caller is told.
+            anchor = max(p.stat().st_mtime for p in out) - 3600
+        since = max(since, anchor)
+    elif archived:
+        arch = LOGS / "archive"
+        if arch.is_dir():
+            out += list(arch.rglob("worker-*.log"))
+    if since:
+        out = [p for p in out if p.stat().st_mtime >= since]
     return sorted(out)
 
 
@@ -313,10 +376,57 @@ def main() -> int:
                     help="duration split by productive vs dead, and what a "
                          "tighter cap would cost")
     ap.add_argument("--self-test", action="store_true")
+    ap.add_argument("--since", default="",
+                    help="only logs at or after this point: 90m, 6h, 3d, "
+                         "today, 2026-08-09, or an archive stamp such as "
+                         "20260809-200431. Default is every run ever "
+                         "recorded, which answers 'which model is best' but "
+                         "NOT 'did today's change help'")
+    ap.add_argument("--archived", action="store_true",
+                    help="also read logs/archive/, i.e. every run ever "
+                         "recorded. Off by default: pooled history buries a "
+                         "recent change. Use it to rank models, not to judge "
+                         "a fix")
+    ap.add_argument("--current", action="store_true",
+                    help="only the CURRENT fleet run (fleet_start archives "
+                         "the previous run's logs, so the live logs are "
+                         "exactly the run in progress)")
     a = ap.parse_args()
     if a.self_test:
         return self_test()
-    paths = log_files()
+    try:
+        cutoff = parse_since(a.since)
+    except ValueError as e:
+        print(e, file=sys.stderr)
+        return 2
+    every = log_files(archived=True)
+    paths = log_files(cutoff, a.current, a.archived)
+    # STATE THE WINDOW, ALWAYS. A filtered report that looks like an
+    # unfiltered one is how a partial number gets quoted as a total.
+    if a.current:
+        _pids = LOGS / "fleet.pids"
+        _anch = ("fleet.pids at " + time.strftime(
+                     "%Y-%m-%d %H:%M", time.localtime(_pids.stat().st_mtime))
+                 if _pids.exists() else
+                 "NO fleet.pids (fleet stopped) -- falling back to the last "
+                 "hour of the newest log, which may still span two runs")
+        print(f"\nWINDOW: the latest fleet run only "
+              f"({len(paths)} of {len(every)} logs; anchored on {_anch})")
+    elif cutoff:
+        print(f"\nWINDOW: since {time.strftime('%Y-%m-%d %H:%M', time.localtime(cutoff))} "
+              f"({len(paths)} of {len(every)} logs; "
+              f"{len(every) - len(paths)} older ones excluded)")
+    elif a.archived:
+        print(f"\nWINDOW: every run ever recorded ({len(paths)} logs, "
+              f"archive included). Good for ranking models; a change made "
+              f"today is averaged against all of it.")
+    else:
+        print(f"\nWINDOW: current logs only ({len(paths)} of {len(every)}; "
+              f"{len(every) - len(paths)} archived runs excluded). "
+              f"Add --archived for the full history.")
+    if not paths:
+        print("no logs in that window.")
+        return 0
     stats, calls, requeues = scan(paths)
     report(stats, calls, requeues, len(paths))
     if a.by_prompt_size:
