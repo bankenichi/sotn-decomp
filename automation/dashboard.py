@@ -609,6 +609,9 @@ DIAGNOSTICS = [
      "which deferrals are stale: a tier that could not run, or a seed bug"),
     ("Deferred triage: requeue plan", "deferred_triage.py", "--requeue-plan",
      "the exact scheduler commands; prints only, writes nothing"),
+    ("Matched records vs HEAD", "matched_audit.py", "",
+     "every `matched` record whose body is not actually committed; finds "
+     "false records that no build can detect"),
     ("Orphaned src work: match or debris?", "orphan_check.py", "",
      "uncommitted src/ files with no crash journal, classified by the "
      "oracle; read-only, never restores"),

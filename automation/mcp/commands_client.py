@@ -314,6 +314,9 @@ ANALYSIS_SCRIPTS = {
     # Classifies uncommitted src/ work as a landed match or as debris. Never
     # writes; --build only builds. This is the tool _restorable points at.
     "orphan_check.py",
+    # Cross-checks every `matched` record against HEAD. Finds records that
+    # are simply false, which no build can detect. Read-only.
+    "matched_audit.py",
     # Runs every test_*.py and reports one table. Read-only.
     "run_selftests.py",
 }
