@@ -236,6 +236,7 @@ ANALYSIS_SCRIPTS = {
     # that stops being run.
     "test_draft_cleaning.py",
     "test_salvage_degeneration.py",
+    "test_build_lock.py",
     # Runs every test_*.py and reports one table. Read-only.
     "run_selftests.py",
 }

@@ -3430,6 +3430,11 @@ def build_prompt(rec: dict, ctx: dict, feedback: str = "") -> str:
 
 # ---- applying, building, checking -------------------------------------------
 
+# Seconds this process has spent BLOCKED on BuildLock. Read by the retry loop
+# so queueing behind another worker's build does not consume FUNC_BUDGET.
+_LOCK_WAIT_TOTAL = 0.0
+
+
 class BuildLock:
     """Cross-process lock around apply -> build -> verify -> restore.
 
@@ -3453,11 +3458,29 @@ class BuildLock:
         self.fd: int | None = None
 
     def acquire(self, poll: float = 2.0) -> None:
+        """Block until held. Time spent waiting is added to _LOCK_WAIT_TOTAL.
+
+        WAITING IS NOT THE FUNCTION'S FAULT, so it must not be charged to the
+        function's budget. FUNC_BUDGET is wall clock and the lock is taken
+        inside it, so a worker that queued behind two other builds could be
+        killed with "BUDGET EXHAUSTED ... escalating" for being unlucky rather
+        than for being hard -- and escalation routes the record to a more
+        expensive tier.
+
+        Measured over the archived logs (2026-08-09): 122 contended
+        acquisitions, 44.5 minutes of waiting in total, mean 22s but a tail to
+        300s. 300s is a third of the 900s budget. Zero stale-lock steals, so
+        the protocol itself is sound; this is honest contention, and the fix
+        is accounting, not locking.
+        """
+        global _LOCK_WAIT_TOTAL
+        _t_wait = time.time()
         waited = 0.0
         while True:
             try:
                 self.fd = os.open(self.path, os.O_CREAT | os.O_EXCL | os.O_RDWR)
                 os.write(self.fd, f"{os.getpid()} {time.time()}".encode())
+                _LOCK_WAIT_TOTAL += time.time() - _t_wait
                 return
             except FileExistsError:
                 try:
@@ -4234,7 +4257,14 @@ def process_one(dry: bool = False) -> bool:
     gen_errors = 0          # attempts that errored during generation
     try:
         _deadline = time.time() + FUNC_BUDGET
+        _lock_wait_at_start = _LOCK_WAIT_TOTAL
         for attempt in range(1, MAX_ATTEMPTS + 1):
+            # Give back whatever this function spent QUEUED behind another
+            # worker's build. Without this the budget punishes contention:
+            # three workers, one build lock, and the unlucky one is escalated
+            # to a costlier tier for waiting rather than for being difficult.
+            _deadline += (_LOCK_WAIT_TOTAL - _lock_wait_at_start)
+            _lock_wait_at_start = _LOCK_WAIT_TOTAL
             # Wall-clock budget for the WHOLE function, not per attempt.
             # MAX_ATTEMPTS=4, and each attempt that trips REASON_CAP falls into a
             # forced pass bounded only by GEN_TIMEOUT (600s). That is ~40 minutes
