@@ -347,6 +347,38 @@ def main() -> int:
           "and that bundle dir really does hold a manifest, so the check above "
           "is not passing vacuously")
 
+    # An extensionless launcher in a WINDOWS npm dir is npm's Unix shell
+    # wrapper. From WSL it matches first and then execs `node`, which this
+    # distro does not have -- the real first call failed exactly that way:
+    #   /mnt/c/.../npm/mcpb: exec: node: not found
+    # The .cmd works, via interop. But a NATIVE Linux install is extensionless
+    # too and must still win, so the rule is about /mnt, not about extensions.
+    print("\nmcpb resolution survives the WSL PATHEXT trap")
+    import shutil as _sh
+    _real_which, _saved = _sh.which, _cc_mod._MCPB_RESOLVED
+    _win = "/mnt/c/Users/k/AppData/Roaming/npm/"
+    for _label, _table, _want in (
+            ("the unix wrapper alone is refused, with the reason",
+             {"mcpb": _win + "mcpb"}, None),
+            ("the .cmd is preferred over the unix wrapper",
+             {"mcpb": _win + "mcpb", "mcpb.cmd": _win + "mcpb.cmd"},
+             _win + "mcpb.cmd"),
+            ("a native linux install still wins",
+             {"mcpb": "/usr/local/bin/mcpb", "mcpb.cmd": _win + "mcpb.cmd"},
+             "/usr/local/bin/mcpb")):
+        _cc_mod._MCPB_RESOLVED = None
+        _sh.which = lambda n, _t=_table: _t.get(n)
+        try:
+            _got, _err = _cc_mod.resolve_mcpb(), ""
+        except Exception as e:                              # Rejected
+            _got, _err = "", str(e)
+        if _want:
+            check(_got == _want, f"{_label} ({_got or _err[:40]!r})")
+        else:
+            check(not _got and "node" in _err,
+                  f"{_label} ({_err[:60]!r})")
+    _sh.which, _cc_mod._MCPB_RESOLVED = _real_which, _saved
+
     print("\nin-repo path containment cannot be defeated by a name prefix")
     _root = _cc_mod.REPO.resolve()
     _evil = f"../{_root.name}-evil/x"

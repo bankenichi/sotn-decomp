@@ -359,18 +359,50 @@ _MCPB_RESOLVED: str | None = None
 
 
 def resolve_mcpb() -> str:
-    """An executable path for the mcpb CLI, or Rejected with how to install it."""
+    """An executable path for the mcpb CLI, or Rejected with how to install it.
+
+    THE EXTENSIONLESS NAME IS A TRAP ON WSL, and taking it first is exactly the
+    bug this hit on the first real call:
+
+        /mnt/c/Users/kenic/AppData/Roaming/npm/mcpb: exec: node: not found
+
+    npm writes THREE launchers into its global dir: a Unix shell script with no
+    extension, plus `.cmd` and `.ps1` for Windows. From WSL the Windows npm dir
+    is on PATH, so the extensionless shell script matches first -- and it then
+    execs `node`, which does not exist inside this WSL distro. The `.cmd` is
+    the one that works, because WSL interop hands it to Windows, which has
+    node.
+
+    A NATIVE Linux install must still win when there is one: it is also
+    extensionless, but it lives outside /mnt. So the rule is not "prefer .cmd",
+    it is "an extensionless launcher under /mnt is a Windows Unix-wrapper and
+    cannot run here".
+    """
     global _MCPB_RESOLVED
     if _MCPB_RESOLVED:
         return _MCPB_RESOLVED
     if MCPB_BIN:
         _MCPB_RESOLVED = MCPB_BIN
         return _MCPB_RESOLVED
-    for name in ("mcpb", "mcpb.cmd", "mcpb.CMD", "mcpb.exe", "mcpb.bat"):
-        found = shutil.which(name)
-        if found:
-            _MCPB_RESOLVED = found
-            return found
+    hits = [p for p in (shutil.which(n) for n in
+                        ("mcpb", "mcpb.cmd", "mcpb.CMD", "mcpb.exe", "mcpb.bat"))
+            if p]
+
+    def usable(p: str) -> bool:
+        """False for a Unix wrapper sitting in a Windows npm directory."""
+        return not (p.replace("\\", "/").startswith("/mnt/")
+                    and not os.path.splitext(p)[1])
+
+    for p in hits:
+        if usable(p):
+            _MCPB_RESOLVED = p
+            return p
+    if hits:
+        raise Rejected(
+            f"found mcpb at {hits[0]}, but that is npm's UNIX launcher inside "
+            f"a Windows npm directory: it execs `node`, which is not installed "
+            f"in this WSL distro. Install the Windows variant (mcpb.cmd should "
+            f"sit beside it), install node in WSL, or set MCPB_BIN.")
     raise Rejected(
         "the mcpb CLI was not found on PATH. Install it with "
         "`npm install -g @anthropic-ai/mcpb`, or set MCPB_BIN to its full "
