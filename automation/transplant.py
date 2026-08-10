@@ -187,6 +187,106 @@ def apply_map(body: str, pairs: list[str]) -> tuple[str, list[str]]:
     return pat.sub(lambda m: table[m.group(1)], body), notes
 
 
+RX_OBJ_MACRO = re.compile(r"^#\s*define\s+([A-Z][A-Z0-9_]*)\s+(\S[^\n]*)$",
+                          re.M)
+RX_FN_MACRO = re.compile(
+    r"^#\s*define\s+([A-Z][A-Z0-9_]*)\(\s*x\s*\)\s+(\S[^\n]*)$", re.M)
+_SAFE_EXPR = re.compile(r"^[-+*/|&^()<>\s0-9xXa-fA-F]*$")
+
+
+def _consts_table() -> dict:
+    """Object-like macros from game.h that evaluate to a number."""
+    out = {}
+    h = REPO / "include" / "game.h"
+    if not h.is_file():
+        return out
+    for name, val in RX_OBJ_MACRO.findall(h.read_text(errors="ignore")):
+        v = val.split("//")[0].split("/*")[0].strip()
+        if _SAFE_EXPR.match(v):
+            try:
+                out[name] = eval(v, {"__builtins__": {}}, {})   # noqa: S307
+            except Exception:                                   # noqa: BLE001
+                pass
+    return out
+
+
+def _fn_macros() -> dict:
+    """{name: body} for single-argument macros like ANIMSET_OVL(x)."""
+    h = REPO / "include" / "game.h"
+    if not h.is_file():
+        return {}
+    return {n: b.split("//")[0].strip()
+            for n, b in RX_FN_MACRO.findall(h.read_text(errors="ignore"))}
+
+
+def _eval_macro(body: str, arg: int, consts: dict) -> int | None:
+    expr = re.sub(r"\bx\b", f"({arg})", body)
+    for name, val in consts.items():
+        expr = re.sub(r"\b" + re.escape(name) + r"\b", str(val), expr)
+    if not _SAFE_EXPR.match(expr):
+        return None
+    try:
+        return eval(expr, {"__builtins__": {}}, {})             # noqa: S307
+    except Exception:                                           # noqa: BLE001
+        return None
+
+
+def _s16(v: int) -> int:
+    v &= 0xFFFF
+    return v - 0x10000 if v & 0x8000 else v
+
+
+def macro_consts(body: str, pairs: list[str]) -> tuple[list[str], list[str]]:
+    """Constant changes the C expresses through a macro, not a literal.
+
+    asm_delta reports what the ASSEMBLY holds. The C often does not hold it
+    directly: `self->animSet = ANIMSET_OVL(1)` assembles to -0x7FFF because
+    ANIMSET_OVL(x) is `(x) | 0x8000`, and the target wants -0x7FFE. Searching
+    the body for -0x7FFF finds nothing, the substitution is dropped, and the
+    transplant compiles to the wrong bytes -- which is worse than failing,
+    because it looks like success right up to the checksum.
+
+    So the ARGUMENT is rewritten instead of the literal, and only after the
+    arithmetic is CHECKED: the candidate argument is evaluated through the
+    real macro body and must produce exactly the value the assembly asks for.
+    A proposal that does not evaluate correctly is reported and discarded.
+    """
+    consts, macros = _consts_table(), _fn_macros()
+    out, notes = [], []
+    if not macros:
+        return out, notes
+    for pair in pairs:
+        old_s, _, new_s = pair.partition("=")
+        try:
+            old = int(old_s, 0)
+            new = int(new_s, 0)
+        except ValueError:
+            continue                       # a symbol rename, not a constant
+        if re.search(r"(?<![\w.])" + re.escape(old_s) + r"(?![\w.])", body):
+            continue                       # present literally; apply_map has it
+        for name, mbody in macros.items():
+            for m in re.finditer(re.escape(name) + r"\(\s*(-?\w+)\s*\)",
+                                 body):
+                try:
+                    arg = int(m.group(1), 0)
+                except ValueError:
+                    continue
+                got = _eval_macro(mbody, arg, consts)
+                if got is None or _s16(got) != _s16(old):
+                    continue
+                cand = arg + (new - old)
+                chk = _eval_macro(mbody, cand, consts)
+                if chk is not None and _s16(chk) == _s16(new):
+                    out.append(f"{name}({m.group(1)})={name}({cand})")
+                    notes.append(f"{name}({m.group(1)}) -> {name}({cand})  "
+                                 f"[{old_s} -> {new_s}, verified through the "
+                                 f"macro]")
+                else:
+                    notes.append(f"{name}({m.group(1)}) holds {old_s} but no "
+                                 f"argument gives {new_s}; left alone")
+    return out, notes
+
+
 def _ovl_prefix(overlay: Path) -> str:
     """The OVL_EXPORT prefix for an overlay, e.g. RNO0.
 
@@ -473,7 +573,11 @@ def preflight(fn: str, mapping: list[str] | None = None,
         pairs += [f"{k}={v}" for k, v in em.items()]
         auto_notes += [f"enum: {x}" for x in en]
 
-    body, map_notes = apply_map(body, pairs)
+    # Constants the C reaches through a macro cannot be substituted as
+    # literals; rewrite the macro argument instead, verified by evaluation.
+    mc, mc_notes = macro_consts(body, pairs)
+    auto_notes += [f"macro: {x}" for x in mc_notes]
+    body, map_notes = apply_map(body, pairs + mc)
     decls, decl_notes = auto_decls(body, REPO / stub_path, defining=fn)
     if decls:
         body = "\n".join(decls) + "\n\n" + body
@@ -830,6 +934,30 @@ def self_test() -> int:
         ck(f'"{k}"' in scan_src, f"the {k} class exists")
     ck("not a twin" in scan_src,
        "a structural mismatch is separated from a missing twin")
+
+    print("\na constant the C reaches through a MACRO is rewritten as an arg")
+    # ANIMSET_OVL(x) is `(x) | 0x8000`, so ANIMSET_OVL(1) assembles to -0x7FFF.
+    # Searching the body for the literal finds nothing, the substitution is
+    # dropped, and the transplant compiles to the WRONG BYTES -- which is
+    # worse than failing, because it looks like success until the checksum.
+    out, notes = macro_consts("self->animSet = ANIMSET_OVL(1);",
+                              ["-0x7FFF=-0x7FFE"])
+    ck(out == ["ANIMSET_OVL(1)=ANIMSET_OVL(2)"],
+       f"the argument is rewritten, not the literal ({out})")
+    ck(any("verified through the macro" in n for n in notes),
+       "and the arithmetic is checked, not assumed")
+    # A literal already present is apply_map's job, not this one.
+    ck(macro_consts("x = -0x7FFF;", ["-0x7FFF=-0x7FFE"])[0] == [],
+       "a literal in the body is left to apply_map")
+    # A symbol rename must not be parsed as a constant.
+    ck(macro_consts("ANIMSET_OVL(1);", ["func_a=func_b"])[0] == [],
+       "a symbol pair is ignored here")
+    # An unreachable target value must NOT be forced.
+    bad, bn = macro_consts("self->animSet = ANIMSET_OVL(1);",
+                           ["-0x7FFF=0x1234"])
+    ck(bad == [], f"an unreachable value yields no rewrite ({bad})")
+    ck(any("left alone" in n for n in bn),
+       f"and it is reported rather than passed over ({bn})")
 
     print("\nthe transplant is type-checked like generated C is")
     ck("member_types" in body_fn,

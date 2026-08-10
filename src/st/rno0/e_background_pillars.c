@@ -50,6 +50,27 @@ void func_us_801CC750_from_no0(Entity* self) {
     }
 }
 
-INCLUDE_ASM("st/rno0/nonmatchings/e_background_pillars", func_us_801CC8F8_from_no0);
+#define g_EInitCommon OVL_EXPORT(EInitCommon)
+extern EInit RNO0_EInitCommon;
+
+void func_us_801CC8F8_from_no0(Entity* self) {
+    if (!self->step) {
+        InitializeEntity(g_EInitCommon);
+        self->animSet = ANIMSET_OVL(2);
+        self->animCurFrame = 3;
+        self->zPriority = g_unkGraphicsStruct.g_zEntityCenter - 0x54;
+        self->unk68 = 0xC0;
+        self->flags &= ~FLAG_UNK_20000000;
+        return;
+    }
+
+    if (self->posX.i.hi < -0x40) {
+        self->posX.i.hi += 0x180;
+    }
+
+    if (self->posX.i.hi > 0x140) {
+        self->posX.i.hi -= 0x180;
+    }
+}
 
 INCLUDE_ASM("st/rno0/nonmatchings/e_background_pillars", func_us_801CC9B4_from_no0);
