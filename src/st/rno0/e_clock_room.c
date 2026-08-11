@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #include "rno0.h"
 
+/* TRANSPLANTED from NO0's copy by automation/transplant.py --auto, no model
+ * call. The `_from_no0` suffix is the tree's convention for a body ported
+ * across overlays and is what identifies it as such. Verified by the oracle.
+ */
 void func_us_801CCAAC_from_no0(Entity* self) {
     Entity* tempEntity;
     s16 angle;

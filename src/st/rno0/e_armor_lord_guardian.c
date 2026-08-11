@@ -1,6 +1,29 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #include "rno0.h"
 
+// g_Entities is used by func_us_801D1388_from_are below and is not reachable
+// through rno0.h. Hoisted here from beside that function, where the transplant
+// left it: a file-scope extern belongs with the other includes, not wedged
+// between two function bodies.
+extern Entity g_Entities[TOTAL_ENTITY_COUNT];
+
+/* THE FOUR `_from_are` FUNCTIONS IN THIS FILE WERE TRANSPLANTED, not written.
+ *
+ * ARE and RNO0 are the normal and inverted castle versions of the same stage,
+ * so their guardian code is identical apart from per-overlay constants.
+ * automation/transplant.py copies ARE's body, renames it, and derives the
+ * substitutions from an asm-vs-asm diff; the oracle decides whether the result
+ * is right. No model was involved in any of them.
+ *
+ * These are per-overlay statics by convention, NOT candidates for
+ * src/st/e_armor_lord.h -- that header holds the ArmorLord entity itself and
+ * declares none of these.
+ *
+ * The one substitution that could not be diffed out is PAL_ARMOR_LORD_UNK,
+ * used by 801D1388. ARE says 0x21A and NO1 says 0x220, so the value is
+ * per-overlay and neither could be borrowed; RNO0's 0x20A was read out of its
+ * own assembly. See rno0.h's Palettes enum for the derivation.
+ */
 static void func_us_801D1184_from_are(Primitive* prim) {
     switch (prim->next->u2) {
     case 0:
@@ -58,12 +81,6 @@ static void func_us_801D1184_from_are(Primitive* prim) {
         break;
     }
 }
-
-/* Declarations injected by the worker: used by the candidate
-   below and absent from this file. Copied verbatim from the
-   tree, same overlay or a shared header, never another
-   overlay's. */
-extern Entity g_Entities[TOTAL_ENTITY_COUNT]; // 0x060997F8;
 
 static void func_us_801D1388_from_are(Primitive* prim) {
     Collider collider;

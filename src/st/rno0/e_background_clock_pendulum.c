@@ -4,6 +4,8 @@
 #define g_EInitCommon OVL_EXPORT(EInitCommon)
 extern EInit RNO0_EInitCommon;
 
+/* TRANSPLANTED from NO0's copy by automation/transplant.py --auto, no model
+ * call. Verified by the oracle. */
 void func_us_801C2A34_from_no0(Entity* self) {
     s16 angle;
 

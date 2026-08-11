@@ -2,9 +2,23 @@
 #include "rno0.h"
 
 extern EInit RNO0_EInitSpawner;
-void func_us_801CC750_from_no0(Entity* self);
+
+// Needed: 801CC750 installs this as a pfnUpdate below, before it is defined.
 void func_us_801CC8F8_from_no0(Entity* self);
 
+/* TRANSPLANTED, no model call. Both functions in this file were ported from
+ * NO0's copies in src/st/no0/4C750.c by automation/transplant.py --auto, which
+ * derives its substitutions from an asm-vs-asm diff rather than being told
+ * them. For 801CC750 that diff was:
+ *
+ *     D_us_80180A88     -> RNO0_EInitSpawner
+ *     func_us_801CC8F8  -> func_us_801CC8F8_from_no0
+ *     0xC0 <-> 0xE0, 0x91 -> 0x5F, 0xC1 -> 0x3F, 0x8E -> 0x6A
+ *
+ * The four constants are the inverted castle: the sprite is mirrored, so its
+ * U coordinates swap and its Y coordinates flip. Verified by the oracle, not
+ * by inspection -- both overlays' artifacts hash correctly with this applied.
+ */
 void func_us_801CC750_from_no0(Entity* self) {
     Entity* entityPtr;
     s16 i;
