@@ -191,13 +191,46 @@ def suggest_struct_path(name: str, known: set[str]) -> str | None:
     RIC_posX_i_hi -> RIC.posX.i.hi, but ONLY when the leading component is a
     real object. Without that guard this happily "corrects" any identifier
     containing an underscore, which would be worse than saying nothing.
+
+    THE HEAD IS THE LONGEST KNOWN PREFIX, NOT THE FIRST TOKEN. This took
+    parts[0], so for `g_GpuBuffers_0_draw_g0` it asked whether "g" is a known
+    object, got no, and gave up. Every global in this tree is named `g_
+    something`, so the resolver only ever worked for the handful of objects
+    with no underscore in their name -- RIC and PLAYER, which is exactly the
+    set it was tested on. func_us_801B3368 has been sitting in the
+    "needs a human: names not resolvable" bucket since, for a name that
+    resolves mechanically.
+
+    NUMERIC COMPONENTS ARE SUBSCRIPTS. g_GpuBuffers is `GpuBuffer[2]`
+    (include/game.h:2149), so the `0` is an index, not a member:
+
+        g_GpuBuffers_0_draw_g0  ->  g_GpuBuffers[0].draw.g0
+
+    which is a real path: GpuBuffer.draw is a DRAWENV and DRAWENV carries
+    r0/g0/b0. Only PURELY numeric parts become subscripts, so `g0` stays a
+    member name rather than becoming `g[0]`.
+
+    Still advisory. The caller labels every suggestion UNVERIFIED, and it
+    should: this reads names, not the asm. Note too that some flat names are
+    REAL in this tree -- game.h:2151 declares `g_GpuBuffers_1_buf_draw_clip_y`
+    as an extern in its own right -- but those are found by the declaration
+    index before this is ever reached.
     """
     parts = _split_flat(name)
     if len(parts) < 2:
         return None
-    if parts[0] not in known:
+    # Longest first, so `g_GpuBuffers` wins over `g` if both are somehow known.
+    head_len = 0
+    for i in range(len(parts) - 1, 0, -1):
+        if "_".join(parts[:i]) in known:
+            head_len = i
+            break
+    if not head_len:
         return None
-    return parts[0] + "." + ".".join(parts[1:])
+    out = "_".join(parts[:head_len])
+    for p in parts[head_len:]:
+        out += f"[{p}]" if p.isdigit() else f".{p}"
+    return out
 
 
 def known_objects() -> set[str]:
@@ -882,6 +915,34 @@ def self_test() -> int:
        "an unknown head is NOT rewritten (the guard that stops noise)")
     ck(suggest_struct_path("RIC", known) is None,
        "a bare name with no underscore yields nothing")
+
+    print("\nheads that CONTAIN an underscore, which is most of the tree")
+    # This took parts[0], so the head of `g_GpuBuffers_0_draw_g0` was "g".
+    # Every global here is named g_something, so the resolver only ever
+    # worked for RIC and PLAYER -- the two names it was tested on.
+    # func_us_801B3368 sat in "needs a human: names not resolvable" the whole
+    # time, for a name that resolves mechanically.
+    gk = {"g_GpuBuffers", "g_Ric", "PLAYER"}
+    ck(suggest_struct_path("g_GpuBuffers_0_draw_g0", gk)
+       == "g_GpuBuffers[0].draw.g0",
+       f"g_GpuBuffers_0_draw_g0 -> g_GpuBuffers[0].draw.g0 "
+       f"({suggest_struct_path('g_GpuBuffers_0_draw_g0', gk)})")
+    ck(suggest_struct_path("g_Ric_step", gk) == "g_Ric.step",
+       "and a two-part head with no index")
+
+    print("\na PURELY numeric part is a subscript; a trailing digit is not")
+    # g_GpuBuffers is GpuBuffer[2] (include/game.h:2149), so the 0 indexes it.
+    # `g0` is a DRAWENV member and must survive as one -- turning it into
+    # `g[0]` would be a confident wrong answer, which is worse than none.
+    ck("[0]" in (suggest_struct_path("g_GpuBuffers_0_draw_g0", gk) or ""),
+       "the index becomes a subscript")
+    ck((suggest_struct_path("g_GpuBuffers_0_draw_g0", gk) or "").endswith(".g0"),
+       "while g0 stays a member")
+
+    print("\nthe longest known head wins, so a prefix cannot shadow it")
+    ck(suggest_struct_path("g_GpuBuffers_0_draw_g0", gk | {"g"})
+       == "g_GpuBuffers[0].draw.g0",
+       "g_GpuBuffers beats a bare g even when both are known")
 
     print()
     if fails:
