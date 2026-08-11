@@ -72,6 +72,8 @@ every one of them already had a generator that nobody was running.
 | Queue | 470 records: **203 matched**, 126 todo, 102 escalated, 33 deferred, 6 near |
 | `INCLUDE_ASM` stubs left in `src/` | 266 (145 `boss`, 116 `st`, 3 `servant`, 2 `main`) |
 | Automation | 71 Python modules, 22 test suites plus 28 modules with their own `--self-test`, 79 connector tools, 55 diagnostics |
+
+The `matched` count is *our* work, across 5 overlays. The stub count is `us` only: it excludes `saturn` and the `_psp` trees, which the queue and the oracle also exclude. Counting every `.c` under `src/` instead gives 2734, most of it a Saturn port by an external team.
 <!-- STATUS:END -->
 
 **Code decompiled: 95.2%** (6235 / 6567 functions) across 44 built binaries.
@@ -82,12 +84,7 @@ than this fork's.
 
 The 95.2% is the whole game and mostly predates this fork; see
 [Completion](#completion) for the per-binary split and
-[Relationship to upstream](#relationship-to-upstream) for who did what. The
-`matched` count in the table above is *our* work, across five overlays.
-
-The stub count above is `us` only. It excludes `saturn` and the `_psp` trees,
-which the queue and the oracle also exclude; counting everything under `src/`
-gives 2734, four fifths of it a Saturn port by an external team.
+[Relationship to upstream](#relationship-to-upstream) for who did what.
 
 The tree is byte-identical to the retail binaries at every commit. That is not
 a goal, it is the gate: `verify_build` refuses to record a match without it,
@@ -111,26 +108,13 @@ history rather than anyone's recollection:
 | claude-manual | 4 | 2% | written or repaired by hand |
 | model-fleet | 51 | 25% | an OpenCode or llama worker wrote it |
 | unknown | 57 | 28% | evidence insufficient; **not** a guess |
+
+Two things this table is honest about, because a progress number that flatters itself is useless for deciding what to build next:
+
+- **57 of 203 are unattributed, and that is not shrinking on its own.** 3 were overwritten outright by a build receipt (`scheduler.py report` replaces `notes` wholesale); the other 54 carry no method evidence this tool will accept, which is a weaker claim than saying they are empty. Recoverable going forward, not for these records; `match_provenance.py --unknown` lists them.
+- **The categories overlap.** Each match is counted once, by whichever step was DECISIVE. The model fleet is sole author of 51 but contributed to 95; a model draft the permuter drove to zero counts as `permuter`, deliberately, because crediting the model would overstate the fleet.
+- **`transplant` is separate from `twin-port` on purpose.** Both move a body from a sibling overlay, but a twin-port had its divergences worked out by hand while a transplant was placed mechanically with the substitutions derived from an asm diff. They need different follow-up, so they are not pooled.
 <!-- PROVENANCE:END -->
-
-Two things this table is honest about, because a progress number that flatters
-itself is useless for deciding what to build next:
-
-- **The `unknown` share is real and is not shrinking on its own.** Those
-  records either had their method note overwritten by a build receipt
-  (`scheduler.py report` replaces `notes` wholesale) or never carried a note.
-  Recoverable going forward; not recoverable for those records. Run
-  `match_provenance.py --unknown` for the current list.
-- **The categories overlap.** The table counts each match once, by whichever
-  step was *decisive*. Counted as contributors instead, the model fleet's
-  involvement is much wider than its row suggests: a model draft that the
-  permuter drove to zero is counted as `permuter`, deliberately, because
-  crediting the model would overstate the fleet.
-- **`transplant` is separate from `twin-port` on purpose.** Both move a body
-  from a sibling overlay, but a twin-port had its divergences worked out by
-  hand while a transplant was placed mechanically by `transplant.py` with the
-  substitutions derived from an asm diff. They need different follow-up, so
-  they are not pooled.
 
 ---
 

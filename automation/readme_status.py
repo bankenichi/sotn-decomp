@@ -121,15 +121,20 @@ NON_US = ("saturn",)
 NON_US_SUFFIX = ("_psp",)
 
 
-def stub_counts() -> tuple[int, dict[str, int]]:
-    """INCLUDE_ASM stubs left in the `us` source, by top-level area."""
+def stub_counts(us_only: bool = True) -> tuple[int, dict[str, int]]:
+    """INCLUDE_ASM stubs left in src/, by top-level area.
+
+    us_only=False is used ONLY to state, in the README, how much bigger the
+    number gets when the non-us trees are included. Quoting the difference is
+    what stops the next reader assuming the figure shrank.
+    """
     rx = re.compile(r"^\s*INCLUDE_ASM\(", re.M)
     per: dict[str, int] = {}
     total = 0
     for p in (REPO / "src").rglob("*.c"):
         parts = p.relative_to(REPO / "src").parts
-        if parts[0] in NON_US or any(
-                seg.endswith(NON_US_SUFFIX) for seg in parts[:-1]):
+        if us_only and (parts[0] in NON_US or any(
+                seg.endswith(NON_US_SUFFIX) for seg in parts[:-1])):
             continue
         try:
             n = len(rx.findall(p.read_text(errors="ignore")))
@@ -182,20 +187,37 @@ def inventory() -> dict[str, int]:
             "diagnostics": diagnostics}
 
 
+_RAW: list[dict] | None = None
+
+
+def raw_rows() -> list[dict]:
+    """match_provenance's per-record attribution, computed once and shared.
+
+    THE TABLE AND THE PROSE MUST COME FROM ONE READ. They did not: the table
+    said 28% unknown while the paragraph under it said 21%, and that paragraph
+    also broke the figure down as "36 overwritten, 51 never noted" against a
+    total that had moved twice. Two hand-synchronised views of one dataset
+    drift the moment either is regenerated alone.
+    """
+    global _RAW
+    if _RAW is None:
+        sys.path.insert(0, str(AUTO))
+        import match_provenance as mp                       # type: ignore
+        try:
+            recs = mp.load_queue()                          # type: ignore
+            _RAW = mp.analyse(recs, use_git=False, jobs=1,  # type: ignore
+                              progress=False)
+        except Exception as e:                              # noqa: BLE001
+            raise RuntimeError(
+                f"match_provenance failed: {type(e).__name__}: {e}")
+    return _RAW
+
+
 def provenance_rows() -> list[tuple[str, int, str]]:
     """(source, count, blurb) from match_provenance, in its own precedence."""
     sys.path.insert(0, str(AUTO))
     import match_provenance as mp                           # type: ignore
-    # load_queue() + analyse(), which is exactly what main() does. My first
-    # version called a made-up `attribute_all`; it returned [] through the
-    # except and would have quietly published an EMPTY provenance table. A
-    # generator that fails soft into "no data" is worse than one that crashes.
-    try:
-        recs = mp.load_queue()                              # type: ignore
-        rows = mp.analyse(recs, use_git=False, jobs=1,      # type: ignore
-                          progress=False)
-    except Exception as e:                                  # noqa: BLE001
-        raise RuntimeError(f"match_provenance failed: {type(e).__name__}: {e}")
+    rows = raw_rows()
     from collections import Counter
     prim = Counter(r["primary"] for r in rows)
     blurb = {
@@ -221,6 +243,8 @@ def status_block() -> str:
     ok, exp, present = oracle()
     total_stubs, per = stub_counts()
     inv = inventory()
+    all_stubs, _ = stub_counts(us_only=False)
+    overlays = len({r["overlay"] for r in raw_rows() if r.get("overlay")})
     order = ["matched", "todo", "escalated", "deferred", "near", "claimed"]
     qbits = ", ".join(f"**{q[k]} {k}**" if k == "matched" else f"{q[k]} {k}"
                       for k in order if q.get(k))
@@ -242,6 +266,12 @@ def status_block() -> str:
         f"| Automation | {inv['modules']} Python modules, {inv['suites']} test "
         f"suites plus {inv['selftests']} modules with their own `--self-test`, "
         f"{inv['tools']} connector tools, {inv['diagnostics']} diagnostics |",
+        "",
+        f"The `matched` count is *our* work, across {overlays} overlays. The "
+        f"stub count is `us` only: it excludes `saturn` and the `_psp` trees, "
+        f"which the queue and the oracle also exclude. Counting every `.c` "
+        f"under `src/` instead gives {all_stubs}, most of it a Saturn port by "
+        f"an external team.",
         STATUS_END,
     ])
 
@@ -256,6 +286,46 @@ def provenance_block() -> str:
         lines.append(f"| {src} | {c} | {pct} | {why} |")
     if not rows:
         lines.append("| (match_provenance produced no rows) | | | |")
+
+    # THE CAVEATS ARE DERIVED TOO. They used to be hand-written under the
+    # table and said "21% is unattributed, 36 overwritten, 51 never noted"
+    # while the table said 28% -- two views of one dataset, synchronised by
+    # hand, drifting the moment either was regenerated.
+    raw = raw_rows()
+    unknown = [r for r in raw if r["primary"] == "unknown"]
+    overwritten = sum(1 for r in unknown if r.get("note_overwritten"))
+    blank = len(unknown) - overwritten
+    fleet_sole = next((c for s, c, _b in rows if s == "model-fleet"), 0)
+    fleet_touched = sum(1 for r in raw
+                        if "model-fleet" in (r.get("contributors") or []))
+    lines += [
+        "",
+        "Two things this table is honest about, because a progress number "
+        "that flatters itself is useless for deciding what to build next:",
+        "",
+        # `note_overwritten` fires only when the note is PURELY a build
+        # receipt, so the remainder is "carries nothing this tool can
+        # classify", NOT "was never written". Calling it blank would assert
+        # something the data does not say -- the earlier hand-written version
+        # did exactly that, splitting 36/51 as overwritten/never-noted.
+        f"- **{len(unknown)} of {total} are unattributed, and that is not "
+        f"shrinking on its own.** {overwritten} were overwritten outright by "
+        f"a build receipt (`scheduler.py report` replaces `notes` wholesale); "
+        f"the other {blank} carry no method evidence this tool will accept, "
+        f"which is a weaker claim than saying they are empty. Recoverable "
+        f"going forward, not for these records; `match_provenance.py "
+        f"--unknown` lists them.",
+        f"- **The categories overlap.** Each match is counted once, by "
+        f"whichever step was DECISIVE. The model fleet is sole author of "
+        f"{fleet_sole} but contributed to {fleet_touched}; a model draft the "
+        f"permuter drove to zero counts as `permuter`, deliberately, because "
+        f"crediting the model would overstate the fleet.",
+        f"- **`transplant` is separate from `twin-port` on purpose.** Both "
+        f"move a body from a sibling overlay, but a twin-port had its "
+        f"divergences worked out by hand while a transplant was placed "
+        f"mechanically with the substitutions derived from an asm diff. They "
+        f"need different follow-up, so they are not pooled.",
+    ]
     lines.append(PROV_END)
     return "\n".join(lines)
 
