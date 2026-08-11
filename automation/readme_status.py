@@ -84,7 +84,12 @@ def queue_counts() -> dict[str, int]:
     out = _run([PYTHON, str(AUTO / "scheduler.py"), "stats"])
     counts: dict[str, int] = {}
     for line in out.splitlines():
-        m = re.match(r"\s*(\w+)\s+(\d+)\s*$", line)
+        # `total 470` is space-separated; every other row is `   todo: 126`.
+        # The first version required whitespace and so matched ONLY `total`,
+        # and the generated table shipped as "470 records:" with nothing after
+        # the colon. An empty rendering is the one outcome a status generator
+        # must not produce quietly.
+        m = re.match(r"\s*(\w+)[:\s]\s*(\d+)\s*$", line)
         if m:
             counts[m.group(1)] = int(m.group(2))
     return counts
@@ -107,12 +112,25 @@ def oracle() -> tuple[int, int, bool]:
     return (int(m.group(1)), int(m.group(2)), True)
 
 
+# Areas that are not part of the `us` build this README measures. Counting
+# them took the figure from 775 to 2734, four fifths of it Saturn -- a port by
+# an external team that the queue, the oracle and every other number here
+# exclude by design. A status line that silently changes what it counts is
+# worse than a stale one, because it looks like progress in reverse.
+NON_US = ("saturn",)
+NON_US_SUFFIX = ("_psp",)
+
+
 def stub_counts() -> tuple[int, dict[str, int]]:
-    """INCLUDE_ASM stubs left in src/, by top-level area."""
+    """INCLUDE_ASM stubs left in the `us` source, by top-level area."""
     rx = re.compile(r"^\s*INCLUDE_ASM\(", re.M)
     per: dict[str, int] = {}
     total = 0
     for p in (REPO / "src").rglob("*.c"):
+        parts = p.relative_to(REPO / "src").parts
+        if parts[0] in NON_US or any(
+                seg.endswith(NON_US_SUFFIX) for seg in parts[:-1]):
+            continue
         try:
             n = len(rx.findall(p.read_text(errors="ignore")))
         except OSError:
@@ -315,6 +333,42 @@ def self_test() -> int:
     txt = README.read_text(encoding="utf-8")
     for mk in (STATUS_BEGIN, STATUS_END, PROV_BEGIN, PROV_END):
         ck(mk in txt, f"{mk} present")
+
+    print("\nthe queue row is never rendered empty")
+    # `scheduler.py stats` writes `total 470` space-separated and every other
+    # row as `   todo: 126`. The first regex required whitespace, matched only
+    # `total`, and the table shipped as "470 records:" with nothing after the
+    # colon. Assert against the REAL command, not a fixture: the format is the
+    # thing that broke.
+    q = queue_counts()
+    ck(q.get("total", 0) > 0, f"total parsed ({q.get('total')})")
+    ck(q.get("matched", 0) > 0, f"matched parsed ({q.get('matched')})")
+    ck(len(q) >= 5, f"every status row parsed, not just total ({sorted(q)})")
+    ck("records:" not in status_block().split("| Queue |")[1].split("|")[0]
+       .replace("records:", "records: ").strip()[-1:],
+       "the queue cell is not left dangling after the colon")
+
+    print("\nstubs are counted for the `us` build only")
+    # Counting every .c under src/ took this from 775 to 2734, four fifths of
+    # it Saturn -- a port by an external team that the queue, the oracle and
+    # every other number in this README exclude. A status line that silently
+    # changes what it counts looks like progress in reverse.
+    total, per = stub_counts()
+    ck("saturn" not in per, f"saturn is excluded ({sorted(per)})")
+    ck(not any(k.endswith("_psp") for k in per),
+       f"and the psp trees are too ({sorted(per)})")
+    # NO MAGIC RANGE. My first version asserted 400 < total < 1500, a window
+    # drawn around the stale 775 -- which was itself inconsistent, since its
+    # own per-area figures summed to 592. Encoding a guessed number in the
+    # test for a tool whose whole purpose is to stop guessed numbers is the
+    # same mistake one layer up. Assert the SHAPE instead: the areas are the
+    # us ones, and the parts add up to the whole.
+    ck(total > 0 and set(per) <= {"st", "boss", "main", "servant", "dra",
+                                  "ric", "weapon"},
+       f"only us build areas are counted ({sorted(per)})")
+    ck(total == sum(per.values()),
+       f"and the total is the sum of its parts ({total} vs "
+       f"{sum(per.values())}), which the old hand-written 775 was not")
 
     print("\ninventory counts are DISCOVERED, never written down")
     inv = inventory()
