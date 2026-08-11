@@ -321,9 +321,13 @@ ACTION_PARAMS: dict[str, dict[str, tuple[int, int]]] = {
     "permuter_start": {"slots": (1, 8), "threads": (1, 16),
                        "stall": (500, 50000), "cycles": (1, 8),
                        "max_iters": (1000, 500000)},
-    "fleet_cli_start": {"workers": (1, 8)},
-    "fleet_zen_start": {"workers": (1, 8)},
-    "fleet_llama_start": {"workers": (1, 8)},
+    # `effort`: 0 = the worker default (`low`), 1 = thinking off. Two values
+    # because only two are real -- Zen 503s on medium, 500s on high, and
+    # ignores reasoning_budget. Range-checked like everything else here, so a
+    # typo is an error rather than a silently ignored setting.
+    "fleet_cli_start": {"workers": (1, 8), "effort": (0, 1)},
+    "fleet_zen_start": {"workers": (1, 8), "effort": (0, 1)},
+    "fleet_llama_start": {"workers": (1, 8), "effort": (0, 1)},
 }
 
 
@@ -443,9 +447,22 @@ def _sup_start(slots: int = 3, threads: int = 4, stall: int = 2500,
 
 
 def _fleet(backend: str, default_n: int):
-    def go(workers: int = default_n, models: list | None = None) -> dict:
+    def go(workers: int = default_n, models: list | None = None,
+           effort: int = 0) -> dict:
         import commands_client as cc
         kw = {}
+        # THE A/B KNOB (#111), as a per-launch control rather than an env var
+        # only the connector can set. 0 keeps the worker default (`low`), 1
+        # turns thinking off at the API level. An index rather than a string
+        # because the dashboard's control vocabulary is numeric ranges, and
+        # only two values are real: Zen 503s on medium, 500s on high, and
+        # ignores reasoning_budget, so a free-text field here would invite
+        # settings that read as configured and do nothing.
+        #
+        # Both arms against one queue is the design; see fleet_start's help.
+        # Launch this twice, once at each setting, and let them race.
+        if effort:
+            kw["reasoning"] = "none"
         if backend == "cli":
             # fleet_start assigns a comma-separated list round-robin, one model
             # per worker. Passing exactly `workers` entries therefore gives each
@@ -1310,6 +1327,16 @@ pre{margin:0;padding:8px 10px;flex:1 1 auto;min-height:0;overflow:auto;font-size
           <option value=fleet_llama_start>local llama</option>
         </select>
       </label>
+      <!-- The #111 A/B knob. Only two values are real: Zen 503s on medium,
+           500s on high, and ignores reasoning_budget, so offering a fuller
+           scale would be offering settings that do nothing. Launch twice,
+           once at each, against the same queue. -->
+      <label>effort
+        <select id=f_effort>
+          <option value=0>low (default)</option>
+          <option value=1>none (reasoning off)</option>
+        </select>
+      </label>
       <button onclick="act(el('f_backend').value,fleetParams())">start</button>
       <button class=danger onclick="confirmAct('fleet_stop','Stop all fleet workers and reclaim their queue records?')">stop</button>
       <span id=f_rows></span>
@@ -1372,7 +1399,7 @@ function renderWorkerRows(){
 }
 
 function fleetParams(){
-  const p={workers:+el('f_workers').value};
+  const p={workers:+el('f_workers').value, effort:+el('f_effort').value};
   // models is only meaningful for the cli backend; sending it to llama would be
   // rejected as an unknown parameter, which is correct but unhelpful.
   const bv=el('f_backend').value;
@@ -1881,6 +1908,29 @@ def self_test() -> int:
            f"(missing: {missing})")
         ck("match_provenance.py" in allowed,
            "match provenance is runnable through the connector too")
+
+    print("\nthe effort control reaches fleet_start, end to end (#111)")
+    # A control that renders and changes nothing is the failure this file's
+    # own validate_params docstring calls out. Follow it the whole way: the
+    # dropdown offers `none`, fleetParams sends it, validate_params accepts
+    # 0 and 1 and refuses 2, and _fleet turns 1 into reasoning="none".
+    ck("f_effort" in PAGE and "none (reasoning off)" in PAGE,
+       "the dropdown offers reasoning off, in words")
+    ck("effort:+el('f_effort').value" in PAGE,
+       "and fleetParams actually sends it")
+    for act in ("fleet_zen_start", "fleet_cli_start", "fleet_llama_start"):
+        clean, err = validate_params(act, {"workers": 2, "effort": 1})
+        ck(not err and clean.get("effort") == 1, f"{act} accepts effort=1")
+    _c, bad = validate_params("fleet_zen_start", {"workers": 2, "effort": 2})
+    ck(bad, f"and refuses a value with no meaning ({bad!r})")
+
+    src_dash = Path(__file__).read_text(encoding="utf-8")
+    ck('kw["reasoning"] = "none"' in src_dash,
+       "_fleet translates it into the parameter fleet_start understands")
+    if allowed is not None:
+        import inspect
+        ck("reasoning" in inspect.signature(_cc.fleet_start).parameters,
+           "and fleet_start really takes that parameter")
 
     print("\nzen is selectable, not just startable from a connector call")
     ck("fleet_zen_start" in ACTIONS, "the action exists")
