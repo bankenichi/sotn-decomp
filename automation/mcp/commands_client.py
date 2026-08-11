@@ -311,6 +311,9 @@ ANALYSIS_SCRIPTS = {
     "test_candidate_validation.py",
     "test_m2c_only.py",
     "test_targeted_claim.py",
+    # Regenerates the README status tables. Read-only without --write, and
+    # --write only splices between markers, so it cannot append a second table.
+    "readme_status.py",
     # Retrofits stub declarations onto seeds written before the fix. Dry-run
     # by default; --apply is what writes.
     "fix_seed_declarations.py",

@@ -623,6 +623,12 @@ DIAGNOSTICS = [
      "KeyErrors on part of its search; dry run, writes nothing"),
     ("Codebase index", "codebase_index.py", "",
      "rebuild the symbol/function index"),
+    # No --write here: this list is the READ-ONLY diagnostics tab, and every
+    # other entry on it leaves the tree alone. Without an argument the tool
+    # prints the block it would generate and changes nothing.
+    ("README status: what the tables WOULD say", "readme_status.py", "",
+     "regenerate the queue/oracle/provenance tables from live data; prints "
+     "only, pass --write from a shell to update README.md"),
     ("Prompt compaction", "test_prompt_compaction.py", "",
      "asm shrinks and no symbol is lost"),
     ("Permuter settings", "test_permuter_settings.py", "",

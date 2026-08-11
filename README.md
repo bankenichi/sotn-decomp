@@ -58,15 +58,19 @@ need one.
 
 ## Where it stands
 
-Measured 2026-08-09 against the live queue and the build oracle.
+Measured against the live queue and the build oracle by
+`automation/readme_status.py --write`. These numbers used to be typed in by
+hand and were four days and five matches stale by the time anyone noticed;
+every one of them already had a generator that nobody was running.
 
-| | |
-|---|---|
-| Build oracle | **81 / 81** overlay SHA-1s in `config/check.us.sha` |
-| Code decompiled | **95.2%** (6235 / 6567 functions) across 44 built binaries |
-| Queue | 470 records: **198 matched**, 184 todo, 50 escalated, 31 deferred, 7 near |
-| `INCLUDE_ASM` stubs left in `src/` | 775 (376 `st`, 211 `boss`, 3 `servant`, 2 `main`) |
-| Automation | 53 Python modules, 17 test suites, 70 connector tools, 42 diagnostics |
+<!-- STATUS:BEGIN -->
+<!-- STATUS:END -->
+
+**Code decompiled: 95.2%** (6235 / 6567 functions) across 44 built binaries.
+That figure comes from `make reports` and is left out of the generated block
+deliberately -- deriving it here would be a second implementation of a number
+the build already computes, and it is overwhelmingly upstream's work rather
+than this fork's.
 
 The 95.2% is the whole game and mostly predates this fork; see
 [Completion](#completion) for the per-binary split and
@@ -82,15 +86,8 @@ and `scheduler.py` refuses the `matched` status without `--proof`.
 From `automation/match_provenance.py`, which reads the queue and the git
 history rather than anyone's recollection:
 
-| source | count | share | what it means |
-|---|---|---|---|
-| shim-header | 55 | 28% | body copied from a shared header |
-| shim-segment | 38 | 19% | shared header plus splat segment work |
-| model-fleet | 34 | 17% | an OpenCode or llama worker wrote it |
-| twin-port | 14 | 7% | ported from a sibling overlay or from RIC |
-| permuter | 11 | 6% | decomp-permuter search reached 0 |
-| claude-manual | 4 | 2% | written or repaired by hand |
-| unknown | 42 | 21% | evidence insufficient; **not** a guess |
+<!-- PROVENANCE:BEGIN -->
+<!-- PROVENANCE:END -->
 
 Two things this table is honest about, because a progress number that flatters
 itself is useless for deciding what to build next:
