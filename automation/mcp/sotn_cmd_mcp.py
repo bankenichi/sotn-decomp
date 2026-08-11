@@ -205,7 +205,8 @@ def permuter_import(c_file: str, asm_file: str, timeout: int = 300) -> dict:
 @mcp.tool()
 def fleet_start(workers: int = 4, max_functions: int = 0,
                 force: bool = False, backend: str = "zen",
-                cli_workers: int = 0, opencode_model: str = "") -> dict:
+                cli_workers: int = 0, opencode_model: str = "",
+                reasoning: str = "") -> dict:
     """Launch detached volume workers in WSL. Returns immediately.
 
     backend picks the model tier:
@@ -256,7 +257,8 @@ def fleet_start(workers: int = 4, max_functions: int = 0,
     override with force=True on an explicit human instruction to resume."""
     return cc.fleet_start(workers, max_functions, force=force, backend=backend,
                           cli_workers=cli_workers,
-                          opencode_model=opencode_model)
+                          opencode_model=opencode_model,
+                          reasoning=reasoning)
 
 
 @mcp.tool()
@@ -450,6 +452,21 @@ def job_start(action: str, version: str = "us", script: str = "",
     against THAT record instead of the highest-ranked todo one. Use it to
     verify a change to the worker on a chosen function; fleet_start claims by
     rank and cannot be aimed. It WRITES (edits source, builds, reports).
+
+    reasoning: "" keeps the worker default (`low`). "none" turns thinking off
+    at the API level -- worker_direct's sweep measured `none` returning 1990
+    chars of content in 9.9s with 0 reasoning tokens, against `low` returning
+    ZERO content in 81.5s having spent 25,215 tokens thinking. Only those two
+    values are accepted: Zen 503s on `medium`, 500s on `high`, and ignores
+    reasoning_budget entirely.
+
+    THE A/B (#111): launch both arms at once against the same queue, e.g.
+    fleet_start(workers=2, reasoning="none") and fleet_start(workers=2,
+    force=True). Records are claimed in an order unrelated to the arm, so the
+    split is effectively random and tree state is controlled. Compare on
+    compiles-differs yield and quality-gate reject CLASS, not match rate --
+    the last 4-worker run produced 0 matches over ~37 records, which cannot
+    power a comparison.
 
     Refuses to start a second job for the same action while one is running: two
     concurrent builds share one build directory and would produce artifacts

@@ -1323,7 +1323,8 @@ def opencode_preflight(timeout: int = 90) -> dict:
 
 def fleet_start(workers: int = 4, max_functions: int = 0,
                 force: bool = False, backend: str = "zen",
-                cli_workers: int = 0, opencode_model: str = "") -> dict:
+                cli_workers: int = 0, opencode_model: str = "",
+                reasoning: str = "") -> dict:
     """Launch detached worker_direct.py processes inside WSL.
 
     Lets the orchestrator run the volume tier without a human at a PowerShell
@@ -1382,8 +1383,18 @@ def fleet_start(workers: int = 4, max_functions: int = 0,
     if not 1 <= total <= 16:
         raise Rejected(f"total workers must be 1-16 (got {total})")
 
+    reasoning = (reasoning or "").strip().lower()
+    # Only the two values the provider actually distinguishes. `medium` is
+    # HTTP 503 on Zen and `high` is HTTP 500, and reasoning_budget is ignored
+    # outright, so anything else would be a knob that reads as configured and
+    # does nothing -- the failure mode this project keeps finding.
+    if reasoning and reasoning not in ("none", "off", "0", "low"):
+        raise Rejected("reasoning must be 'low' (the default) or "
+                       "'none'/'off'/'0'; Zen 503s on medium and 500s on high")
+
     plan = {"backend": backend, "llama_workers": n_llama, "zen_workers": n_zen, "cli_workers": n_cli,
-            "opencode_model": opencode_model or "(worker default)"}
+            "opencode_model": opencode_model or "(worker default)",
+            "reasoning": reasoning or "(worker default: low)"}
     if DRYRUN:
         return {"action": "fleet_start", "dry_run": True, **plan,
                 "note": "would launch detached workers"}
@@ -1462,6 +1473,18 @@ def fleet_start(workers: int = 4, max_functions: int = 0,
             model_setup = ""
             pick = ""
             env = f"MODEL_BACKEND={be}"
+        # The A/B knob (#111). worker_direct reads REASONING_EFFORT and
+        # thinking_params() returns NO_THINKING for none/off/0; the sweep in
+        # its header already proved the server honours `enable_thinking:
+        # false` and produces 0 reasoning tokens, so the OFF arm is real
+        # rather than a flag the provider ignores. Everything finer --
+        # reasoning_budget, medium, high -- is ignored or errors on Zen, which
+        # is why this is a two-value experiment and not a sweep.
+        #
+        # Empty means "do not set it", so the default path is byte-identical
+        # to before and an unrelated fleet cannot be silently re-tuned.
+        if reasoning:
+            env = f"REASONING_EFFORT={shlex.quote(reasoning)} " + env
         parts.append(
             f"{model_setup}for i in $(seq 1 {count}); do "
             f"  {pick}"
