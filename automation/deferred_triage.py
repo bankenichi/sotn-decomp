@@ -64,6 +64,11 @@ RX_TOO_LARGE = re.compile(r"TIER_HANDOFF_TOO_LARGE")
 RX_ASM_CHARS = re.compile(r"asm (\d+) chars")
 RX_UNDECLARED = re.compile(r"UNDECLARED SYMBOL: the seed calls (\w+)")
 RX_EXHAUSTED = re.compile(r"PERMUTER_EXHAUSTED")
+# permuter_supervisor.CURRENT_SEED. Stamped on every verdict the supervisor
+# writes, because it imports the seed from automation/candidates/ at run time
+# and therefore cannot be judging a stale one. Its presence overrides the
+# permanent seed-retrofit marker; see the degraded-search branch in classify().
+RX_CURRENT_SEED = re.compile(r"SEED_CURRENT")
 RX_RESCUED = re.compile(r"RESCUED", re.I)
 
 # What the hosted tiers will actually attempt. Kept in sync with
@@ -311,7 +316,22 @@ def classify(note: str, asm_chars: int | None = None,
                     f"the seed did not declare `{m.group(1)}`, so the "
                     f"permuter's typemap raised KeyError on part of the "
                     f"search. The seed is fixed; requeue as near")
-        if seed_retrofitted:
+        if seed_retrofitted and not RX_CURRENT_SEED.search(note):
+            # THE NOTE WINS OVER THE SEED'S HISTORY.
+            #
+            # seed_retrofitted is permanent -- it says the seed was ONCE
+            # missing declarations, not that this verdict is stale. Testing it
+            # alone put 15 records in a loop on 2026-08-10: requeue as near,
+            # permuter searches the fixed seed, genuinely exhausts, gets
+            # deferred, and lands right back here. Each circuit cost a full
+            # permuter run and learned nothing.
+            #
+            # permuter_supervisor now stamps SEED_CURRENT on every verdict it
+            # writes, because it imports from automation/candidates/ when it
+            # runs and so can only ever be judging the current seed. Present
+            # means the search already happened post-fix and the exhaustion is
+            # real.
+            #
             # The note reads like a clean exhaustion, and it is not. Only the
             # seed on disk knows: it carries the retrofit marker, so the run
             # that produced this verdict was missing a declaration the note
@@ -693,6 +713,39 @@ def self_test() -> int:
     ck("not trustworthy" in act_d, "and the action says why")
     ck(REQUEUE_TO.get("degraded-search") == "near",
        "which requeues to near, not todo: the seed is now good")
+
+    print("\nbut ONCE THE PERMUTER HAS RE-RUN, the verdict is trustworthy again")
+    # THE LOOP THIS CLOSES. seed_retrofitted is permanent -- it says the seed
+    # was ONCE missing declarations, not that this verdict is stale. Testing it
+    # alone meant every future exhaustion was untrustworthy forever:
+    #
+    #   requeue as near -> permuter searches the FIXED seed -> genuinely
+    #   exhausts -> deferred -> "seed was retrofitted, requeue" -> ...
+    #
+    # 15 records went round that on 2026-08-10, one full permuter run each,
+    # learning nothing. The supervisor stamps SEED_CURRENT because it imports
+    # from automation/candidates/ when it runs and so cannot be judging a
+    # stale seed.
+    fresh = ("PERMUTER_EXHAUSTED SEED_CURRENT: best 1770 after 2701 "
+             "iterations, 3 promotion(s), no improvement for 2662.")
+    cls_f, act_f = classify(fresh, None, True)
+    ck(cls_f == "permuter-out",
+       f"a stamped verdict is permuter-out even with the retrofit marker "
+       f"({cls_f})")
+    ck("re-derive" in act_f, "and the action says re-derive, not requeue")
+    ck(classify(fresh, None, False)[0] == "permuter-out",
+       "and the stamp changes nothing when the seed was never retrofitted")
+
+    print("\nthe two modules agree on the token, which is why this works")
+    # Same failure mode as scheduler.py's `set` subcommand that never existed:
+    # one module writing a marker the other never looks for. Read the
+    # supervisor rather than trusting that both copies say SEED_CURRENT.
+    sup_src = (REPO / "automation" / "permuter_supervisor.py").read_text(
+        encoding="utf-8", errors="replace")
+    ck('CURRENT_SEED = "SEED_CURRENT"' in sup_src,
+       "the supervisor defines the token this module greps for")
+    ck(sup_src.count(f"{{EXHAUSTED}} {{CURRENT_SEED}}") >= 2,
+       "and stamps it on the exhausted verdicts it writes (retire and cap)")
 
     print("\nrequeue can never produce a matched record")
     ck(set(REQUEUE_TO.values()) <= {"near", "todo"},

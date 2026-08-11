@@ -513,6 +513,28 @@ def _import_locked(path: Path, original: str, m, body: str, asm_rel: str,
 EXHAUSTED = "PERMUTER_EXHAUSTED"
 MATCH_PENDING = "PERMUTER_MATCH_PENDING_BUILD"
 
+# "This verdict was produced by a search on the CURRENT seed."
+#
+# deferred_triage calls an exhausted record `degraded-search` -- verdict not
+# trustworthy, requeue -- whenever its seed carries the retrofit marker. That
+# marker is PERMANENT: it records that the seed was once missing stub
+# declarations, not that this verdict is stale. So once a seed had ever been
+# retrofitted, every future exhaustion was classified untrustworthy, and the
+# record looped:
+#
+#   requeue as near -> permuter searches the FIXED seed -> genuinely exhausts
+#   -> deferred -> "seed was retrofitted, requeue as near" -> ...
+#
+# Fifteen records went round that loop on 2026-08-10, each costing a full
+# permuter run and producing no new information.
+#
+# The supervisor is the one component that knows the answer: it imports from
+# automation/candidates/ at the moment it runs, so ANY verdict it writes is by
+# definition a verdict on the current seed. Saying so in the note is the whole
+# fix. Kept as a distinct token rather than prose so the classifier greps for
+# it, the same reason EXHAUSTED and DEFER_TOO_LARGE exist.
+CURRENT_SEED = "SEED_CURRENT"
+
 
 def report(fn_id: str, status: str, notes: str, proof: str = "") -> str:
     """Record an outcome through scheduler.py, the single queue writer.
@@ -1298,7 +1320,7 @@ def supervise(slots: int, threads: int, stall: int, cycles: int,
                       f"and kept; re-derive from the asm to go further.")
                 print("  queue: " + report(
                     slot.get("id", ""), "deferred",
-                    f"{EXHAUSTED}: hit the {max_iters}-iteration cap at best "
+                    f"{EXHAUSTED} {CURRENT_SEED}: hit the {max_iters}-iteration cap at best "
                     f"{d['best']}. Seed is promoted; re-derive from the asm, "
                     f"then set this back to near."))
                 done.append(slot)
@@ -1327,7 +1349,8 @@ def supervise(slots: int, threads: int, stall: int, cycles: int,
                       f"expressions only, so re-derive this one from the asm.")
                 print("  queue: " + report(
                     slot.get("id", ""), "deferred",
-                    f"{EXHAUSTED}: best {d['best']} after {d['iterations']} "
+                    f"{EXHAUSTED} {CURRENT_SEED}: best {d['best']} after "
+                    f"{d['iterations']} "
                     f"iterations, {slot['cycles']} promotion(s), no improvement "
                     f"for {d['since_improvement']}. The permuter mutates "
                     f"expressions only; re-derive from the asm, then set this "
