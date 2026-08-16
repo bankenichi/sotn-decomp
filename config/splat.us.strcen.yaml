@@ -47,7 +47,15 @@ segments:
       - [0x62C, .data, e_breakable]
       - [0x68C, data] # prize_drops
       - [0x94C, .data, cutscene]
-      - [0x9FC, data]
+      # 0x9FC..0xA3C is unk_1F0D8's own .data: tileLayout, glassAnimation and
+      # the 5-byte `unused` table, 0x40 bytes in total. This fork had it merged
+      # into the unnamed blob because nothing here declared the file's data,
+      # and the harvest of upstream's four bodies put those three arrays back
+      # into the C -- emitting them a second time and pushing `rooms` and 21
+      # symbols after it +0x40. Split restored from upstream/master, which has
+      # carried it since it decompiled the file.
+      - [0x9FC, .data, unk_1F0D8]
+      - [0xA3C, data]
       - [0xA6C, .data, st_update]
       - [0xAB8, .data, collision]
       - [0xE78, .data, e_red_door]
