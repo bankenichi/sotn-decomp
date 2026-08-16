@@ -20,6 +20,17 @@ disks/
 nonmatchings/
 .vscode/settings.json
 
+# Splat-generated asset headers: src/<overlay>/gen/, holding g_GfxEquipIcon.h,
+# g_saveIcon*.h, D_800C*.h and hash-suffixed duplicates of the same. Build
+# output that happens to land under src/, so it was never covered by build/.
+#
+# Not cosmetic. permuter_supervisor's require_clean_src refuses to land or
+# attribute anything while src/ differs from HEAD -- correctly, because the
+# usual cause is a candidate left applied by a run killed mid-apply. These 17
+# untracked directories triggered exactly that refusal and blocked --land,
+# while being nothing but generated data.
+src/**/gen/
+
 # Unsure if these are directories or files
 function_calls
 gmon.out

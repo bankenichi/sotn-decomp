@@ -74,6 +74,27 @@ void polarPlacePartsList(s16* partsList) {
     }
 }
 
-INCLUDE_ASM("st/rno0/nonmatchings/unk_4A320", func_801CE2CC);
+void func_801CE2CC(s16 *partData)
+{
+  s16 *partIndex;
+  s16 new_var;
+  Entity *entities = g_CurrentEntity;
+  partIndex = partData;
+  func_801CD91C(&g_CurrentEntity[partIndex[1]]);
+  func_801CD91C(&g_CurrentEntity[partData[0]]);
+  polarPlacePart(&g_CurrentEntity[partData[2]]);
+  polarPlacePart(&g_CurrentEntity[partData[3]]);
+  partIndex = &partData[4];
+  while ((*partIndex) != 0)
+  {
+    if ((*partIndex) != 0xFF)
+    {
+      new_var = *partIndex;
+      polarPlacePart(&g_CurrentEntity[new_var]);
+    }
+    partIndex++;
+  }
+
+}
 
 INCLUDE_ASM("st/rno0/nonmatchings/unk_4A320", func_801CE3FC);
