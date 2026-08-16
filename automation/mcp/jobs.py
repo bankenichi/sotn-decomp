@@ -315,12 +315,20 @@ def status(job_id: str, wait_s: float = 0.0,
             rc = int((done_p.read_text(encoding="utf-8") or "1").strip() or 1)
         except (OSError, ValueError):
             rc = 1
-        return {"job_id": job_id, "action": meta.get("action"),
-                "state": "done", "ok": rc == 0, "returncode": rc,
-                "elapsed_s": elapsed,
-                "summary": _summary(log_p),
-                "tail": _tail(log_p, tail_lines),
-                "log": str(log_p)}
+        out = {"job_id": job_id, "action": meta.get("action"),
+               "state": "done", "ok": rc == 0, "returncode": rc,
+               "elapsed_s": elapsed,
+               "summary": _summary(log_p),
+               "tail": _tail(log_p, tail_lines),
+               "log": str(log_p)}
+        # Say it was STOPPED, not that it failed. The state stays "done" so
+        # nothing polling for completion has to learn a new word; the flag is
+        # what stops a deliberate stop being read as a fault.
+        if meta.get("cancelled"):
+            out["cancelled"] = True
+            out["hint"] = ("cancelled on request; the non-zero code is the "
+                           "signal that stopped it, not a failure of the work")
+        return out
 
     alive = _alive(int(meta.get("pid", -1)))
     if not alive:
@@ -379,4 +387,26 @@ def cancel(job_id: str) -> dict:
             killed_hard = True
         except OSError:
             pass
+
+    # WRITE THE SENTINEL. The wrapper writes it on normal exit, but a killed
+    # wrapper never reaches that line, so a CANCELLED job was indistinguishable
+    # from a CRASHED one: no sentinel plus a dead pid reads as "vanished"
+    # forever, carrying the hint "process died without writing an exit code;
+    # treat the tree as mid-build and rebuild".
+    #
+    # That hint is right for a crash and alarming nonsense for a stop the
+    # operator asked for. Five func_us_801C4B2C jobs sat in job_list as
+    # vanished across sessions for exactly this reason (#117), and the
+    # dashboard rendered them as rows for jobs that were never coming back.
+    #
+    # 128+signal is the shell's own convention for "died by signal N", so the
+    # code says WHICH signal without inventing a private vocabulary.
+    _, _, done_p = _paths(job_id)
+    try:
+        done_p.write_text("137" if killed_hard else "143", encoding="utf-8")
+        meta["cancelled"] = True
+        _paths(job_id)[0].write_text(json.dumps(meta, indent=1),
+                                     encoding="utf-8")
+    except OSError:
+        pass
     return {"job_id": job_id, "cancelled": True, "sigkill": killed_hard}

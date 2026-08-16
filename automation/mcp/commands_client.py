@@ -285,6 +285,8 @@ ANALYSIS_SCRIPTS = {
     "relocation_check.py",
     "find_data_segment.py",
     "test_journal_replay.py",
+    # A cancelled job must not be indistinguishable from a crashed one.
+    "test_job_cancel.py",
     "fn_diff.py",
     "shim_sweep.py",
     "test_shim_sweep.py",
