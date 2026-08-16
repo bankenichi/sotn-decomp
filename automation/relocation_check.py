@@ -156,6 +156,21 @@ def staleness_warning() -> str:
     newest_src = 0.0
     for root in ("src", "config"):
         for dp, _dn, fns in os.walk(REPO / root):
+            # src/<overlay>/gen/ IS BUILD OUTPUT, not source. splat writes the
+            # asset headers there (g_GfxEquipIcon.h, g_saveIcon*.h, D_800C*.h)
+            # during the build, so counting them made every build produce a
+            # tree that was newer than its own artifacts the moment it
+            # finished.
+            #
+            # That is why orphan_check --build could never reach a verdict: it
+            # built, then reported "sources are NEWER than build/us" and told
+            # the caller to re-run with --build, which is what it had just
+            # done. The guard could not close, so the whole --build path was
+            # dead and every answer had to be got by hand with verify_build.
+            #
+            # Pruning the walk rather than filtering after it, so the mtimes
+            # are never read at all.
+            _dn[:] = [d for d in _dn if d != "gen"]
             for fn in fns:
                 if fn.endswith((".c", ".h", ".yaml", ".txt")):
                     try:
@@ -163,15 +178,33 @@ def staleness_warning() -> str:
                                          os.path.getmtime(os.path.join(dp, fn)))
                     except OSError:
                         pass
-    oldest_bin = None
+    # NEWEST artifact, not oldest. `make build` relinks only what changed, so
+    # an overlay nobody has touched keeps an mtime from days ago -- and against
+    # the OLDEST bin, any source edited since then trips this warning forever,
+    # including immediately after a successful full build.
+    #
+    # That is what made orphan_check --build unable to reach a verdict: it
+    # built, the warning fired anyway, and it told the caller to re-run with
+    # --build. The guard could never close, so the verdict path was dead code
+    # and every answer had to be got by hand with verify_build.
+    #
+    # Newest is the build's completion time, and a successful `make build`
+    # means make considers every artifact consistent with the sources at that
+    # moment. An artifact older than that is one make did not need to touch,
+    # which is correctness, not staleness.
+    #
+    # The case this guard EXISTS for still fires: a worker that restores a
+    # source after a failed build leaves that source newer than every artifact,
+    # so newest_src > newest_bin and the warning stands.
+    newest_bin = None
     bdir = REPO / "build" / "us"
     for p in bdir.glob("*.BIN"):
         try:
             t = p.stat().st_mtime
         except OSError:
             continue
-        oldest_bin = t if oldest_bin is None else min(oldest_bin, t)
-    if oldest_bin is not None and newest_src > oldest_bin:
+        newest_bin = t if newest_bin is None else max(newest_bin, t)
+    if newest_bin is not None and newest_src > newest_bin:
         return ("WARNING: sources are NEWER than build/us. These verdicts "
                 "describe a stale binary. Rebuild and re-verify first.")
     return ""
@@ -242,6 +275,34 @@ def self_test() -> int:
     # differing sizes
     ck("size mismatch is its own verdict",
        classify(a, a + b"\0\0\0\0")["verdict"] == "size")
+
+    # THE STALENESS GUARD MUST BE ABLE TO CLOSE.
+    #
+    # It compared the newest .h under src/ against the oldest build/us/*.BIN,
+    # and the build WRITES src/<overlay>/gen/*.h. So finishing a build made the
+    # tree newer than its own artifacts, the warning fired forever, and
+    # orphan_check --build built and then told the caller to re-run with
+    # --build. The whole verdict path was dead.
+    import inspect
+    sw = inspect.getsource(staleness_warning)
+    ck("generated headers are pruned from the source walk",
+       '!= "gen"' in sw or "'gen'" in sw, sw[-300:])
+    ck("pruned during os.walk, not filtered afterwards",
+       "_dn[:]" in sw, "reading their mtimes at all is the waste")
+    # And it is still capable of firing: a source genuinely newer than the
+    # artifacts must still be caught, or this fix would have disarmed the guard
+    # rather than repaired it.
+    ck("it compares against the NEWEST artifact, not the oldest",
+       "newest_src > newest_bin" in sw,
+       "make relinks only what changed, so the oldest .BIN can be days old "
+       "and would condemn every build after it")
+    ck("oldest_bin is gone entirely", "oldest_bin" not in sw,
+       "leaving both would be two rules for one question")
+    # It must still be ABLE to warn, or this repaired the message by disarming
+    # the guard. The condition is a live comparison, not a constant.
+    ck("source mtimes are still gathered and compared",
+       "newest_src" in sw and "getmtime" in sw,
+       "a guard that stopped looking would be disarmed, not fixed")
 
     # lui deltas are scaled so a hi/lo pair agrees on one number
     o = ins(_LUI, 0, 2, 0x8018) + ins(0x09, 2, 2, 0x0000)
