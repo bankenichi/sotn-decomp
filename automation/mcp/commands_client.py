@@ -1814,6 +1814,47 @@ def fleet_stop(hold: bool = True) -> dict:
         out["replay_unaccounted"] = unaccounted
         out["note"] += ("; journals were pending but this call restored none "
                         "(see replay_unaccounted)")
+
+    # P2 (#108): A MATCH THAT IS ONLY IN THE WORKING TREE IS NOT SAFE YET.
+    #
+    # The queue records `matched` the instant the oracle accepts, but the body
+    # is still uncommitted at that point, and nothing ever said so. On
+    # 2026-08-16 that cost five verified matches: func_us_801B1C60,
+    # EntityOlroxAfterImage, func_801904B8, func_us_801CFC98 and
+    # BO6_RicEntityCrashReboundStone. git history shows their bodies were never
+    # committed AT ALL -- not reverted, never landed. Two of them shared a
+    # working tree with func_us_801B1E5C, which WAS committed (c36ee5742) and
+    # survives; the other two went with the tree.
+    #
+    # matched_audit could have caught every one of them at any point. Nobody
+    # ran it, because nothing asked. Fleet stop is the moment the risk window
+    # opens: work has finished, the operator is walking away, and any
+    # uncommitted match is now one `git restore` from being a false record.
+    #
+    # REPORT ONLY. It does not commit: what to commit and how to describe it is
+    # a human call, and a teardown path is the worst place to start writing
+    # history. It just refuses to let the window open quietly.
+    try:
+        ma = subprocess.run(
+            [PYTHON, "automation/matched_audit.py"],
+            cwd=str(REPO), capture_output=True, text=True, timeout=300)
+        for line in (ma.stdout or "").splitlines():
+            if line.startswith("SUMMARY "):
+                out["matched_audit"] = line.strip()
+                # uncommitted is the actionable one: real work, one restore
+                # from becoming a lie. LOST is already lost and needs triage,
+                # not urgency.
+                if " uncommitted 0 " not in line:
+                    out["note"] += ("; UNCOMMITTED MATCHES EXIST -- commit them "
+                                    "before any restore or reset, see "
+                                    "matched_audit")
+                elif " LOST 0 " not in line:
+                    out["note"] += ("; matched records are LOST (claimed but "
+                                    "absent from the tree), run matched_audit")
+                break
+    except (subprocess.SubprocessError, OSError):
+        # Never let a diagnostic break a teardown.
+        out["matched_audit"] = "could not run"
     return out
 
 

@@ -411,6 +411,18 @@ def main() -> int:
         check("replay_unaccounted" not in _r,
               f"and the count agrees with the directory "
               f"({_r.get('replay_unaccounted', '')[:120]})")
+        # P2 (#108). Stopping the fleet is the moment the risk window opens:
+        # work has finished and any match still only in the working tree is
+        # one `git restore` from becoming a false record. Five verified
+        # matches were lost exactly that way, and matched_audit could have
+        # named every one of them at any point -- nothing ever asked it to.
+        check("matched_audit" in _r,
+              f"fleet_stop reports the matched-vs-committed audit "
+              f"({_r.get('matched_audit', 'MISSING')})")
+        check(str(_r.get("matched_audit", "")).startswith("SUMMARY ")
+              or _r.get("matched_audit") == "could not run",
+              f"and it is the summary line, not raw output "
+              f"({str(_r.get('matched_audit'))[:80]})")
     finally:
         _cc_mod.DRYRUN = _was
         _victim.unlink(missing_ok=True)
