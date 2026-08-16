@@ -104,18 +104,40 @@ def stubs_in(rev: str | None) -> set[tuple[str, str]]:
     r = _run(argv, timeout=300)
     out: set[tuple[str, str]] = set()
     # Lines look like `HEAD:src/a/b.c:12:text` or `src/a/b.c-13-text`.
-    rx = re.compile(r"^(?:[^:]*:)?(src/[^:\-]+)[:\-]\d+[:\-](.*)$")
-    buf: dict[str, list[str]] = {}
+    rx = re.compile(r"^(?:[^:]*:)?(src/[^:\-]+)[:\-](\d+)[:\-](.*)$")
+    # CONTIGUOUS RUNS, NOT ONE BLOB PER FILE.
+    #
+    # RX_STUB spans newlines on purpose, so it can see a stub clang-format
+    # wrapped across two lines. Joining every matched line of a file into one
+    # string therefore lets it match across lines that are nowhere near each
+    # other: git grep -A1 separates non-adjacent hunks with `--`, that line
+    # does not match rx and was dropped, and the join glued the end of one
+    # hunk onto the start of the next. A stub name could be assembled from two
+    # unrelated places and attributed to a file that does not contain it.
+    #
+    # That is not theoretical. It reported 37 matched records as LOST on
+    # 2026-08-16, concentrated in ST/RNO0 -- the overlay with the densest
+    # INCLUDE_ASM blocks, so the most seams. EntityRedDoor was among them,
+    # with no INCLUDE_ASM anywhere in src/st/rno0.
+    #
+    # Grouping by line number keeps a wrapped stub together (its two lines are
+    # consecutive) while making a cross-hunk match impossible.
+    runs: dict[str, list[list[str]]] = {}
+    last: dict[str, int] = {}
     for line in (r.stdout or "").splitlines():
         m = rx.match(line)
         if not m:
             continue
-        path, text = m.group(1), m.group(2)
-        buf.setdefault(path, []).append(text)
-    for path, lines in buf.items():
-        joined = "\n".join(lines)
-        for fn in RX_STUB.findall(joined):
-            out.add((path, fn))
+        path, lineno, text = m.group(1), int(m.group(2)), m.group(3)
+        chunks = runs.setdefault(path, [])
+        if not chunks or lineno != last.get(path, -99) + 1:
+            chunks.append([])
+        chunks[-1].append(text)
+        last[path] = lineno
+    for path, chunks in runs.items():
+        for chunk in chunks:
+            for fn in RX_STUB.findall("\n".join(chunk)):
+                out.add((path, fn))
     return out
 
 
@@ -134,13 +156,50 @@ def matched_records() -> list[tuple[str, str]]:
     return recs
 
 
+def _under(path: str, d: str) -> bool:
+    """Is `path` inside directory `d`? A DIRECTORY test, not a string prefix.
+
+    `startswith(d)` matched src/st/rno0_psp against src/st/rno0, because one
+    name is a prefix of the other. The PSP port is a different codebase by a
+    different team and is not in the `us` build at all, but every function it
+    still stubs -- MoveEntity, AnimateEntity, Random, all of st_common.c --
+    was read as an rno0 stub.
+
+    That reported 126 of 204 matched records LOST on 2026-08-16, i.e. claimed
+    that most of the project's verified work did not exist. 262 "rno0" stubs
+    were found; only about 60 were actually rno0.
+
+    Same shape as the bug readme_status.py hit hours earlier, where counting
+    `_psp` took the stub total from 775 to 2734. A trailing separator is the
+    whole fix, in both places.
+    """
+    return path == d or path.startswith(d + "/")
+
+
 def classify(rec_id: str, fn: str, head: set, work: set) -> str:
     d = overlay_dir(rec_id)
-    in_head = any(p.startswith(d) and f == fn for p, f in head)
+    in_head = any(_under(p, d) and f == fn for p, f in head)
     if not in_head:
         return "present"
-    in_work = any(p.startswith(d) and f == fn for p, f in work)
+    in_work = any(_under(p, d) and f == fn for p, f in work)
     return "LOST" if in_work else "uncommitted"
+
+
+def dump_stubs(prefix: str) -> int:
+    """Print the stub set this tool BELIEVES exists under `prefix`.
+
+    Added because the tool reported 126 of 204 matched records LOST, including
+    MoveEntity and AnimateEntity in ST/RNO0, and grepping src/st/rno0 by hand
+    found no INCLUDE_ASM for either. When a tool's answer and the tree disagree
+    that sharply, the next step is to see the tool's own intermediate state
+    rather than to keep reasoning about what it must be doing.
+    """
+    head = stubs_in("HEAD")
+    hits = sorted((p, f) for p, f in head if p.startswith(prefix))
+    print(f"{len(head)} stub(s) in HEAD overall; {len(hits)} under {prefix}\n")
+    for p, f in hits:
+        print(f"  {f:44} {p}")
+    return 0
 
 
 def report(verbose: bool = False) -> int:
@@ -195,6 +254,13 @@ def report(verbose: bool = False) -> int:
     if not buckets["LOST"] and not buckets["uncommitted"]:
         print("Every matched record has a body in the committed tree. The "
               "count is honest.")
+    # REPEATED AT THE END, because the counts at the top are the verdict and
+    # every caller that reads this through the connector sees only the TAIL.
+    # A 37-line LOST list pushed the summary out of view, and the run had to be
+    # diagnosed from a list with no header saying which bucket it was.
+    print(f"\nSUMMARY  present {len(buckets['present'])}  "
+          f"uncommitted {len(buckets['uncommitted'])}  "
+          f"LOST {len(buckets['LOST'])}  of {len(recs)} matched")
     return 1 if buckets["LOST"] else 0
 
 
@@ -231,6 +297,18 @@ def self_test() -> int:
     ck(classify("us:ST/RNO0:func_us_801C2B24_from_no0",
                 "func_us_801C2B24_from_no0", other, set()) == "present",
        "a stub in a DIFFERENT overlay does not condemn the record")
+    # THE 126-FALSE-LOST BUG. rno0_psp starts with rno0, so a plain
+    # startswith() pulled the entire PSP port -- a different team's codebase,
+    # not in the us build -- into every rno0 record's evidence. This case
+    # passes trivially under the old code's INTENT and failed under its
+    # implementation, which is exactly the test that was missing.
+    psp = {("src/st/rno0_psp/st_common.c", "MoveEntity")}
+    ck(classify("us:ST/RNO0:MoveEntity", "MoveEntity", psp, psp) == "present",
+       "a stub in the _psp PORT does not condemn the us record, even though "
+       "its path is a string prefix match")
+    ck(_under("src/st/rno0/e_blade.c", "src/st/rno0")
+       and not _under("src/st/rno0_psp/e_blade.c", "src/st/rno0"),
+       "the containment test respects the directory separator")
 
     print("\nthe stub rule is imported, not copied")
     ck("from orphan_check import RX_STUB" in src_self, "imported")
@@ -245,6 +323,33 @@ def self_test() -> int:
     ck(RX_STUB.search(wrapped) is not None
        and RX_STUB.search(wrapped).group(1) == "LongName",
        "and the regex spans the join")
+
+    print("\na stub is never assembled across two unrelated hunks")
+    # The 2026-08-16 false-LOST bug, as data. git grep -A1 emits `--` between
+    # non-adjacent hunks; rx drops that line, so joining every matched line of
+    # a file glued line 12 onto line 400. RX_STUB spans newlines by design, so
+    # it read a name off the seam.
+    import types
+    fake = types.SimpleNamespace(stdout="\n".join([
+        "HEAD:src/st/rno0/e_thing.c:12:INCLUDE_ASM(",           # wrapped, open
+        "HEAD:src/st/rno0/e_thing.c-13-    \"st/rno0/nm\", RealStub);",
+        "--",                                                    # HUNK BREAK
+        "HEAD:src/st/rno0/e_thing.c:400:INCLUDE_ASM(",           # another open
+        "HEAD:src/st/rno0/e_thing.c-401-    \"st/rno0/nm\", OtherStub);",
+    ]))
+    _real_run = globals()["_run"]
+    globals()["_run"] = lambda *a, **k: fake
+    try:
+        got = {f for _p, f in stubs_in("HEAD")}
+    finally:
+        globals()["_run"] = _real_run
+    ck(got == {"RealStub", "OtherStub"},
+       f"both real stubs are found and nothing is invented ({sorted(got)})")
+
+    print("\nand the verdict survives a truncated tail")
+    ck("SUMMARY  present" in code,
+       "the counts are repeated at the END; connector callers see only the "
+       "tail, and a long LOST list pushed the header out of view")
 
     print("\nan empty HEAD result is refused, not read as success")
     # If the grep breaks, every record looks 'present' and the tool reports
@@ -287,10 +392,16 @@ def main() -> int:
         formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--verbose", action="store_true",
                     help="also list the records that are fine")
+    ap.add_argument("--stubs", default="",
+                    help="print the stub set believed to exist under this "
+                         "path prefix, e.g. src/st/rno0. Read-only "
+                         "introspection for when the verdict looks wrong")
     ap.add_argument("--self-test", action="store_true")
     a = ap.parse_args()
     if a.self_test:
         return self_test()
+    if a.stubs:
+        return dump_stubs(a.stubs)
     return report(a.verbose)
 
 
