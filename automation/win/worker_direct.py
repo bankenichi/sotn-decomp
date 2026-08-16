@@ -421,6 +421,19 @@ def emit_call(rec: dict) -> None:
     try:
         rec.setdefault("ts", time.time())
         rec.setdefault("worker", WORKER_NAME)
+        # THE A/B ARM, ON EVERY RECORD (#111). Set here rather than at the six
+        # emit_call sites so no path can be instrumented for everything except
+        # the variable the experiment is about -- which is exactly how the zen
+        # backend ended up emitting no telemetry at all until 2026-08-09.
+        #
+        # Without it the arm is only recoverable by mapping WORKER_NAME against
+        # whatever the launch used, which lives in a shell history and not in
+        # the data. The first A/B had to be read off LOG FILE SIZES.
+        #
+        # "low" rather than "" for the default, so the field always answers the
+        # question. An empty string would be ambiguous between "ran at the
+        # default" and "predates this line", and those need opposite handling.
+        rec.setdefault("effort", REASONING_EFFORT or "low")
         line = json.dumps(rec, default=str) + "\n"
         d = os.path.dirname(_telemetry_path())
         os.makedirs(d, exist_ok=True)

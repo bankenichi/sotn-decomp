@@ -155,6 +155,15 @@ def main() -> int:
           "total_s is numeric on every record")
     check(all(rec.get("worker") for rec in recs),
           "every record names the worker that produced it")
+    # THE #111 ARM. The first A/B had to be read off log file SIZES, because
+    # nothing in calls.jsonl said which effort a call ran at; the arm lived in
+    # the launch command and nowhere in the data. Set in emit_call rather than
+    # at the call sites so no path can miss it.
+    check(all(rec.get("effort") for rec in recs),
+          "and the reasoning effort it ran at, on EVERY record")
+    check(all(rec["effort"] != "" for rec in recs),
+          "never blank: '' cannot distinguish 'ran at the default' from "
+          "'predates this field', and those need opposite handling")
 
     print("\ntelemetry can never take a run down with it")
     wd_broken = load_worker()
