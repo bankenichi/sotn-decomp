@@ -294,6 +294,23 @@ def _take(records, best, args):
             r["status"] = "claimed"
             r["claimed_by"] = args.worker
             r["updated_at"] = _now()
+            # THE CIRCUIT BREAKER. Counts CLAIMS, not reports.
+            #
+            # On 2026-08-16 two workers claimed the same record ~35 times each
+            # and burned ~480 model calls between them producing nothing:
+            # EntityGaibon took 141 of one worker's 240 attempts, every one
+            # ending in a byte-identical quality reject, and neither worker
+            # ever printed a terminal verdict. `iterations` did not catch it
+            # because iterations only moves on `report --add-iters`, and that
+            # loop died before it reached any reporting path at all.
+            #
+            # So the counter has to sit on the CLAIM. A worker that crashes,
+            # is killed, or exits silently still had to come through here to
+            # get the record, which makes this the one place that sees the
+            # loop no matter what the loop's cause turns out to be. The cause
+            # is still open (#113); this bounds the cost while it is.
+            r["claims"] = r.get("claims", 0) + 1
+            r["claimed_at"] = r["updated_at"]
             if args.worktree:
                 make_worktree(r)
             return records, r
@@ -310,6 +327,13 @@ def cmd_next(args):
     # by a bigger context window, and re-claiming it would just burn the
     # stronger tier's budget on the same wall.
     HANDOFF = "TIER_HANDOFF_TOO_LARGE"
+
+    # How many times one record may be claimed before the scheduler stops
+    # handing it out. Comfortably above legitimate rework -- a record that is
+    # requeued, permuted, requeued again and re-attempted is well inside this --
+    # and far below the ~35 re-claims per record seen on 2026-08-16. Env-tunable
+    # so a deliberate grind can raise it without editing code.
+    MAX_CLAIMS = int(os.environ.get("MAX_CLAIMS", "12"))
 
     def fn(records):
         # A NAMED record bypasses the pool and the ranking entirely.
@@ -349,6 +373,26 @@ def cmd_next(args):
                         and HANDOFF in (r.get("notes") or "")):
                     todo.append(r)
                     deferred_ids.add(r["id"])
+
+        # Trip the breaker BEFORE ranking, so a looping record cannot be picked
+        # again no matter how well it ranks. Deliberately not applied to the
+        # --only path above: naming an id is an operator act, and the operator
+        # is allowed to re-run something the fleet has given up on.
+        #
+        # Escalated rather than deferred: `deferred` means "a bigger tier might
+        # do this", which is a claim about the FUNCTION. This is a claim about
+        # the HARNESS, and escalated is the status a human actually reads.
+        burned = [r for r in todo if r.get("claims", 0) >= MAX_CLAIMS]
+        for r in burned:
+            r["status"] = "escalated"
+            r["updated_at"] = _now()
+            was = (r.get("notes") or "").strip()
+            r["notes"] = (
+                f"CLAIM_LIMIT: claimed {r['claims']} times without ever "
+                f"reaching a verdict; the fleet is looping on this record, not "
+                f"working it (see #113). Requeue only after that is fixed. "
+                f"|| {was}")[:1000]
+            todo.remove(r)
         if not todo:
             return records, None
 
