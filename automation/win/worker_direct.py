@@ -1123,6 +1123,11 @@ def claim_next(only: str | None = None) -> dict | None:
     _next_args = ["next", "--worker", WORKER_NAME]
     if MODEL_BACKEND in _HOSTED:
         _next_args.append("--include-deferred")
+        # Declare what this tier can actually read. The scheduler serves a
+        # handoff record only to a caller bigger than the one that deferred it;
+        # without this the zen fleet was handed back the records it had just
+        # deferred itself, and bounced two of them ~35 times each (#113).
+        _next_args += ["--max-func-chars", str(MAX_FUNC_CHARS)]
     # A targeted run. The scheduler ignores rank for this, so the record does
     # not have to win the fleet's ordering to be worked -- which is the whole
     # reason the flag exists.
@@ -4755,6 +4760,7 @@ def process_one(dry: bool = False, only: str | None = None) -> bool:
                   f"MAX_FUNC_CHARS={MAX_FUNC_CHARS} and m2c produced no "
                   f"draft to fall back on")
             sched("report", "--id", rec["id"], "--status", "deferred",
+                  "--handoff-limit", str(MAX_FUNC_CHARS),
                   "--notes", f"{DEFER_TOO_LARGE}: asm {_asm_size} chars > "
                              f"{MAX_FUNC_CHARS} on backend={MODEL_BACKEND}, "
                              f"and m2c produced no usable draft either")
@@ -5142,6 +5148,11 @@ def process_one(dry: bool = False, only: str | None = None) -> bool:
             if m2c_only:
                 sched("report", "--id", rec["id"], "--status", "deferred",
                       "--add-iters", str(attempt),
+                      # THE LOOP OF #113 CAME THROUGH HERE. This path defers a
+                      # record the SAME tier will be offered again unless it
+                      # says how big it was; the m2c draft is deterministic, so
+                      # the re-attempt reproduces this verdict exactly.
+                      "--handoff-limit", str(MAX_FUNC_CHARS),
                       "--notes", (f"{DEFER_TOO_LARGE}: asm {_asm_size} chars "
                                   f"> {MAX_FUNC_CHARS}; the m2c draft was "
                                   f"built with no model call and "

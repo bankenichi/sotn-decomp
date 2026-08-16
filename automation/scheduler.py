@@ -369,10 +369,36 @@ def cmd_next(args):
         deferred_ids = set()
         if args.include_deferred:
             for r in records:
-                if (r["status"] == "deferred"
+                if not (r["status"] == "deferred"
                         and HANDOFF in (r.get("notes") or "")):
-                    todo.append(r)
-                    deferred_ids.add(r["id"])
+                    continue
+                # A HANDOFF IS TO A BIGGER TIER, NOT TO WHOEVER ASKS.
+                #
+                # This block used to re-serve any handoff record to any caller
+                # passing --include-deferred. The zen fleet both DEFERS records
+                # for exceeding its MAX_FUNC_CHARS and PASSES that flag, so it
+                # handed records to itself: on 2026-08-16 two records bounced
+                # about 35 times each, taking the m2c-only path, producing a
+                # deterministic quality reject, deferring again, and being
+                # served straight back. No model calls, but hours of build
+                # cycles. The marker said "someone bigger should take this" and
+                # nothing checked that the taker was bigger.
+                #
+                # handoff_limit is the MAX_FUNC_CHARS of the tier that gave up.
+                # A caller is only a valid next tier if it can read MORE than
+                # that, which is the whole content of "bigger tier" here.
+                lim = r.get("handoff_limit", 0)
+                if lim and lim >= args.max_func_chars:
+                    continue
+                # Legacy records predate handoff_limit, so their deferring tier
+                # is unknown. Serve them once to a caller that DECLARES a limit;
+                # when it defers them again they gain one and are gated properly
+                # from then on. A caller that declares nothing gets nothing,
+                # because that is the shape that caused the loop.
+                if not lim and not args.max_func_chars:
+                    continue
+                todo.append(r)
+                deferred_ids.add(r["id"])
 
         # Trip the breaker BEFORE ranking, so a looping record cannot be picked
         # again no matter how well it ranks. Deliberately not applied to the
@@ -547,6 +573,12 @@ def cmd_report(args):
                     r["proof"] = args.proof
                     r["verified_at"] = _now()
                 r["iterations"] = r.get("iterations", 0) + args.add_iters
+                # Stamp WHO gave up, in the only unit that matters for a size
+                # handoff: how much asm that tier could read. `next` compares
+                # against it so the record goes to something bigger rather than
+                # back to the tier that just failed on it.
+                if args.handoff_limit:
+                    r["handoff_limit"] = args.handoff_limit
                 r["updated_at"] = _now()
                 return records, True
         return records, False
@@ -780,8 +812,13 @@ def main():
     pn.add_argument("--include-blocked", action="store_true",
                     help="also claim functions blocked on unnamed data symbols")
     pn.add_argument("--include-deferred", action="store_true",
-                    help="also claim records a weaker tier deferred for size "
+                    help="also claim records a WEAKER tier deferred for size "
                          "(notes containing TIER_HANDOFF_TOO_LARGE)")
+    pn.add_argument("--max-func-chars", type=int, default=0,
+                    help="this caller's MAX_FUNC_CHARS. A handoff record is "
+                         "only served if the tier that deferred it could read "
+                         "LESS than this; without it a fleet hands records to "
+                         "itself forever")
     pn.add_argument("--only", default=None, metavar="ID",
                     help="claim exactly this record id, ignoring rank, the "
                          "blocked filter and the deferred-last rule. Refused "
@@ -804,6 +841,10 @@ def main():
     pr.add_argument("--proof", default=None,
                     help="machine proof of a match; REQUIRED for status=matched")
     pr.add_argument("--add-iters", type=int, default=0)
+    pr.add_argument("--handoff-limit", type=int, default=0,
+                    help="the MAX_FUNC_CHARS of the tier deferring this "
+                         "record, so a later `next` can tell whether the "
+                         "caller is actually bigger")
     pr.set_defaults(func=cmd_report)
 
     pl = sub.add_parser("list"); pl.add_argument("--status", default=None)

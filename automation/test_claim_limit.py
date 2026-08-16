@@ -144,6 +144,49 @@ def main():
     check(r.get("id") == "us:ST/RDAI:old_fn",
           f"and it is claimed normally (got {r.get('id')!r})")
 
+    print("\na size handoff goes to a BIGGER tier, never back to the deferrer")
+    HANDOFF = "TIER_HANDOFF_TOO_LARGE"
+    # Exactly the shape that looped: zen defers at 20000, then asks again at
+    # 20000 with --include-deferred and is handed its own record back.
+    def handoff(limit):
+        return [rec("us:ST/RDAI:big_fn", "deferred",
+                    notes=f"{HANDOFF}: asm 23208 chars > {limit}")
+                | {"handoff_limit": limit}]
+
+    write_queue(q, handoff(20000))
+    r = sched(q, "next", "--worker", "t", "--include-deferred",
+              "--max-func-chars", "20000")
+    check(r.get("id") != "us:ST/RDAI:big_fn",
+          f"an equal tier is REFUSED, which is the #113 loop (got {r.get('id')!r})")
+
+    write_queue(q, handoff(20000))
+    r = sched(q, "next", "--worker", "t", "--include-deferred",
+              "--max-func-chars", "6000")
+    check(r.get("id") != "us:ST/RDAI:big_fn",
+          f"and so is a SMALLER tier (got {r.get('id')!r})")
+
+    write_queue(q, handoff(6000))
+    r = sched(q, "next", "--worker", "t", "--include-deferred",
+              "--max-func-chars", "20000")
+    check(r.get("id") == "us:ST/RDAI:big_fn",
+          f"a genuinely bigger tier still gets it, so the handoff pool is not "
+          f"simply disabled (got {r.get('id')!r})")
+
+    print("\nrecords deferred before handoff_limit existed are not stranded")
+    legacy = [rec("us:ST/RDAI:big_fn", "deferred",
+                  notes=f"{HANDOFF}: asm 23208 chars > 6000 on backend=http")]
+    write_queue(q, legacy)
+    r = sched(q, "next", "--worker", "t", "--include-deferred")
+    check(r.get("id") != "us:ST/RDAI:big_fn",
+          "a caller that declares no limit gets nothing; declaring nothing is "
+          "the shape that caused the loop")
+    write_queue(q, legacy)
+    r = sched(q, "next", "--worker", "t", "--include-deferred",
+              "--max-func-chars", "20000")
+    check(r.get("id") == "us:ST/RDAI:big_fn",
+          f"but a caller that DOES declare one gets a shot at it, and the "
+          f"record gains a limit when it defers again (got {r.get('id')!r})")
+
     print("\n" + ("all checks passed" if not FAILS else f"{len(FAILS)} FAILED"))
     for f in FAILS:
         print("  - " + f)
