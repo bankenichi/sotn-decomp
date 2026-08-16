@@ -321,22 +321,32 @@ ACTION_PARAMS: dict[str, dict[str, tuple[int, int]]] = {
     "permuter_start": {"slots": (1, 8), "threads": (1, 16),
                        "stall": (500, 50000), "cycles": (1, 8),
                        "max_iters": (1000, 500000)},
-    # `effort`: 0 = the worker default (`low`), 1 = thinking off. Two values
-    # because only two are real -- Zen 503s on medium, 500s on high, and
-    # ignores reasoning_budget. Range-checked like everything else here, so a
-    # typo is an error rather than a silently ignored setting.
-    "fleet_cli_start": {"workers": (1, 8), "effort": (0, 1)},
-    "fleet_zen_start": {"workers": (1, 8), "effort": (0, 1)},
-    "fleet_llama_start": {"workers": (1, 8), "effort": (0, 1)},
+    "fleet_cli_start": {"workers": (1, 8)},
+    "fleet_zen_start": {"workers": (1, 8)},
+    "fleet_llama_start": {"workers": (1, 8)},
 }
 
 
 # Parameters that are a LIST of integers rather than one. Kept separate so the
 # scalar path stays trivially auditable: name -> (item_min, item_max, max_len).
+#
+# `effort` is a list and not a scalar because the #111 A/B has to be ONE fleet.
+# A single value for the whole fleet can only run one arm at a time, and two
+# consecutive runs confound the arm with the tree state, the queue contents and
+# the time of day. Per worker, both arms claim from the same queue at the same
+# moment and claim order does the randomising. 0 = the worker default (`low`),
+# 1 = thinking off; two values because only two are real, since Zen 503s on
+# medium, 500s on high, and ignores reasoning_budget. Range-checked like
+# everything else here, so a typo is an error rather than a silent default.
 ACTION_LIST_PARAMS: dict[str, dict[str, tuple[int, int, int]]] = {
-    "fleet_cli_start": {"models": (0, len(CLI_MODELS) - 1, 8)},
+    "fleet_cli_start": {"models": (0, len(CLI_MODELS) - 1, 8),
+                        "effort": (0, 1, 8)},
     # zen rotates the same Zen model list, one per worker, like cli.
-    "fleet_zen_start": {"models": (0, len(CLI_MODELS) - 1, 8)},
+    "fleet_zen_start": {"models": (0, len(CLI_MODELS) - 1, 8),
+                        "effort": (0, 1, 8)},
+    # llama takes no per-worker model, but it IS a reasoning-distilled model,
+    # so the effort comparison is meaningful on it too.
+    "fleet_llama_start": {"effort": (0, 1, 8)},
 }
 
 
@@ -448,21 +458,32 @@ def _sup_start(slots: int = 3, threads: int = 4, stall: int = 2500,
 
 def _fleet(backend: str, default_n: int):
     def go(workers: int = default_n, models: list | None = None,
-           effort: int = 0) -> dict:
+           effort: list | None = None) -> dict:
         import commands_client as cc
         kw = {}
-        # THE A/B KNOB (#111), as a per-launch control rather than an env var
-        # only the connector can set. 0 keeps the worker default (`low`), 1
-        # turns thinking off at the API level. An index rather than a string
+        # THE A/B KNOB (#111), PER WORKER. 0 keeps the worker default (`low`),
+        # 1 turns thinking off at the API level. Indices rather than strings
         # because the dashboard's control vocabulary is numeric ranges, and
         # only two values are real: Zen 503s on medium, 500s on high, and
         # ignores reasoning_budget, so a free-text field here would invite
         # settings that read as configured and do nothing.
         #
-        # Both arms against one queue is the design; see fleet_start's help.
-        # Launch this twice, once at each setting, and let them race.
-        if effort:
-            kw["reasoning"] = "none"
+        # Per worker is the entire point. One setting for the whole fleet can
+        # only run one arm per launch, and comparing two launches compares the
+        # arm PLUS whatever the tree, the queue and the quota did in between.
+        # Setting w1=none and w2=low starts both arms against the same queue in
+        # the same instant, and claim order decides which function each gets.
+        #
+        # Padded to `workers` for the same reason models is: fleet_start would
+        # otherwise round-robin a short list, and a 2-entry list across 3
+        # workers means w3 silently repeats w1 -- an unbalanced experiment that
+        # still looks deliberate in the log.
+        eff = effort or [0]
+        eff = (eff * workers)[:workers]
+        # All-default sends nothing at all, keeping the untouched path
+        # byte-identical to a fleet launched before this knob existed.
+        if any(eff):
+            kw["reasoning"] = ",".join("none" if e else "low" for e in eff)
         if backend == "cli":
             # fleet_start assigns a comma-separated list round-robin, one model
             # per worker. Passing exactly `workers` entries therefore gives each
@@ -1327,16 +1348,6 @@ pre{margin:0;padding:8px 10px;flex:1 1 auto;min-height:0;overflow:auto;font-size
           <option value=fleet_llama_start>local llama</option>
         </select>
       </label>
-      <!-- The #111 A/B knob. Only two values are real: Zen 503s on medium,
-           500s on high, and ignores reasoning_budget, so offering a fuller
-           scale would be offering settings that do nothing. Launch twice,
-           once at each, against the same queue. -->
-      <label>effort
-        <select id=f_effort>
-          <option value=0>low (default)</option>
-          <option value=1>none (reasoning off)</option>
-        </select>
-      </label>
       <button onclick="act(el('f_backend').value,fleetParams())">start</button>
       <button class=danger onclick="confirmAct('fleet_stop','Stop all fleet workers and reclaim their queue records?')">stop</button>
       <span id=f_rows></span>
@@ -1384,27 +1395,45 @@ function renderWorkerRows(){
   // zen rotates per-worker models exactly like cli, so it gets the same
   // pickers. Gating only on fleet_cli_start hid them for zen runs.
   const v=el('f_backend').value;
-  const cli=(v==='fleet_cli_start'||v==='fleet_zen_start');
+  const wantModel=(v==='fleet_cli_start'||v==='fleet_zen_start');
   const box=el('f_rows');
-  if(!cli){ box.innerHTML='<span class=empty>llama workers take no per-worker model</span>'; return; }
-  // Preserve existing choices when the count changes, so nudging workers from
-  // 2 to 3 does not silently reset the two you already picked.
-  const prev=[...box.querySelectorAll('select')].map(s=>s.value);
+  // Rows now render for EVERY backend. They used to be skipped entirely for
+  // llama because it takes no per-worker model, which also meant llama had
+  // nowhere to put a per-worker effort -- and llama is a reasoning-distilled
+  // model, so it is exactly a backend worth A/B-ing.
+  const prevM=[...box.querySelectorAll('select.wmodel')].map(s=>s.value);
+  const prevE=[...box.querySelectorAll('select.weffort')].map(s=>s.value);
+  // Effort is PER WORKER so both arms of #111 can run in one fleet, against the
+  // same queue, in the same tree state. A fleet-wide setting could only run one
+  // arm per launch, and comparing two launches compares the arm plus whatever
+  // changed between them. Set w1 to none and w2 to low and the comparison is
+  // controlled: claim order, not the experimenter, decides who gets what.
+  const EFF='<option value=0>low</option><option value=1>none (off)</option>';
   let h='';
   for(let i=0;i<n;i++){
-    h+=`<label>w${i+1} <select class=wmodel>${MODEL_OPTS}</select></label>`;
+    h+=`<label>w${i+1} `;
+    if(wantModel) h+=`<select class=wmodel>${MODEL_OPTS}</select> `;
+    h+=`<select class=weffort title="reasoning effort (#111 A/B)">${EFF}</select></label>`;
   }
   box.innerHTML=h;
-  box.querySelectorAll('select').forEach((s,i)=>{ if(prev[i]!==undefined) s.value=prev[i]; });
+  // Preserve existing choices when the count changes, so nudging workers from
+  // 2 to 3 does not silently reset the two you already picked. Matched by class
+  // rather than by position: with two selects per row, a flat index would hand
+  // worker 2's model the effort value from worker 1.
+  box.querySelectorAll('select.wmodel').forEach((s,i)=>{ if(prevM[i]!==undefined) s.value=prevM[i]; });
+  box.querySelectorAll('select.weffort').forEach((s,i)=>{ if(prevE[i]!==undefined) s.value=prevE[i]; });
 }
 
 function fleetParams(){
-  const p={workers:+el('f_workers').value, effort:+el('f_effort').value};
-  // models is only meaningful for the cli backend; sending it to llama would be
-  // rejected as an unknown parameter, which is correct but unhelpful.
+  const p={workers:+el('f_workers').value};
+  // One entry per worker, in row order, which is the order fleet_start walks
+  // when it assigns them.
+  p.effort=[...el('f_rows').querySelectorAll('select.weffort')].map(s=>+s.value);
+  // models is only meaningful for the cli and zen backends; sending it to llama
+  // would be rejected as an unknown parameter, which is correct but unhelpful.
   const bv=el('f_backend').value;
   if(bv==='fleet_cli_start'||bv==='fleet_zen_start'){
-    p.models=[...el('f_rows').querySelectorAll('select')].map(s=>+s.value);
+    p.models=[...el('f_rows').querySelectorAll('select.wmodel')].map(s=>+s.value);
   }
   return p;
 }
@@ -1909,28 +1938,64 @@ def self_test() -> int:
         ck("match_provenance.py" in allowed,
            "match provenance is runnable through the connector too")
 
-    print("\nthe effort control reaches fleet_start, end to end (#111)")
+    print("\neffort is PER WORKER, end to end (#111)")
     # A control that renders and changes nothing is the failure this file's
-    # own validate_params docstring calls out. Follow it the whole way: the
-    # dropdown offers `none`, fleetParams sends it, validate_params accepts
-    # 0 and 1 and refuses 2, and _fleet turns 1 into reasoning="none".
-    ck("f_effort" in PAGE and "none (reasoning off)" in PAGE,
-       "the dropdown offers reasoning off, in words")
-    ck("effort:+el('f_effort').value" in PAGE,
-       "and fleetParams actually sends it")
+    # own validate_params docstring calls out, so follow the value the whole
+    # way rather than checking that a control exists. Per worker specifically:
+    # a fleet-wide setting can only run one arm per launch, which makes the
+    # A/B a comparison of two runs instead of a comparison of two settings.
+    ck("class=weffort" in PAGE and "none (off)" in PAGE,
+       "each worker row carries its own effort picker, labelled in words")
+    ck("select.weffort" in PAGE and "p.effort=[" in PAGE,
+       "and fleetParams collects them as a list, in row order")
+    ck("prevM" in PAGE and "select.wmodel" in PAGE,
+       "model and effort are preserved by class, not by a flat index that "
+       "would hand worker 2's model the effort from worker 1")
     for act in ("fleet_zen_start", "fleet_cli_start", "fleet_llama_start"):
-        clean, err = validate_params(act, {"workers": 2, "effort": 1})
-        ck(not err and clean.get("effort") == 1, f"{act} accepts effort=1")
-    _c, bad = validate_params("fleet_zen_start", {"workers": 2, "effort": 2})
+        clean, err = validate_params(act, {"workers": 2, "effort": [1, 0]})
+        ck(not err and clean.get("effort") == [1, 0],
+           f"{act} accepts a mixed per-worker list")
+    _c, bad = validate_params("fleet_zen_start", {"workers": 2, "effort": [2]})
     ck(bad, f"and refuses a value with no meaning ({bad!r})")
+    _c, bad = validate_params("fleet_zen_start", {"workers": 2, "effort": 1})
+    ck(bad, f"a bare int is an error, not a silently broadcast value ({bad!r})")
 
-    src_dash = Path(__file__).read_text(encoding="utf-8")
-    ck('kw["reasoning"] = "none"' in src_dash,
-       "_fleet translates it into the parameter fleet_start understands")
     if allowed is not None:
         import inspect
         ck("reasoning" in inspect.signature(_cc.fleet_start).parameters,
-           "and fleet_start really takes that parameter")
+           "fleet_start really takes that parameter")
+        # The whole chain for real, through fleet_start's own dry-run plan,
+        # rather than grepping for the string _fleet builds. DRYRUN returns the
+        # plan without spawning anything.
+        import sys as _sys
+        _prev_mod, _prev_dry = _sys.modules.get("commands_client"), _cc.DRYRUN
+        _sys.modules["commands_client"] = _cc
+        _cc.DRYRUN = True
+        try:
+            out = _fleet("zen", 4)(workers=2, effort=[1, 0], models=[0, 0])["out"]
+            ck("'reasoning': 'none,low'" in out,
+               f"two workers, two different arms, one fleet ({out[:0] or 'ok'})")
+            out = _fleet("zen", 4)(workers=3, effort=[1], models=[0])["out"]
+            ck("'reasoning': 'none,none,none'" in out,
+               "a short list is padded to the worker count here, so it cannot "
+               "be round-robined into an unbalanced experiment downstream")
+            out = _fleet("llama", 2)(workers=2, effort=[0, 0])["out"]
+            ck("worker default" in out,
+               "all-default sends nothing, leaving the untouched path "
+               "byte-identical to a fleet launched before this knob existed")
+        finally:
+            _cc.DRYRUN = _prev_dry
+            if _prev_mod is None:
+                _sys.modules.pop("commands_client", None)
+            else:
+                _sys.modules["commands_client"] = _prev_mod
+        csrc = (REPO / "automation" / "mcp" / "commands_client.py").read_text(
+            encoding="utf-8")
+        ck("_r=(" in csrc and "REASONING_EFFORT=$_re" in csrc,
+           "and fleet_start indexes its own bash array per worker")
+        ck("_sel" in csrc and "_re=" in csrc,
+           "with an index separate from the model array, so 2 models x 2 "
+           "efforts across 4 workers covers all four combinations")
 
     print("\nzen is selectable, not just startable from a connector call")
     ck("fleet_zen_start" in ACTIONS, "the action exists")

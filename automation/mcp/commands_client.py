@@ -1352,6 +1352,22 @@ def fleet_start(workers: int = 4, max_functions: int = 0,
     faster. Running both means the quota is spent on functions llama has already
     failed rather than on ones it would have got anyway.
 
+    opencode_model and reasoning are both PER-WORKER LISTS, comma-separated and
+    assigned round-robin. One value applies to every worker; N values give N
+    workers one each. This is how a bake-off runs as a single fleet rather than
+    as a sequence of them:
+
+        fleet_start(workers=4, reasoning="none,low")
+            -> w1 none, w2 low, w3 none, w4 low
+
+    All four claim from the same queue at the same moment, so which arm gets
+    which function is decided by claim order rather than by the experimenter,
+    and the tree is in one state for the whole run. Two consecutive fleets
+    would confound the arm with everything that changed between them.
+
+    reasoning accepts "low" (the worker default) and "none"/"off"/"0". Nothing
+    else: Zen answers 503 to medium, 500 to high, and ignores reasoning_budget.
+
     Total workers is generations in flight. apply/build/verify is serialised by
     a lock, so beyond ~4 the extras mostly queue. llama-server must be started
     with --parallel >= the llama worker count or generation serialises too.
@@ -1383,18 +1399,27 @@ def fleet_start(workers: int = 4, max_functions: int = 0,
     if not 1 <= total <= 16:
         raise Rejected(f"total workers must be 1-16 (got {total})")
 
-    reasoning = (reasoning or "").strip().lower()
+    # May be a comma-separated LIST, one entry per worker, assigned round-robin
+    # exactly like opencode_model. That list form is what makes the #111 A/B a
+    # SINGLE fleet: `reasoning="none,low"` puts both arms on the same queue at
+    # the same moment, so claim order randomises which arm gets which function
+    # and the tree state is identical for both. Running two fleets one after
+    # the other would confound the arm with everything that changed in between,
+    # which is the whole failure this experiment is meant to avoid.
+    efforts = [e.strip().lower() for e in (reasoning or "").split(",") if e.strip()]
     # Only the two values the provider actually distinguishes. `medium` is
     # HTTP 503 on Zen and `high` is HTTP 500, and reasoning_budget is ignored
     # outright, so anything else would be a knob that reads as configured and
     # does nothing -- the failure mode this project keeps finding.
-    if reasoning and reasoning not in ("none", "off", "0", "low"):
-        raise Rejected("reasoning must be 'low' (the default) or "
-                       "'none'/'off'/'0'; Zen 503s on medium and 500s on high")
+    bad = [e for e in efforts if e not in ("none", "off", "0", "low")]
+    if bad:
+        raise Rejected(f"reasoning entries must be 'low' (the default) or "
+                       f"'none'/'off'/'0'; Zen 503s on medium and 500s on "
+                       f"high. Rejected: {', '.join(sorted(set(bad)))}")
 
     plan = {"backend": backend, "llama_workers": n_llama, "zen_workers": n_zen, "cli_workers": n_cli,
             "opencode_model": opencode_model or "(worker default)",
-            "reasoning": reasoning or "(worker default: low)"}
+            "reasoning": ",".join(efforts) or "(worker default: low)"}
     if DRYRUN:
         return {"action": "fleet_start", "dry_run": True, **plan,
                 "note": "would launch detached workers"}
@@ -1481,10 +1506,19 @@ def fleet_start(workers: int = 4, max_functions: int = 0,
         # reasoning_budget, medium, high -- is ignored or errors on Zen, which
         # is why this is a two-value experiment and not a sweep.
         #
+        # Its own bash array, indexed by worker number like the model array, so
+        # ONE fleet can run both arms. `_r` and `_re` rather than reusing `_m`
+        # and `_sel`: the two lists rotate independently and may be different
+        # lengths, and 2 models x 2 efforts across 4 workers only covers all
+        # four combinations if the indices are separate.
+        #
         # Empty means "do not set it", so the default path is byte-identical
         # to before and an unrelated fleet cannot be silently re-tuned.
-        if reasoning:
-            env = f"REASONING_EFFORT={shlex.quote(reasoning)} " + env
+        if efforts:
+            earr = " ".join(shlex.quote(e) for e in efforts)
+            model_setup += f"_r=({earr}); "
+            pick += '_re=${_r[$(((i-1) % ${#_r[@]}))]}; '
+            env = "REASONING_EFFORT=$_re " + env
         parts.append(
             f"{model_setup}for i in $(seq 1 {count}); do "
             f"  {pick}"
