@@ -270,6 +270,9 @@ ANALYSIS_SCRIPTS = {
     "decl_coverage.py",
     "test_twin_wiring.py",
     "opencode_size_bisect.py",
+    # Ranks the ext-union fields whose absence is blocking the most functions.
+    # Read-only: it reports where a header change is needed, never makes one.
+    "ext_demand.py",
     # Map vs symbol addresses; attributes an overlay size delta to TEXT or BSS.
     # It is listed in HARNESS-ARCHITECTURE's component table and wired to a
     # dashboard button, but was never allowlisted, so both were dead ends that

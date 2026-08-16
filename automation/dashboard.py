@@ -678,6 +678,15 @@ DIAGNOSTICS = [
     # both places. The drift check above now watches the doc half.
     ("Overlay size check", "overlay_size_check.py", "",
      "map vs symbol addresses; attributes an overlay size delta to TEXT or BSS"),
+    # The worker prompt tells the model to STOP when no ext field covers an
+    # offset. Those refusals were going to disk unread, so the header change
+    # never happened and the same functions failed again. This ranks them.
+    ("Ext demand", "ext_demand.py", "",
+     "which ext union fields are blocking the most functions, from code the "
+     "fleet actually produced"),
+    ("Ext variants", "ext_demand.py", "--variants",
+     "inventory of the ~100 ET_ variants and how much of the 0x3C budget "
+     "each uses"),
     ("Prompt compaction", "test_prompt_compaction.py", "",
      "asm shrinks and no symbol is lost"),
     ("Permuter settings", "test_permuter_settings.py", "",
