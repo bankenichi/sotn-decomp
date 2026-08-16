@@ -14,6 +14,12 @@ WHY THIS EXISTS
     to upstream's -- and deliberately says nothing about who wrote it here.
 
 WHAT COUNTS AS A SOURCE
+    upstream-harvest  a body the UPSTREAM project had already decompiled,
+                   copied in and verified here. Not generated, not derived, not
+                   searched for: found. It outranks every other source because
+                   crediting this fork's machinery for it would be the largest
+                   overstatement available, and the honest answer to "what did
+                   the automation produce" needs these subtracted first.
     shim-segment   a shared header adopted with splat .data/.bss segment work.
                    The expensive, high-yield engineering: one shim retires many
                    stubs at once.
@@ -83,8 +89,8 @@ QUEUE = Path(os.path.expanduser(
 
 # ---------------------------------------------------------------- the sources
 
-SOURCES = ("shim-segment", "shim-header", "transplant", "twin-port",
-           "permuter", "model-fleet", "claude-manual", "unknown")
+SOURCES = ("upstream-harvest", "shim-segment", "shim-header", "transplant",
+           "twin-port", "permuter", "model-fleet", "claude-manual", "unknown")
 
 # Ordered by which step was DECISIVE, not by which happened first.
 #
@@ -102,14 +108,32 @@ SOURCES = ("shim-segment", "shim-header", "transplant", "twin-port",
 # carries worker-injected declarations at file scope, and has never had an
 # annotation pass. Task #81 is that pass, and it cannot be scoped if the two
 # are counted together.
-_PRECEDENCE = ("shim-segment", "shim-header", "transplant", "twin-port",
-               "permuter", "claude-manual", "model-fleet", "unknown")
+#
+# `upstream-harvest` outranks EVERYTHING, including the shims. A harvested body
+# was not generated here, not derived here, and not searched for here: it was
+# already decompiled by the upstream project and copied in. Crediting any part
+# of this fork's machinery for it would be the largest overstatement available,
+# and the honest number for "what did the automation produce" depends on these
+# being subtracted first.
+_PRECEDENCE = ("upstream-harvest", "shim-segment", "shim-header", "transplant",
+               "twin-port", "permuter", "claude-manual", "model-fleet",
+               "unknown")
 
 # Every pattern below was read off real queue notes on 2026-08-03, not
 # invented. Keep them anchored to phrases the harness and its operators
 # actually write, and prefer a miss (-> unknown) over a loose match.
 _PATTERNS = (
     # (source, compiled regex, why this phrase means that source)
+    # FIRST, because it outranks everything and its evidence is unambiguous.
+    # upstream_harvest.py copies a body that upstream already decompiled, and
+    # every such note carries METHOD=UPSTREAM-HARVEST plus the upstream ref it
+    # came from. Added the same day the method was first used, so that no
+    # harvested function ever lands in `unknown` -- which is exactly what
+    # happened to the first two transplants before the transplant pattern was
+    # added, and the lesson is to register the method WITH the method.
+    ("upstream-harvest", re.compile(
+        r"METHOD=UPSTREAM-HARVEST|\bupstream[- ]harvest\w*\b|"
+        r"\bfrom upstream/master\b|\bharvested from upstream\b", re.I)),
     ("shim-segment", re.compile(
         r"\bshimmed via\b|\bsplat \.data\b|\badded \.data\b|\.bss segment|"
         r"\bsegment work\b|\bdata split at\b", re.I)),

@@ -91,6 +91,22 @@ def _inrepo(p: str, must_be_dir: bool = False, must_exist: bool = True) -> str:
     return str(rp)
 
 
+def _relpath(abs_path: str) -> str:
+    """An absolute in-repo path, back to repo-root-relative, with / separators.
+
+    `git show <ref>:<path>` REQUIRES a path relative to the repo root. An
+    absolute one is rejected by git with "fatal: <path> is outside repository",
+    which is why this exists rather than passing _inrepo's output through: every
+    other caller hands its path to git as a PATHSPEC, where absolute is fine,
+    and only the `ref:path` form is different.
+
+    Takes _inrepo's output, so containment has already been enforced; this only
+    changes the spelling. as_posix() matters on Windows, where the repo is
+    reached through a WSL mount and git will not accept backslashes.
+    """
+    return Path(abs_path).resolve().relative_to(REPO.resolve()).as_posix()
+
+
 def _restorable(path: str, confirm_orphan: bool = False) -> str:
     """An in-repo path safe to discard, or Rejected.
 
@@ -775,6 +791,26 @@ REGISTRY = {
     "git_show": lambda ref="HEAD", path="": (
         ["git", "show", "--format=%h %an <%ae> %ad%n%n%B", "--date=short",
          _ref(ref)] + (["--", _inrepo(path, must_exist=False)] if path else [])),
+    # READ A FILE AS IT EXISTS AT A REF. git_show CANNOT DO THIS: `git show
+    # <ref> -- <path>` prints the diff that commit made to that path, which is
+    # empty for every commit that did not touch it. The content form is
+    # `git show <ref>:<path>`, and _ref REFUSES colons -- correctly, since a
+    # ref is not a pathspec -- so the two halves were assembled here instead of
+    # loosening the ref rule.
+    #
+    # Built 2026-08-16 because the RCEN harvest needed upstream's
+    # splat.us.strcen.yaml to learn where unk_1F0D8's .data segment starts,
+    # and there was no way to read an upstream file at all. `git_diff` shows
+    # what differs but not what IS, and the harvest is a question about what
+    # upstream has, not about the delta. The whole 42-function harvest is
+    # blocked on questions of exactly this shape.
+    #
+    # Read-only by construction: `git show` of a blob writes nothing, and the
+    # path still goes through _inrepo, so this cannot read outside the repo or
+    # inside .git.
+    "git_show_file": lambda ref="HEAD", path="": (
+        ["git", "show",
+         f"{_ref(ref)}:{_relpath(_inrepo(path, must_exist=False))}"]),
     # FETCH IS READ-ONLY and the only way to learn what upstream has done.
     # Without it the fork could not even measure its own drift: on 2026-08-09
     # the local upstream/master was still f6bfa379, last fetched 2026-08-01,

@@ -753,6 +753,22 @@ def git_show(ref: str = "HEAD", path: str = "", timeout: int = 120) -> dict:
 
 
 @mcp.tool()
+def git_show_file(ref: str = "HEAD", path: str = "", timeout: int = 120) -> dict:
+    """A FILE'S FULL CONTENT at a ref. Read-only. NOT the same as git_show.
+
+    git_show(ref, path) prints the DIFF that commit made to that path, so it
+    returns empty output for every commit that did not touch the file -- which
+    reads exactly like "the file does not exist there" and is the reason this
+    was built. Use this when the question is "what does upstream HAVE", and
+    git_show when the question is "what did this commit CHANGE".
+
+    Example: git_show_file(ref="upstream/master",
+                           path="config/splat.us.strcen.yaml")
+    """
+    return cc.run("git_show_file", timeout=timeout, ref=ref, path=path)
+
+
+@mcp.tool()
 def git_fetch(remote: str = "upstream", timeout: int = 300) -> dict:
     """Update remote-tracking refs. READ-ONLY with respect to the tree.
 
