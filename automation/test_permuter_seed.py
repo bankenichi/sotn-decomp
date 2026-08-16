@@ -115,6 +115,31 @@ def main() -> int:
         print(f"       these need re-saving or manual staging to import: "
               f"{', '.join(bare[:6])}")
 
+    print("\nland_match can actually CALL save_candidate")
+    # On 2026-08-16 --land reached compiles-differs on func_us_801CFD70 -- the
+    # exact outcome this file exists to bank -- and saved nothing, because the
+    # rec it builds had no "id" and save_candidate slugs rec["id"] for the
+    # filename. The KeyError was caught and returned as the verdict string, so
+    # the run printed "reverted (verified): KeyError: 'id'" and moved on.
+    # Second time this shape has bitten: the same function's docstring records
+    # KeyError: 'overlay' costing a real match on 2026-08-03.
+    import inspect
+    import permuter_supervisor as ps
+    lm = inspect.getsource(ps.land_match)
+    rec_line = [l for l in lm.splitlines() if l.strip().startswith("rec = {")]
+    check(bool(rec_line), "land_match builds a rec dict")
+    if rec_line:
+        blob = lm[lm.index(rec_line[0]):][:400]
+        for key in ("build", "overlay", "function", "id"):
+            check(f'"{key}"' in blob,
+                  f"and it carries {key!r}, which save_candidate reads")
+    check("rec_id" in inspect.signature(ps.land_match).parameters,
+          "the real queue id can be passed in rather than only derived")
+    check("INTERNAL ERROR" in lm,
+          "an exception is labelled a BUG, not returned as a verdict: "
+          "'KeyError: id' printed as 'reverted (verified)' is why this went "
+          "unnoticed for a whole run")
+
     print()
     if FAILS:
         print(f"{len(FAILS)} FAILED:")

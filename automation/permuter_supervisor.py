@@ -652,7 +652,7 @@ def classify_build_failure(detail: str) -> str:
 
 
 def land_match(work: Path, fn: str, build: str = "us",
-               lock=None, body: str = "") -> tuple[bool, str]:
+               lock=None, body: str = "", rec_id: str = "") -> tuple[bool, str]:
     """Apply a score-0 seed to src/, BUILD it, and revert unless it is green.
 
     A permuter zero is necessary but NOT sufficient. func_us_801BC3E0 scored 0
@@ -707,7 +707,20 @@ def land_match(work: Path, fn: str, build: str = "us",
     # BO0.BIN. Split on the literal separator rather than counting components,
     # because overlay depth varies (boss/bo0 vs st/rno0 vs weapon).
     overlay = asm_rel.split("/nonmatchings/")[0]
-    rec = {"build": build, "overlay": overlay, "function": fn}
+    # `id` FOR THE SAME REASON `overlay` IS HERE, one paragraph up. save_candidate
+    # slugs rec["id"] to name the seed file, so leaving it out raised
+    # KeyError: 'id' inside the try below -- which the handler turns into the
+    # verdict string, so --land printed
+    #
+    #     reverted (verified): KeyError: 'id'
+    #
+    # and skipped writing the seed entirely. Observed 2026-08-16 on
+    # func_us_801CFD70: a compiles-differs result, exactly the outcome #79
+    # exists to bank, thrown away. Same shape as the 2026-08-03 'overlay' bug
+    # this function's own docstring records; the revert hardening added then is
+    # why the tree stayed clean this time, but the seed was still lost.
+    rec = {"build": build, "overlay": overlay, "function": fn,
+           "id": rec_id or f"{build}:{overlay.upper()}:{fn}"}
 
     sys.path.insert(0, str(Path(__file__).resolve().parent / "win"))
     import worker_direct as wd                              # type: ignore
@@ -808,7 +821,13 @@ def land_match(work: Path, fn: str, build: str = "us",
                     # the file back, the ONLY remaining record of the original
                     # is that journal, and a later replay is the recovery path.
                     pass
-            return False, f"{type(e).__name__}: {e}"
+            # LABEL IT AS A BUG, not as an outcome. A bare "KeyError: 'id'" was
+            # printed by the caller as "reverted (verified): KeyError: 'id'",
+            # which reads like a normal non-match and is how this went unnoticed
+            # through a whole run. An exception here is a defect in this
+            # function, never a verdict about the function being landed, and the
+            # caller routes it accordingly.
+            return False, f"INTERNAL ERROR: {type(e).__name__}: {e}"
 
 
 def require_clean_src() -> str:
@@ -994,7 +1013,7 @@ def land_pending(statuses: tuple[str, ...] = ("near",)) -> int:
             print(f"[skip] {fn}: notes say score 0 but there is no work dir")
             continue
         print(f"[land] {fn} from {work}")
-        good, why = land_match(Path(work), fn, lock=lock)
+        good, why = land_match(Path(work), fn, lock=lock, rec_id=c.get("id", ""))
         if good:
             landed += 1
             print(f"  LANDED: {why}")
@@ -1016,6 +1035,17 @@ def land_pending(statuses: tuple[str, ...] = ("near",)) -> int:
                 f"HEAD and rebuild. {why[:150]}"))
             print("\nSTOPPING: nothing further is safe while src/ is dirty.")
             return 2
+        # A crash in land_match is not a fact about the function. Saying so
+        # separately is the difference between "this seed did not land" and
+        # "the lander is broken and every seed after this one is at risk".
+        if why.startswith("INTERNAL ERROR"):
+            print(f"  *** LANDER BUG (tree verified clean): {why[:300]}")
+            print("  queue: " + report(
+                c.get("id", ""), "near",
+                f"LAND_INTERNAL_ERROR: the seed was reverted and the tree "
+                f"verified, but land_match itself raised, so no verdict was "
+                f"reached and any seed save was skipped. {why[:150]}"))
+            continue
         print(f"  reverted (verified): {why[:300]}")
         if why.startswith("VERIFY FAILED"):
             # make said green and the hashes said otherwise. That is not a
