@@ -1,7 +1,7 @@
 ---
 description: Single-shot MIPS decompilation. No tools, no exploration. The harness supplies every fact in the prompt.
 mode: primary
-model: opencode/big-pickle
+model: opencode/mimo-v2.5-free
 tools:
   read: false
   grep: false

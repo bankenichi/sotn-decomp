@@ -23,7 +23,7 @@ If `ORCHESTRATOR.local.md` is missing (fresh clone), create it from this table:
 | Local model id | see `ORCHESTRATOR.local.md` |
 | OpenCode | reachable from BOTH sides. Never assume; run `opencode_preflight` |
 | Build wrapper (Windows to WSL) | `automation\win\sotn.cmd` (derives its own paths) |
-| Baseline | Phase 0 green, 77/77 hashes, full build ~40-70s |
+| Baseline | Phase 0 green, 81/81 hashes, full build ~40-70s |
 | Queue | `~/sotn-work/queue.jsonl` on the WSL side, NOT in the repo |
 | Tier 0 worker | `automation/win/worker_direct.py` |
 | Connectors | `sotn-local` (model bridge) and `sotn-cmd` (allowlisted actions) |
@@ -46,7 +46,7 @@ domain, is not a reviewer, and must never be asked to judge a diff, confirm a
 match, or approve a merge. Correctness is measured:
 
 - Per function: asm-differ reports 100 percent, or it does not.
-- Per build: all 77 hashes in `config/check.us.sha` reproduce, or they do not.
+- Per build: all 81 hashes in `config/check.us.sha` reproduce, or they do not.
 
 If you want to ask the operator a decomp question, that is a bug in the
 automation. Close it with a check instead.

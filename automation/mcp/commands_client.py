@@ -270,6 +270,12 @@ ANALYSIS_SCRIPTS = {
     "decl_coverage.py",
     "test_twin_wiring.py",
     "opencode_size_bisect.py",
+    # Map vs symbol addresses; attributes an overlay size delta to TEXT or BSS.
+    # It is listed in HARNESS-ARCHITECTURE's component table and wired to a
+    # dashboard button, but was never allowlisted, so both were dead ends that
+    # only failed when pressed. The drift check below now compares that table
+    # against this list so the next omission is caught before someone finds it.
+    "overlay_size_check.py",
     "test_build_classifier.py",
     "test_review_gate.py",
     "test_shim_gate.py",

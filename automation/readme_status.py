@@ -330,6 +330,223 @@ def provenance_block() -> str:
     return "\n".join(lines)
 
 
+# ---------------------------------------------------------------------------
+# Doc drift.
+#
+# On 2026-08-15 an audit re-reported five findings from the 2026-08-02 drift
+# audit that had already been fixed, and missed that a sixth had not been. Both
+# halves of that are the same problem: nothing checks the docs against the code,
+# so a finding stays "found" until someone reads it again, and a fix stays
+# unverified until someone trips over it.
+#
+# These three invariants are the ones that actually rotted. Each has a single
+# machine-readable ground truth in the repo, which is the bar for being here: a
+# check that needs a human to say what the right answer is has not removed any
+# work. Anything softer stays a human judgement and does not belong in CI.
+
+# Files that talk about the old state ON PURPOSE. Listed explicitly, with the
+# reason, rather than pattern-matched, so that adding an exemption is a visible
+# decision and not a quiet way to make the check shut up.
+DRIFT_EXEMPT = {
+    "docs/audit": "audit files record what was true when they were written",
+    "SOTN-Orchestration-Stack.md": "2026-06 design doc, predates the harness",
+    "SOTN-Orchestration-Action-Plan.md": "2026-06 design doc, same",
+    "ORCHESTRATOR.local.md": "names the legacy path to identify it as legacy",
+}
+# A line stating history is not drift. `was`, a date, or an explicit legacy or
+# staleness marker all mean the author knew the number had moved.
+RX_HISTORICAL = re.compile(
+    r"20\d\d-\d\d-\d\d|\bwas\b|\blegacy\b|\bstale\b|\bNOT\b|\bnever\b|"
+    r"\bsuperseded\b|\bRETRACTED\b", re.I)
+RX_SELF_RATIO = re.compile(r"\b(\d{2,3})\s*/\s*(\d{2,3})\b")
+RX_N_HASHES = re.compile(r"\ball (\d{2,3}) hashes\b")
+# `N/N` on its own is not a hash claim. The first version of this check flagged
+# `19/19 matched` in a harvest table and three `18/18` model-answer counts in
+# fleet-dead-time.md. A ratio only means the oracle if the line says so, and
+# requiring that costs nothing: every real instance names the thing it checked.
+RX_ORACLE_CTX = re.compile(
+    r"\bhash|\bverify_build\b|\boracle\b|check\.us\.sha|PHASE 0|\bSHA-1\b", re.I)
+
+
+# Prose wraps, so the marker that makes a statement historical is often on a
+# neighbouring line: ROADMAP.md says "A 77/77 result now" on one line and "means
+# a stale tree" on the next, and ORCHESTRATOR.md dates an incident two lines
+# above the sentence describing it. Judging each line alone flagged both. A
+# small window is the difference between a check that gets read and one that
+# gets muted.
+_CTX = 2
+
+
+def _historical(lines: list[str], i: int) -> bool:
+    lo, hi = max(0, i - _CTX), min(len(lines), i + _CTX + 1)
+    return any(RX_HISTORICAL.search(ln) for ln in lines[lo:hi])
+
+
+# Pruned during the walk, not filtered after it: rglob descends into .git and
+# build/ before the filter can reject anything, and this repo is on a drvfs
+# mount where every stat crosses a filesystem boundary. Pruning is the obviously
+# right shape regardless of what it saves. (An earlier version of this comment
+# claimed it saved 80s. It did not: that number was job-queue wait time on an
+# exclusive lock, and I never measured the walk itself.) These hold no prose we
+# author.
+SKIP_DIRS = {".git", "build", "node_modules", ".venv", "__pycache__",
+             "expected", "disks", "assets", "tools"}
+
+
+_MD_CACHE: list[tuple[Path, list[str]]] | None = None
+
+
+def _md_lines() -> list[tuple[Path, list[str]]]:
+    """(path, lines) for every doc we author, read ONCE.
+
+    The hash and queue-path checks each want every line of every doc. Walking
+    and reading twice took this module's self-test from 16s to 153s and made it
+    the longest suite in the repo by an order of magnitude, on a drvfs mount
+    where each read crosses a filesystem boundary. Same answer, one pass.
+    """
+    global _MD_CACHE
+    if _MD_CACHE is None:
+        _MD_CACHE = [
+            (p, p.read_text(encoding="utf-8", errors="replace").splitlines())
+            for p in _md_files()
+        ]
+    return _MD_CACHE
+
+
+def _md_files() -> list[Path]:
+    """Markdown we author, minus exempt paths."""
+    out, stack = [], [REPO]
+    while stack:
+        d = stack.pop()
+        try:
+            entries = list(d.iterdir())
+        except OSError:
+            continue
+        for p in entries:
+            if p.is_dir():
+                if p.name not in SKIP_DIRS:
+                    stack.append(p)
+            elif p.suffix == ".md":
+                rel = p.relative_to(REPO).as_posix()
+                if not any(part in rel for part in DRIFT_EXEMPT):
+                    out.append(p)
+    return sorted(out)
+
+
+def _oracle_truth() -> int:
+    """Hash count from config/check.us.sha, which IS the oracle."""
+    f = REPO / "config" / "check.us.sha"
+    if not f.exists():
+        return 0
+    return sum(1 for ln in f.read_text(encoding="utf-8").splitlines() if ln.strip())
+
+
+def drift_hashes() -> list[str]:
+    """Docs asserting a hash count that is not the oracle's."""
+    truth = _oracle_truth()
+    if not truth:
+        return ["config/check.us.sha missing or empty; cannot check hash counts"]
+    bad = []
+    for p, lines in _md_lines():
+        for i, line in enumerate(lines, 1):
+            if _historical(lines, i - 1):
+                continue
+            hits = set()
+            if RX_ORACLE_CTX.search(line):
+                hits |= {int(m.group(1)) for m in RX_SELF_RATIO.finditer(line)
+                         if m.group(1) == m.group(2)}
+            hits |= {int(m.group(1)) for m in RX_N_HASHES.finditer(line)}
+            for n in sorted(hits - {truth}):
+                bad.append(f"{p.relative_to(REPO).as_posix()}:{i}: says {n}, "
+                           f"oracle has {truth}: {line.strip()[:70]}")
+    return bad
+
+
+def drift_queue_path() -> list[str]:
+    """Docs presenting the legacy in-repo queue as the live one.
+
+    A file-sync daemon destroyed the in-repo queue once, which is why it moved.
+    A doc that sends someone back to it is not cosmetic.
+    """
+    sched = (AUTO / "scheduler.py").read_text(encoding="utf-8", errors="replace")
+    if "~/sotn-work/queue.jsonl" not in sched:
+        return ["scheduler.py no longer defaults to ~/sotn-work/queue.jsonl; "
+                "this check encodes the wrong truth and must be updated"]
+    bad = []
+    for p, lines in _md_lines():
+        for i, line in enumerate(lines, 1):
+            if "work/queue.jsonl" not in line or "sotn-work/queue.jsonl" in line:
+                continue
+            if _historical(lines, i - 1):
+                continue
+            bad.append(f"{p.relative_to(REPO).as_posix()}:{i}: presents the "
+                       f"legacy path as live: {line.strip()[:70]}")
+    return bad
+
+
+def drift_component_table() -> list[str]:
+    """Scripts the architecture doc says are runnable, that are not allowlisted.
+
+    This is the one the 2026-08-15 audit got right: overlay_size_check.py was in
+    the table and wired to a dashboard button, but absent from ANALYSIS_SCRIPTS,
+    so both paths failed only when used. The reverse is NOT checked -- the table
+    is a curated eight, not an index of all 56 allowlisted scripts.
+    """
+    doc = REPO / "docs" / "HARNESS-ARCHITECTURE.md"
+    if not doc.exists():
+        return ["docs/HARNESS-ARCHITECTURE.md missing"]
+    text = doc.read_text(encoding="utf-8", errors="replace")
+    m = re.search(r"runnable via `run_analysis`:(.+?)(?:\n#|\Z)", text, re.S)
+    if not m:
+        return ["the 'runnable via run_analysis' table is gone from "
+                "HARNESS-ARCHITECTURE.md; this check no longer verifies anything"]
+    listed = set(re.findall(r"`([A-Za-z0-9_]+\.py)`", m.group(1)))
+    if not listed:
+        return ["found the run_analysis section but no scripts in it"]
+    # Read the allowlist as TEXT rather than importing commands_client. Pulling
+    # in the whole connector to read one tuple means executing a module with
+    # side effects inside a read-only doc check, which is the wrong trade
+    # whatever it costs.
+    allow = (AUTO / "mcp" / "commands_client.py").read_text(
+        encoding="utf-8", errors="replace")
+    m2 = re.search(r"ANALYSIS_SCRIPTS\s*=\s*[({](.+?)[)}]", allow, re.S)
+    if not m2:
+        return ["cannot find ANALYSIS_SCRIPTS in commands_client.py; this "
+                "check no longer verifies anything"]
+    allowed = set(re.findall(r"[\"']([A-Za-z0-9_]+\.py)[\"']", m2.group(1)))
+    if not allowed:
+        return ["ANALYSIS_SCRIPTS parsed as empty; refusing to report every "
+                "script as missing"]
+    missing = sorted(listed - allowed)
+    return [f"HARNESS-ARCHITECTURE.md offers {s} as runnable, but it is not in "
+            f"ANALYSIS_SCRIPTS, so run_analysis rejects it" for s in missing]
+
+
+DRIFT_CHECKS = (
+    ("hash count", drift_hashes),
+    ("queue path", drift_queue_path),
+    ("component table", drift_component_table),
+)
+
+
+def drift_report() -> tuple[str, int]:
+    """(text, number of findings). Read-only; never builds."""
+    lines, total = [], 0
+    for name, fn in DRIFT_CHECKS:
+        try:
+            found = fn()
+        except Exception as e:                              # noqa: BLE001
+            found = [f"check itself failed: {e!r}"]
+        total += len(found)
+        lines.append(f"{name}: {'clean' if not found else str(len(found)) + ' finding(s)'}")
+        lines.extend("  " + f for f in found)
+    lines.append("")
+    lines.append(f"{total} finding(s). These are the invariants with a single "
+                 f"machine-readable ground truth in the repo; everything else "
+                 f"about doc accuracy is still a human read.")
+    return "\n".join(lines), total
+
+
 def splice(text: str, begin: str, end: str, block: str) -> str:
     """Replace between markers. Missing markers is an ERROR, not an append.
 
@@ -348,10 +565,19 @@ def main() -> int:
         formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--write", action="store_true",
                     help="update README.md in place; otherwise just print")
+    ap.add_argument("--drift", action="store_true",
+                    help="check docs against code for the three invariants "
+                         "that have actually rotted; exit 1 if any drifted")
     ap.add_argument("--self-test", action="store_true")
     a = ap.parse_args()
     if a.self_test:
         return self_test()
+    if a.drift:
+        text, n = drift_report()
+        print(text)
+        # Non-zero so this can gate a commit. The README blocks are generated
+        # and cannot drift; these three are hand-written and did.
+        return 1 if n else 0
 
     sb, pb = status_block(), provenance_block()
     if not a.write:
@@ -378,6 +604,40 @@ def self_test() -> int:
               + ("" if c else "   " + detail))
         if not c:
             fails.append(label)
+
+    print("\nthe drift checks are anchored to code, not to a remembered number")
+    truth = _oracle_truth()
+    ck(truth > 0, "the oracle hash count is read from config/check.us.sha",
+       f"got {truth}")
+    # The check has to FIRE on a real regression, or it is decoration. Each of
+    # the three is fed the exact string that was in the tree this morning.
+    import tempfile as _tf
+    with _tf.TemporaryDirectory() as d:
+        bad = Path(d) / "fake.md"
+        bad.write_text(f"expect {truth - 4}/{truth - 4} OK\n"
+                       "The live queue lives at work/queue.jsonl\n",
+                       encoding="utf-8")
+        line1, line2 = bad.read_text(encoding="utf-8").splitlines()
+        ck(bool(RX_SELF_RATIO.search(line1)) and not RX_HISTORICAL.search(line1),
+           "a bare stale hash ratio is caught")
+        ck("work/queue.jsonl" in line2 and "sotn-work" not in line2
+           and not RX_HISTORICAL.search(line2),
+           "and the legacy queue path presented as live")
+    # ...and stay quiet on the sentences deliberately left in place, or it will
+    # be ignored inside a week.
+    for hist in (f"was {truth - 4}/{truth - 4} before the upstream merge",
+                 "(NOT work/queue.jsonl; that path is legacy)",
+                 "On 2026-07-19 the baseline was verified clean at 77/77"):
+        ck(bool(RX_HISTORICAL.search(hist)),
+           f"history is not drift: {hist[:44]!r}")
+
+    print("\nand they pass against the tree as it stands")
+    for name, fn in DRIFT_CHECKS:
+        found = fn()
+        ck(not found, f"{name} is clean", "; ".join(found[:3]))
+    ck(len(DRIFT_CHECKS) == 3,
+       "three checks, each with one machine-readable ground truth; a check "
+       "needing a human to supply the right answer removes no work")
 
     print("\nsplice replaces between markers and is idempotent")
     doc = f"before\n{STATUS_BEGIN}\nold\n{STATUS_END}\nafter\n"
@@ -476,9 +736,19 @@ def self_test() -> int:
     # exact trap has fired in this repo today; see the dashboard parse check
     # in test_connector_surfaces and _strip_comments_and_strings in
     # worker_direct for the others.
+    #
+    # It fired a FIFTH time when --drift landed: that check has to name the
+    # legacy queue path in order to find docs still pointing at it, so "the
+    # string is absent" stopped being true while the property it stood for --
+    # this module never READS the queue file -- stayed true. An absence test
+    # was the wrong shape; assert the property directly instead.
     needle = "queue" + ".jsonl"
     ck("scheduler.py" in src_self, "the scheduler is invoked")
-    ck(needle not in src_self, "and the queue file is never opened directly")
+    reads = [ln.strip() for ln in src_self.splitlines()
+             if needle in ln
+             and re.search(r"\bopen\s*\(|read_text|read_bytes|readlines", ln)]
+    ck(not reads, "and the queue file is never opened directly",
+       "; ".join(reads[:2]))
 
     print()
     if fails:

@@ -667,6 +667,17 @@ DIAGNOSTICS = [
     ("README status: what the tables WOULD say", "readme_status.py", "",
      "regenerate the queue/oracle/provenance tables from live data; prints "
      "only, pass --write from a shell to update README.md"),
+    # The same tool in its other mode. Docs drift silently, and the 2026-08-15
+    # audit re-reported five findings that were already fixed while missing one
+    # that was not, because nothing checks the docs against the code.
+    ("Doc drift", "readme_status.py", "--drift",
+     "hash count, queue path and the run_analysis component table, each "
+     "checked against its ground truth in the repo"),
+    # Was in the architecture doc's component table and wired to no button,
+    # while also missing from ANALYSIS_SCRIPTS: offered in prose, unrunnable in
+    # both places. The drift check above now watches the doc half.
+    ("Overlay size check", "overlay_size_check.py", "",
+     "map vs symbol addresses; attributes an overlay size delta to TEXT or BSS"),
     ("Prompt compaction", "test_prompt_compaction.py", "",
      "asm shrinks and no symbol is lost"),
     ("Permuter settings", "test_permuter_settings.py", "",

@@ -36,7 +36,8 @@ Preconditions for running something unvetted:
 
 Heuristics that have actually produced verified byte-exact matches in this repo, with
 the evidence that established each one. Every claim here was confirmed by
-`verify_build us` returning 77/77, not by reasoning alone.
+`verify_build us` returning every hash OK, not by reasoning alone. That was 77/77
+when these were written and is 81/81 since the upstream merge added RCHI and RDAI.
 
 Read this before writing C for any INCLUDE_ASM stub. Tier 0 through 3 agents should be
 primed with sections 1 to 3, because those three checks accounted for every match
@@ -250,7 +251,7 @@ so `git status` showing modified files is normal and does **not** by itself mean
 is broken. Confirm with the oracle instead:
 
 ```
-make_build VERSION=us   then   verify_build us   ->  expect 77/77 OK
+make_build VERSION=us   then   verify_build us   ->  expect 81/81 OK
 ```
 
 A worker killed mid-run cannot execute its own `restore()`, so orphaned edits are
@@ -327,7 +328,7 @@ only symptom was that 33 matched functions carry zero explanatory comments.
 Everything matched before 2026-07-20 is unannotated, and 64 machine-generated
 identifiers remain across `src/st/rno0/` and `src/boss/bo6/`. Backfilling is ideal
 haiku work: it is mechanical, and since comments and local names cannot affect
-codegen, a full `verify_build` after each file should still return 77/77. If it
+codegen, a full `verify_build` after each file should still return 81/81. If it
 ever does not, something other than a comment was changed.
 
 ## 8b. Running the decomp-permuter (first working procedure, 2026-07-20)
@@ -364,7 +365,7 @@ worked at all. Both are committed; you should not have to repeat them.
    `diff.txt` and `source.c`. **Score 0 means a match.** Anything above 0 is a
    near miss; lower is closer.
 5. Always revert the seed C to the stub afterwards unless you got a real match,
-   then `make_build` + `verify_build` to confirm 77/77.
+   then `make_build` + `verify_build` to confirm 81/81.
 
 **Operational hazard:** the `permuter` MCP call reliably exceeds the transport
 timeout and returns error -32001, but the process KEEPS RUNNING server-side and
@@ -596,7 +597,7 @@ different owners, they need different statuses.
 ## 10e. Whole-tree verification must happen inside the build lock
 
 `scheduler.py` refuses `matched` unless it can re-verify, and it re-verifies the
-WHOLE tree: all 77 hashes, not just the overlay in question. That check is right
+WHOLE tree: all 81 hashes, not just the overlay in question. That check is right
 and worth keeping. It is what stops a worker claiming a match while the tree is
 broken.
 

@@ -1,8 +1,12 @@
 # P3b / task #51 — shim `e_red_door.h` into rno0
 
-Status: **analysed, not applied.** Every address below is measured, not inferred.
-Blocked only on the fleet being paused, because applying it needs `make extract`
-plus a full build and the fleet is concurrently mutating the same tree.
+Status: **APPLIED** in `7c6ad016c` (task #51). `e_red_door.h` is shimmed into
+rno0, `EntityRedDoor` matched, and the duplicate implementation deleted. The plan
+below is kept as the derivation, not as work to do: re-running it would re-apply
+a change that is already in the tree.
+
+Every address below is measured, not inferred. It said "analysed, not applied"
+for longer than it was true, and a 2026-08-15 audit read it as outstanding work.
 
 ## The headline: this is far smaller than P3b assumed
 
