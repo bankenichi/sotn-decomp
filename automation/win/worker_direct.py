@@ -4770,6 +4770,41 @@ def process_one(dry: bool = False, only: str | None = None) -> bool:
               f"MAX_FUNC_CHARS={MAX_FUNC_CHARS}; skipping the model and "
               f"building the m2c draft ({len(ctx['draft'])} chars) instead",
               flush=True)
+        # DO NOT BUILD A DRAFT THAT CANNOT PASS. resolve_unk_accesses
+        # deliberately leaves offsets at 0x7C+ alone, because those are the ext
+        # union and the field name depends on which ET_ variant this entity is
+        # -- which cannot be read off the Entity layout. Choosing the variant is
+        # the model's job, and this path has no model.
+        #
+        # So an m2c-only draft that still contains an ext-range `->unkNN` is
+        # GUARANTEED to fail the quality gate, every time, identically. That is
+        # not a hypothesis: EntityGaibon and RDAI's unk_41DE8 did exactly this
+        # ~35 times each on 2026-08-16, each cycle costing a full build to
+        # rediscover the same verdict (#113).
+        #
+        # Predict it here instead. The record is still a genuine size handoff --
+        # a tier that CAN call a model would translate these fine -- so it keeps
+        # the handoff marker and the limit, and the tier gate in scheduler.py
+        # makes sure that means someone bigger rather than us again.
+        _ext_unk = sorted({int(h, 16) for h in
+                           re.findall(r"->\s*unk([0-9A-Fa-f]{2})\b",
+                                      ctx.get("draft") or "")
+                           if 0x7C <= int(h, 16) < 0xB8})
+        if _ext_unk:
+            _offs = " ".join(f"0x{o:02X}" for o in _ext_unk)
+            print(f"[worker] M2C ONLY IS HOPELESS HERE: the draft still reads "
+                  f"ext offsets {_offs} as ->unkNN, and naming them needs a "
+                  f"model to pick the ET_ variant. Deferring without building.",
+                  flush=True)
+            sched("report", "--id", rec["id"], "--status", "deferred",
+                  "--handoff-limit", str(MAX_FUNC_CHARS),
+                  "--notes", (f"{DEFER_TOO_LARGE}: asm {_asm_size} chars > "
+                              f"{MAX_FUNC_CHARS}, so the model was skipped; the "
+                              f"m2c draft reads ext offsets {_offs} as ->unkNN "
+                              f"and only a model can choose the ext variant. "
+                              f"No build attempted. ext_demand.py lists the "
+                              f"variants that already cover these.")[:250])
+            return True
     # P6. Ask BEFORE the model, not after: a record whose right answer is a
     # shim must never cost a generation. The blocked-but-not-shimmable case is
     # only annotated, so it stays workable; see shim_gate's docstring.

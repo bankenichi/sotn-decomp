@@ -141,6 +141,27 @@ def main():
           "the queue note draws the same distinction, on best_build, which is "
           "set only when a build actually ran")
 
+    print("\nan ext-touching draft is refused BEFORE a build, not after")
+    # resolve_unk_accesses deliberately leaves 0x7C+ alone: the ext field name
+    # depends on which ET_ variant the entity is, and only a model can choose.
+    # This path has no model, so such a draft cannot ever pass the quality
+    # gate. EntityGaibon and RDAI's unk_41DE8 rediscovered that ~35 times each,
+    # one full build per cycle.
+    guard = body[:body.index("if m2c_only:")]
+    check("M2C ONLY IS HOPELESS HERE" in guard,
+          "the hopeless case is detected in the setup, before the attempt loop")
+    check(guard.index("M2C ONLY IS HOPELESS HERE") > guard.index("m2c_only = True"),
+          "and after the flag is set, so it only fires on the m2c-only path")
+    hop = guard[guard.index("_ext_unk = sorted"):]
+    check("0x7C <= int(h, 16) < 0xB8" in hop,
+          "the range ENDS at 0xB8, where the named unkB8 pointer begins; using "
+          "Entity's 0xBC would flag a field that already has a name")
+    check('"--handoff-limit"' in hop and "DEFER_TOO_LARGE" in hop,
+          "it stays a size handoff, so a tier that CAN call a model still gets "
+          "it, and the tier gate decides who that is")
+    check("No build attempted" in hop,
+          "and the note says no build was spent, which is the whole point")
+
     print("\nthe ceiling itself is unchanged for the model path")
     check(wd.MAX_FUNC_CHARS == 20000,
           f"MAX_FUNC_CHARS is still {wd.MAX_FUNC_CHARS}")
