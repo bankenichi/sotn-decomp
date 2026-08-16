@@ -174,7 +174,7 @@ def permuter_panels() -> list[dict]:
         stall = int(json.loads(SUPERVISOR_STATE.read_text()).get("stall", 2500))
     except (OSError, json.JSONDecodeError, ValueError, TypeError):
         pass
-    out = []
+    by_dir: dict[str, dict] = {}
     for jid in jobs.running_jobs("permuter"):
         log = JOBS_DIR / f"{jid}.log"
         d = parse(log.read_text(errors="ignore")) if log.is_file() else {
@@ -202,15 +202,33 @@ def permuter_panels() -> list[dict]:
                             alltime = v
         except OSError:
             pass
-        out.append({"id": jid, "name": fn, "best": d["best"],
-                    "alltime": alltime,
-                    "iterations": d["iterations"],
-                    "since": d["since_improvement"],
-                    "failures": d["failures"],
-                    "improving": d["since_improvement"] < stall,
-                    "stall_at": stall,
-                    "log": tail(log)})
-    return out
+        row = {"id": jid, "name": fn, "best": d["best"],
+               "alltime": alltime,
+               "iterations": d["iterations"],
+               "since": d["since_improvement"],
+               "failures": d["failures"],
+               "improving": d["since_improvement"] < stall,
+               "stall_at": stall, "sharing": 1,
+               "log": tail(log)}
+        # ONE ROW PER WORK DIR, NOT PER JOB. jobs.slug_of strips the `~<n>`
+        # collision bump, so several job ids can name the same work dir and the
+        # panel rendered one row each: func_us_801C4B2C appeared three times,
+        # every copy showing "run - . 0 it" because only one job owns the log.
+        #
+        # Deduping SILENTLY would be wrong. Two permuter jobs on one work dir
+        # is not a display quirk, it is the #87 bug -- they compile into the
+        # same directory and overwrite each other's output-N-M. So collapse the
+        # row and say how many are sharing, loudly, rather than hiding it.
+        prev = by_dir.get(fn)
+        if prev is None:
+            by_dir[fn] = row
+            continue
+        row["sharing"] = prev["sharing"] + 1
+        # Keep whichever job has actually got somewhere. The others are
+        # typically the bumped duplicates with no log of their own.
+        by_dir[fn] = row if row["iterations"] > prev["iterations"] else {
+            **prev, "sharing": row["sharing"]}
+    return list(by_dir.values())
 
 
 def fleet_panels() -> list[dict]:
@@ -1613,9 +1631,13 @@ async function refresh(){
     // Show the run's best AND the dir's all-time best when they differ, so a
     // fresh run that has not yet caught up does not read as lost progress.
     const at = (p.alltime!=null && p.alltime!==p.best) ? ` (best ever ${p.alltime})` : '';
+    // >1 job on ONE work dir is the #87 bug, not a rendering detail: they
+    // compile into the same directory and overwrite each other's output-N-M.
+    // It used to show as N identical rows, which read as a display glitch.
+    const share = p.sharing>1 ? ` · ${p.sharing} JOBS ON ONE WORK DIR` : '';
     const meta = `run ${p.best==null?'-':p.best}${at} · ${p.iterations} it`
                + (p.improving?'':' · stalled')
-               + (p.failures?` · ${p.failures} rej`:'');
+               + (p.failures?` · ${p.failures} rej`:'') + share;
     // Progress is "how far into the stall window", the only bounded quantity
     // the permuter has. It is not progress toward a match; there is no such
     // number, because the search is unbounded.
@@ -1906,6 +1928,17 @@ def self_test() -> int:
        "than left looking selectable")
     ck("renderWorkerRows" in PAGE and "class=wmodel" in PAGE,
        "the page renders one model row per worker")
+    print("\none permuter row per WORK DIR, and a collision is loud")
+    # Three identical func_us_801C4B2C rows, each "run - . 0 it", because
+    # jobs.slug_of strips the ~<n> bump so several job ids name one work dir.
+    ck("by_dir" in src, "panels are keyed by work dir, not by job id")
+    ck('"sharing"' in src or "sharing" in src,
+       "and the row carries how many jobs are on that dir")
+    ck("JOBS ON ONE WORK DIR" in PAGE,
+       "which is SHOWN, not silently deduped: >1 job per dir is the #87 bug, "
+       "where two permuters overwrite each other's output-N-M")
+    ck('p.sharing>1' in PAGE, "the badge is conditional on there being a clash")
+
     ck("best ever" in PAGE,
        "a run that has not yet beaten the dir's all-time best says so, instead "
        "of looking like the score went backwards")
