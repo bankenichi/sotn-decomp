@@ -172,6 +172,16 @@ def report(overlay: str = "") -> int:
     print("\nEach still has to survive apply -> build -> verify here:")
     print("upstream's C is written against upstream's headers, and compiling")
     print("is not matching. This says where to look, not what is true.")
+    # REPEATED AT THE END. The header counts are the answer, and every caller
+    # reading this through the connector sees only the TAIL -- a long list
+    # pushes the count out of view, which is exactly what happened to
+    # matched_audit and cost a whole diagnosis to a list with no header.
+    by_ovl: dict[str, int] = {}
+    for _fn, ovl, _p in rows:
+        by_ovl[ovl] = by_ovl.get(ovl, 0) + 1
+    spread = "  ".join(f"{o} {n}" for o, n in sorted(by_ovl.items()))
+    print(f"\nSUMMARY  {len(rows)} harvestable  from upstream/master {ref} "
+          f"({behind} commits ahead)  |  {spread}")
     return 0
 
 
