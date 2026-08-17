@@ -75,6 +75,10 @@ segments:
       - [0x292B8, .rodata, 2B9EC]
       - [0x292F0, .rodata, e_prisoner]
       - [0x29344, .rodata, 2D26C]
+      # See the note on the [0x3053C, c] segment below: 2D26C's text was one
+      # merged block here and upstream splits it, so its .rodata was merged
+      # too. Split at the same boundary upstream uses.
+      - [0x29488, .rodata, 3053C]
       - [0x29678, .rodata, 3AB18]
       - [0x29684, .rodata, 3B014]
       - [0x2969C, .rodata, e_chair]
@@ -97,6 +101,19 @@ segments:
       - [0x2B9EC, c]
       - [0x2CDC8, c, e_prisoner]
       - [0x2D26C, c]
+      # SPLIT 2026-08-16, and it is load-bearing, not cosmetic. This fork had
+      # 0x2D26C..0x3A880 as one segment, so all of it compiled as a single
+      # translation unit. Harvesting upstream's func_us_801B053C/088C/0930
+      # into that unit put their jump table at 0x294A4; the original has it at
+      # 0x294A8, because in upstream those three live in their own file and a
+      # fresh .rodata section starts 8-aligned. Same C, same compiler, wrong
+      # answer purely from which object file the rodata landed in.
+      #
+      # Upstream splits further still (313A8, 38794, 3A030). Only this one
+      # boundary is taken, because only this one is needed to make the rodata
+      # start where the original does; the rest can be split when something
+      # needs them.
+      - [0x3053C, c]
       - [0x3A880, c, 372E8]
       - [0x3AB18, c]
       - [0x3B014, c]

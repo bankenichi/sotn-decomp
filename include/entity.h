@@ -4140,6 +4140,24 @@ typedef struct {
     /* 0x84 */ s16 doubleSpeed;
 } ET_Dodo;
 
+// BO0's Olrox after-image effect: func_us_801B0930 and the two helpers it
+// drives, func_us_801B053C and func_us_801B088C. Taken from upstream/master,
+// which named the fields from their use across all three.
+//
+// Adding a union member cannot move anything. This ends at 0x92 and Ext
+// already runs to 0xB7, so the union's size is unchanged and every other
+// entity is untouched. That is why this is safe to add for three functions
+// and would not be safe to widen.
+typedef struct {
+    /* 0x7C */ struct Primitive* prim7C;
+    /* 0x80 */ Primitive* prim0;
+    /* 0x84 */ Primitive* prim1;
+    /* 0x88 */ Primitive* prim2;
+    /* 0x8C */ s16 brightness;
+    /* 0x8E */ s16 timer0;
+    /* 0x90 */ s16 timer1;
+} ET_801B0930;
+
 typedef union { // offset=0x7C
     struct Primitive* prim;
     ET_Placeholder ILLEGAL;
@@ -4491,6 +4509,7 @@ typedef union { // offset=0x7C
     ET_Orobourous orob;
     ET_Dodo dodo;
     ET_B0_Unk b0Unk;
+    ET_801B0930 et_801B0930;
 } Ext;
 
 SYNC_FIELD(ET_Player, ET_Weapon, anim);
