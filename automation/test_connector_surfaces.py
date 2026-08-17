@@ -834,6 +834,121 @@ def main() -> int:
           "and the @mcp.tool signature actually accepts it, so the help is "
           "not describing an argument no caller can pass")
 
+    # ------------------------------------------------------------------
+    # DELETING AND RENAMING. The third and fourth members of the guard family,
+    # after _restorable (discard an edit) and _adoptable (overwrite from a ref).
+    # These destroy the file itself, so they are the strictest.
+    print("\ndeleting a tracked file is possible, and guarded four ways")
+    for _n in ("git_rm", "git_mv"):
+        check(_n in _reg, f"{_n} is in REGISTRY")
+        check(_n in _tools, f"{_n} is callable (@mcp.tool)")
+    _seg_rm = _src_cc.split('"git_rm": lambda')[1].split("),\n")[0]
+    check("_removable(" in _seg_rm, "git_rm routes its path through _removable")
+    check('"-r"' not in _seg_rm and "'-r'" not in _seg_rm,
+          "and there is no recursive form, which is the one flag that turns a "
+          "delete into a catastrophe")
+    check('["-f"] if confirm_dirty' in _seg_rm,
+          "and -f rides on confirm_dirty, or git would veto what the guard "
+          "just allowed and the override would be cosmetic")
+    _seg_mv = _src_cc.split('"git_mv": lambda')[1].split("),\n")[0]
+    check("_movable(" in _seg_mv, "git_mv routes its paths through _movable")
+
+    # _splat_refs is the interesting half: it encodes that a subsegment and a
+    # filename are ONE fact in two places. Anchor the test on a reference that
+    # really exists, so it cannot pass by finding nothing.
+    _live = "src/st/rno0/unk_4A320.c"
+    _refs = _cc_mod._splat_refs(_live)
+    check(bool(_refs),
+          f"_splat_refs finds the live subsegment for {_live} ({len(_refs)})")
+    if _refs:
+        check("splat.us.strno0.yaml" in _refs[0] and "unk_4A320" in _refs[0],
+              f"and names the config and the line ({_refs[0].strip()})")
+    check(_cc_mod._splat_refs("src/st/e_floor_trap.h") == [],
+          "a header is never splat-referenced, so it is not checked")
+    check(_cc_mod._splat_refs("automation/dashboard.py") == [],
+          "and neither is anything outside src/")
+
+    # A file that a splat config still points at must not vanish.
+    _blocked_splat = None
+    try:
+        _cc_mod._removable(_live)
+    except Exception as e:                                      # Rejected
+        _blocked_splat = str(e)
+    check(_blocked_splat is not None,
+          "removing a splat-referenced source file is refused")
+    if _blocked_splat:
+        check("splat.us.strno0.yaml" in _blocked_splat,
+              "and the refusal names the config that has to be edited first")
+        check("confirm_splat_ref" in _blocked_splat,
+              "and says how to override deliberately")
+    check(_cc_mod._removable(_live, False, True).endswith("unk_4A320.c"),
+          "confirm_splat_ref=True lets it through")
+
+    # Untracked and directories are refused outright, with no override.
+    _untracked_rel = "src/_rm_guard_probe.c"
+    _untracked = _repo / _untracked_rel
+    _u_had = _untracked.exists()
+    try:
+        _untracked.write_text("/* probe */\n", encoding="utf-8")
+        _blocked_untracked = None
+        try:
+            _cc_mod._removable(_untracked_rel)
+        except Exception as e:                                  # Rejected
+            _blocked_untracked = str(e)
+        check(_blocked_untracked is not None,
+              "removing an UNTRACKED file is refused")
+        if _blocked_untracked:
+            check("does not track" in _blocked_untracked,
+                  "and says why: there is no history to recover it from")
+    finally:
+        if not _u_had:
+            _untracked.unlink(missing_ok=True)
+
+    _blocked_dir = None
+    try:
+        _cc_mod._removable("src/st")
+    except Exception as e:                                      # Rejected
+        _blocked_dir = str(e)
+    check(_blocked_dir is not None, "removing a DIRECTORY is refused")
+    if _blocked_dir:
+        check("recursive" in _blocked_dir,
+              "and says there is no recursive form, deliberately")
+
+    # A clean, tracked, unreferenced file is removable without ceremony: that
+    # is the ordinary case and it must not need a flag.
+    _plain = None
+    try:
+        _plain = _cc_mod._removable("automation/dashboard.py")
+    except Exception as e:                                      # noqa: BLE001
+        check(False, f"a clean tracked file must be removable ({e})")
+    check(bool(_plain),
+          "a clean, tracked, unreferenced file needs no override")
+
+    # _movable's guard is DIRECTIONAL: it looks at the source stem only, so the
+    # config-first ordering is the one that passes.
+    _blocked_mv = None
+    try:
+        _cc_mod._movable(_live, "src/st/rno0/giantbro_helpers_2.c")
+    except Exception as e:                                      # Rejected
+        _blocked_mv = str(e)
+    check(_blocked_mv is not None,
+          "moving a file whose OLD stem is still declared is refused")
+    if _blocked_mv:
+        check("giantbro_helpers_2" in _blocked_mv,
+              "and the refusal names the new stem the config should point at")
+        check("FIRST" in _blocked_mv,
+              "and states the ordering, which is the actual lesson")
+    check(_cc_mod._movable(_live, "src/st/rno0/giantbro_helpers_2.c",
+                           False, True)[0].endswith("unk_4A320.c"),
+          "confirm_splat_ref=True lets it through and returns both paths")
+    _mv_onto = None
+    try:
+        _cc_mod._movable("automation/dashboard.py", "automation/scheduler.py")
+    except Exception as e:                                      # Rejected
+        _mv_onto = str(e)
+    check(_mv_onto is not None and "already exists" in (_mv_onto or ""),
+          "moving onto an existing file is refused")
+
     print()
     if FAILS:
         print(f"{len(FAILS)} FAILED:")

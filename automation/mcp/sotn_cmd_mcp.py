@@ -833,6 +833,71 @@ def git_checkout_path(ref: str, path: str, timeout: int = 120,
 
 
 @mcp.tool()
+def git_rm(path: str, timeout: int = 120, confirm_dirty: bool = False,
+           confirm_splat_ref: bool = False) -> dict:
+    """DELETE one tracked file from the tree and the index. `git rm -- <path>`.
+
+    Built because there was no way to delete a file at all, and the gap had
+    already shaped the tree. src/st/rno0/unk_4A320.c is a shim over
+    giantbro_helpers_2.h and should be named after it, but renaming means
+    removing the old path, so the wrong name got committed with a comment
+    explaining why it had to stay. Retiring src/st/en_thornweed_corpseweed.h,
+    which upstream replaced and which four overlays still compile beside its
+    replacement, was blocked on the same thing.
+
+    ONE FILE AT A TIME. There is no recursive form and there will not be:
+    `git rm -r` on a source tree is one typo from catastrophic and nothing here
+    needs it. A directory is refused.
+
+    Four refusals, each with an override:
+      untracked           no history to recover from, so this is the wrong
+                          tool. Not overridable.
+      a directory         see above. Not overridable.
+      uncommitted changes HEAD does not hold what would be destroyed.
+                          confirm_dirty=True (which also passes -f, or git
+                          would veto what this layer just allowed).
+      a live splat ref    a `[addr, c, stem]` subsegment still names the file's
+                          stem, so the next build would look for a file that is
+                          gone. The refusal prints config:line for each.
+                          confirm_splat_ref=True.
+
+    For a RENAME use git_mv instead: it keeps the history and stages both
+    halves. Remember to point the splat subsegment at the new stem FIRST."""
+    return cc.run("git_rm", timeout=timeout, path=path,
+                  confirm_dirty=confirm_dirty,
+                  confirm_splat_ref=confirm_splat_ref)
+
+
+@mcp.tool()
+def git_mv(src: str, dst: str, timeout: int = 120,
+           confirm_overwrite: bool = False,
+           confirm_splat_ref: bool = False) -> dict:
+    """RENAME a tracked file, preserving history and staging both halves.
+
+    `git mv -- <src> <dst>`. Prefer this over git_rm plus a fresh write: the
+    rewrite loses the connection between the two paths, and for a file whose
+    whole value is being byte-identical to upstream it is also a chance to
+    introduce a difference nothing downstream would look for.
+
+    THE SPLAT GUARD IS DIRECTIONAL AND THAT IS THE POINT. A rename touches two
+    things -- the file, and the splat subsegment naming its stem -- and only
+    one ordering leaves every intermediate state buildable:
+
+        1. point the subsegment at the NEW stem
+        2. git_mv the file
+
+    So this refuses while the OLD stem is still declared anywhere, which is
+    precisely the state that ordering eliminates. After step 1 there is nothing
+    left to object to. confirm_splat_ref=True overrides.
+
+    Also refuses an untracked source, a directory, and an existing destination
+    (confirm_overwrite=True)."""
+    return cc.run("git_mv", timeout=timeout, src=src, dst=dst,
+                  confirm_overwrite=confirm_overwrite,
+                  confirm_splat_ref=confirm_splat_ref)
+
+
+@mcp.tool()
 def git_fetch(remote: str = "upstream", timeout: int = 300) -> dict:
     """Update remote-tracking refs. READ-ONLY with respect to the tree.
 

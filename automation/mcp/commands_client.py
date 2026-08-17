@@ -229,6 +229,188 @@ def _adoptable(path: str, confirm_overwrite: bool = False) -> str:
         f"first, or pass confirm_overwrite=True if you know it is worthless.")
 
 
+def _rel(p: str) -> str:
+    """An absolute in-repo path as repo-root-relative posix, or '' if it is not.
+
+    Same conversion _relpath does, but total: callers here want to fall back to
+    "cannot tell" rather than raise, because a guard that throws on an odd path
+    blocks a legitimate operation.
+    """
+    try:
+        return Path(p).resolve().relative_to(REPO.resolve()).as_posix()
+    except (ValueError, OSError):
+        return ""
+
+
+def _is_tracked(rel: str) -> bool | None:
+    """True/False, or None if git could not answer."""
+    try:
+        r = subprocess.run(["git", "ls-files", "--error-unmatch", "--", rel],
+                           cwd=str(REPO), capture_output=True, text=True,
+                           timeout=60)
+        return r.returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return None
+
+
+def _is_dirty(rel: str) -> bool | None:
+    """True/False, or None if git could not answer."""
+    try:
+        r = subprocess.run(["git", "status", "--porcelain", "--", rel],
+                           cwd=str(REPO), capture_output=True, text=True,
+                           timeout=60)
+        if r.returncode != 0:
+            return None
+        return bool((r.stdout or "").strip())
+    except (OSError, subprocess.SubprocessError):
+        return None
+
+
+# A splat subsegment naming a stem: `- [0x4A320, c, unk_4A320]`, or with a
+# section: `- [0x1DD4, .data, e_thornweed_corpseweed]`. The stem is the last
+# field, so it is anchored on `, <stem>]` with optional trailing comment.
+def _splat_refs(rel: str) -> list[str]:
+    """Every splat subsegment still naming this source file's stem.
+
+    WHY THIS GUARD EXISTS. splat resolves a `[addr, c, stem]` subsegment to
+    `<src_path>/<stem>.c`, so the segment and the filename are one fact written
+    in two places. Deleting or renaming the file without editing the config
+    does not fail loudly at the point of the mistake: it fails later, in a
+    build, as a missing input with no hint that a config still points at it.
+
+    Returns strings like
+        config/splat.us.strno0.yaml:215  - [0x4A320, c, unk_4A320]
+    so a refusal can name exactly what has to be edited first. Empty list means
+    no config mentions the stem, which is the state a rename should be in
+    BEFORE the file moves: edit the config, then move the file.
+
+    Only meaningful for .c files under src/. Headers are pulled in by #include
+    and never named in a splat config, so they are not checked.
+    """
+    if not (rel.startswith("src/") and rel.endswith(".c")):
+        return []
+    stem = Path(rel).stem
+    rx = re.compile(r"^\s*-\s*\[[^\]]*,\s*" + re.escape(stem) + r"\s*\]")
+    out: list[str] = []
+    try:
+        for cfg in sorted((REPO / "config").glob("splat.*.yaml")):
+            try:
+                lines = cfg.read_text(encoding="utf-8",
+                                      errors="ignore").splitlines()
+            except OSError:
+                continue
+            for n, line in enumerate(lines, 1):
+                if rx.match(line):
+                    out.append(f"{_rel(str(cfg))}:{n} {line.strip()}")
+    except OSError:
+        pass
+    return out
+
+
+def _removable(path: str, confirm_dirty: bool = False,
+               confirm_splat_ref: bool = False) -> str:
+    """An in-repo path safe to DELETE from the tree and the index, or Rejected.
+
+    The third member of the family, after _restorable (discard an edit) and
+    _adoptable (overwrite from another ref). This one destroys the file itself,
+    so it is the strictest:
+
+      - not tracked   -> REFUSE. `git rm` is for files git knows about. An
+                         untracked file has no history at all, so removing it
+                         through git is both wrong and unrecoverable.
+      - a directory   -> REFUSE. There is no recursive form here on purpose;
+                         `git rm -r src` is one typo away from catastrophic and
+                         nothing in this project needs it.
+      - dirty         -> REFUSE unless confirm_dirty. Committed content is
+                         recoverable from HEAD; an uncommitted edit is not.
+      - still named by a splat subsegment -> REFUSE unless confirm_splat_ref.
+                         See _splat_refs: this one is not about recoverability,
+                         it is about not leaving the build pointing at a file
+                         that no longer exists.
+    """
+    p = _inrepo(path, must_exist=False)
+    rel = _rel(p)
+    if Path(p).is_dir():
+        raise Rejected(
+            f"refusing to remove {rel or path}: it is a directory. This action "
+            f"has no recursive form deliberately -- one path at a time, and "
+            f"`git rm -r` on a source tree is a typo away from catastrophic.")
+    if not rel:
+        raise Rejected("could not resolve the path relative to the repo root")
+    if _is_tracked(rel) is False:
+        raise Rejected(
+            f"refusing to remove {rel}: git does not track it, so there is no "
+            f"history to recover it from and `git rm` is the wrong tool. If it "
+            f"is scratch output, leave it or remove it outside the repo.")
+    if not confirm_dirty and _is_dirty(rel):
+        raise Rejected(
+            f"refusing to remove {rel}: it has uncommitted changes, so HEAD "
+            f"does not hold what is about to be destroyed. Commit or stash "
+            f"first, or pass confirm_dirty=True.")
+    if not confirm_splat_ref:
+        refs = _splat_refs(rel)
+        if refs:
+            raise Rejected(
+                f"refusing to remove {rel}: a splat subsegment still names its "
+                f"stem, so the next build would look for a file that is gone:\n"
+                + "\n".join("    " + r for r in refs)
+                + "\n  Edit the config first -- for a rename that means "
+                  "pointing the segment at the new stem, which is also the "
+                  "order that keeps every intermediate state buildable. "
+                  "confirm_splat_ref=True overrides.")
+    return p
+
+
+def _movable(src: str, dst: str, confirm_overwrite: bool = False,
+             confirm_splat_ref: bool = False) -> list:
+    """A tracked source and a free destination for `git mv`, or Rejected.
+
+    Returns [src_abs, dst_abs] so the argv builder can splat it in.
+
+    THE SPLAT RULE IS DIRECTIONAL, and that is the whole design. A rename has
+    to touch two things, the file and the subsegment that names its stem, and
+    only one ordering leaves every intermediate state buildable:
+
+        1. point the splat subsegment at the NEW stem
+        2. git_mv the file
+
+    Do it the other way and the tree spends a step with a config referring to a
+    file that no longer exists. So this refuses while the OLD stem is still
+    declared anywhere, which is exactly the state that ordering eliminates.
+    After step 1 there are no references left to the old stem and the move is
+    allowed without ceremony.
+    """
+    s = _inrepo(src, must_exist=True)
+    d = _inrepo(dst, must_exist=False)
+    s_rel, d_rel = _rel(s), _rel(d)
+    if Path(s).is_dir():
+        raise Rejected(
+            f"refusing to move {s_rel or src}: it is a directory. One file at "
+            f"a time, for the same reason there is no recursive remove.")
+    if not s_rel or not d_rel:
+        raise Rejected("could not resolve both paths relative to the repo root")
+    if _is_tracked(s_rel) is False:
+        raise Rejected(
+            f"refusing to move {s_rel}: git does not track it, so `git mv` "
+            f"would not preserve any history. Write the new file directly.")
+    if Path(d).exists() and not confirm_overwrite:
+        raise Rejected(
+            f"refusing to move onto {d_rel}: it already exists. Pass "
+            f"confirm_overwrite=True only if you mean to destroy it.")
+    if not confirm_splat_ref:
+        refs = _splat_refs(s_rel)
+        if refs:
+            raise Rejected(
+                f"refusing to move {s_rel}: a splat subsegment still names its "
+                f"OLD stem, so the move would leave the config pointing at a "
+                f"file that is gone:\n"
+                + "\n".join("    " + r for r in refs)
+                + f"\n  Point those at `{Path(d_rel).stem}` FIRST, then move. "
+                  f"That order is the one where every intermediate state still "
+                  f"builds. confirm_splat_ref=True overrides.")
+    return [s, d]
+
+
 def _reject_fmt(fmt):
     raise Rejected(f"fmt must be one of {sorted(FMT)}")
 
@@ -902,6 +1084,33 @@ REGISTRY = {
     "git_checkout_path": lambda ref, path, confirm_overwrite=False: (
         ["git", "checkout", _ref(ref), "--",
          _adoptable(path, confirm_overwrite)]),
+    # DELETE ONE TRACKED FILE, from the tree and the index together.
+    #
+    # There was no way to delete a file at all, and that gap had already shaped
+    # the tree: src/st/rno0/unk_4A320.c is a shim over giantbro_helpers_2.h and
+    # should be named after it, but a rename means removing the old path, so
+    # the wrong name was committed with a comment explaining why it had to
+    # stay. Retiring src/st/en_thornweed_corpseweed.h, which upstream replaced
+    # and which four overlays still compile beside its replacement, is blocked
+    # on the same thing.
+    #
+    # -f ONLY under confirm_dirty. `git rm` refuses a file with uncommitted
+    # changes by itself, which is the same judgement _removable makes; without
+    # forwarding the flag the override would be cosmetic and git would veto
+    # what this layer just allowed.
+    "git_rm": lambda path, confirm_dirty=False, confirm_splat_ref=False: (
+        ["git", "rm"] + (["-f"] if confirm_dirty else [])
+        + ["--", _removable(path, confirm_dirty, confirm_splat_ref)]),
+    # RENAME, preserving history and staging both halves.
+    #
+    # Not git_rm plus a fresh write: that loses the connection between the two
+    # paths, and for a file whose value is being byte-identical to upstream the
+    # rewrite is also a chance to introduce a difference. See _movable for why
+    # the splat guard only looks at the SOURCE stem.
+    "git_mv": lambda src, dst, confirm_overwrite=False,
+                     confirm_splat_ref=False: (
+        ["git", "mv", "--"]
+        + _movable(src, dst, confirm_overwrite, confirm_splat_ref)),
     # FETCH IS READ-ONLY and the only way to learn what upstream has done.
     # Without it the fork could not even measure its own drift: on 2026-08-09
     # the local upstream/master was still f6bfa379, last fetched 2026-08-01,
