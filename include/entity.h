@@ -3597,6 +3597,25 @@ typedef struct {
     /* 0x84 */ s16 castTimer;
 } ET_HellfireBeastFlamePillar;
 
+// Shaft's orb (BOSS/BO6 func_us_801C03E8). Restored from upstream/master,
+// where it has always existed; this fork had dropped it.
+//
+// Only `unkTimer` is actually referenced by name. The body reaches everything
+// else through ext.ILLEGAL.s16[], which is upstream's own spelling and is
+// kept verbatim rather than "improved": the ILLEGAL slots land in the
+// anonymous padding below, so naming them would be inventing a layout the
+// assembly does not attest to. Ends at 0x92, inside Ext's existing extent, so
+// adding it cannot move anything.
+typedef struct {
+    /* 0x7C */ s16 timer;
+    /* 0x7E */ s16 velocityAngle;
+    /* 0x80 */ s32 : 32;
+    /* 0x84 */ s32 : 32;
+    /* 0x88 */ s32 : 32;
+    /* 0x8C */ struct Entity* parent;
+    /* 0x90 */ s16 unkTimer;
+} ET_ShaftOrb;
+
 typedef struct {
     /* 0x7C */ s16 skeletonPosX;
     /* 0x7E */ s16 skeletonPosY;
@@ -4464,6 +4483,7 @@ typedef union { // offset=0x7C
     ET_HellfireBeast hellfireBeast;
     ET_HellfireBeastThorsHammer hellfireBeastThorsHammer;
     ET_HellfireBeastFlamePillar hellfireBeastFlamePillar;
+    ET_ShaftOrb shaftOrb;
     ET_BoneArk boneArk;
     ET_Harpy harpy;
     ET_CloakedKnight cloakedKnight;
