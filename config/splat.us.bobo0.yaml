@@ -45,7 +45,13 @@ segments:
       - [0x87C, .data, no2_bg]
       - [0x8B8, .data, e_background_house]
       - [0xA38, .data, e_spikes]
-      - [0xA48, data]
+      # 0xA48..0xB44 is 2B9EC.c's own .data: the six arrays the harvested
+      # e_secrets bodies index into, 0xFC bytes exactly. Upstream declares this
+      # split (as `.data, e_secrets`); this fork had it as an unnamed blob
+      # because nothing here had ever named the file's data. Same shape as the
+      # RCEN unk_1F0D8 case: without the split the arrays are emitted a second
+      # time and everything below shifts.
+      - [0xA48, .data, 2B9EC]
       - [0xB44, .data, e_prisoner]
       - [0xBA8, data]
       - [0x1300, .data, 372E8]
