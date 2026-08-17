@@ -401,7 +401,29 @@ void func_us_801B9DE4(void) {
     RIC_velocityY = 0;
 }
 
-INCLUDE_ASM("boss/bo6/nonmatchings/us_39144", func_us_801B9E70);
+extern s16 D_us_80182078[];
+extern s16 D_us_80182094[];
+
+// HARVESTED from upstream/master src/boss/bo6/us_39144.c. Same BO6_ call-site
+// mapping as the three at the top of this file.
+void func_us_801B9E70(void) {
+    if ((BO6_RicCheckFacing() != 0) || (RIC.step == 0x18)) {
+        BO6_RicSetAnimation(D_us_80182094);
+        if (RIC.step == 0x1A) {
+            BO6_RicSetSpeedX(FIX(2.25));
+            g_Ric.unk44 = 0x10;
+        } else {
+            BO6_RicSetSpeedX(0x14000);
+            g_Ric.unk44 = 0;
+        }
+    } else {
+        BO6_RicSetAnimation(D_us_80182078);
+        RIC.velocityX = 0;
+        g_Ric.unk44 = 4;
+    }
+    BO6_RicSetStep(5);
+    RIC.velocityY = FIX(-4.6875);
+}
 
 INCLUDE_ASM("boss/bo6/nonmatchings/us_39144", BO6_RicSetFall);
 
