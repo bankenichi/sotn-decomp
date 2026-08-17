@@ -16,11 +16,10 @@
 // polarPlacePartsList and func_801CE2CC were hand-written copies kept in sync
 // by hand, with a comment on each saying so. That duplication is now gone.
 //
-// STILL NAMED unk_4A320.c, which upstream calls giantbro_helpers_2.c. The
-// segment in config/splat.us.strno0.yaml has to match the filename, so
-// renaming means deleting a tracked file, and nothing in the connector can
-// delete one. Renaming both together is worth doing and is recorded as debt;
-// the name is the only thing left that is wrong here.
+// Renamed from unk_4A320.c 2026-08-17, together with the `c` subsegment in
+// config/splat.us.strno0.yaml that resolves to it. The old name outlived its
+// truth the moment this became a shim: nothing here is unknown, and upstream
+// calls the same file giantbro_helpers_2.c.
 //
 // The 0x801CExxx in these symbol names is no2/np3's address, NOT rno0's.
 // rno0's func_801CE04C sits at file offset 0x4A320, vram 0x801CA320, which is

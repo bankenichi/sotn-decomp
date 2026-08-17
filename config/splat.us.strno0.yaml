@@ -235,7 +235,15 @@ segments:
       # at func_801CDFD8; no2/4966C.c and np3/4E04C.c begin at func_801CE04C,
       # which in rno0 lives at 0x4A320 (the 0x801CExxx in the symbol names is
       # no2/np3's address, not this overlay's).
-      - [0x4A320, c, unk_4A320]
+      #
+      # RENAMED from unk_4A320 2026-08-17, once the connector could move a
+      # tracked file. The stem had been wrong since the file became a shim over
+      # src/st/giantbro_helpers_2.h: nothing about it is unknown any more, and
+      # upstream calls the same file giantbro_helpers_2.c. splat resolves this
+      # stem to src/st/rno0/<stem>.c, so the config and the filename had to
+      # change together; this edit comes FIRST, which is what git_mv's guard
+      # enforces and what keeps this intermediate state buildable.
+      - [0x4A320, c, giantbro_helpers_2]
       - [0x4A7A0, c, e_hammer]
       - [0x4BA58, c, e_gurkha]
       - [0x4CCEC, c, e_blade]
