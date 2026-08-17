@@ -700,20 +700,72 @@ void RichterThinking(void) {
     }
 }
 
-// TRIED AND REVERTED 2026-08-16. Upstream has a C body for this
-// (src/boss/bo6/richter.c) and it links here, but it does not match: the
-// build comes out ONE INSTRUCTION LONG at +21, a load-delay nop the original
-// does not have, and every later instruction is shifted by that one word.
+extern s32 D_us_801D11C0;
+
+// BO6: the post-fight cutscene driver, called from EntityRichter on every
+// frame the boss is not initialising. D_us_80181278 is the cutscene step;
+// RichterThinking's case 40 slams it to 0x32, which is the last slot of this
+// function's 51-entry jump table and therefore a deliberate no-op parking
+// value. Only four of the 51 steps do anything.
 //
-// So this is a codegen difference inside case 10/case 11, not a naming or
-// symbol problem -- the two `(g_CastleFlags[SHAFT_ORB_DEFEATED] == 0) &&
-// (g_DemoMode == Demo_None)` tests are the only candidates, and getting the
-// scheduler to drop that nop is permuter work, not transcription. Left as a
-// stub deliberately rather than committed as a near-miss.
-//
-// The reverted body is in the upstream file if it is wanted as a permuter
-// seed; nothing else here depends on it.
-INCLUDE_ASM("boss/bo6/nonmatchings/richter", func_us_801B6998);
+// DERIVED BY HAND from asm/us/boss/bo6/nonmatchings/richter/func_us_801B6998.s
+// after upstream's body was tried and reverted on 2026-08-16 for coming out
+// one instruction long. The extra word was a nop in the branch delay slot at
+// +21, where the original carries `ori $v0, $zero, 0x1`. That slot is filled
+// only when the first instruction of the fall-through path is a single
+// register-immediate the scheduler is allowed to hoist over the branch. Any
+// store to a global expands to a two-instruction lui/%lo macro, which the
+// scheduler cannot split and therefore cannot hoist, so the store must not be
+// written first: `g_unkGraphicsStruct.pauseEnemies = true;` before
+// `D_us_801D11C0 = 0;` is what puts the constant materialisation at the front
+// of the block and lets it fall into the delay slot. Swapping those two lines
+// is what costs the word.
+void func_us_801B6998(void) {
+    switch (D_us_80181278) {
+    // Cases 0 and 50 are empty and are NOT invented padding: they are what
+    // makes this a jump table instead of a compare chain. The dispatch is
+    // `sltiu $v0, $v1, 0x33` straight into jtbl_us_801A69F8 with no minimum
+    // subtracted first, so the compiler saw a case range of exactly 0..50, and
+    // it only emits a table once the case count clears its threshold. Written
+    // with just the four live steps, this function compiles to
+    // `li v0,0xb / beq / slti / beq ...` and comes out 0xB4 short. Step 50 is
+    // the value RichterThinking's case 40 parks here; step 0 is the initial
+    // value. Both do nothing, which is why their table slots point at the
+    // shared return.
+    case 0:
+        break;
+    case 10:
+        // Freeze the room for the death cutscene, but only on a real playthrough
+        // that has not already beaten Shaft's orb.
+        if (!g_CastleFlags[SHAFT_ORB_DEFEATED] && g_DemoMode == Demo_None) {
+            g_unkGraphicsStruct.pauseEnemies = true;
+            D_us_801D11C0 = 0;
+        }
+        D_us_80181278++;
+        break;
+    case 11:
+        // Hold for two frames with the room frozen, then start the white-out.
+        // slti (signed) against 2, so this is >= and not a bit test.
+        if (++D_us_801D11C0 >= 2) {
+            if (!g_CastleFlags[SHAFT_ORB_DEFEATED] && g_DemoMode == Demo_None) {
+                g_unkGraphicsStruct.unk20 = 0xFF;
+            }
+            D_us_80181278++;
+        }
+        break;
+    case 20:
+        // Wait for the cutscene player to acknowledge, then jump to step 30.
+        if (g_CutsceneFlags & 4) {
+            D_us_80181278 = 30;
+        }
+        break;
+    case 40:
+        g_CutsceneFlags |= 8;
+        break;
+    case 50:
+        break;
+    }
+}
 
 extern EInit D_us_80180400;
 extern s32 D_us_801CF3E0;
