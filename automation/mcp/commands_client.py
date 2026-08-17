@@ -280,6 +280,7 @@ ANALYSIS_SCRIPTS = {
     "test_call_telemetry.py",
     "test_stream_salvage.py",
     "codebase_index.py",
+    "queue_coverage.py",
     "quality_audit.py",
     "provenance_check.py",
     "review_checks.py",
