@@ -128,7 +128,16 @@ segments:
       # The lesson: a segment's start is the first thing the FILE emits, not the
       # first thing its code happens to name.
       - [0x1D38, .data, e_room_fg]       # 0x8C
-      - [0x1DC4, data]
+      # e_floor_trap, shimmed 2026-08-16 when src/st/e_floor_trap.h was adopted
+      # from upstream. The header's only file-scope data is `anim[]`, 7
+      # AnimateEntityFrame entries = 0x10 after padding, and upstream declares
+      # exactly [0x1DC4, .data, e_floor_trap] followed by
+      # [0x1DD4, .data, e_thornweed_corpseweed]. Splitting only the first 0x10
+      # off the blob leaves the rest raw, so the three files after it
+      # (thornweed, stone_skull, jack_o_bones) are untouched until each is
+      # shimmed in turn.
+      - [0x1DC4, .data, e_floor_trap]   # 0x10
+      - [0x1DD4, data]
       # e_hammer / e_gurkha / e_blade, shimmed 2026-08-02 once the shared
       # headers gained GIANTBRO_ZPRIORITY_ADJUST. Starts are the minimum data
       # address each file's assembly references; sizes are confirmed three ways

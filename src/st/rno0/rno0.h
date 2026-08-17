@@ -70,7 +70,12 @@ enum EntityID {
     E_ARMOR_LORD_FIRE_WAVE,      // EntityArmorLordFireWave
     E_ARMOR_LORD_UNK2,           // func_us_801D3700_from_are
     E_UNK_25,                    // OVL_EXPORT(Unused801C2C50)
-    E_FLOOR_TRAP,                // EntityFloorTrap
+    // Renamed from E_FLOOR_TRAP 2026-08-16 to match src/st/e_floor_trap.h,
+    // by the same reasoning as the E_ARMOR_LORD_* renames above: enumerators
+    // are positional, so this does not change the value (E_UNK_25 precedes it,
+    // so it is 0x26, which is what the assembly compares against), and nothing
+    // in RNO0 referenced the old spelling. rnz0.h already spells it this way.
+    E_FLOORTRAP,                 // EntityFloorTrap
     E_THORNWEED,                 // EntityThornweed
     E_CORPSEWEED,                // EntityCorpseweed
     E_CORPSEWEED_PROJECTILE,     // EntityCorpseweedProjectile
