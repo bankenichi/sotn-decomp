@@ -173,7 +173,532 @@ void func_us_801B5A14(s32 arg0) {
     D_us_801CF3CC = 0;
 }
 
-INCLUDE_ASM("boss/bo6/nonmatchings/richter", RichterThinking);
+extern s32 D_us_80181278;
+extern s32 D_us_801CF3D0;
+extern s32 D_us_801CF3D8;
+extern s32 D_us_801CF3E0;
+extern s32 D_us_801CF3E4;
+extern s32 g_CutsceneFlags;
+extern s32 D_us_801D169C;
+
+typedef enum { THINK_STEP_INIT } ThinkStep;
+
+// HARVESTED from upstream/master src/boss/bo6/richter.c.
+//
+// The boss AI: it drives Richter by SYNTHESISING PAD INPUT into g_Ric.padSim
+// rather than by setting steps directly, which is why the same step machine
+// serves both the player and the boss. D_us_801CF3C8 is the think step and
+// D_us_801CF3CC its sub-step; func_us_801B5A14 sets the pair.
+//
+// The case labels jump (0-19, then 30-32, 40-41, 50). Those gaps are
+// upstream's and are real: the 30s are the item-crash sequence, the 40s the
+// death cutscene, and 50 the post-death hold. Nothing writes the values in
+// between.
+//
+// Renames to this fork's BO6_ exports, both confirmed against
+// config/symbols.us.bobo6.txt:
+//     RicSetInvincibilityFrames     -> BO6_RicSetInvincibilityFrames
+//     RicCreateEntFactoryFromEntity -> BO6_RicCreateEntFactoryFromEntity
+void RichterThinking(void) {
+    s32 globalPosX;
+    s32 playerDistanceX;
+    bool facingLeft;
+
+    if (D_us_801CF3D8) {
+        D_us_801CF3D8--;
+    }
+
+    globalPosX = g_Tilemap.scrollX.i.hi + RIC.posX.i.hi;
+    g_Ric.demo_timer = 2;
+    g_Ric.padSim = 0;
+
+    facingLeft = false;
+    if ((RIC.posX.i.hi - PLAYER.posX.i.hi) >= 0) {
+        facingLeft = true;
+    }
+
+    playerDistanceX = abs(RIC.posX.i.hi - PLAYER.posX.i.hi);
+
+    if (D_us_801CF3E4 < g_Ric.unk6C && D_us_801CF3E4 >= g_Ric.unk6A) {
+        D_us_801CF3C8 = 0x1E;
+    }
+
+    if (D_us_801D169C != 0) {
+        func_us_801B5A14(0x28);
+    }
+
+    if (g_Player.status & PLAYER_STATUS_DEAD) {
+        D_us_801CF3C8 = 0x32;
+    }
+
+    if (D_us_801CF3C8 < 0x12) {
+        if (g_Ric.status & PLAYER_STATUS_UNK10000) {
+            func_us_801B5A14(0);
+        } else if (g_Player.timers[ALU_T_USE_SPELL] && D_us_801CF3C8 != 0xE) {
+            func_us_801B5A14(0xE);
+        }
+    }
+
+    FntPrint("think_step:%02x\n", D_us_801CF3C8);
+
+    switch (D_us_801CF3C8) { /* switch 1 */
+    // following item crash at start of fight
+    case THINK_STEP_INIT: /* switch 1 */
+        if (!(g_Ric.status & PLAYER_STATUS_UNK10000)) {
+            if (g_Player.timers[ALU_T_USE_SUBWPN]) {
+                if (rand() & 1) {
+                    func_us_801B5A14(7);
+                } else {
+                    func_us_801B5A14(5);
+                }
+            } else if (abs(RIC.posY.i.hi - PLAYER.posY.i.hi) > 0x20) {
+                func_us_801B5A14(7);
+            } else {
+                if (playerDistanceX > 0x58) {
+                    if (facingLeft) {
+                        g_Ric.padSim = 0x8000;
+                    } else {
+                        g_Ric.padSim = 0x2000;
+                    }
+                } else {
+                    func_us_801B5A14(1);
+                }
+            }
+        }
+        break;
+    // decicing on attack?
+    case 1: /* switch 1 */
+        if (RIC.facingLeft != facingLeft) {
+            if (facingLeft) {
+                g_Ric.padSim = 0x8000;
+            } else {
+                g_Ric.padSim = 0x2000;
+            }
+        }
+
+        if (D_us_801CF3CC == 0) {
+            D_us_801CF3D0 = 8;
+            D_us_801CF3CC = 1;
+            return;
+        }
+
+        if (playerDistanceX > 0x58) {
+            func_us_801B5A14(0);
+        } else {
+            if (((globalPosX < 0x10) && (RIC.facingLeft == 0)) ||
+                ((globalPosX > 0xF0) && (RIC.facingLeft))) {
+                func_us_801B5A14(4);
+                if (D_us_801CF3E0 != 0) {
+                    func_us_801B5A14(0xD);
+                    return;
+                }
+            } else if (g_Player.status & PLAYER_STATUS_CROUCH) {
+                if (rand() & 1) {
+                    func_us_801B5A14(6);
+                } else {
+                    func_us_801B5A14(5);
+                }
+            } else {
+                if (g_Player.timers[ALU_T_9]) {
+                    switch (rand() & 7) { /* switch 2 */
+                    case 0:               /* switch 2 */
+                    case 6:               /* switch 2 */
+                        func_us_801B5A14(6);
+                        break;
+                    case 7: /* switch 2 */
+                        func_us_801B5A14(7);
+                        break;
+                    case 1: /* switch 2 */
+                        func_us_801B5A14(5);
+                        break;
+                    case 2: /* switch 2 */
+                    case 3: /* switch 2 */
+                    case 4: /* switch 2 */
+                    case 5: /* switch 2 */
+                    default:
+                        func_us_801B5A14(2);
+                        break;
+                    }
+                } else {
+                    if (g_Player.timers[ALU_T_USE_SUBWPN]) {
+                        if (rand() & 1) {
+                            func_us_801B5A14(7);
+                        } else {
+                            func_us_801B5A14(5);
+                        }
+                    } else if (D_us_801CF3D0) {
+                        D_us_801CF3D0--;
+                    } else if (playerDistanceX < 0x40) {
+                        if ((RIC.posY.i.hi - PLAYER.posY.i.hi) < 0x18) {
+                            func_us_801B5A14(3);
+                        } else {
+                            func_us_801B5A14(8);
+                        }
+                    } else {
+                        func_us_801B5A14(8);
+                    }
+                }
+            }
+        }
+        break;
+    case 2:                      /* switch 1 */
+        switch (D_us_801CF3CC) { /* switch 3; irregular */
+        case 0:                  /* switch 3 */
+            if (RIC.step == 5) {
+                D_us_801CF3CC = 1;
+            } else if (g_Timer & 1) {
+                g_Ric.padSim = 0x40;
+            }
+            break;
+        case 1: /* switch 3 */
+            if (g_Ric.unk44 & 8) {
+                D_us_801CF3CC = 2;
+            } else {
+                if (g_Timer & 1) {
+                    g_Ric.padSim = 0x40;
+                }
+                if (g_Ric.vram_flag & TOUCHING_GROUND) {
+                    func_us_801B5A14(0);
+                }
+            }
+            break;
+        case 2:
+        default: /* switch 3 */
+            if (D_us_801CF3E0 == 0) {
+                func_us_801B5A14(9);
+            }
+            if (g_Ric.vram_flag & TOUCHING_GROUND) {
+                if (D_us_801CF3E0 != 0) {
+                    func_us_801B5A14(0xC);
+                } else {
+                    func_us_801B5A14(0);
+                }
+            }
+            break;
+        }
+        break;
+    // whip attack
+    case 3: /* switch 1 */
+        if (D_us_801CF3CC == 0) {
+            if (!g_Ric.unk46) {
+                if (g_Timer & 1) {
+                    g_Ric.padSim = 0x80;
+                }
+                D_us_801CF3CC = 1;
+            }
+        } else {
+            if (!g_Ric.unk46) {
+                func_us_801B5A14(0);
+            }
+        }
+        break;
+    // dash
+    case 4: /* switch 1 */
+        if (D_us_801CF3CC == 0) {
+            if (g_Timer & 1) {
+                g_Ric.padSim = PAD_R1;
+            }
+            if (RIC.step == 0x19) {
+                D_us_801CF3C8 = 1;
+            }
+        } else if (RIC.step != 0x19) {
+            func_us_801B5A14(0);
+        }
+        break;
+    case 5: /* switch 1 */
+        g_Ric.padSim = 0x4000;
+        switch (D_us_801CF3CC) {
+        case 0:
+            if (RIC.facingLeft != facingLeft) {
+                if (facingLeft) {
+                    g_Ric.padSim |= 0x8000;
+                } else {
+                    g_Ric.padSim |= 0x2000;
+                }
+            }
+            if (RIC.step == 3) {
+                D_us_801CF3CC = 1;
+                D_us_801CF3D0 = 8;
+            }
+            break;
+        case 1:
+        default:
+            if (!--D_us_801CF3D0) {
+                func_us_801B5A14(17);
+            } else if (playerDistanceX < 0x40) {
+                func_us_801B5A14(10);
+            }
+            break;
+        }
+        break;
+    case 6: /* switch 1 */
+        if (D_us_801CF3CC == 0) {
+            if (RIC.step == 5) {
+                D_us_801CF3CC = 1;
+            } else if (g_Timer & 1) {
+                g_Ric.padSim = 0x40;
+            }
+        } else if (g_Ric.vram_flag & TOUCHING_GROUND) {
+            func_us_801B5A14(0);
+        } else if (RIC.velocityY > 0x4000) {
+            func_us_801B5A14(9);
+        }
+        break;
+    case 7: /* switch 1 */
+        if (RIC.facingLeft) {
+            g_Ric.padSim = PAD_LEFT;
+        } else {
+            g_Ric.padSim = PAD_RIGHT;
+        }
+        if (D_us_801CF3CC == 0) {
+            if (RIC.step == 5) {
+                D_us_801CF3CC = 1;
+            } else if (g_Timer & 1) {
+                g_Ric.padSim |= PAD_CROSS;
+            }
+        } else if (g_Ric.vram_flag & TOUCHING_GROUND) {
+            func_us_801B5A14(0);
+        } else if (RIC.velocityY > 0x4000) {
+            if (rand() & 1) {
+                func_us_801B5A14(0xB);
+            } else {
+                func_us_801B5A14(9);
+            }
+        }
+        break;
+    // subweapon attack?
+    case 8: /* switch 1 */
+        if (D_us_801CF3CC == 0) {
+            if (!g_Ric.unk46) {
+                if (g_Timer & 1) {
+                    g_Ric.padSim = PAD_UP | PAD_SQUARE;
+                }
+                D_us_801CF3CC = 1;
+            }
+        } else if (!g_Ric.unk46) {
+            func_us_801B5A14(0);
+        }
+        break;
+    case 9: /* switch 1 */
+        if (g_Ric.vram_flag & TOUCHING_GROUND) {
+            func_us_801B5A14(0);
+        } else if (D_us_801CF3CC == 0) {
+            if (!g_Ric.unk46) {
+                if (g_Timer & 1) {
+                    g_Ric.padSim = PAD_UP | PAD_SQUARE;
+                }
+                D_us_801CF3CC = 1;
+            }
+        } else if (!g_Ric.unk46) {
+            func_us_801B5A14(0);
+        }
+        break;
+    case 10: /* switch 1 */
+        g_Ric.padSim = PAD_DOWN;
+        if (D_us_801CF3CC == 0) {
+            if (!g_Ric.unk46) {
+                if (g_Timer & 1) {
+                    g_Ric.padSim |= PAD_SQUARE;
+                }
+                D_us_801CF3CC = 1;
+            }
+        } else if (!g_Ric.unk46) {
+            func_us_801B5A14(0);
+        }
+        break;
+    case 11: /* switch 1 */
+        if (g_Ric.vram_flag & TOUCHING_GROUND) {
+            func_us_801B5A14(0);
+        } else if (D_us_801CF3CC == 0) {
+            if (!g_Ric.unk46) {
+                if (g_Timer & 1) {
+                    g_Ric.padSim = 0x80;
+                }
+                D_us_801CF3CC = 1;
+            }
+        } else if (!g_Ric.unk46) {
+            func_us_801B5A14(0);
+        }
+        break;
+    case 12: /* switch 1 */
+        if (D_us_801CF3CC == 0) {
+            if (RIC.step == 0x1C) {
+                D_us_801CF3CC = 1;
+            } else if (g_Timer & 1) {
+                g_Ric.padSim = 0x110;
+            }
+        } else if (RIC.step != 0x1C) {
+            func_us_801B5A14(0x11);
+            return;
+        }
+        break;
+    case 13: /* switch 1 */
+        // STEP: cutscene
+        if (D_us_801CF3CC == 0) {
+            if (RIC.step == 0x1C) {
+                D_us_801CF3CC = 1;
+            } else if (g_Timer & 1) {
+                g_Ric.padSim = 0x810;
+            }
+        } else if (RIC.step != 0x1C) {
+            func_us_801B5A14(0);
+        }
+        break;
+
+    case 14: /* switch 1 */
+        if (D_us_801CF3CC == 0) {
+            if (RIC.step == 0x13) {
+                D_us_801CF3CC = 1;
+            } else if (g_Timer & 1) {
+                g_Ric.padSim = 0x14;
+            }
+        } else if (RIC.step != 0x13) {
+            func_us_801B5A14(0);
+        }
+        break;
+
+    case 15: /* switch 1 */
+        if (D_us_801CF3CC == 0) {
+            if (RIC.step == 0x15) {
+                D_us_801CF3CC = 1;
+            } else if (g_Timer & 1) {
+                g_Ric.padSim = 0x11;
+            }
+        } else if (RIC.step != 0x15) {
+            func_us_801B5A14(0);
+        }
+        break;
+    case 16: /* switch 1 */
+        if (D_us_801CF3CC == 0) {
+            if (RIC.step == 0x13) {
+                D_us_801CF3CC = 1;
+            } else if (g_Timer & 1) {
+                g_Ric.padSim = 0x10;
+            }
+        } else if (RIC.step != 0x13) {
+            func_us_801B5A14(0);
+        }
+        break;
+    case 17:                     /* switch 1 */
+        switch (D_us_801CF3CC) { /* switch 4; irregular */
+        case 0:                  /* switch 4 */
+            g_Ric.padSim = 0x4000;
+            if (RIC.step == 3) {
+                D_us_801CF3CC = 1;
+            }
+            break;
+        case 1: /* switch 4 */
+            if (RIC.step == 0x18) {
+                D_us_801CF3CC = 4;
+                if (D_us_801CF3E0 != 0) {
+                    if (RIC.facingLeft && RIC.posX.i.hi > 0x80) {
+                        D_us_801CF3CC = 2;
+                    }
+                    if (!RIC.facingLeft && RIC.posX.i.hi < 0x80) {
+                        D_us_801CF3CC = 2;
+                    }
+                }
+            } else {
+                g_Ric.padSim = 0x4000;
+                if (g_Timer & 1) {
+                    g_Ric.padSim |= PAD_CROSS;
+                }
+            }
+            break;
+        case 2: /* switch 4 */
+            if (RIC.step == 0x1B) {
+                D_us_801CF3CC = 3;
+            } else {
+                g_Ric.padSim = 0x4000;
+                if (g_Timer & 1) {
+                    g_Ric.padSim |= 0x40;
+                }
+            }
+            break;
+        case 3: /* switch 4 */
+            g_Ric.padSim = 0x80;
+            if (RIC.step != 0x1B) {
+                func_us_801B5A14(0);
+            }
+            // fallthrough
+
+        default:
+            func_us_801B5A14(0);
+            break;
+        }
+        break;
+    case 18: /* switch 1 */
+        BO6_RicSetInvincibilityFrames(1, 4);
+        if (RIC.step == 1) {
+            func_us_801B5A14(0x13);
+        }
+        break;
+
+    case 19: /* switch 1 */
+        BO6_RicSetInvincibilityFrames(1, 4);
+        if (D_us_801CF3CC == 0) {
+            D_us_801CF3D0 = 0x40;
+            D_us_801CF3CC = 1;
+        } else {
+            if ((g_CutsceneFlags & 2) || (g_CastleFlags[SHAFT_ORB_DEFEATED]) ||
+                (g_DemoMode != Demo_None)) {
+                if (!--D_us_801CF3D0) {
+                    BO6_RicCreateEntFactoryFromEntity(g_CurrentEntity, 0x48, 0);
+                    func_us_801B5A14(0x10);
+                }
+            }
+        }
+        break;
+    case 30: /* switch 1 */
+        g_Player.timers[ALU_T_INVINCIBLE_CONSUMABLES] = 3;
+        BO6_RicSetInvincibilityFrames(1, 8);
+        g_Ric.padSim = 0x1000;
+        if (RIC.step == 1 && RIC.step_s == 1) {
+            RIC.step = 0x50;
+            RIC.step_s = 0;
+            D_us_801CF3C8 = 0x1F;
+        }
+        break;
+    case 31: /* switch 1 */
+        g_Player.timers[ALU_T_INVINCIBLE_CONSUMABLES] = 3;
+        BO6_RicSetInvincibilityFrames(1, 8);
+        if (RIC.step != 0x50) {
+            D_us_801CF3E0 = 1;
+            func_us_801B5A14(0x20);
+        }
+        break;
+    case 32: /* switch 1 */
+        g_Player.timers[ALU_T_INVINCIBLE_CONSUMABLES] = 3;
+        BO6_RicSetInvincibilityFrames(1, 8);
+        if (D_us_801CF3CC == 0) {
+            D_us_801CF3D0 = 0x10;
+            D_us_801CF3CC = 1;
+        } else {
+            if (D_us_801CF3D0 != 0) {
+                D_us_801CF3D0--;
+            }
+            func_us_801B5A14(0xF);
+        }
+        break;
+
+    case 40: /* switch 1 */
+        g_Player.timers[ALU_T_INVINCIBLE_CONSUMABLES] = 3;
+        D_us_80181278 = 0x32;
+        D_us_801CF3C8++;
+        break;
+
+    case 41: /* switch 1 */
+        g_Player.timers[ALU_T_INVINCIBLE_CONSUMABLES] = 3;
+        break;
+
+    case 50: /* switch 1 */
+        if (!(g_Player.status & PLAYER_STATUS_DEAD)) {
+            func_us_801B5A14(0);
+        }
+        g_Ric.padSim = 0x1000;
+        break;
+    }
+}
 
 // TRIED AND REVERTED 2026-08-16. Upstream has a C body for this
 // (src/boss/bo6/richter.c) and it links here, but it does not match: the
