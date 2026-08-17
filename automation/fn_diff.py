@@ -52,12 +52,29 @@ def key(w: int):
     return w
 
 
+# A stage's map is st<name>.map, but a boss's is bo<name>.map, a reverse
+# boss's is borbo<name>.map, and main/dra/ric have no prefix at all. This
+# tried "st" then bare, so every boss overlay reported "not in
+# build/us/stbo0.map" -- which reads like a build problem and is really the
+# tool declining to look in the right place. Found 2026-08-16 diffing BO0,
+# and the boss overlays are 20 of the 38 remaining upstream harvests, so this
+# would have recurred on nearly every one of them.
+def _map_candidates(overlay: str) -> list:
+    o = overlay.lower()
+    # Ordered most-specific first: "bo0" must not match "borbo0" by accident,
+    # and an already-prefixed name ("bobo0") must be tried verbatim.
+    return [f"{o}", f"st{o}", f"bo{o}", f"borbo{o}", f"b{o}"]
+
+
 def load_map(overlay: str) -> dict:
-    p = REPO / "build" / "us" / f"st{overlay.lower()}.map"
-    if not p.exists():
-        p = REPO / "build" / "us" / f"{overlay.lower()}.map"
+    p = None
+    for name in _map_candidates(overlay):
+        cand = REPO / "build" / "us" / f"{name}.map"
+        if cand.exists():
+            p = cand
+            break
     out = {}
-    if not p.exists():
+    if p is None:
         return out
     for ln in p.read_text(errors="replace").splitlines():
         m = _SYM.match(ln.rstrip())
@@ -86,8 +103,10 @@ def main() -> int:
 
     syms = load_map(a.overlay)
     if a.function not in syms:
-        print(f"{a.function} not in build/us/st{a.overlay.lower()}.map. "
-              f"Build first, and check the name.")
+        tried = "  ".join(f"build/us/{n}.map"
+                          for n in _map_candidates(a.overlay))
+        print(f"{a.function} not in any map for overlay {a.overlay}. "
+              f"Build first, and check the name.\n  tried: {tried}")
         return 2
     orig_p = find_original(a.overlay)
     built_p = REPO / "build" / "us" / f"{a.overlay}.BIN"
