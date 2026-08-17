@@ -1,16 +1,173 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #include "bo6.h"
 
-INCLUDE_ASM("boss/bo6/nonmatchings/us_39144", func_us_801B9144);
+// The next three are HARVESTED from upstream/master src/boss/bo6/us_39144.c.
+// Upstream calls the helpers by their bare RIC names; this fork exports them
+// with a BO6_ prefix, so each call site is rewritten. The mapping is only
+// ever taken from a definition that already exists in this file or from
+// config/symbols.us.bobo6.txt, never guessed:
+//     RicSetAnimation             -> BO6_RicSetAnimation
+//     RicCreateEntFactoryFromEntity -> BO6_RicCreateEntFactoryFromEntity
+//     RicSetStand                 -> BO6_RicSetStand
+//     RicResetPose                -> BO6_RicResetPose  (richter.c)
+//     RicCheckInput               -> BO6_RicCheckInput
+// func_us_801B9ACC and DecelerateX keep their names: this fork already
+// defines both under exactly those spellings, further down.
+
+extern s32 D_us_80181278;
+extern AnimationFrame D_us_80181F1C[];
+extern AnimationFrame D_us_801823C8[];
+
+// ending 2 function
+void func_us_801B9144(void) {
+    Entity* entity;
+    switch (RIC.step_s) {
+    case 0:
+        BO6_RicSetAnimation(D_us_80181F1C);
+        g_api.PlaySfx(SFX_BOSS_RIC_LAUGH);
+        if (RIC.posX.i.hi < 0x80) {
+            RIC.facingLeft = 0;
+        } else {
+            RIC.facingLeft = 1;
+        }
+        RIC.step_s++;
+        // fallthrough
+
+    case 1:
+        D_us_80181278 = 0x14;
+        entity = &g_Entities[200];
+        CreateEntityFromCurrentEntity(E_ID_17, entity);
+        entity->params = 1;
+        RIC.step_s++;
+        // fallthrough
+
+    case 2:
+        if (D_us_80181278 == 0x1E) {
+            BO6_RicSetAnimation(D_us_801823C8);
+            BO6_RicCreateEntFactoryFromEntity(
+                g_CurrentEntity, FACTORY(E_ID_24, 0x1), 0);
+            RIC.step_s++;
+        }
+        break;
+    case 3:
+        if (RIC.animCurFrame == 0xB5) {
+            if (RIC.poseTimer == 1) {
+                BO6_RicCreateEntFactoryFromEntity(
+                    g_CurrentEntity, FACTORY(E_ID_23, 0), 0);
+                g_api.PlaySfx(SFX_WEAPON_APPEAR);
+            }
+        }
+        if (RIC.poseTimer < 0) {
+            D_us_80181278 = 0x28;
+            BO6_RicSetStand(0);
+            BO6_RicCreateEntFactoryFromEntity(
+                g_CurrentEntity, FACTORY(E_ID_21, 0x45), 0);
+            g_Ric.timers[ALU_T_POISON] = 0x800;
+        }
+        break;
+    }
+}
 
 // Empty stub
 void func_us_801B9338(void) {}
 
-INCLUDE_ASM("boss/bo6/nonmatchings/us_39144", func_us_801B9340);
+extern s16 D_us_8018221C[];
+
+void func_us_801B9340(void) {
+    switch (RIC.step_s) {
+    case 0:
+        BO6_RicResetPose();
+        RIC.velocityY = FIX(-5);
+        func_us_801B9ACC(0xFFFF1000);
+        RIC.anim = D_us_8018221C;
+        g_api.PlaySfx(SFX_BOSS_RIC_DEATH);
+        g_Ric.damagePalette = 0x8166;
+        g_Ric.timers[2] = 8;
+        BO6_RicCreateEntFactoryFromEntity(
+            g_CurrentEntity, FACTORY(E_ID_21, 0x58), 0);
+        RIC.step_s += 1;
+        return;
+    case 1:
+        if ((g_Ric.vram_flag & TOUCHING_CEILING) && (FIX(-1) > RIC.velocityY)) {
+            RIC.velocityY = FIX(-1);
+        }
+        if (BO6_RicCheckInput(0x20280) != 0) {
+            RIC.step = 0x70;
+            RIC.step_s = 2;
+            return;
+        }
+        return;
+    case 2:
+        DecelerateX(FIX(0.125));
+        if ((PLAYER.posX.i.hi - RIC.posX.i.hi) > 0) {
+            RIC.facingLeft = 0;
+            return;
+        }
+        RIC.facingLeft = 1;
+        break;
+    }
+}
 
 INCLUDE_ASM("boss/bo6/nonmatchings/us_39144", func_us_801B94CC);
 
-INCLUDE_ASM("boss/bo6/nonmatchings/us_39144", func_us_801B96F4);
+extern u8 D_us_80181298[];
+extern u8 D_us_801812A8[];
+
+// The after-image fade. No renames were needed here at all: it only touches
+// g_Entities, g_PrimBuf and g_PlayerDraw, none of which the fork re-exports.
+void func_us_801B96F4(void) {
+    byte pad[0x28];
+    Primitive* prim;
+    PlayerDraw* draw;
+    s32 i;
+    u8 var_s3;
+    u8 var_s5;
+    u8 resetAnim;
+
+    resetAnim = g_Entities[65].ext.afterImage.resetFlag;
+    prim = &g_PrimBuf[g_Entities[65].primIndex];
+    i = 0;
+    draw = &g_PlayerDraw[9];
+    var_s5 = D_us_80181298[g_Entities[65].ext.afterImage.index];
+    var_s3 = D_us_801812A8[g_Entities[65].ext.afterImage.index];
+    while (prim != NULL) {
+        if (prim->r0 > var_s3) {
+            prim->r0 -= var_s5;
+        }
+        if (prim->r0 < 112 && prim->b0 < 240) {
+            prim->b0 += 6;
+        }
+        if (prim->r0 < 88) {
+            prim->y1 = 16;
+        } else {
+            prim->y1 = 0;
+        }
+        if (prim->r0 <= var_s3) {
+            prim->x1 = 0;
+        }
+        if ((i ^ g_Timer) & 1) {
+            g_Entities[i / 2 + 65].posX.i.hi = prim->x0;
+            g_Entities[i / 2 + 65].posY.i.hi = prim->y0;
+            g_Entities[i / 2 + 65].animCurFrame = prim->x1;
+            g_Entities[i / 2 + 65].blendMode = prim->y1;
+            g_Entities[i / 2 + 65].facingLeft = prim->x2;
+            g_Entities[i / 2 + 65].palette = prim->y2;
+            g_Entities[i / 2 + 65].zPriority = RIC.zPriority - 2;
+            if (resetAnim) {
+                g_Entities[i / 2 + 65].animCurFrame = 0;
+                prim->x1 = 0;
+            }
+
+            draw->r0 = draw->r1 = draw->r2 = draw->r3 = draw->g0 = draw->g1 =
+                draw->g2 = draw->g3 = prim->r0;
+            draw->b0 = draw->b1 = draw->b2 = draw->b3 = prim->b0;
+            draw->enableColorBlend = true;
+            draw++;
+        }
+        i++;
+        prim = prim->next;
+    }
+}
 
 extern u16 RIC_step;
 
