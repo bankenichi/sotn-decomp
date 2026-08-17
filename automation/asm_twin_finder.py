@@ -296,13 +296,32 @@ def include_asm_symbols() -> set[tuple[str, str]]:
 
     Pairing the directory with the symbol makes an orphaned copy exactly what it
     is: assembly no INCLUDE_ASM points at.
+
+    THE WHOLE PATH, NOT THE LAST COMPONENT. Using only the final directory name
+    was still ambiguous, because the PSP port reuses the same names:
+
+        us   INCLUDE_ASM("boss/bo0/nonmatchings/3053C",            func_us_801B163C)
+        psp  INCLUDE_ASM("boss/bo0_psp/nonmatchings/bo0_psp/2D26C", func_us_801B163C)
+
+    Both ended in a component the us tree also has, so the PSP stub kept an
+    ORPHANED us copy alive at asm/us/boss/bo0/nonmatchings/2D26C/. That copy
+    was left behind on 2026-08-16 when the bo0 2D26C segment was split at
+    0x3053C; splat writes the moved functions into the new directory and does
+    not remove the old ones. Two live rows then shared the key
+    boss/bo0/func_us_801B163C and --record died on its uniqueness assertion,
+    exactly as it had on the previous segment split.
+
+    This is the third time the _psp port has been read as us work (see
+    matched_audit's 126 false LOST and readme_status' 775 -> 2734 stub count).
+    Comparing the full relative directory removes the whole class here: a PSP
+    path can never equal a us stub's directory.
     """
     out: set[tuple[str, str]] = set()
     pat = re.compile(r"INCLUDE_ASM\(\s*\"([^\"]*)\"\s*,\s*(\w+)\s*\)")
     for path in SRC_ROOT.rglob("*.c"):
         try:
             for asm_rel, sym in pat.findall(path.read_text(errors="ignore")):
-                out.add((asm_rel.strip("/").split("/")[-1], sym))
+                out.add((asm_rel.strip("/"), sym))
         except OSError:
             continue
     return out
@@ -319,11 +338,15 @@ def analyse(only: str = "") -> list[dict]:
 
     still = include_asm_symbols()
     for stub in stubs:
-        # Match on (containing directory, symbol). The directory is the last
-        # component of the INCLUDE_ASM path, and it is the stub .s file's own
-        # parent, so an orphaned copy left behind by a segment split does not
-        # inherit liveness from its live twin elsewhere.
-        stub.still_asm = (Path(stub.path).parent.name, stub.name) in still
+        # Match on (FULL asm-relative directory, symbol). Anything shorter is
+        # ambiguous: the last component alone is shared between the us tree and
+        # the _psp port, and a PSP INCLUDE_ASM then keeps a us orphan alive.
+        # See include_asm_symbols() for the case that proved it.
+        try:
+            asm_dir = str(Path(stub.path).parent.relative_to(ASM_ROOT))
+        except ValueError:                                   # pragma: no cover
+            asm_dir = Path(stub.path).parent.name
+        stub.still_asm = (asm_dir.replace("\\", "/"), stub.name) in still
 
     cfuncs = c_functions()
     cdocs = [c_tokens(body) for _, _, body in cfuncs]

@@ -73,6 +73,36 @@ sys.path.insert(0, str(HERE))
 from matched_audit import stubs_in, overlay_dir, _run, PYTHON  # noqa: E402
 
 
+def us_src_dirs() -> set[str]:
+    """The src/ directories that the `us` build actually compiles.
+
+    Read off config/splat.us.*.yaml's `src_path`, because that IS the
+    definition: if no us splat config names a directory, nothing in the us
+    build compiles it and its stubs are not us work.
+
+    WITHOUT THIS, SERVANT/FNAME IS A FALSE ALARM. src/servant/fname/fname.c
+    holds 3 INCLUDE_ASM stubs and has no queue record, which looks exactly
+    like a blind spot. It is not: the only config naming it is
+    config/splat.hd.fname.yaml, so fname belongs to the HD build. Seeding
+    those 3 would have handed the fleet work that the us oracle cannot even
+    check, since none of the 81 us artifacts contain it.
+
+    Falls back to "trust everything" if no configs are readable, so a broken
+    glob degrades to the previous behaviour rather than silently reporting
+    that the entire tree is out of scope.
+    """
+    dirs: set[str] = set()
+    for cfg in sorted((REPO / "config").glob("splat.us.*.yaml")):
+        try:
+            for line in cfg.read_text(errors="ignore").splitlines():
+                s = line.strip()
+                if s.startswith("src_path:"):
+                    dirs.add(s.split(":", 1)[1].strip())
+        except OSError:                                      # pragma: no cover
+            continue
+    return dirs
+
+
 def overlay_of_path(path: str) -> str | None:
     """src/boss/bo6/richter.c -> BOSS/BO6 ; src/dra/foo.c -> DRA
 
@@ -112,10 +142,17 @@ def queue_records() -> list[tuple[str, str, str]]:
 def collect() -> dict:
     """{overlay: {"stubs": set, "records": {fn: status}}}"""
     head = stubs_in("HEAD")
+    us_dirs = us_src_dirs()
     by: dict[str, dict] = {}
     for path, fn in head:
         ov = overlay_of_path(path)
         if ov is None:
+            continue
+        # Only count a stub if some us splat config compiles its directory.
+        # See us_src_dirs(): SERVANT/FNAME is HD-only and would otherwise read
+        # as 3 blind functions forever.
+        if us_dirs and not any(path.startswith(d.rstrip("/") + "/")
+                               for d in us_dirs):
             continue
         by.setdefault(ov, {"stubs": set(), "records": {}})["stubs"].add(fn)
     for status, ov, fn in queue_records():
@@ -215,13 +252,29 @@ def self_test() -> int:
     ck(overlay_of_path("src/st/rno0/e_psp_thing.c") == "ST/RNO0",
        "but 'psp' inside a FILE name does not disqualify the file")
 
+    print("\nonly directories the us build compiles are counted")
+    real_us = us_src_dirs()
+    ck(bool(real_us), f"src_path was read from the us splat configs "
+                      f"({len(real_us)} dir(s))")
+    ck("src/servant/fname" not in real_us,
+       "servant/fname is NOT a us src dir -- it is HD-only, and counting it "
+       "reported 3 permanently blind functions the us oracle cannot check")
+    ck(any(d.rstrip("/") == "src/st/rchi" for d in real_us),
+       "while a genuine us overlay dir IS present")
+
     print("\nmatched records are not mistaken for stale ones")
     # A matched record SHOULD have no stub. Counting that as an anomaly would
     # make the stale column equal the matched count and mean nothing.
     import types
     real_stubs = globals()["stubs_in"]
     real_recs = globals()["queue_records"]
-    globals()["stubs_in"] = lambda rev: {("src/st/rdai/a.c", "OnlyAStub")}
+    # BOTH stubs, or the "in neither bucket" case below is untestable: a name
+    # absent from the stub set is stale BY DEFINITION, so the fixture has to
+    # actually stub the record it claims is healthy. The first run of this
+    # test caught exactly that omission.
+    globals()["stubs_in"] = lambda rev: {("src/st/rdai/a.c", "OnlyAStub"),
+                                         ("src/st/rdai/a.c",
+                                          "QueuedAndStubbed")}
     globals()["queue_records"] = lambda: [
         ("matched", "ST/RDAI", "AlreadyDone"),
         ("todo", "ST/RDAI", "QueuedAndStubbed"),

@@ -1,0 +1,14 @@
+# Gap seed for automation/scheduler.py init --from automation/seed.us.gaps.txt
+#
+# Found 2026-08-16 by automation/queue_coverage.py, which compares the
+# INCLUDE_ASM stubs in HEAD against the LIVE queue (~/sotn-work/queue.jsonl,
+# via the scheduler -- NOT the stale work/queue.jsonl snapshot in the repo).
+#
+# Exactly one function in the whole us build was stubbed with no queue record,
+# so no worker could ever claim it and no report counted it. Its 13 siblings
+# in the same overlay were all seeded; this one was missed. src/st/rchi has
+# EntityBreakable and EntityBreakableDebris side by side in e_breakable.c and
+# only the Debris half made it into automation/seed.us.txt.
+#
+# `init` is additive and skips ids that already exist, so re-running is safe.
+us:ST/RCHI:EntityBreakable

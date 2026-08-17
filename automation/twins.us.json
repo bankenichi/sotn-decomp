@@ -1,13 +1,172 @@
 {
- "generated_from": "c88bf36eb",
+ "generated_from": "a62c27356",
  "how_to_read": "A twin is a starting point, not an answer. Diff it against the stub's assembly before copying: sibling overlays routinely differ by one constant or one branch, and copying past that difference produces a function that is wrong in a way the build will catch but a reviewer will not. A twin under src/st/<name>.h is a SHARED implementation, so the right answer there is usually a shim, not a copy -- check shim_viable() in codebase_index.py first.",
  "regenerate": "python3 automation/asm_twin_finder.py --record",
  "twins": {
+  "boss/bo0/func_us_801B13A8": {
+   "instructions": 122,
+   "name_twins": [],
+   "overlay": "boss/bo0",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "boss/bo0",
+     "symbol": "func_us_801B13A8"
+    }
+   ],
+   "symbol": "func_us_801B13A8",
+   "token_twins": []
+  },
+  "boss/bo0/func_us_801B15BC": {
+   "instructions": 32,
+   "name_twins": [],
+   "overlay": "boss/bo0",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "boss/bo0",
+     "symbol": "func_us_801B15BC"
+    }
+   ],
+   "symbol": "func_us_801B15BC",
+   "token_twins": []
+  },
+  "boss/bo0/func_us_801B163C": {
+   "instructions": 56,
+   "name_twins": [],
+   "overlay": "boss/bo0",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "boss/bo0",
+     "symbol": "func_us_801B163C"
+    }
+   ],
+   "symbol": "func_us_801B163C",
+   "token_twins": []
+  },
+  "boss/bo0/func_us_801B171C": {
+   "instructions": 40,
+   "name_twins": [],
+   "overlay": "boss/bo0",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "boss/bo0",
+     "symbol": "func_us_801B171C"
+    }
+   ],
+   "symbol": "func_us_801B171C",
+   "token_twins": []
+  },
+  "boss/bo0/func_us_801B17BC": {
+   "instructions": 42,
+   "name_twins": [],
+   "overlay": "boss/bo0",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "boss/bo0",
+     "symbol": "func_us_801B17BC"
+    }
+   ],
+   "symbol": "func_us_801B17BC",
+   "token_twins": []
+  },
+  "boss/bo0/func_us_801B1864": {
+   "instructions": 59,
+   "name_twins": [],
+   "overlay": "boss/bo0",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "boss/bo0",
+     "symbol": "func_us_801B1864"
+    }
+   ],
+   "symbol": "func_us_801B1864",
+   "token_twins": []
+  },
+  "boss/bo0/func_us_801B1950": {
+   "instructions": 43,
+   "name_twins": [],
+   "overlay": "boss/bo0",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "boss/bo0",
+     "symbol": "func_us_801B1950"
+    }
+   ],
+   "symbol": "func_us_801B1950",
+   "token_twins": []
+  },
+  "boss/bo0/func_us_801B19FC": {
+   "instructions": 77,
+   "name_twins": [],
+   "overlay": "boss/bo0",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "boss/bo0",
+     "symbol": "func_us_801B19FC"
+    }
+   ],
+   "symbol": "func_us_801B19FC",
+   "token_twins": []
+  },
+  "boss/bo0/func_us_801B1B30": {
+   "instructions": 76,
+   "name_twins": [],
+   "overlay": "boss/bo0",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "boss/bo0",
+     "symbol": "func_us_801B1B30"
+    }
+   ],
+   "symbol": "func_us_801B1B30",
+   "token_twins": []
+  },
+  "boss/bo0/func_us_801B1C60": {
+   "instructions": 32,
+   "name_twins": [],
+   "overlay": "boss/bo0",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "boss/bo0",
+     "symbol": "func_us_801B1C60"
+    }
+   ],
+   "symbol": "func_us_801B1C60",
+   "token_twins": []
+  },
+  "boss/bo0/func_us_801B1CE0": {
+   "instructions": 63,
+   "name_twins": [],
+   "overlay": "boss/bo0",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "boss/bo0",
+     "symbol": "func_us_801B1CE0"
+    }
+   ],
+   "symbol": "func_us_801B1CE0",
+   "token_twins": []
+  },
   "boss/bo0/func_us_801B1DDC": {
    "instructions": 32,
    "name_twins": [],
    "overlay": "boss/bo0",
    "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "boss/bo0",
+     "symbol": "func_us_801B1DDC"
+    },
     {
      "identical_constants": false,
      "overlay": "boss/bo0",
@@ -17,20 +176,6 @@
      "identical_constants": false,
      "overlay": "boss/bo0",
      "symbol": "func_us_801B1EDC"
-    }
-   ],
-   "symbol": "func_us_801B1DDC",
-   "token_twins": []
-  },
-  "boss/bo0/func_us_801B1E5C": {
-   "instructions": 32,
-   "name_twins": [],
-   "overlay": "boss/bo0",
-   "shape_twins": [
-    {
-     "identical_constants": false,
-     "overlay": "boss/bo0",
-     "symbol": "func_us_801B1DDC"
     },
     {
      "identical_constants": false,
@@ -38,7 +183,7 @@
      "symbol": "func_us_801B1EDC"
     }
    ],
-   "symbol": "func_us_801B1E5C",
+   "symbol": "func_us_801B1DDC",
    "token_twins": []
   },
   "boss/bo0/func_us_801B1EDC": {
@@ -55,69 +200,440 @@
      "identical_constants": false,
      "overlay": "boss/bo0",
      "symbol": "func_us_801B1E5C"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "boss/bo0",
+     "symbol": "func_us_801B1EDC"
+    },
+    {
+     "identical_constants": false,
+     "overlay": "boss/bo0",
+     "symbol": "func_us_801B1DDC"
     }
    ],
    "symbol": "func_us_801B1EDC",
    "token_twins": []
   },
-  "boss/bo0/func_us_801BA030": {
+  "boss/bo0/func_us_801B1F5C": {
+   "instructions": 58,
+   "name_twins": [],
+   "overlay": "boss/bo0",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "boss/bo0",
+     "symbol": "func_us_801B1F5C"
+    }
+   ],
+   "symbol": "func_us_801B1F5C",
+   "token_twins": []
+  },
+  "boss/bo0/func_us_801B2044": {
+   "instructions": 44,
+   "name_twins": [],
+   "overlay": "boss/bo0",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "boss/bo0",
+     "symbol": "func_us_801B2044"
+    }
+   ],
+   "symbol": "func_us_801B2044",
+   "token_twins": []
+  },
+  "boss/bo0/func_us_801B20F4": {
+   "instructions": 33,
+   "name_twins": [],
+   "overlay": "boss/bo0",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "boss/bo0",
+     "symbol": "func_us_801B20F4"
+    }
+   ],
+   "symbol": "func_us_801B20F4",
+   "token_twins": []
+  },
+  "boss/bo0/func_us_801B21F0": {
+   "instructions": 183,
+   "name_twins": [],
+   "overlay": "boss/bo0",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "boss/bo0",
+     "symbol": "func_us_801B21F0"
+    }
+   ],
+   "symbol": "func_us_801B21F0",
+   "token_twins": []
+  },
+  "boss/bo0/func_us_801B24CC": {
+   "instructions": 113,
+   "name_twins": [],
+   "overlay": "boss/bo0",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "boss/bo0",
+     "symbol": "func_us_801B24CC"
+    }
+   ],
+   "symbol": "func_us_801B24CC",
+   "token_twins": []
+  },
+  "boss/bo0/func_us_801B2690": {
+   "instructions": 647,
+   "name_twins": [],
+   "overlay": "boss/bo0",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "boss/bo0",
+     "symbol": "func_us_801B2690"
+    }
+   ],
+   "symbol": "func_us_801B2690",
+   "token_twins": []
+  },
+  "boss/bo0/func_us_801B30AC": {
+   "instructions": 364,
+   "name_twins": [],
+   "overlay": "boss/bo0",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "boss/bo0",
+     "symbol": "func_us_801B30AC"
+    }
+   ],
+   "symbol": "func_us_801B30AC",
+   "token_twins": []
+  },
+  "boss/bo0/func_us_801B365C": {
+   "instructions": 1967,
+   "name_twins": [],
+   "overlay": "boss/bo0",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "boss/bo0",
+     "symbol": "func_us_801B365C"
+    }
+   ],
+   "symbol": "func_us_801B365C",
+   "token_twins": []
+  },
+  "boss/bo0/func_us_801B5470": {
+   "instructions": 43,
+   "name_twins": [],
+   "overlay": "boss/bo0",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "boss/bo0",
+     "symbol": "func_us_801B5470"
+    }
+   ],
+   "symbol": "func_us_801B5470",
+   "token_twins": []
+  },
+  "boss/bo0/func_us_801B551C": {
+   "instructions": 544,
+   "name_twins": [],
+   "overlay": "boss/bo0",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "boss/bo0",
+     "symbol": "func_us_801B551C"
+    }
+   ],
+   "symbol": "func_us_801B551C",
+   "token_twins": []
+  },
+  "boss/bo0/func_us_801B5D6C": {
+   "instructions": 39,
+   "name_twins": [],
+   "overlay": "boss/bo0",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "boss/bo0",
+     "symbol": "func_us_801B5D6C"
+    }
+   ],
+   "symbol": "func_us_801B5D6C",
+   "token_twins": []
+  },
+  "boss/bo0/func_us_801B5E08": {
+   "instructions": 33,
+   "name_twins": [],
+   "overlay": "boss/bo0",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "boss/bo0",
+     "symbol": "func_us_801B5E08"
+    }
+   ],
+   "symbol": "func_us_801B5E08",
+   "token_twins": []
+  },
+  "boss/bo0/func_us_801B5E8C": {
+   "instructions": 196,
+   "name_twins": [],
+   "overlay": "boss/bo0",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "boss/bo0",
+     "symbol": "func_us_801B5E8C"
+    }
+   ],
+   "symbol": "func_us_801B5E8C",
+   "token_twins": []
+  },
+  "boss/bo0/func_us_801B619C": {
+   "instructions": 235,
+   "name_twins": [],
+   "overlay": "boss/bo0",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "boss/bo0",
+     "symbol": "func_us_801B619C"
+    }
+   ],
+   "symbol": "func_us_801B619C",
+   "token_twins": []
+  },
+  "boss/bo0/func_us_801B6520": {
+   "instructions": 40,
+   "name_twins": [],
+   "overlay": "boss/bo0",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "boss/bo0",
+     "symbol": "func_us_801B6520"
+    }
+   ],
+   "symbol": "func_us_801B6520",
+   "token_twins": []
+  },
+  "boss/bo0/func_us_801B65C0": {
+   "instructions": 441,
+   "name_twins": [],
+   "overlay": "boss/bo0",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "boss/bo0",
+     "symbol": "func_us_801B65C0"
+    }
+   ],
+   "symbol": "func_us_801B65C0",
+   "token_twins": []
+  },
+  "boss/bo0/func_us_801B6CA4": {
+   "instructions": 672,
+   "name_twins": [],
+   "overlay": "boss/bo0",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "boss/bo0",
+     "symbol": "func_us_801B6CA4"
+    }
+   ],
+   "symbol": "func_us_801B6CA4",
+   "token_twins": []
+  },
+  "boss/bo0/func_us_801B76E4": {
+   "instructions": 306,
+   "name_twins": [],
+   "overlay": "boss/bo0",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "boss/bo0",
+     "symbol": "func_us_801B76E4"
+    }
+   ],
+   "symbol": "func_us_801B76E4",
+   "token_twins": []
+  },
+  "boss/bo0/func_us_801B7BAC": {
+   "instructions": 38,
+   "name_twins": [],
+   "overlay": "boss/bo0",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "boss/bo0",
+     "symbol": "func_us_801B7BAC"
+    }
+   ],
+   "symbol": "func_us_801B7BAC",
+   "token_twins": []
+  },
+  "boss/bo0/func_us_801B7C44": {
+   "instructions": 33,
+   "name_twins": [],
+   "overlay": "boss/bo0",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "boss/bo0",
+     "symbol": "func_us_801B7C44"
+    }
+   ],
+   "symbol": "func_us_801B7C44",
+   "token_twins": []
+  },
+  "boss/bo0/func_us_801B7CC8": {
+   "instructions": 700,
+   "name_twins": [],
+   "overlay": "boss/bo0",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "boss/bo0",
+     "symbol": "func_us_801B7CC8"
+    }
+   ],
+   "symbol": "func_us_801B7CC8",
+   "token_twins": []
+  },
+  "boss/bo0/func_us_801B8794": {
    "instructions": 62,
    "name_twins": [],
    "overlay": "boss/bo0",
    "shape_twins": [
     {
-     "identical_constants": false,
-     "overlay": "st/rcen",
-     "symbol": "func_us_8019AA04"
+     "identical_constants": true,
+     "overlay": "boss/bo0",
+     "symbol": "func_us_801B8794"
     }
    ],
-   "symbol": "func_us_801BA030",
+   "symbol": "func_us_801B8794",
    "token_twins": []
   },
-  "boss/bo6/BO6_AguneaShuffleParams": {
-   "instructions": 42,
-   "name_twins": [
+  "boss/bo0/func_us_801B888C": {
+   "instructions": 57,
+   "name_twins": [],
+   "overlay": "boss/bo0",
+   "shape_twins": [
     {
-     "file": "src/ric/319C4.c",
-     "function": "AguneaShuffleParams"
+     "identical_constants": true,
+     "overlay": "boss/bo0",
+     "symbol": "func_us_801B888C"
     }
    ],
-   "overlay": "boss/bo6",
-   "shape_twins": [],
-   "symbol": "BO6_AguneaShuffleParams",
+   "symbol": "func_us_801B888C",
    "token_twins": []
   },
-  "boss/bo6/BO6_CheckHighJumpInput": {
-   "instructions": 36,
-   "name_twins": [
+  "boss/bo0/func_us_801B8970": {
+   "instructions": 125,
+   "name_twins": [],
+   "overlay": "boss/bo0",
+   "shape_twins": [
     {
-     "file": "src/maria/pl_main.c",
-     "function": "CheckHighJumpInput"
-    },
-    {
-     "file": "src/ric/pl_main.c",
-     "function": "CheckHighJumpInput"
-    },
-    {
-     "file": "src/st/cen_psp/e_maria_main.c",
-     "function": "CheckHighJumpInput"
+     "identical_constants": true,
+     "overlay": "boss/bo0",
+     "symbol": "func_us_801B8970"
     }
    ],
-   "overlay": "boss/bo6",
-   "shape_twins": [],
-   "symbol": "BO6_CheckHighJumpInput",
-   "token_twins": [
+   "symbol": "func_us_801B8970",
+   "token_twins": []
+  },
+  "boss/bo0/func_us_801B8B64": {
+   "instructions": 138,
+   "name_twins": [],
+   "overlay": "boss/bo0",
+   "shape_twins": [
     {
-     "file": "src/boss/bo6/richter.c",
-     "function": "func_us_801B77D8",
-     "score": 0.556
-    },
-    {
-     "file": "src/boss/bo6/us_39144.c",
-     "function": "BO6_RicSetStep",
-     "score": 0.4
+     "identical_constants": true,
+     "overlay": "boss/bo0",
+     "symbol": "func_us_801B8B64"
     }
-   ]
+   ],
+   "symbol": "func_us_801B8B64",
+   "token_twins": []
+  },
+  "boss/bo0/func_us_801B8D8C": {
+   "instructions": 930,
+   "name_twins": [],
+   "overlay": "boss/bo0",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "boss/bo0",
+     "symbol": "func_us_801B8D8C"
+    }
+   ],
+   "symbol": "func_us_801B8D8C",
+   "token_twins": []
+  },
+  "boss/bo0/func_us_801B9BEC": {
+   "instructions": 273,
+   "name_twins": [],
+   "overlay": "boss/bo0",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "boss/bo0",
+     "symbol": "func_us_801B9BEC"
+    }
+   ],
+   "symbol": "func_us_801B9BEC",
+   "token_twins": []
+  },
+  "boss/bo0/func_us_801BA128": {
+   "instructions": 225,
+   "name_twins": [],
+   "overlay": "boss/bo0",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "boss/bo0",
+     "symbol": "func_us_801BA128"
+    }
+   ],
+   "symbol": "func_us_801BA128",
+   "token_twins": []
+  },
+  "boss/bo0/func_us_801BA4AC": {
+   "instructions": 158,
+   "name_twins": [],
+   "overlay": "boss/bo0",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "boss/bo0",
+     "symbol": "func_us_801BA4AC"
+    }
+   ],
+   "symbol": "func_us_801BA4AC",
+   "token_twins": []
+  },
+  "boss/bo0/func_us_801BA724": {
+   "instructions": 87,
+   "name_twins": [],
+   "overlay": "boss/bo0",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "boss/bo0",
+     "symbol": "func_us_801BA724"
+    }
+   ],
+   "symbol": "func_us_801BA724",
+   "token_twins": []
   },
   "boss/bo6/BO6_DebugShowWaitInfo": {
    "instructions": 41,
@@ -171,13 +687,7 @@
    "overlay": "boss/bo6",
    "shape_twins": [],
    "symbol": "BO6_DisableAfterImage",
-   "token_twins": [
-    {
-     "file": "src/boss/bo6/richter.c",
-     "function": "func_us_801B77D8",
-     "score": 0.303
-    }
-   ]
+   "token_twins": []
   },
   "boss/bo6/BO6_EntityStopWatch": {
    "instructions": 1007,
@@ -233,7 +743,7 @@
     {
      "file": "src/boss/bo6/richter.c",
      "function": "func_us_801B77D8",
-     "score": 0.331
+     "score": 0.321
     }
    ]
   },
@@ -278,7 +788,7 @@
     {
      "file": "src/boss/bo6/richter.c",
      "function": "func_us_801B77D8",
-     "score": 0.331
+     "score": 0.321
     }
    ]
   },
@@ -332,18 +842,7 @@
    "overlay": "boss/bo6",
    "shape_twins": [],
    "symbol": "BO6_RicEntityArmBrandishWhip",
-   "token_twins": [
-    {
-     "file": "src/boss/bo6/richter.c",
-     "function": "func_us_801B77D8",
-     "score": 0.556
-    },
-    {
-     "file": "src/boss/bo6/us_39144.c",
-     "function": "BO6_RicSetStep",
-     "score": 0.4
-    }
-   ]
+   "token_twins": []
   },
   "boss/bo6/BO6_RicEntityCrashBible": {
    "instructions": 502,
@@ -412,12 +911,12 @@
     {
      "file": "src/boss/bo6/richter.c",
      "function": "func_us_801B77D8",
-     "score": 0.556
+     "score": 0.545
     },
     {
      "file": "src/boss/bo6/us_39144.c",
      "function": "BO6_RicSetStep",
-     "score": 0.4
+     "score": 0.422
     }
    ]
   },
@@ -458,18 +957,7 @@
    "overlay": "boss/bo6",
    "shape_twins": [],
    "symbol": "BO6_RicEntityFactory",
-   "token_twins": [
-    {
-     "file": "src/boss/bo6/richter.c",
-     "function": "func_us_801B77D8",
-     "score": 0.556
-    },
-    {
-     "file": "src/boss/bo6/us_39144.c",
-     "function": "BO6_RicSetStep",
-     "score": 0.4
-    }
-   ]
+   "token_twins": []
   },
   "boss/bo6/BO6_RicEntityHitByCutBlood": {
    "instructions": 520,
@@ -499,12 +987,12 @@
     {
      "file": "src/boss/bo6/richter.c",
      "function": "func_us_801B77D8",
-     "score": 0.556
+     "score": 0.545
     },
     {
      "file": "src/boss/bo6/us_39144.c",
      "function": "BO6_RicSetStep",
-     "score": 0.4
+     "score": 0.422
     }
    ]
   },
@@ -640,12 +1128,12 @@
     {
      "file": "src/boss/bo6/richter.c",
      "function": "func_us_801B77D8",
-     "score": 0.385
+     "score": 0.377
     },
     {
      "file": "src/boss/bo6/us_39144.c",
      "function": "BO6_RicSetStep",
-     "score": 0.303
+     "score": 0.314
     }
    ]
   },
@@ -781,12 +1269,12 @@
     {
      "file": "src/boss/bo6/richter.c",
      "function": "func_us_801B77D8",
-     "score": 0.429
+     "score": 0.418
     },
     {
      "file": "src/boss/bo6/us_39144.c",
      "function": "BO6_RicSetStep",
-     "score": 0.329
+     "score": 0.342
     }
    ]
   },
@@ -805,32 +1293,19 @@
     {
      "file": "src/st/sel_psp/BB50.c",
      "function": "SetStep",
-     "score": 0.485
+     "score": 0.496
     },
     {
      "file": "src/st/sel/34B30.c",
      "function": "SetStep",
-     "score": 0.485
+     "score": 0.496
     },
     {
      "file": "src/st/st_common.h",
      "function": "SetSubStep",
-     "score": 0.394
+     "score": 0.401
     }
    ]
-  },
-  "boss/bo6/BO6_RicStepBladeDash": {
-   "instructions": 76,
-   "name_twins": [
-    {
-     "file": "src/ric/pl_steps.c",
-     "function": "RicStepBladeDash"
-    }
-   ],
-   "overlay": "boss/bo6",
-   "shape_twins": [],
-   "symbol": "BO6_RicStepBladeDash",
-   "token_twins": []
   },
   "boss/bo6/BO6_RicStepCrouch": {
    "instructions": 242,
@@ -847,17 +1322,17 @@
     {
      "file": "src/servant/set_entity_animation.h",
      "function": "SetEntityAnimation",
-     "score": 0.399
+     "score": 0.404
     },
     {
-     "file": "src/st/cen_psp/e_maria_utils.c",
-     "function": "MarSetAnimation",
-     "score": 0.356
+     "file": "src/dra/alu_anim.c",
+     "function": "SetPlayerAnim",
+     "score": 0.36
     },
     {
-     "file": "src/ric/pl_utils.c",
-     "function": "RicSetAnimation",
-     "score": 0.356
+     "file": "src/boss/dop_anim.h",
+     "function": "SetDopplegangerAnim",
+     "score": 0.36
     }
    ]
   },
@@ -872,19 +1347,6 @@
    "overlay": "boss/bo6",
    "shape_twins": [],
    "symbol": "BO6_RicStepDead",
-   "token_twins": []
-  },
-  "boss/bo6/BO6_RicStepEnableFlameWhip": {
-   "instructions": 42,
-   "name_twins": [
-    {
-     "file": "src/ric/pl_steps.c",
-     "function": "RicStepEnableFlameWhip"
-    }
-   ],
-   "overlay": "boss/bo6",
-   "shape_twins": [],
-   "symbol": "BO6_RicStepEnableFlameWhip",
    "token_twins": []
   },
   "boss/bo6/BO6_RicStepHighJump": {
@@ -902,12 +1364,12 @@
     {
      "file": "src/boss/bo6/richter.c",
      "function": "func_us_801B77D8",
-     "score": 0.556
+     "score": 0.545
     },
     {
      "file": "src/boss/bo6/us_39144.c",
      "function": "BO6_RicSetStep",
-     "score": 0.4
+     "score": 0.422
     }
    ]
   },
@@ -935,7 +1397,18 @@
    "overlay": "boss/bo6",
    "shape_twins": [],
    "symbol": "BO6_RicStepJump",
-   "token_twins": []
+   "token_twins": [
+    {
+     "file": "src/st/sel_psp/BB50.c",
+     "function": "SetStep",
+     "score": 0.302
+    },
+    {
+     "file": "src/st/sel/34B30.c",
+     "function": "SetStep",
+     "score": 0.302
+    }
+   ]
   },
   "boss/bo6/BO6_RicStepRun": {
    "instructions": 56,
@@ -952,7 +1425,7 @@
     {
      "file": "src/boss/bo6/richter.c",
      "function": "func_us_801B77D8",
-     "score": 0.331
+     "score": 0.321
     }
    ]
   },
@@ -997,60 +1470,17 @@
     {
      "file": "src/servant/set_entity_animation.h",
      "function": "SetEntityAnimation",
-     "score": 0.399
+     "score": 0.404
     },
     {
-     "file": "src/st/cen_psp/e_maria_utils.c",
-     "function": "MarSetAnimation",
-     "score": 0.356
+     "file": "src/dra/alu_anim.c",
+     "function": "SetPlayerAnim",
+     "score": 0.36
     },
     {
-     "file": "src/ric/pl_utils.c",
-     "function": "RicSetAnimation",
-     "score": 0.356
-    }
-   ]
-  },
-  "boss/bo6/BO6_RicStepThrowDaggers": {
-   "instructions": 50,
-   "name_twins": [
-    {
-     "file": "src/ric/pl_steps.c",
-     "function": "RicStepThrowDaggers"
-    }
-   ],
-   "overlay": "boss/bo6",
-   "shape_twins": [],
-   "symbol": "BO6_RicStepThrowDaggers",
-   "token_twins": [
-    {
-     "file": "src/boss/bo6/richter.c",
-     "function": "func_us_801B77D8",
-     "score": 0.556
-    },
-    {
-     "file": "src/boss/bo6/us_39144.c",
-     "function": "BO6_RicSetStep",
-     "score": 0.4
-    }
-   ]
-  },
-  "boss/bo6/EntityRichter": {
-   "instructions": 69,
-   "name_twins": [],
-   "overlay": "boss/bo6",
-   "shape_twins": [],
-   "symbol": "EntityRichter",
-   "token_twins": [
-    {
-     "file": "src/boss/bo6/richter.c",
-     "function": "func_us_801B77D8",
-     "score": 0.445
-    },
-    {
-     "file": "src/boss/bo6/us_39144.c",
-     "function": "BO6_RicSetStep",
-     "score": 0.339
+     "file": "src/boss/dop_anim.h",
+     "function": "SetDopplegangerAnim",
+     "score": 0.36
     }
    ]
   },
@@ -1064,12 +1494,12 @@
     {
      "file": "src/boss/bo6/richter.c",
      "function": "func_us_801B77D8",
-     "score": 0.556
+     "score": 0.545
     },
     {
      "file": "src/boss/bo6/us_39144.c",
      "function": "BO6_RicSetStep",
-     "score": 0.4
+     "score": 0.422
     }
    ]
   },
@@ -1083,59 +1513,12 @@
     {
      "file": "src/boss/bo6/richter.c",
      "function": "func_us_801B77D8",
-     "score": 0.556
+     "score": 0.545
     },
     {
      "file": "src/boss/bo6/us_39144.c",
      "function": "BO6_RicSetStep",
-     "score": 0.4
-    }
-   ]
-  },
-  "boss/bo6/func_us_801B94CC": {
-   "instructions": 138,
-   "name_twins": [],
-   "overlay": "boss/bo6",
-   "shape_twins": [],
-   "symbol": "func_us_801B94CC",
-   "token_twins": [
-    {
-     "file": "src/boss/bo6/richter.c",
-     "function": "func_us_801B77D8",
-     "score": 0.303
-    }
-   ]
-  },
-  "boss/bo6/func_us_801B9D74": {
-   "instructions": 28,
-   "name_twins": [],
-   "overlay": "boss/bo6",
-   "shape_twins": [],
-   "symbol": "func_us_801B9D74",
-   "token_twins": [
-    {
-     "file": "src/boss/bo6/richter.c",
-     "function": "func_us_801B77D8",
-     "score": 0.331
-    }
-   ]
-  },
-  "boss/bo6/func_us_801B9E70": {
-   "instructions": 50,
-   "name_twins": [],
-   "overlay": "boss/bo6",
-   "shape_twins": [],
-   "symbol": "func_us_801B9E70",
-   "token_twins": [
-    {
-     "file": "src/boss/bo6/richter.c",
-     "function": "func_us_801B77D8",
-     "score": 0.556
-    },
-    {
-     "file": "src/boss/bo6/us_39144.c",
-     "function": "BO6_RicSetStep",
-     "score": 0.4
+     "score": 0.422
     }
    ]
   },
@@ -1149,31 +1532,12 @@
     {
      "file": "src/boss/bo6/richter.c",
      "function": "func_us_801B77D8",
-     "score": 0.44
+     "score": 0.43
     },
     {
      "file": "src/boss/bo6/us_39144.c",
      "function": "BO6_RicSetStep",
-     "score": 0.336
-    }
-   ]
-  },
-  "boss/bo6/func_us_801BC3E0": {
-   "instructions": 70,
-   "name_twins": [],
-   "overlay": "boss/bo6",
-   "shape_twins": [],
-   "symbol": "func_us_801BC3E0",
-   "token_twins": [
-    {
-     "file": "src/boss/bo6/richter.c",
-     "function": "func_us_801B77D8",
-     "score": 0.556
-    },
-    {
-     "file": "src/boss/bo6/us_39144.c",
-     "function": "BO6_RicSetStep",
-     "score": 0.4
+     "score": 0.349
     }
    ]
   },
@@ -1187,12 +1551,12 @@
     {
      "file": "src/boss/bo6/richter.c",
      "function": "func_us_801B77D8",
-     "score": 0.44
+     "score": 0.43
     },
     {
      "file": "src/boss/bo6/us_39144.c",
      "function": "BO6_RicSetStep",
-     "score": 0.336
+     "score": 0.349
     }
    ]
   },
@@ -1206,12 +1570,12 @@
     {
      "file": "src/boss/bo6/richter.c",
      "function": "func_us_801B77D8",
-     "score": 0.556
+     "score": 0.545
     },
     {
      "file": "src/boss/bo6/us_39144.c",
      "function": "BO6_RicSetStep",
-     "score": 0.4
+     "score": 0.422
     }
    ]
   },
@@ -1225,12 +1589,12 @@
     {
      "file": "src/boss/bo6/richter.c",
      "function": "func_us_801B77D8",
-     "score": 0.556
+     "score": 0.545
     },
     {
      "file": "src/boss/bo6/us_39144.c",
      "function": "BO6_RicSetStep",
-     "score": 0.4
+     "score": 0.422
     }
    ]
   },
@@ -1244,12 +1608,12 @@
     {
      "file": "src/boss/bo6/richter.c",
      "function": "func_us_801B77D8",
-     "score": 0.433
+     "score": 0.423
     },
     {
      "file": "src/boss/bo6/us_39144.c",
      "function": "BO6_RicSetStep",
-     "score": 0.332
+     "score": 0.345
     }
    ]
   },
@@ -1263,12 +1627,12 @@
     {
      "file": "src/boss/bo6/richter.c",
      "function": "func_us_801B77D8",
-     "score": 0.556
+     "score": 0.545
     },
     {
      "file": "src/boss/bo6/us_39144.c",
      "function": "BO6_RicSetStep",
-     "score": 0.4
+     "score": 0.422
     }
    ]
   },
@@ -1304,6 +1668,11 @@
    "name_twins": [],
    "overlay": "st/rcen",
    "shape_twins": [
+    {
+     "identical_constants": false,
+     "overlay": "boss/bo0",
+     "symbol": "func_us_801BA030"
+    },
     {
      "identical_constants": false,
      "overlay": "boss/bo0",
@@ -1366,20 +1735,6 @@
      "file": "src/st/rcen/e_shaft.c",
      "function": "func_us_8019CDA0",
      "score": 0.432
-    }
-   ]
-  },
-  "st/rcen/func_us_8019CDF8": {
-   "instructions": 293,
-   "name_twins": [],
-   "overlay": "st/rcen",
-   "shape_twins": [],
-   "symbol": "func_us_8019CDF8",
-   "token_twins": [
-    {
-     "file": "src/st/rcen/e_shaft.c",
-     "function": "func_us_8019CDA0",
-     "score": 0.331
     }
    ]
   },
@@ -1568,23 +1923,6 @@
    "symbol": "EntityGaibon",
    "token_twins": []
   },
-  "st/rchi/EntityGaibonLeg": {
-   "instructions": 49,
-   "name_twins": [
-    {
-     "file": "src/st/np3/gaibon.c",
-     "function": "EntityGaibonLeg"
-    },
-    {
-     "file": "src/st/nz0/gaibon.c",
-     "function": "EntityGaibonLeg"
-    }
-   ],
-   "overlay": "st/rchi",
-   "shape_twins": [],
-   "symbol": "EntityGaibonLeg",
-   "token_twins": []
-  },
   "st/rchi/EntityLargeGaibonProjectile": {
    "instructions": 138,
    "name_twins": [
@@ -1722,32 +2060,6 @@
    "symbol": "EntityArmorLordFireWave",
    "token_twins": []
   },
-  "st/rno0/EntityBirdcageDoor": {
-   "instructions": 162,
-   "name_twins": [
-    {
-     "file": "src/st/clock_room_entities.h",
-     "function": "EntityBirdcageDoor"
-    }
-   ],
-   "overlay": "st/rno0",
-   "shape_twins": [],
-   "symbol": "EntityBirdcageDoor",
-   "token_twins": []
-  },
-  "st/rno0/EntityBlade": {
-   "instructions": 961,
-   "name_twins": [
-    {
-     "file": "src/st/e_blade.h",
-     "function": "EntityBlade"
-    }
-   ],
-   "overlay": "st/rno0",
-   "shape_twins": [],
-   "symbol": "EntityBlade",
-   "token_twins": []
-  },
   "st/rno0/EntityBladeSoldierDeathParts": {
    "instructions": 62,
    "name_twins": [
@@ -1759,19 +2071,6 @@
    "overlay": "st/rno0",
    "shape_twins": [],
    "symbol": "EntityBladeSoldierDeathParts",
-   "token_twins": []
-  },
-  "st/rno0/EntityBladeWeapon": {
-   "instructions": 224,
-   "name_twins": [
-    {
-     "file": "src/st/e_blade.h",
-     "function": "EntityBladeWeapon"
-    }
-   ],
-   "overlay": "st/rno0",
-   "shape_twins": [],
-   "symbol": "EntityBladeWeapon",
    "token_twins": []
   },
   "st/rno0/EntityBreakable": {
@@ -1813,19 +2112,6 @@
    "overlay": "st/rno0",
    "shape_twins": [],
    "symbol": "EntityBreakable",
-   "token_twins": []
-  },
-  "st/rno0/EntityClockHands": {
-   "instructions": 69,
-   "name_twins": [
-    {
-     "file": "src/st/clock_room_entities.h",
-     "function": "EntityClockHands"
-    }
-   ],
-   "overlay": "st/rno0",
-   "shape_twins": [],
-   "symbol": "EntityClockHands",
    "token_twins": []
   },
   "st/rno0/EntityClockRoomController": {
@@ -1871,19 +2157,6 @@
    "symbol": "EntityCorpseweedProjectile",
    "token_twins": []
   },
-  "st/rno0/EntityDamageDisplay": {
-   "instructions": 425,
-   "name_twins": [
-    {
-     "file": "src/st/entity_damage_display.h",
-     "function": "EntityDamageDisplay"
-    }
-   ],
-   "overlay": "st/rno0",
-   "shape_twins": [],
-   "symbol": "EntityDamageDisplay",
-   "token_twins": []
-  },
   "st/rno0/EntityFloorTrap": {
    "instructions": 364,
    "name_twins": [
@@ -1895,77 +2168,6 @@
    "overlay": "st/rno0",
    "shape_twins": [],
    "symbol": "EntityFloorTrap",
-   "token_twins": []
-  },
-  "st/rno0/EntityGurkha": {
-   "instructions": 926,
-   "name_twins": [
-    {
-     "file": "src/st/e_gurkha.h",
-     "function": "EntityGurkha"
-    }
-   ],
-   "overlay": "st/rno0",
-   "shape_twins": [],
-   "symbol": "EntityGurkha",
-   "token_twins": []
-  },
-  "st/rno0/EntityGurkhaBodyParts": {
-   "instructions": 228,
-   "name_twins": [
-    {
-     "file": "src/st/e_hammer.h",
-     "function": "EntityGurkhaBodyParts"
-    }
-   ],
-   "overlay": "st/rno0",
-   "shape_twins": [],
-   "symbol": "EntityGurkhaBodyParts",
-   "token_twins": []
-  },
-  "st/rno0/EntityGurkhaWeapon": {
-   "instructions": 205,
-   "name_twins": [
-    {
-     "file": "src/st/e_gurkha.h",
-     "function": "EntityGurkhaWeapon"
-    }
-   ],
-   "overlay": "st/rno0",
-   "shape_twins": [],
-   "symbol": "EntityGurkhaWeapon",
-   "token_twins": []
-  },
-  "st/rno0/EntityHammer": {
-   "instructions": 785,
-   "name_twins": [
-    {
-     "file": "src/st/e_hammer.h",
-     "function": "EntityHammer"
-    }
-   ],
-   "overlay": "st/rno0",
-   "shape_twins": [],
-   "symbol": "EntityHammer",
-   "token_twins": [
-    {
-     "file": "src/main_psp/2758C.c",
-     "function": "CdDataCallback",
-     "score": 0.351
-    }
-   ]
-  },
-  "st/rno0/EntityHammerWeapon": {
-   "instructions": 112,
-   "name_twins": [
-    {
-     "file": "src/st/e_hammer.h",
-     "function": "EntityHammerWeapon"
-    }
-   ],
-   "overlay": "st/rno0",
-   "shape_twins": [],
-   "symbol": "EntityHammerWeapon",
    "token_twins": []
   },
   "st/rno0/EntityJackOBones": {
@@ -2005,61 +2207,6 @@
    "overlay": "st/rno0",
    "shape_twins": [],
    "symbol": "EntityJackOBonesJack",
-   "token_twins": []
-  },
-  "st/rno0/EntityLockCamera": {
-   "instructions": 111,
-   "name_twins": [
-    {
-     "file": "src/st/e_lock_camera.h",
-     "function": "EntityLockCamera"
-    },
-    {
-     "file": "src/st/entity_lock_camera.h",
-     "function": "EntityLockCamera"
-    },
-    {
-     "file": "src/st/lib/e_lock_camera.c",
-     "function": "EntityLockCamera"
-    },
-    {
-     "file": "src/st/rcen/e_lock_camera.c",
-     "function": "EntityLockCamera"
-    },
-    {
-     "file": "src/st/st0/e_lock_camera.c",
-     "function": "EntityLockCamera"
-    }
-   ],
-   "overlay": "st/rno0",
-   "shape_twins": [],
-   "symbol": "EntityLockCamera",
-   "token_twins": []
-  },
-  "st/rno0/EntityMedusaHeadBlue": {
-   "instructions": 121,
-   "name_twins": [
-    {
-     "file": "src/st/e_medusa_head.h",
-     "function": "EntityMedusaHeadBlue"
-    }
-   ],
-   "overlay": "st/rno0",
-   "shape_twins": [],
-   "symbol": "EntityMedusaHeadBlue",
-   "token_twins": []
-  },
-  "st/rno0/EntityMedusaHeadSpawner": {
-   "instructions": 116,
-   "name_twins": [
-    {
-     "file": "src/st/e_medusa_head.h",
-     "function": "EntityMedusaHeadSpawner"
-    }
-   ],
-   "overlay": "st/rno0",
-   "shape_twins": [],
-   "symbol": "EntityMedusaHeadSpawner",
    "token_twins": []
   },
   "st/rno0/EntityNovaLaser": {
@@ -2114,35 +2261,6 @@
    "symbol": "EntityRelicOrb",
    "token_twins": []
   },
-  "st/rno0/EntityRoomForeground": {
-   "instructions": 59,
-   "name_twins": [
-    {
-     "file": "src/st/e_room_fg.h",
-     "function": "EntityRoomForeground"
-    },
-    {
-     "file": "src/st/mad/e_room_fg.c",
-     "function": "EntityRoomForeground"
-    },
-    {
-     "file": "src/st/no3/e_room_fg.c",
-     "function": "EntityRoomForeground"
-    },
-    {
-     "file": "src/st/np3/e_room_fg.c",
-     "function": "EntityRoomForeground"
-    },
-    {
-     "file": "src/st/rno3/e_room_fg.c",
-     "function": "EntityRoomForeground"
-    }
-   ],
-   "overlay": "st/rno0",
-   "shape_twins": [],
-   "symbol": "EntityRoomForeground",
-   "token_twins": []
-  },
   "st/rno0/EntitySealedDoor": {
    "instructions": 867,
    "name_twins": [
@@ -2158,87 +2276,6 @@
    "overlay": "st/rno0",
    "shape_twins": [],
    "symbol": "EntitySealedDoor",
-   "token_twins": []
-  },
-  "st/rno0/EntitySoulStealOrb": {
-   "instructions": 229,
-   "name_twins": [
-    {
-     "file": "src/st/e_particles.h",
-     "function": "EntitySoulStealOrb"
-    }
-   ],
-   "overlay": "st/rno0",
-   "shape_twins": [],
-   "symbol": "EntitySoulStealOrb",
-   "token_twins": []
-  },
-  "st/rno0/EntityStageNamePopup": {
-   "instructions": 808,
-   "name_twins": [
-    {
-     "file": "src/st/chi/en_stage_name.c",
-     "function": "EntityStageNamePopup"
-    },
-    {
-     "file": "src/st/e_stage_name_jp.h",
-     "function": "EntityStageNamePopup"
-    },
-    {
-     "file": "src/st/e_stage_name_us.h",
-     "function": "EntityStageNamePopup"
-    },
-    {
-     "file": "src/st/nz0/e_stage_name.c",
-     "function": "EntityStageNamePopup"
-    }
-   ],
-   "overlay": "st/rno0",
-   "shape_twins": [],
-   "symbol": "EntityStageNamePopup",
-   "token_twins": []
-  },
-  "st/rno0/EntityStatue": {
-   "instructions": 202,
-   "name_twins": [
-    {
-     "file": "src/st/clock_room_entities.h",
-     "function": "EntityStatue"
-    },
-    {
-     "file": "src/st/dai/e_dai_no2_shortcut.c",
-     "function": "EntityStatue"
-    }
-   ],
-   "overlay": "st/rno0",
-   "shape_twins": [],
-   "symbol": "EntityStatue",
-   "token_twins": []
-  },
-  "st/rno0/EntityStatueGear": {
-   "instructions": 132,
-   "name_twins": [
-    {
-     "file": "src/st/clock_room_entities.h",
-     "function": "EntityStatueGear"
-    }
-   ],
-   "overlay": "st/rno0",
-   "shape_twins": [],
-   "symbol": "EntityStatueGear",
-   "token_twins": []
-  },
-  "st/rno0/EntityStoneDoor": {
-   "instructions": 120,
-   "name_twins": [
-    {
-     "file": "src/st/clock_room_entities.h",
-     "function": "EntityStoneDoor"
-    }
-   ],
-   "overlay": "st/rno0",
-   "shape_twins": [],
-   "symbol": "EntityStoneDoor",
    "token_twins": []
   },
   "st/rno0/EntitySubWeaponContainer": {
@@ -2307,27 +2344,6 @@
    "symbol": "EntityUnkId1B",
    "token_twins": []
   },
-  "st/rno0/HitDetection": {
-   "instructions": 1094,
-   "name_twins": [
-    {
-     "file": "src/st/collision.h",
-     "function": "HitDetection"
-    },
-    {
-     "file": "src/st/mad/collision.c",
-     "function": "HitDetection"
-    },
-    {
-     "file": "src/st/st0_hit_detection.h",
-     "function": "HitDetection"
-    }
-   ],
-   "overlay": "st/rno0",
-   "shape_twins": [],
-   "symbol": "HitDetection",
-   "token_twins": []
-  },
   "st/rno0/TryShoot": {
    "instructions": 40,
    "name_twins": [
@@ -2352,66 +2368,6 @@
    "overlay": "st/rno0",
    "shape_twins": [],
    "symbol": "TryThrow",
-   "token_twins": []
-  },
-  "st/rno0/UnkPrimHelper": {
-   "instructions": 250,
-   "name_twins": [
-    {
-     "file": "src/st/prim_helpers.h",
-     "function": "UnkPrimHelper"
-    }
-   ],
-   "overlay": "st/rno0",
-   "shape_twins": [],
-   "symbol": "UnkPrimHelper",
-   "token_twins": []
-  },
-  "st/rno0/Update": {
-   "instructions": 191,
-   "name_twins": [
-    {
-     "file": "src/st/sel/2C048.c",
-     "function": "Update"
-    },
-    {
-     "file": "src/st/sel_psp/7B8.c",
-     "function": "Update"
-    },
-    {
-     "file": "src/st/st_update.h",
-     "function": "Update"
-    }
-   ],
-   "overlay": "st/rno0",
-   "shape_twins": [],
-   "symbol": "Update",
-   "token_twins": []
-  },
-  "st/rno0/UpdateStageEntities": {
-   "instructions": 66,
-   "name_twins": [
-    {
-     "file": "src/st/st_update.h",
-     "function": "UpdateStageEntities"
-    }
-   ],
-   "overlay": "st/rno0",
-   "shape_twins": [],
-   "symbol": "UpdateStageEntities",
-   "token_twins": []
-  },
-  "st/rno0/UpdateStoneDoorTiles": {
-   "instructions": 40,
-   "name_twins": [
-    {
-     "file": "src/st/clock_room_entities.h",
-     "function": "UpdateStoneDoorTiles"
-    }
-   ],
-   "overlay": "st/rno0",
-   "shape_twins": [],
-   "symbol": "UpdateStoneDoorTiles",
    "token_twins": []
   },
   "st/rno0/func_801CD78C_801CEB40": {
@@ -2454,20 +2410,6 @@
     }
    ],
    "symbol": "func_801CE120",
-   "token_twins": []
-  },
-  "st/rno0/func_801CE2CC": {
-   "instructions": 76,
-   "name_twins": [],
-   "overlay": "st/rno0",
-   "shape_twins": [
-    {
-     "identical_constants": true,
-     "overlay": "st/rno0",
-     "symbol": "func_801CE2CC"
-    }
-   ],
-   "symbol": "func_801CE2CC",
    "token_twins": []
   },
   "st/rno0/func_801CE3FC": {
@@ -2537,7 +2479,7 @@
    ]
   }
  },
- "unmatched_stubs": 307,
+ "unmatched_stubs": 240,
  "version": "us",
- "with_candidates": 152
+ "with_candidates": 154
 }
