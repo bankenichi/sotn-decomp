@@ -158,7 +158,18 @@ segments:
       - [0x2124, .data, e_hammer]        # 0x57C
       - [0x26A0, .data, e_gurkha]        # 0x4F0
       - [0x2B90, .data, e_blade]         # 0x698
-      - [0x3228, data]
+      # e_subweapon_container, shimmed 2026-08-17 when
+      # src/st/e_subweapon_container.h was adopted from upstream. 0x8C, which is
+      # what upstream declares at this address, and which accounts for the four
+      # statics the header defines at file scope: glassPiecesParams (9
+      # SubWpnContDebris = 0x48), subweapon_params (9 s32 = 0x24),
+      # fallingLiquidAnim (7 AnimateEntityFrame = 0x10) and bubbleRiseSpeeds
+      # (4 s32 = 0x10), which is 0x8C exactly.
+      #
+      # 0x32B4 is upstream's next boundary too, and the rest of the old blob
+      # (0x32B4..0x3354) stays raw ahead of e_medusa_head.
+      - [0x3228, .data, e_subweapon_container]   # 0x8C
+      - [0x32B4, data]
       # (The note that stood here declaring e_room_fg unshimmable is retracted.
       # It was shimmed 2026-08-02 with no header change at all; see the segment
       # at 0x1D38 above for what the note got wrong.)

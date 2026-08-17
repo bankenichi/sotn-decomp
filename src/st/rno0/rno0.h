@@ -95,11 +95,23 @@ enum EntityID {
     E_BLADE,                     // EntityBlade
     E_BLADE_WEAPON,              // EntityBladeWeapon
     E_SUB_WEAPON_CONTAINER,      // EntitySubWeaponContainer
-    E_SUB_WPN_CONT_GLASS,        // EntitySubWpnContGlass
-    E_UNK_3B,                    // func_801C7654
-    E_UNK_3C,                    // func_801C77B8
-    E_UNK_3D,                    // func_801C7884
-    E_UNK_3E,                    // func_us_801CFEA0
+    // Renamed 2026-08-17 to match src/st/e_subweapon_container.h, adopted from
+    // upstream. Positional, so no value changes, and nothing in RNO0 referenced
+    // the old spellings (E_UNK_3B/3C/3D existed only in bo0.h as well, for
+    // unrelated functions).
+    //
+    // The mapping is READ OFF upstream's src/st/rno0/rno0.h, not guessed: its
+    // enum aligns with this one at both ends of the block, E_BLADE_WEAPON
+    // before and E_UNK_3F (func_us_801D068C) after, and in between it names
+    // E_FALLING_GLASS, E_FALLING_LIQUID, E_LIQUID_BUBBLES, E_SUBWPN_IN_CONT,
+    // E_GORGON. So the fork's three func_801C76xx/78xx names are upstream's
+    // EntityFallingLiquid, EntityBubbles and EntitySubwpnInContainer, and
+    // func_us_801CFEA0 is EntityGorgon.
+    E_FALLING_GLASS,             // EntitySubWpnContGlass
+    E_FALLING_LIQUID,            // EntityFallingLiquid (was func_801C7654)
+    E_LIQUID_BUBBLES,            // EntityBubbles (was func_801C77B8)
+    E_SUBWPN_IN_CONT,            // EntitySubwpnInContainer (was func_801C7884)
+    E_UNK_3E,                    // func_us_801CFEA0, upstream's EntityGorgon
     E_UNK_3F,                    // func_us_801D068C
     E_UNK_40,                    // func_us_801D0CFC
     E_UNK_41,                    // func_us_801D136C

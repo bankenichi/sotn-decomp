@@ -59,9 +59,13 @@ void EntityBlade(Entity* self);
 void EntityBladeWeapon(Entity* self);
 void EntitySubWeaponContainer(Entity* self);
 void EntitySubWpnContGlass(Entity* self);
-void func_801C7654(Entity* self);
-void func_801C77B8(Entity* self);
-void func_801C7884(Entity* self);
+// Renamed with the E_FALLING_LIQUID / E_LIQUID_BUBBLES / E_SUBWPN_IN_CONT
+// enumerators 2026-08-17: src/st/e_subweapon_container.h defines these three
+// under upstream's names, and EntityUpdates below is a C array of pointers, so
+// the old spellings became undefined references at link time.
+void EntityFallingLiquid(Entity* self);
+void EntityBubbles(Entity* self);
+void EntitySubwpnInContainer(Entity* self);
 void func_us_801CFEA0(Entity* self);
 void func_us_801D068C(Entity* self);
 void func_us_801D0CFC(Entity* self);
@@ -140,9 +144,9 @@ PfnEntityUpdate EntityUpdates[] = {
     EntityBladeWeapon,
     EntitySubWeaponContainer,
     EntitySubWpnContGlass,
-    func_801C7654,
-    func_801C77B8,
-    func_801C7884,
+    EntityFallingLiquid,
+    EntityBubbles,
+    EntitySubwpnInContainer,
     func_us_801CFEA0,
     func_us_801D068C,
     func_us_801D0CFC,
@@ -236,8 +240,13 @@ EInit g_EInitBlade = {ANIMSET_OVL(9), 2, 87, 541, 0x0BE};
 // Was `D_us_80180BAC`, a raw-address name. Identified by its frame index and
 // params (19, 0x0BF, matching no2 g_EInitBladeWeapon); src/st/e_hammer.h and friends require the real name.
 EInit g_EInitBladeWeapon = {ANIMSET_OVL(9), 19, 87, 541, 0x0BF};
-EInit D_us_80180BB8 = {ANIMSET_OVL(10), 0, 76, 550, 0x005};
-EInit D_us_80180BC4 = {ANIMSET_OVL(10), 0, 76, 550, 0x002};
+// RENAMED from D_us_80180BB8 and D_us_80180BC4 2026-08-17, so
+// src/st/e_subweapon_container.h can be shimmed here; it refers to both by
+// name. Upstream's src/st/rno0/e_init.c:200-201 declares these two names with
+// byte-identical tuples, in this order, so the pairing is read off upstream
+// rather than inferred from the descriptors. Nothing referenced the old names.
+EInit g_EInitSubwpnCloche = {ANIMSET_OVL(10), 0, 76, 550, 0x005};
+EInit g_EInitSubwpnClochePieces = {ANIMSET_OVL(10), 0, 76, 550, 0x002};
 EInit g_EInitGorgon = {ANIMSET_OVL(11), 0, 76, 560, 0x01F};
 EInit D_us_80180BDC = {ANIMSET_OVL(11), 0, 76, 560, 0x020};
 EInit D_us_80180BE8 = {ANIMSET_DRA(0), 0, 0, 0, 0x021};
