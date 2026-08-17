@@ -1,9 +1,118 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #include "bo6.h"
 
-INCLUDE_ASM("boss/bo6/nonmatchings/richter", func_us_801B4BD0);
+extern AnimationFrame D_us_80182008[];
+extern s32 D_us_801D11C8[];
+extern s32 D_us_801D1248[];
 
-INCLUDE_ASM("boss/bo6/nonmatchings/richter", func_us_801B4EAC);
+// HARVESTED from upstream/master src/boss/bo6/richter.c.
+// One rename: RicSetStand -> BO6_RicSetStand.
+//
+// The g_Ric clear is a hand-rolled word loop rather than memset, and that is
+// upstream's shape, not an oversight: the original emits the loop inline.
+void func_us_801B4BD0(void) {
+    s32 i;
+    Entity* var_s1;
+    Entity* e;
+    PlayerState* var_a0;
+    Primitive* prim;
+    s32* memset_ptr;
+    s32 memset_len;
+    s16 temp_v0;
+    s16 primIndex;
+    s32 radius;
+    s32 intensity;
+    s32 temp_v1;
+    s32 var_s2;
+    s32 var_s2_2;
+    s32 var_s2_3;
+    s32* var_s0;
+    s32* var_s3;
+
+    RIC.animSet = ANIMSET_OVL(1);
+    RIC.zPriority = g_unkGraphicsStruct.g_zEntityCenter + 8;
+    RIC.flags = FLAG_UNK_10000000 | FLAG_POS_CAMERA_LOCKED |
+                FLAG_SUPPRESS_STUN | FLAG_UNK_2000;
+    RIC.facingLeft = 0;
+    RIC.unk5A = 8;
+    RIC.palette = 0x8220;
+    RIC.scaleX = RIC.scaleY = 0x100;
+    RIC.rotPivotY = 0x18;
+    RIC.blendMode = BLEND_NO;
+
+    g_PlayerDraw[8].r0 = g_PlayerDraw[8].r1 = g_PlayerDraw[8].r2 =
+        g_PlayerDraw[8].r3 = g_PlayerDraw[8].g0 = g_PlayerDraw[8].g1 =
+            g_PlayerDraw[8].g2 = g_PlayerDraw[8].g3 = g_PlayerDraw[8].b0 =
+                g_PlayerDraw[8].b1 = g_PlayerDraw[8].b2 = g_PlayerDraw[8].b3 =
+                    0x80;
+
+    g_PlayerDraw[8].enableColorBlend = 0;
+
+    memset_len = sizeof(PlayerState) / sizeof(s32);
+    memset_ptr = (s32*)&g_Ric;
+    for (i = 0; i < memset_len; i++) {
+        *memset_ptr++ = 0;
+    }
+
+    g_Ric.vram_flag = g_Ric.unk04 = 1;
+
+    BO6_RicSetStand(0);
+    RIC.anim = D_us_80182008;
+
+    for (i = 0; i < 32; i++) {
+        radius = (rand() & 0x3FF) + FLT(1.0 / 16.0);
+        intensity = (rand() & 0xFF) + FLT(1.0 / 16.0);
+        D_us_801D11C8[i] = ((rcos(radius) << 4) * intensity) >> 8;
+        D_us_801D1248[i] = -(((rsin(radius) << 4) * intensity) >> 7);
+    }
+
+    for (e = &g_Entities[STAGE_ENTITY_START + 1], i = 0; i < 3; i++, e++) {
+        DestroyEntity(e);
+        e->animSet = ANIMSET_OVL(1);
+        e->unk5A = i + 9;
+        e->palette = PAL_FLAG(0x220);
+        e->flags = FLAG_POS_CAMERA_LOCKED;
+    }
+
+    primIndex = g_api.AllocPrimitives(PRIM_TILE, 6);
+    prim = &g_PrimBuf[primIndex];
+    g_Entities[65].primIndex = primIndex;
+    g_Entities[65].flags |= FLAG_HAS_PRIMS;
+    while (prim != NULL) {
+        prim->drawMode = DRAW_UNK_100 | DRAW_HIDE | DRAW_UNK02;
+        prim = prim->next;
+    }
+    g_api.TimeAttackController(
+        TIMEATTACK_EVENT_SAVE_RICHTER, TIMEATTACK_SET_VISITED);
+}
+
+// HARVESTED from upstream/master src/boss/bo6/richter.c, verbatim.
+// No renames: it calls nothing. The four hard bounds are the arena's extent
+// during the Richter fight, which is why this overlay clamps position itself
+// instead of going through the ordinary collision path.
+void func_us_801B4EAC(void) {
+    g_Ric.unk04 = g_Ric.vram_flag;
+    g_Ric.vram_flag = 0;
+    RIC.posY.val += RIC.velocityY;
+    RIC.posX.val += RIC.velocityX;
+
+    if (RIC.posY.val >= 0xB30000) {
+        RIC.posY.val = 0xB30000;
+        g_Ric.vram_flag |= TOUCHING_GROUND;
+    }
+    if (RIC.posY.val <= 0x280000) {
+        RIC.posY.val = 0x280000;
+        g_Ric.vram_flag |= TOUCHING_CEILING;
+    }
+    if (RIC.posX.val >= 0xF80000) {
+        RIC.posX.val = 0xF80000;
+        g_Ric.vram_flag |= TOUCHING_R_WALL;
+    }
+    if (RIC.posX.val <= 0x80000) {
+        RIC.posX.val = 0x80000;
+        g_Ric.vram_flag |= TOUCHING_L_WALL;
+    }
+}
 
 static void BO6_CheckBladeDashInput() {
     u16 step = RIC.step;
