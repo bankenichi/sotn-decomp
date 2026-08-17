@@ -268,6 +268,14 @@ EInit g_EInitSubwpnClochePieces = {ANIMSET_OVL(10), 0, 76, 550, 0x002};
 EInit g_EInitGorgon = {ANIMSET_OVL(11), 0, 76, 560, 0x01F};
 EInit D_us_80180BDC = {ANIMSET_OVL(11), 0, 76, 560, 0x020};
 EInit D_us_80180BE8 = {ANIMSET_DRA(0), 0, 0, 0, 0x021};
+// This IS g_EInitElevator: func_us_801C2184_from_no0 does lui/addiu on this
+// exact address at the top of its step 0, and upstream's
+// src/st/rno0/e_init.c:205 declares g_EInitElevator with a byte-identical
+// tuple. It KEEPS THE RAW NAME ANYWAY, and the reason is the one this file's
+// sibling config/symbols.us.strno0.txt already warns about: EntityUnkId1B is
+// still INCLUDE_ASM and its .s references D_us_80180BF4, and `make extract`
+// does not rewrite an existing nonmatchings stub. Renaming now costs the link.
+// Rename it together with EntityUnkId1B.
 EInit D_us_80180BF4 = {ANIMSET_OVL(12), 1, 72, 576, 0x005};
 EInit g_EInitMedusaHead1 = {ANIMSET_OVL(13), 0, 95, 592, 0x12F};
 EInit g_EInitMedusaHead2 = {ANIMSET_OVL(13), 0, 95, 593, 0x130};
