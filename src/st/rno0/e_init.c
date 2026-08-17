@@ -211,7 +211,13 @@ EInit g_EInitFloorTrap = {ANIMSET_OVL(4), 0, 75, 578, 0x005};
 EInit g_EInitThornweed = {ANIMSET_OVL(5), 0, 80, 537, 0x09D};
 EInit g_EInitCorpseweedUnused = {ANIMSET_OVL(5), 0, 80, 537, 0x09E};
 EInit g_EInitCorpseweed = {ANIMSET_OVL(5), 0, 80, 537, 0x09F};
-EInit D_us_80180B1C = {ANIMSET_OVL(5), 0, 80, 537, 0x0A0};
+// RENAMED from D_us_80180B1C 2026-08-17, so src/st/e_thornweed_corpseweed.h
+// can be shimmed here; that header refers to this descriptor by name. Not a
+// guess between the two unnamed candidates in this block: upstream's
+// src/st/rno0/e_init.c:187 declares g_EInitCorpseweedProjectile with exactly
+// this tuple, {ANIMSET_OVL(5), 0, 80, 537, 0x0A0}, while 0x09E stays
+// g_EInitCorpseweedUnused. Nothing referenced the old name.
+EInit g_EInitCorpseweedProjectile = {ANIMSET_OVL(5), 0, 80, 537, 0x0A0};
 EInit g_EInitStoneSkull = {ANIMSET_OVL(6), 0, 86, 527, 0x180};
 EInit g_EInitJackOBones = {ANIMSET_OVL(7), 1, 74, 528, 0x074};
 EInit D_us_80180B40 = {ANIMSET_OVL(7), 0, 74, 528, 0x002};
