@@ -791,7 +791,83 @@ INCLUDE_ASM("boss/bo6/nonmatchings/us_39144", func_us_801BC678);
 
 INCLUDE_ASM("boss/bo6/nonmatchings/us_39144", BO6_RicEntityHitByCutBlood);
 
-INCLUDE_ASM("boss/bo6/nonmatchings/us_39144", func_us_801BD0B8);
+extern AnimationFrame D_us_801818A8[];
+extern AnimationFrame D_us_801819D0[];
+extern AnimationFrame D_us_80181A0C[];
+
+// HARVESTED from upstream/master src/boss/bo6/us_39144.c.
+// One rename: RicCreateEntFactoryFromEntity -> BO6_RicCreateEntFactoryFromEntity.
+// The three anim tables are declared as ARRAYS, which is the shape upstream
+// uses and the shape the body needs -- see the note on D_us_801812B8 above.
+void func_us_801BD0B8(Entity* self) {
+    s16 paramsLo = self->params & 0xFF;
+    s16 paramsHi = (self->params >> 8) & 0xFF;
+
+    switch (self->step) {
+    case 0:
+        if (paramsHi == 1) {
+            self->scaleX = 0xC0;
+            self->scaleY = 0xC0;
+            self->drawFlags = ENTITY_SCALEX | ENTITY_SCALEY;
+            self->animSet = ANIMSET_DRA(2);
+            self->anim = D_us_80181A0C;
+        }
+
+        if ((paramsHi == 0) || (paramsHi == 2)) {
+            if (paramsLo & 3) {
+                self->anim = D_us_801819D0;
+                self->scaleX = 0x120;
+                self->scaleY = 0x120;
+                self->drawFlags = ENTITY_SCALEX | ENTITY_SCALEY;
+                self->animSet = ANIMSET_DRA(2);
+            } else {
+                self->animSet = ANIMSET_DRA(5);
+                self->anim = D_us_801818A8;
+                self->palette = PAL_FLAG(0x170);
+            }
+        }
+        self->flags = FLAG_UNK_20000000 | FLAG_POS_CAMERA_LOCKED;
+
+        if (rand() & 3) {
+            self->zPriority = RIC.zPriority + 2;
+        } else {
+            self->zPriority = RIC.zPriority - 2;
+        }
+
+        if (paramsHi == 2) {
+            self->posX.i.hi = RIC.posX.i.hi + (rand() % 44) - 22;
+        } else {
+            self->posX.i.hi = RIC.posX.i.hi + (rand() & 15) - 8;
+        }
+
+        self->posY.i.hi = RIC.posY.i.hi + RIC.hitboxOffY + (rand() & 31) - 16;
+        self->velocityY = FIX(-0.5);
+        self->velocityX = RIC.velocityX >> 2;
+        self->step++;
+        break;
+
+    case 1:
+        self->scaleX -= 4;
+        self->scaleY -= 4;
+        self->posY.val += self->velocityY;
+        self->posX.val += self->velocityX;
+        if ((self->pose == 8) && (self->anim != D_us_801818A8)) {
+            self->blendMode = BLEND_TRANSP;
+            if (!(paramsLo & 1) && (self->poseTimer == 1)) {
+                BO6_RicCreateEntFactoryFromEntity(self, FACTORY(4, 4), 0);
+            }
+        }
+
+        if ((self->pose == 16) && (self->anim == D_us_801818A8)) {
+            self->blendMode = BLEND_TRANSP;
+        }
+
+        if (self->poseTimer < 0) {
+            DestroyEntity(self);
+        }
+        break;
+    }
+}
 
 INCLUDE_ASM("boss/bo6/nonmatchings/us_39144", func_us_801BD384);
 
