@@ -87,4 +87,50 @@ void func_us_801CC8F8_from_no0(Entity* self) {
     }
 }
 
-INCLUDE_ASM("st/rno0/nonmatchings/e_background_pillars", func_us_801CC9B4_from_no0);
+// The two angle tables 801CC9B4 picks a destination from. NO0 declares them
+// static in src/st/no0/4C750.c as D_us_80181C14 and D_us_80181C24; RNO0's own
+// copies are still inside the undecompiled blob that starts at 0x1A74, so this
+// overlay reaches them by their splat symbols instead. Both are 8 s16, and the
+// pair runs 0x1A74..0x1A94, which is where config/splat.us.strno0.yaml's
+// comment already says e_background_pillars' data ends.
+//
+// Addresses read from the disassembly, not guessed: the lui/lh pairs at
+// asm/us/st/rno0/nonmatchings/e_background_pillars/func_us_801CC9B4_from_no0.s
+// name D_us_80181A74 and D_us_80181A84 directly.
+extern s16 D_us_80181A74[];
+extern s16 D_us_80181A84[];
+
+// TWIN PORT from src/st/no0/4C750.c:71, matched there. Updates the entity's
+// movement direction: every 16 game ticks it picks one of eight points and
+// turns toward it, 8 units of angle at a time.
+//
+// Only two substitutions, both forced by the assembly above: g_EInitCommon is
+// RNO0_EInitCommon (the #define at the top of this block already bridges it),
+// and the two angle tables are RNO0's, at 0x1A74/0x1A84 rather than NO0's
+// 0x1C14/0x1C24. Everything else is byte-identical to the donor, including
+// ANIMSET_OVL(1) -- note that func_us_801CC8F8_from_no0 above DOES shift its
+// animset from the donor's 1 to 2, so the two functions in this file diverge
+// differently and neither could be assumed from the other.
+void func_us_801CC9B4_from_no0(Entity* self) {
+    u8 angle;
+
+    if (!self->step) {
+        InitializeEntity(g_EInitCommon);
+        self->animSet = ANIMSET_OVL(1);
+        self->animCurFrame = 5;
+        self->zPriority = 1;
+        self->flags &= ~FLAG_POS_CAMERA_LOCKED;
+        self->ext.et_801CC9B4.currentAngle = 0;
+        return;
+    }
+    if ((g_GameTimer & 0xF) == 0) {
+        angle = (Random() & 7);
+        self->ext.et_801CC9B4.targetAngle = GetAnglePointToEntityShifted(
+            D_us_80181A74[angle], D_us_80181A84[angle]);
+    }
+    angle = AdjustValueWithinThreshold(8, self->ext.et_801CC9B4.currentAngle,
+                                       self->ext.et_801CC9B4.targetAngle);
+    SetEntityVelocityFromAngle(angle, 4);
+    MoveEntity();
+    self->ext.et_801CC9B4.currentAngle = angle;
+}
