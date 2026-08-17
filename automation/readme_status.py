@@ -220,7 +220,15 @@ def provenance_rows() -> list[tuple[str, int, str]]:
     rows = raw_rows()
     from collections import Counter
     prim = Counter(r["primary"] for r in rows)
+    # KEEP THIS IN STEP WITH match_provenance._PRECEDENCE. A source with no
+    # entry here renders as an empty cell, which is exactly what happened when
+    # `upstream-harvest` was added on 2026-08-16: the table printed a count of
+    # 25 against a blank explanation, so the largest single category in it said
+    # nothing about itself. The loop below iterates _PRECEDENCE, so a new
+    # source appears in the table whether or not anyone described it.
     blurb = {
+        "upstream-harvest": "upstream had already decompiled it; copied and "
+                            "verified here, **not** produced by this fork",
         "shim-segment": "shared header plus splat segment work",
         "shim-header": "body copied from a shared header",
         "transplant": "transplant.py moved a twin body in mechanically",
@@ -604,6 +612,26 @@ def self_test() -> int:
               + ("" if c else "   " + detail))
         if not c:
             fails.append(label)
+
+    print("\nevery provenance source the table can print has an explanation")
+    # The provenance table iterates match_provenance._PRECEDENCE, so a source
+    # added there appears here whether or not anyone wrote a description for
+    # it. `upstream-harvest` did exactly that on 2026-08-16 and rendered as a
+    # count of 25 beside an empty cell -- the biggest row in the table saying
+    # nothing. Asserting the two lists agree costs nothing and closes it.
+    sys.path.insert(0, str(AUTO))
+    import match_provenance as _mp                            # type: ignore
+    _blurbs = {
+        "upstream-harvest", "shim-segment", "shim-header", "transplant",
+        "twin-port", "permuter", "model-fleet", "claude-manual", "unknown",
+    }
+    _missing = [s for s in _mp._PRECEDENCE if s not in _blurbs]
+    ck(not _missing,
+       "no source in _PRECEDENCE lacks a blurb", f"missing: {_missing}")
+    _extra = [s for s in _blurbs if s not in _mp._PRECEDENCE]
+    ck(not _extra,
+       "and no blurb describes a source that no longer exists",
+       f"stale: {_extra}")
 
     print("\nthe drift checks are anchored to code, not to a remembered number")
     truth = _oracle_truth()

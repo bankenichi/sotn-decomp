@@ -48,6 +48,9 @@ Supporting analysis, all read-only, all runnable via `run_analysis`:
 | Script | Answers |
 |---|---|
 | `asm_twin_finder.py` | does this stub have a twin elsewhere in the tree? |
+| `queue_coverage.py` | does the QUEUE know about every stub in the tree? (see below) |
+| `upstream_harvest.py` | what has upstream decompiled that we still stub? |
+| `fn_diff.py` | where do two builds of one function diverge, instruction by instruction |
 | `codebase_index.py` | symbol/struct index used by the worker's prompt and gates |
 | `quality_audit.py` | ILLEGAL variants, invented symbols, magic numbers, duplicates |
 | `review_checks.py` | the nine reviewer-perspective checks (see section 4) |
