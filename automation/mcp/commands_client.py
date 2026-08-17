@@ -1005,6 +1005,20 @@ def build_lock_holder() -> dict | None:
 
 
 def run(action: str, timeout: float = 3600, **kwargs) -> dict:
+    # LINE SLICING, for git_show_file only. Popped BEFORE build_argv, because
+    # these are not git arguments: they post-filter git's output.
+    #
+    # Why it is worth having. Harvesting from upstream means lifting two or
+    # three functions out of a file that is often 1500 lines, and the whole
+    # file is then carried around for the rest of the session. us_3E79C.c
+    # alone is 42KB in this fork and larger upstream. Slicing at the source
+    # turns "read everything to use 3% of it" into a bounded read, and the
+    # hunk headers from git_diff already say which lines to ask for.
+    #
+    # Deliberately dumb: no `sed`, no shell, just a slice of the captured
+    # stdout, so it cannot change what git is asked to do.
+    _start = kwargs.pop("start", 0) or 0
+    _count = kwargs.pop("count", 0) or 0
     argv = build_argv(action, **kwargs)
     if DRYRUN:
         return {"action": action, "argv": argv, "dry_run": True}
@@ -1029,6 +1043,20 @@ def run(action: str, timeout: float = 3600, **kwargs) -> dict:
                            timeout=timeout)
         head = action in _HEAD_TRUNCATE
         cut = (lambda s: s[:MAX_OUT]) if head else (lambda s: s[-MAX_OUT:])
+        _sliced = None
+        if (_start or _count) and p.returncode == 0:
+            _all = p.stdout.splitlines()
+            _lo = max(0, int(_start) - 1) if _start else 0
+            _hi = _lo + int(_count) if _count else len(_all)
+            # Numbered, because the point of asking for a range is usually to
+            # ask for a neighbouring one next, and counting from a bare slice
+            # is how off-by-one errors get made.
+            p_stdout = "\n".join(f"{_lo + i + 1}\t{ln}"
+                                 for i, ln in enumerate(_all[_lo:_hi]))
+            _sliced = {"total_lines": len(_all),
+                       "returned": f"{_lo + 1}..{min(_hi, len(_all))}"}
+            p = subprocess.CompletedProcess(p.args, p.returncode,
+                                            p_stdout, p.stderr)
         out = {
             "action": action, "argv": argv, "dry_run": False,
             "returncode": p.returncode,
@@ -1038,6 +1066,8 @@ def run(action: str, timeout: float = 3600, **kwargs) -> dict:
         }
         if lock_note:
             out["index_lock"] = lock_note
+        if _sliced:
+            out["slice"] = _sliced
         return out
     except subprocess.TimeoutExpired:
         # A killed git leaves .git/index.lock behind. Say so here rather than

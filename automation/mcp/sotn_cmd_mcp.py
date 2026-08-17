@@ -753,19 +753,32 @@ def git_show(ref: str = "HEAD", path: str = "", timeout: int = 120) -> dict:
 
 
 @mcp.tool()
-def git_show_file(ref: str = "HEAD", path: str = "", timeout: int = 120) -> dict:
-    """A FILE'S FULL CONTENT at a ref. Read-only. NOT the same as git_show.
+def git_show_file(ref: str = "HEAD", path: str = "", start: int = 0,
+                  count: int = 0, timeout: int = 120) -> dict:
+    """A FILE'S CONTENT at a ref, optionally just a line range. Read-only.
 
-    git_show(ref, path) prints the DIFF that commit made to that path, so it
-    returns empty output for every commit that did not touch the file -- which
-    reads exactly like "the file does not exist there" and is the reason this
-    was built. Use this when the question is "what does upstream HAVE", and
-    git_show when the question is "what did this commit CHANGE".
+    NOT the same as git_show. git_show(ref, path) prints the DIFF that commit
+    made to that path, so it returns empty output for every commit that did
+    not touch the file -- which reads exactly like "the file does not exist
+    there" and is the reason this was built. Use this when the question is
+    "what does upstream HAVE", and git_show when the question is "what did
+    this commit CHANGE".
 
-    Example: git_show_file(ref="upstream/master",
-                           path="config/splat.us.strcen.yaml")
+    start/count slice the output and number the lines. USE THEM. Upstream
+    files routinely run past 1500 lines and a harvest usually wants two or
+    three functions out of one; pulling the whole file to use 3% of it costs
+    the rest of the session. git_diff's hunk headers (@@ -596,7 +131,7 @@)
+    give the upstream line numbers to ask for. The reply carries
+    slice.total_lines so the next range can be chosen without guessing.
+
+    Examples:
+        git_show_file(ref="upstream/master",
+                      path="config/splat.us.strcen.yaml")
+        git_show_file(ref="upstream/master", path="src/boss/bo6/us_3E79C.c",
+                      start=1, count=200)
     """
-    return cc.run("git_show_file", timeout=timeout, ref=ref, path=path)
+    return cc.run("git_show_file", timeout=timeout, ref=ref, path=path,
+                  start=start, count=count)
 
 
 @mcp.tool()
