@@ -1943,30 +1943,25 @@ typedef struct {
     /* 0x80 */ s16 timer;
 } ET_GremlinFire;
 
-// CHI Room 4, Thornweed
-typedef struct {
-    /* 0x7C */ char pad_7C[0x4];
-    /* 0x80 */ s16 timer;
-    /* 0x82 */ char pad_82[0x4];
-    /* 0x86 */ u8 isCorpseweedSpawned;
-} ET_Thornweed;
-
-// CHI Room 4, Corpseweed
+// CHI Room 4, Thornweed AND Corpseweed
 //
 // prim and isCorpseweedSpawned restored from upstream 2026-08-17, when
 // src/st/e_thornweed_corpseweed.h was adopted; that header names both. Each
-// replaces padding at the same offset, so THE LAYOUT DOES NOT MOVE: 0x7C was
+// replaced padding at the same offset, so THE LAYOUT DID NOT MOVE: 0x7C was
 // pad_7C[0x4] and 0x86 was the first byte of pad_86[0x2], whose second byte
 // the compiler still inserts implicitly to 2-align bobbingLeavesXT. Nothing
 // can have referenced a pad, so the five overlays already matching against
-// this struct are unaffected, and ET_Corpseweed still ends at 0x94, far below
+// this struct were unaffected, and ET_Corpseweed still ends at 0x94, far below
 // the 0xB7 that sets the union's size.
 //
-// NOTE upstream has no ET_Thornweed: it folded the two together, since the
-// thornweed and corpseweed forms are the same entity distinguished by params.
-// ET_Thornweed above is kept because src/st/en_thornweed_corpseweed.h still
-// uses ext.thornweed, and that header is still what cat, chi, lib and rchi
-// compile. Merging the two structs belongs with retiring that header.
+// THE SEPARATE ET_Thornweed IS GONE, folded in here the same day, as upstream
+// has it. It described the same 0x7C..0x87 bytes with fewer of them named
+// (pad_7C, timer, pad_82, isCorpseweedSpawned) and existed only because the
+// fork's older src/st/en_thornweed_corpseweed.h reached them through
+// ext.thornweed. That header has been retired in favour of the upstream one,
+// which uses ext.corpseweed throughout, and nothing else referenced either the
+// struct or the union member. The two forms are one entity distinguished by
+// params, so one struct is the honest description.
 typedef struct {
     /* 0x7C */ Primitive* prim;
     /* 0x80 */ s16 timer;
@@ -4365,7 +4360,6 @@ typedef union { // offset=0x7C
     ET_SalemWitchTribolt salemWitchTribolt;
     ET_Gremlin gremlin;
     ET_GremlinFire gremlinFire;
-    ET_Thornweed thornweed;
     ET_Corpseweed corpseweed;
     ET_VenusWeed venusWeed;
     ET_VenusWeedFlower venusWeedFlower;
