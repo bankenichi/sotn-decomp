@@ -328,7 +328,107 @@ void func_us_801C03E8(Entity* self) {
 
 INCLUDE_ASM("boss/bo6/nonmatchings/us_3E79C", EntityShaft);
 
-INCLUDE_ASM("boss/bo6/nonmatchings/us_3E79C", func_us_801C0FE8);
+extern u8 D_us_80181E9C[];
+
+// HARVESTED from upstream/master src/boss/bo6/us_3E79C.c. Two renames to this
+// fork's BO6_ exports: RicGetFreeEntity and RicCreateEntFactoryFromEntity.
+// Also uses ET_ShaftOrb (timer, velocityAngle, parent), restored above.
+void func_us_801C0FE8(Entity* self) {
+    Entity* entity;
+    Primitive* prim;
+    s32 posX;
+    s32 posY;
+    s32 accelX;
+    s32 accelY;
+    s16 primIndex;
+    s16 params;
+    s32 velocity;
+
+    params = self->params & 0xFF;
+    switch (self->step) {
+    case 0:
+        self->primIndex = g_api.AllocPrimitives(PRIM_GT4, 1);
+        if (self->primIndex == -1) {
+            DestroyEntity(self);
+            return;
+        }
+        prim = &g_PrimBuf[self->primIndex];
+        prim->clut = 0x252;
+        prim->tpage = 0x12;
+
+        // temp_a1 = &D_us_80181E9C[temp_a0];
+        prim->u0 = prim->u2 = D_us_80181E9C[params * 2] - 2;
+        prim->u1 = prim->u3 = D_us_80181E9C[params * 2] + 2;
+
+        prim->v0 = prim->v1 = D_us_80181E9C[params * 2 + 1] - 2;
+        prim->v2 = prim->v3 = D_us_80181E9C[params * 2 + 1] + 2;
+
+        prim->priority = RIC.zPriority + 4;
+        prim->drawMode = DRAW_UNK02;
+
+        accelX = D_us_80181E9C[params * 2] - 16;
+        accelY = D_us_80181E9C[params * 2 + 1] - 16;
+        self->posX.i.hi += accelX;
+        self->posY.i.hi += accelY;
+
+        velocity = ratan2(-accelY, accelX);
+        velocity += ((rand() & 0x7F) - 0x40);
+        self->ext.shaftOrb.velocityAngle = velocity;
+        self->flags = FLAG_UNK_10000000 | FLAG_HAS_PRIMS;
+        self->ext.shaftOrb.timer = 8;
+        self->step++;
+        break;
+
+    case 1:
+        if (--self->ext.shaftOrb.timer == 0) {
+            self->ext.shaftOrb.timer = 16;
+            velocity = self->ext.shaftOrb.velocityAngle;
+            self->velocityX = (rcos(velocity) * 32) + (rand() & 0xF);
+            self->velocityY = -((rsin(velocity) * 32) + (rand() & 0xF));
+            self->step++;
+        }
+        break;
+
+    case 2:
+        self->posX.val += self->velocityX;
+        self->posY.val += self->velocityY;
+        if (--self->ext.shaftOrb.timer == 0) {
+            BO6_RicCreateEntFactoryFromEntity(self, 0x4A, 0);
+            self->velocityY = (rand() & 0x7FFF) + 0xFFFF0000;
+            self->velocityX = self->velocityX >> 2;
+            self->ext.shaftOrb.timer = 1;
+            self->step++;
+        }
+        break;
+    case 3:
+        if ((self->ext.shaftOrb.timer % 4) == 0) {
+            entity = BO6_RicGetFreeEntity(0x50, 0x8F);
+            if (entity != NULL) {
+                DestroyEntity(entity);
+                entity->entityId = 0x43;
+                entity->params = 0x100;
+                // not shaft orb
+                entity->ext.shaftOrb.parent = self->ext.shaftOrb.parent;
+                entity->posX.val = self->posX.val;
+                entity->posY.val = self->posY.val;
+            }
+        }
+        self->ext.shaftOrb.timer += 1;
+        self->velocityY += 0xC00;
+        self->posY.val += self->velocityY;
+        self->posX.val += self->velocityX;
+        self->flags &= ~FLAG_UNK_10000000;
+        break;
+    }
+
+    posX = self->posX.i.hi;
+    posY = self->posY.i.hi;
+    prim = &g_PrimBuf[self->primIndex];
+    prim->x0 = prim->x2 = posX - 2;
+    prim->x1 = prim->x3 = posX + 2;
+    prim->y0 = prim->y1 = posY - 2;
+    prim->y2 = prim->y3 = posY + 2;
+}
 
 extern AnimationFrame D_us_80181EDC[];
 
