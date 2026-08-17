@@ -66,9 +66,60 @@ void func_us_801B5A14(s32 arg0) {
 
 INCLUDE_ASM("boss/bo6/nonmatchings/richter", RichterThinking);
 
+// TRIED AND REVERTED 2026-08-16. Upstream has a C body for this
+// (src/boss/bo6/richter.c) and it links here, but it does not match: the
+// build comes out ONE INSTRUCTION LONG at +21, a load-delay nop the original
+// does not have, and every later instruction is shifted by that one word.
+//
+// So this is a codegen difference inside case 10/case 11, not a naming or
+// symbol problem -- the two `(g_CastleFlags[SHAFT_ORB_DEFEATED] == 0) &&
+// (g_DemoMode == Demo_None)` tests are the only candidates, and getting the
+// scheduler to drop that nop is permuter work, not transcription. Left as a
+// stub deliberately rather than committed as a near-miss.
+//
+// The reverted body is in the upstream file if it is wanted as a permuter
+// seed; nothing else here depends on it.
 INCLUDE_ASM("boss/bo6/nonmatchings/richter", func_us_801B6998);
 
-INCLUDE_ASM("boss/bo6/nonmatchings/richter", EntityRichter);
+extern EInit D_us_80180400;
+extern s32 D_us_801CF3E0;
+extern s32 D_us_801CF3E4;
+
+// HARVESTED from upstream/master src/boss/bo6/richter.c.
+//
+// TWO RENAMES, both the same BO6_ prefix divergence between this fork and
+// upstream, and both confirmed against config/symbols.us.bobo6.txt rather
+// than guessed:
+//   upstream RicMain()            -> BO6_RicMain           (INCLUDE_ASM above)
+//   upstream DisableAfterImage()  -> BO6_DisableAfterImage (= 0x801B9B78)
+// Everything else is upstream's verbatim, including the entity sweep from
+// STAGE_ENTITY_START + 4 up to 144, which clears the room before the duel.
+void EntityRichter(Entity* self) {
+    Entity* entity;
+    s32 i;
+
+    g_Ric.unk6A = RIC.hitPoints;
+    if (self->step == 0) {
+        InitializeEntity(D_us_80180400);
+        func_us_801B4BD0();
+        entity = &g_Entities[STAGE_ENTITY_START + 4];
+        for (i = STAGE_ENTITY_START + 4; i < 144; i++, entity++) {
+            DestroyEntity(entity);
+        }
+        g_Ric.unk6E = g_Ric.unk6A = g_Ric.unk6C = RIC.hitPoints;
+        D_us_801CF3E4 = g_Ric.unk6E / 2;
+        D_us_801CF3E0 = 0;
+        g_Ric.unk70 = RIC.hitboxState;
+        func_us_801B5A14(18);
+        BO6_DisableAfterImage(1, 48);
+    } else {
+        RichterThinking();
+        BO6_RicMain(); // equivalent to EntityDoppleganger{10,40}
+        func_us_801BBBD0();
+        func_us_801B6998();
+    }
+    g_Ric.unk6C = g_Ric.unk6A;
+}
 
 INCLUDE_ASM("boss/bo6/nonmatchings/richter", BO6_RicStepStand);
 
