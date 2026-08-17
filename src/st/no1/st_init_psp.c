@@ -144,7 +144,9 @@ void InitEntityIds(void) {
     E_ID(SWORD_LORD) = E_SWORD_LORD;
     E_ID(SWORD_LORD_ATTACK) = E_SWORD_LORD_ATTACK;
     E_ID(ARMOR_LORD) = E_ARMOR_LORD;
-    E_ID(ARMOR_LORD_UNK1) = E_ARMOR_LORD_UNK1;
+    // The E_ID slot keeps its own name; only the no1.h enumerator was renamed
+    // to E_ARMOR_LORD_SWORD_SHADOW when src/st/e_armor_lord.h was adopted.
+    E_ID(ARMOR_LORD_UNK1) = E_ARMOR_LORD_SWORD_SHADOW;
     E_ID(ARMOR_LORD_FIRE_WAVE) = E_ARMOR_LORD_FIRE_WAVE;
     E_ID(ARMOR_LORD_UNK2) = E_ARMOR_LORD_UNK2;
     E_ID(ID_4E) = E_ID_4E;

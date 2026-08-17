@@ -1,323 +1,51 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #include "rno0.h"
 
-// g_Entities is used by func_us_801D1388_from_are below and is not reachable
-// through rno0.h. Hoisted here from beside that function, where the transplant
-// left it: a file-scope extern belongs with the other includes, not wedged
-// between two function bodies.
-extern Entity g_Entities[TOTAL_ENTITY_COUNT];
+// Shimmed 2026-08-17. The body is the shared implementation in
+// src/st/e_armor_lord.h, adopted verbatim from upstream; see the note there.
+//
+// GUARDIAN SELECTS THE VARIANT, and it is why this file could not be shimmed
+// before. The Armor Lord and the Guardian are nearly the same enemy, and the
+// header carries both behind #ifdef GUARDIAN: it changes attackTimers, the
+// fireball charge animation, whether the overhead slice and flametrail
+// animations end or loop, the wake distance (0xC0 rather than 0xA0), the
+// turn-around distance (0x40 rather than 0x50), and adds a shield reaction to
+// the player casting. The version this fork previously carried had none of
+// those branches, so no amount of parameterisation here would have reached
+// RNO0's behaviour. Upstream's src/st/rno0/e_guardian.c defines GUARDIAN for
+// the same reason.
+#define GUARDIAN
 
-/* THE FOUR `_from_are` FUNCTIONS IN THIS FILE WERE TRANSPLANTED, not written.
- *
- * ARE and RNO0 are the normal and inverted castle versions of the same stage,
- * so their guardian code is identical apart from per-overlay constants.
- * automation/transplant.py copies ARE's body, renames it, and derives the
- * substitutions from an asm-vs-asm diff; the oracle decides whether the result
- * is right. No model was involved in any of them.
- *
- * These are per-overlay statics by convention, NOT candidates for
- * src/st/e_armor_lord.h -- that header holds the ArmorLord entity itself and
- * declares none of these.
- *
- * The one substitution that could not be diffed out is PAL_ARMOR_LORD_UNK,
- * used by 801D1388. ARE says 0x21A and NO1 says 0x220, so the value is
- * per-overlay and neither could be borrowed; RNO0's 0x20A was read out of its
- * own assembly. See rno0.h's Palettes enum for the derivation.
- */
-static void func_us_801D1184_from_are(Primitive* prim) {
-    switch (prim->next->u2) {
-    case 0:
-        prim->tpage = 0x1A;
-        prim->clut = PAL_CC_FIRE_EFFECT;
-        prim->u0 = 0xF0;
-        prim->u1 = 0xFF;
-        prim->u2 = prim->u0;
-        prim->u3 = prim->u1;
-        if (prim->next->r3) {
-            prim->v0 = 0;
-            prim->v1 = prim->v0;
-            prim->v2 = 0xF;
-            prim->v3 = prim->v2;
-        } else {
-            prim->v0 = 0x28;
-            prim->v1 = prim->v0;
-            prim->v2 = 0x37;
-            prim->v3 = prim->v2;
-        }
-        prim->priority = g_CurrentEntity->zPriority + 2;
-        prim->drawMode =
-            DRAW_TPAGE2 | DRAW_TPAGE | DRAW_COLORS | DRAW_UNK02 | DRAW_TRANSP;
-        prim->x0 -= 8;
-        prim->x1 = prim->x0 + 16;
-        prim->x2 = prim->x0;
-        prim->x3 = prim->x1;
-        prim->y0 -= 8;
-        prim->y1 = prim->y0;
-        prim->y2 = prim->y0 + 0x10;
-        prim->y3 = prim->y2;
-        PGREY(prim, 0) = 0xA0;
-        PGREY(prim, 1) = 0xA0;
-        PGREY(prim, 2) = 0xA0;
-        PGREY(prim, 3) = 0xA0;
-        prim->next->u2++;
-        break;
+// RNO0 keeps this descriptor under OVL_EXPORT deliberately -- see the note at
+// its definition in e_init.c -- while the shared headers ask for the common
+// name. Same one-line bridge src/st/rno0/e_misc.c:8 uses.
+#define g_EInitInteractable OVL_EXPORT(EInitInteractable)
 
-    case 1:
-        if (g_Timer % 4 == 0) {
-            prim->y0++;
-            prim->y1 = prim->y0;
-            prim->y2 = prim->y0 + 0x10;
-            prim->y3 = prim->y2;
-        }
-        prim->r0 -= 2;
-        prim->g0 = prim->b0 = prim->r0;
-        prim->r1 = prim->g1 = prim->b1 = prim->r0;
-        prim->r2 = prim->g2 = prim->b2 = prim->r0;
-        prim->r3 = prim->g3 = prim->b3 = prim->r0;
-        if (prim->r0 < 0x10) {
-            UnkPolyFunc0(prim);
-            prim->next->u2 = 0;
-        }
-        break;
-    }
-}
-
-static void func_us_801D1388_from_are(Primitive* prim) {
-    Collider collider;
-    Primitive* otherPrim;
-    Entity* tempEntity;
-    s16 dx;
-    s16 posX, posY;
-
-    if (g_Timer % 3 == 0) {
-        u8 temp = prim->u0;
-        prim->u0 = prim->u1;
-        prim->u1 = temp;
-        prim->u2 = prim->u0;
-        prim->u3 = prim->u1;
-    }
-    switch (prim->next->u2) {
-    case 0:
-        prim->x0 = prim->x2;
-        prim->x1 = prim->x3;
-        prim->y0 = prim->y2;
-        prim->y1 = prim->y3;
-        prim->tpage = 0x14;
-        prim->clut = PAL_ARMOR_LORD_UNK;
-        prim->u0 = 0xE0;
-        prim->u1 = 0xEF;
-        prim->u2 = prim->u0;
-        prim->u3 = prim->u1;
-        prim->v0 = 0xD0;
-        prim->v1 = prim->v0;
-        prim->v2 = 0xD0;
-        prim->v3 = prim->v2;
-        PGREY(prim, 0) = 0x70;
-        PGREY(prim, 1) = 0x70;
-        PGREY(prim, 2) = 0x70;
-        PGREY(prim, 3) = 0x70;
-        prim->priority = g_CurrentEntity->zPriority + 2;
-        prim->drawMode =
-            DRAW_TPAGE2 | DRAW_TPAGE | DRAW_COLORS | DRAW_UNK02 | DRAW_TRANSP;
-        prim->next->u2++;
-        break;
-
-    case 1:
-        prim->v2 += 2;
-        prim->v3 = prim->v2;
-        prim->y0 -= 2;
-        prim->y1 -= 2;
-        if (g_CurrentEntity->facingLeft) {
-            prim->x3++;
-        } else {
-            prim->x3--;
-        }
-        prim->x1 = prim->x3;
-        posX = prim->x3;
-        posY = prim->y3 + 1;
-        g_api.CheckCollision(posX, posY, &collider, 0);
-        if ((collider.effects & EFFECT_SOLID) == 0) {
-            prim->next->r3 = 0;
-            prim->next->u2 += 1;
-            break;
-        }
-        if ((prim->v2 == 0xE0) && prim->next->r3) {
-            otherPrim = g_CurrentEntity->ext.armorLord.prim;
-            otherPrim = FindFirstUnkPrim2(otherPrim, 2);
-            if (otherPrim != NULL) {
-                UnkPolyFunc2(otherPrim);
-                otherPrim->next->r3 = prim->next->r3 - 1;
-                if (g_CurrentEntity->facingLeft) {
-                    otherPrim->x2 = prim->x3 - 8;
-                    otherPrim->x3 = otherPrim->x2 + 16;
-                } else {
-                    otherPrim->x2 = prim->x3 + 8;
-                    otherPrim->x3 = otherPrim->x2 - 16;
-                }
-                otherPrim->y2 = prim->y3;
-                otherPrim->y3 = otherPrim->y2;
-            }
-        }
-        if (prim->v2 > 0xFD) {
-            otherPrim = g_CurrentEntity->ext.armorLord.prim;
-            otherPrim = FindFirstUnkPrim2(otherPrim, 2);
-            if (otherPrim != NULL) {
-                UnkPolyFunc2(otherPrim);
-                otherPrim->next->g3 = 1;
-                otherPrim->next->r3 = Random() & 1;
-                if (g_CurrentEntity->facingLeft) {
-                    otherPrim->x0 = prim->x1 - 0x10;
-                } else {
-                    otherPrim->x0 = prim->x1 + 0x10;
-                }
-                otherPrim->y0 = prim->y1 + 0x10;
-            }
-            prim->next->u2++;
-        }
-        break;
-
-    case 2:
-        prim->v2--;
-        prim->v3 = prim->v2;
-        prim->y0++;
-        prim->y1++;
-        prim->g0 -= 4;
-        prim->b0 -= 2;
-        prim->r1 = prim->r2 = prim->r3 = prim->r0;
-        prim->g1 = prim->g2 = prim->g3 = prim->g0;
-        prim->b1 = prim->b2 = prim->b3 = prim->b0;
-        if (prim->v2 < 0xD2) {
-            UnkPolyFunc0(prim);
-            prim->next->u2 = 0;
-        }
-        break;
-    }
-    tempEntity = &PLAYER;
-    if (g_CurrentEntity->facingLeft) {
-        dx = prim->x3 - tempEntity->posX.i.hi;
-    } else {
-        dx = tempEntity->posX.i.hi - prim->x3;
-    }
-    if ((dx > 0) && !prim->next->v2 && (dx < 0x10)) {
-        tempEntity = AllocEntity(&g_Entities[160], &g_Entities[192]);
-        if (tempEntity != NULL) {
-            CreateEntityFromCurrentEntity(E_ARMOR_LORD_UNK2, tempEntity);
-            tempEntity->posX.i.hi = prim->x3;
-            tempEntity->posY.i.hi = prim->y0;
-            tempEntity->facingLeft = g_CurrentEntity->facingLeft;
-            tempEntity->hitboxHeight = (prim->y2 - prim->y0) / 2;
-            tempEntity->hitboxOffY = tempEntity->hitboxHeight + 8;
-            tempEntity->ext.armorLord.prim = prim;
-            prim->next->v2 = 1;
-        }
-    }
-}
-
-INCLUDE_ASM("st/rno0/nonmatchings/e_armor_lord_guardian", EntityArmorLordFireWave);
-
-// Takes Entity* even though it ignores it: e_init.c declares it that way and
-// stores it in EntityUpdates[], typed void (*)(struct Entity*).
-void RNO0_Unused801C2C50(Entity* self) {}
-
-static void func_us_801D1A9C_from_are(void) {
-    Primitive* prim;
-    s32 primIndex;
-
-    switch (g_CurrentEntity->step_s) {
-    case 0:
-        primIndex = g_api.AllocPrimitives(PRIM_GT4, 2);
-        if (primIndex != -1) {
-            g_CurrentEntity->flags |= FLAG_HAS_PRIMS;
-            g_CurrentEntity->primIndex = primIndex;
-            prim = &g_PrimBuf[primIndex];
-            g_CurrentEntity->ext.armorLord.prim = prim;
-            UnkPolyFunc2(prim);
-            prim->tpage = 0x1A;
-            prim->clut = PAL_CC_STONE_EFFECT;
-            prim->u0 = 0x14;
-            prim->u1 = 0x2C;
-            prim->u2 = prim->u0;
-            prim->u3 = prim->u1;
-            prim->v0 = 0xC0;
-            prim->v1 = prim->v0;
-            prim->v2 = 0xFF;
-            prim->v3 = prim->v2;
-            prim->priority = g_CurrentEntity->zPriority + 2;
-            prim->drawMode = DRAW_TPAGE2 | DRAW_TPAGE | DRAW_COLORS |
-                             DRAW_UNK02 | DRAW_TRANSP;
-            prim->p3 = 8;
-            if (g_CurrentEntity->facingLeft) {
-                prim->next->x1 = g_CurrentEntity->posX.i.hi + 0x16;
-            } else {
-                prim->next->x1 = g_CurrentEntity->posX.i.hi - 0x16;
-            }
-            prim->next->y0 = g_CurrentEntity->posY.i.hi - 4;
-            LOH(prim->next->r2) = 0;
-            LOH(prim->next->b2) = 0;
-            prim->next->b3 = 0x80;
-        } else {
-            g_CurrentEntity->step_s = 4;
-            break;
-        }
-        g_CurrentEntity->hitboxState = 1;
-        g_CurrentEntity->ext.armorLord.unk8C = 0;
-        PlaySfxPositional(SFX_MAGIC_NOISE_SWEEP);
-        g_CurrentEntity->step_s++;
-        break;
-
-    case 1:
-        prim = g_CurrentEntity->ext.armorLord.prim;
-        LOH(prim->next->r2)++;
-        LOH(prim->next->b2) += 8;
-        UnkPrimHelper(prim);
-        if (g_CurrentEntity->ext.armorLord.unk8C++ > 8) {
-            g_CurrentEntity->ext.armorLord.unk8C = 0;
-            g_CurrentEntity->step_s++;
-        }
-        break;
-
-    case 2:
-        break;
-
-    case 3:
-        prim = g_CurrentEntity->ext.armorLord.prim;
-        prim->next->b3 -= 8;
-        UnkPrimHelper(prim);
-        if (g_CurrentEntity->ext.armorLord.unk8C++ > 15) {
-            primIndex = g_CurrentEntity->primIndex;
-            g_api.FreePrimitives(primIndex);
-            g_CurrentEntity->flags &= ~FLAG_HAS_PRIMS;
-        }
-        break;
-    }
-}
-
-INCLUDE_ASM("st/rno0/nonmatchings/e_armor_lord_guardian", func_us_801D1DAC_from_are);
-
-INCLUDE_ASM("st/rno0/nonmatchings/e_armor_lord_guardian", EntityArmorLord);
-
-INCLUDE_ASM("st/rno0/nonmatchings/e_armor_lord_guardian", func_us_801D348C_from_are);
-
-extern EInit D_us_80180AE0;
-
-void func_us_801D3700_from_are(Entity* self) {
-    Primitive* prim;
-    s32 height;
-    s32 offsetY;
-
-    if (!self->step) {
-        height = self->hitboxHeight;
-        offsetY = self->hitboxOffY;
-        InitializeEntity(D_us_80180AE0);
-        self->hitboxWidth = 8;
-        self->hitboxOffX = 8;
-        self->hitboxHeight = height;
-        self->hitboxOffY = offsetY;
-    }
-
-    if (self->step++ > 5) {
-        prim = self->ext.armorLord.prim;
-        prim->next->v2 = 0;
-        DestroyEntity(self);
-    }
-}
+// The header supplies NINE functions, more than the two the harvest scan could
+// name. Four were INCLUDE_ASM stubs here:
+//
+//   EntityArmorLordFireWave      (a stub, and on the scan's list)
+//   EntityArmorLord              (a stub, and on the scan's list)
+//   EntityArmorLordSwordShadow   (the stub func_us_801D348C_from_are)
+//   FadeArmorLordDeath           (the stub func_us_801D1DAC_from_are; static
+//                                 in the header, so its symbol goes away)
+//
+// and five were already matched here by hand, transplanted from ST/ARE:
+//
+//   FireWavePrimHelper1          was func_us_801D1184_from_are
+//   FireWavePrimHelper2          was func_us_801D1388_from_are
+//   ArmorLordShieldHelper        was func_us_801D1A9C_from_are
+//   EntityArmorLordUnused        was OVL_EXPORT(Unused801C2C50)
+//   EntityArmorLordUnk2          was func_us_801D3700_from_are
+//
+// The `_from_are` suffix recorded where each transplant came from, which was
+// honest while they were copies. They are shared code now, and the header
+// names each function after what it does.
+//
+// PAL_ARMOR_LORD_UNK stays in rno0.h. It is per-overlay -- ARE says 0x21A, NO1
+// says 0x220, RNO0's 0x20A was read out of this overlay's own assembly -- and
+// the header expects the including stage to supply it.
+//
+// The matching .data slot is declared as
+// [0x1B00, .data, e_armor_lord_guardian] in config/splat.us.strno0.yaml.
+#include "../e_armor_lord.h"

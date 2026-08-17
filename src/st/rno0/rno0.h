@@ -66,10 +66,17 @@ enum EntityID {
     // header could not compile here. Enumerators are positional, so this
     // renames without changing a value, and nothing in RNO0 referenced the
     // old spellings. Same functions ARE names them after: are.h:91 and :93.
-    E_ARMOR_LORD_UNK1,           // func_us_801D348C_from_are
+    // E_ARMOR_LORD_UNK1 -> E_ARMOR_LORD_SWORD_SHADOW and E_UNK_25 ->
+    // E_ARMOR_LORD_UNUSED 2026-08-17, when src/st/e_armor_lord.h was adopted;
+    // it refers to both by name. Positional, so no value changes, and nothing
+    // referenced the old spellings. Read off upstream's rno0.h, which spells
+    // this run E_GUARDIAN, E_GUARDIAN_SWORD_SHADOW, E_GUARDIAN_FIRE_WAVE,
+    // E_GUARDIAN_UNK2, E_GUARDIAN_UNUSED and aligns with this enum on both
+    // sides (E_UNK_1F before, E_FLOORTRAP after).
+    E_ARMOR_LORD_SWORD_SHADOW,   // EntityArmorLordSwordShadow
     E_ARMOR_LORD_FIRE_WAVE,      // EntityArmorLordFireWave
-    E_ARMOR_LORD_UNK2,           // func_us_801D3700_from_are
-    E_UNK_25,                    // OVL_EXPORT(Unused801C2C50)
+    E_ARMOR_LORD_UNK2,           // EntityArmorLordUnk2
+    E_ARMOR_LORD_UNUSED,         // EntityArmorLordUnused
     // Renamed from E_FLOOR_TRAP 2026-08-16 to match src/st/e_floor_trap.h,
     // by the same reasoning as the E_ARMOR_LORD_* renames above: enumerators
     // are positional, so this does not change the value (E_UNK_25 precedes it,

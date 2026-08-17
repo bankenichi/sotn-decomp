@@ -55,9 +55,12 @@ void EntityAxeKnightThrowingAxe(Entity* self);
 void func_us_801CBA30(Entity* self);
 void InitializeUnkEntity(Entity* self);
 void EntityArmorLord(Entity* self);
-void func_us_801D348C(Entity* self);
+// Renamed 2026-08-17 with the adoption of upstream's src/st/e_armor_lord.h,
+// which defines both under these names. EntityUpdates below is a C array of
+// pointers, so the old spellings would fail at link, not at compile.
+void EntityArmorLordSwordShadow(Entity* self);
 void EntityArmorLordFireWave(Entity* self);
-void func_us_801D3700(Entity* self);
+void EntityArmorLordUnk2(Entity* self);
 void EntityHuntingGirl(Entity* self);
 void EntityHuntingGirlAttack(Entity* self);
 void EntityParanthropus(Entity* self);
@@ -134,9 +137,9 @@ PfnEntityUpdate EntityUpdates[] = {
     func_us_801CBA30,
     InitializeUnkEntity,
     EntityArmorLord,
-    func_us_801D348C,
+    EntityArmorLordSwordShadow,
     EntityArmorLordFireWave,
-    func_us_801D3700,
+    EntityArmorLordUnk2,
     EntityHuntingGirl,
     EntityHuntingGirlAttack,
     EntityParanthropus,
@@ -208,8 +211,13 @@ EInit g_EInitAxeKnightAxe = {ANIMSET_OVL(0x08), 0x2F, 0x50, 0x0213, 0x007};
 
 // Armor Lord
 EInit g_EInitArmorLord = {ANIMSET_OVL(0x09), 0x01, 0x52, 0x0216, 0x022};
-EInit D_us_80180AE8 = {ANIMSET_OVL(0x09), 0x00, 0x52, 0x0216, 0x023};
-EInit D_us_80180AF4 = {ANIMSET_OVL(0x00), 0x00, 0x00, 0x0000, 0x024};
+// Renamed from D_us_80180AE8 and D_us_80180AF4 2026-08-17, so the adopted
+// src/st/e_armor_lord.h can refer to them by name. Upstream's version of this
+// file declares exactly these two names with byte-identical tuples in this
+// order, so the pairing is read off upstream rather than inferred.
+EInit g_EInitArmorLordSwordShadow = {
+    ANIMSET_OVL(0x09), 0x00, 0x52, 0x0216, 0x023};
+EInit g_EInitArmorLordTemp = {ANIMSET_OVL(0x00), 0x00, 0x00, 0x0000, 0x024};
 
 // Hunting Girl
 EInit g_EInitHuntingGirl = {ANIMSET_OVL(0x0A), 0x00, 0x54, 0x021D, 0x0E3};

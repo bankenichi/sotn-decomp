@@ -2630,21 +2630,36 @@ typedef struct {
     /* 0x8A */ s16 unk8A;
 } ET_801CE2E0;
 
+// Named from upstream 2026-08-17, when src/st/e_armor_lord.h was adopted; that
+// header uses these names throughout and is the only thing that ever touched
+// this variant beyond `prim`.
+//
+// RENAMES ONLY -- every offset and every TYPE is unchanged. That is not a
+// convenience, it is the evidence: upstream's header differs from the one this
+// fork carried only in the identifier on each of these lines (`unk8C++ > 8`
+// became `timer2++ > 8`, and so on), and both versions match their respective
+// builds. A type change on any of these fields would alter the load or store
+// width and break one side or the other, so the two must already agree.
+//
+// The three timers are genuinely separate counters used by different steps,
+// which is why upstream numbered rather than merged them. fadeOutY/Y2/Z drive
+// the death dissolve: Y and Z feed rotation vectors directly as -fadeOutY and
+// -fadeOutZ, and Y2 accumulates the spin.
 typedef struct {
     /* 0x7C */ struct Primitive* prim;
-    /* 0x80 */ s16 unk80;
+    /* 0x80 */ s16 timer;
     /* 0x82 */ s16 : 16;
-    /* 0x84 */ u8 unk84;
-    /* 0x85 */ u8 unk85;
-    /* 0x86 */ u8 unk86;
+    /* 0x84 */ u8 facingLeft;
+    /* 0x85 */ u8 didShield;
+    /* 0x86 */ u8 fadeOutZ;
     /* 0x87 */ u8 : 8;
-    /* 0x88 */ s16 unk88;
-    /* 0x8A */ s16 unk8A;
-    /* 0x8C */ u8 unk8C;
-    /* 0x8D */ u8 unk8D;
+    /* 0x88 */ s16 fadeOutY;
+    /* 0x8A */ s16 fadeOutY2;
+    /* 0x8C */ u8 timer2;
+    /* 0x8D */ u8 timer3;
     /* 0x8E */ u8 unk8E;
     /* 0x8F */ u8 unk8F;
-    /* 0x90 */ struct Primitive* unk90;
+    /* 0x90 */ struct Primitive* deathPrim;
 } ET_ArmorLord;
 
 typedef struct {

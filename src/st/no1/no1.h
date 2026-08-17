@@ -91,7 +91,10 @@ typedef enum EntityID {
     /* 0x48 */ E_SWORD_LORD,
     /* 0x49 */ E_SWORD_LORD_ATTACK,
     /* 0x4A */ E_ARMOR_LORD,
-    /* 0x4B */ E_ARMOR_LORD_UNK1,
+    // Renamed 2026-08-17 with the adoption of upstream's src/st/e_armor_lord.h.
+    // Positional, so 0x4B is unchanged. See are.h for why leaving it alone did
+    // not fail to compile: an undeclared enum constant is silently 0 here.
+    /* 0x4B */ E_ARMOR_LORD_SWORD_SHADOW,
     /* 0x4C */ E_ARMOR_LORD_FIRE_WAVE,
     /* 0x4D */ E_ARMOR_LORD_UNK2,
     /* 0x4E */ E_ID_4E,

@@ -34,10 +34,14 @@ void EntityStoneDoor(Entity* self);
 void OVL_EXPORT(Unused801C2338)(Entity* self);
 void EntityDummy(Entity* self);
 void EntityArmorLord(Entity* self);
-void func_us_801D348C_from_are(Entity* self);
+// Renamed 2026-08-17 with the shim of src/st/e_armor_lord.h, which defines all
+// four under these names. The `_from_are` suffix recorded where the earlier
+// transplants came from, which was honest but is now redundant: this overlay
+// shares the code rather than copying it.
+void EntityArmorLordSwordShadow(Entity* self);
 void EntityArmorLordFireWave(Entity* self);
-void func_us_801D3700_from_are(Entity* self);
-void OVL_EXPORT(Unused801C2C50)(Entity* self);
+void EntityArmorLordUnk2(Entity* self);
+void EntityArmorLordUnused(Entity* self);
 void EntityFloorTrap(Entity* self);
 void EntityThornweed(Entity* self);
 void EntityCorpseweed(Entity* self);
@@ -119,10 +123,10 @@ PfnEntityUpdate EntityUpdates[] = {
     OVL_EXPORT(Unused801C2338),
     EntityDummy,
     EntityArmorLord,
-    func_us_801D348C_from_are,
+    EntityArmorLordSwordShadow,
     EntityArmorLordFireWave,
-    func_us_801D3700_from_are,
-    OVL_EXPORT(Unused801C2C50),
+    EntityArmorLordUnk2,
+    EntityArmorLordUnused,
     EntityFloorTrap,
     EntityThornweed,
     EntityCorpseweed,
@@ -202,9 +206,23 @@ EInit OVL_EXPORT(EInitCommon) = {ANIMSET_DRA(0), 0, 0, 0, 0x003};
 // NOTE there is a SECOND, different descriptor above: OVL_EXPORT(EInitDamageNum)
 // carries 0x002 while this one carries 0x003. They are not interchangeable.
 EInit g_EInitDamageNum = {ANIMSET_DRA(0), 0, 0, 0, 0x003};
-EInit g_EInitGuardian = {ANIMSET_OVL(3), 1, 82, 518, 0x18C};
-EInit D_us_80180AD4 = {ANIMSET_OVL(3), 0, 82, 518, 0x18D};
-EInit D_us_80180AE0 = {ANIMSET_OVL(0), 0, 0, 0, 0x18E};
+// The Armor Lord's three descriptors, renamed 2026-08-17 so
+// src/st/e_armor_lord.h can be shimmed here; it refers to all three by name.
+// g_EInitGuardian was already named but under the OTHER of the two names this
+// enemy goes by, and D_us_80180AD4/D_us_80180AE0 were raw-address names that
+// quality_audit.py had been flagging.
+//
+// Upstream's src/st/rno0/e_init.c declares this same run of three, in this
+// order, with byte-identical tuples, as g_EInitGuardian,
+// g_EInitGuardianSwordShadow and g_EInitGuardianTemp; its e_guardian.c then
+// #defines the g_EInitArmorLord* names onto them. This fork already committed
+// to the ARMOR_LORD spelling in rno0.h and in the filename
+// e_armor_lord_guardian.c, so the aliases are spent here instead and the shim
+// needs only `#define GUARDIAN`. Same entity either way -- upstream's own
+// header comment says the two share the vast majority of their code.
+EInit g_EInitArmorLord = {ANIMSET_OVL(3), 1, 82, 518, 0x18C};
+EInit g_EInitArmorLordSwordShadow = {ANIMSET_OVL(3), 0, 82, 518, 0x18D};
+EInit g_EInitArmorLordTemp = {ANIMSET_OVL(0), 0, 0, 0, 0x18E};
 // RENAMED from D_us_80180AEC 2026-08-16, so src/st/e_floor_trap.h can be
 // shimmed here. This is the floor trap's EInit: same shape as rnz0's
 // g_EInitFloorTrap (`0, 75, <n>, 0x005`), differing only in animSet and the

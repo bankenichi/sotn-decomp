@@ -107,6 +107,21 @@ segments:
       # variants.
       - [0x19C0, .data, e_misc]          # 0xB4
       - [0x1A74, data]
+      # e_armor_lord_guardian, shimmed 2026-08-17 when src/st/e_armor_lord.h was
+      # adopted from upstream. 0x1B8, ending where e_particles already starts.
+      # Upstream declares the same address and size under the stem e_guardian;
+      # the stem here has to be e_armor_lord_guardian because splat resolves it
+      # to the `c` filename, and this overlay's file has carried that name since
+      # its .rodata segment at 0x35C2C was declared.
+      #
+      # The header emits a lot at file scope: randomSteps, sensors1, sensors2,
+      # attackTimers, nine AnimateEntityFrame tables, three colour/rotation
+      # vectors, a MATRIX, hitboxWidthHeights and hitboxOffXYs. Several of those
+      # differ between the Armor Lord and the Guardian, which is what
+      # `#define GUARDIAN` in the shim selects, so this size is right only for
+      # the guardian variant -- and 0x1B8 is what upstream's rno0, also a
+      # guardian, declares.
+      - [0x1B00, .data, e_armor_lord_guardian]   # 0x1B8
       - [0x1CB8, .data, e_particles]     # 0x80
       # e_room_fg, shimmed 2026-08-02. 0x1D38..0x1DC4 = 0x8C, the size all 18
       # peers that declare this segment use.

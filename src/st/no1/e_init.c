@@ -75,9 +75,12 @@ void func_us_801CF298(Entity* self);
 void EntitySwordLord(Entity* self);
 void EntitySwordLordAttack(Entity* self);
 void EntityArmorLord(Entity* self);
-void func_us_801D348C(Entity* self);
+// Renamed 2026-08-17 with the adoption of upstream's src/st/e_armor_lord.h.
+// EntityArmorLordUnused below was already spelled upstream's way here, which
+// is a hint these two were simply missed when the rest of the block was named.
+void EntityArmorLordSwordShadow(Entity* self);
 void EntityArmorLordFireWave(Entity* self);
-void func_us_801D3700(Entity* self);
+void EntityArmorLordUnk2(Entity* self);
 void EntityArmorLordUnused(Entity* self);
 void EntitySpearGuard(Entity* self);
 void EntitySpearGuardBlock(Entity* self);
@@ -173,9 +176,9 @@ PfnEntityUpdate EntityUpdates[] = {
     /* 0x47 */ EntitySwordLord,
     /* 0x48 */ EntitySwordLordAttack,
     /* 0x49 */ EntityArmorLord,
-    /* 0x4A */ func_us_801D348C,
+    /* 0x4A */ EntityArmorLordSwordShadow,
     /* 0x4B */ EntityArmorLordFireWave,
-    /* 0x4C */ func_us_801D3700,
+    /* 0x4C */ EntityArmorLordUnk2,
     /* 0x4D */ EntityArmorLordUnused,
     /* 0x4E */ EntitySpearGuard,
     /* 0x4F */ EntitySpearGuardBlock,
@@ -233,8 +236,12 @@ EInit g_EInitSwordLordAttack = {ANIMSET_DRA(0x00), 0x00, 0x00, 0x000, 0x00A};
 EInit g_EInitBoneArcher = {ANIMSET_OVL(0x07), 0x01, 0x4B, 0x215, 0x06C};
 EInit g_EInitBoneArcherArrow = {ANIMSET_OVL(0x07), 0x00, 0x4B, 0x215, 0x06D};
 EInit g_EInitArmorLord = {ANIMSET_OVL(0x0B), 0x01, 0x52, 0x21C, 0x022};
-EInit D_us_80180AE8 = {ANIMSET_OVL(0x0B), 0x00, 0x52, 0x21C, 0x023};
-EInit D_us_80180AF4 = {ANIMSET_OVL(0x00), 0x00, 0x00, 0x000, 0x024};
+// Renamed from D_us_80180AE8 and D_us_80180AF4 2026-08-17, so the adopted
+// src/st/e_armor_lord.h can refer to them by name. Same run of three as ARE's,
+// with this stage's own animSet and palette.
+EInit g_EInitArmorLordSwordShadow = {ANIMSET_OVL(0x0B), 0x00, 0x52, 0x21C,
+                                     0x023};
+EInit g_EInitArmorLordTemp = {ANIMSET_OVL(0x00), 0x00, 0x00, 0x000, 0x024};
 EInit g_EInitSpearGuard = {ANIMSET_OVL(0x0C), 0x01, 0x53, 0x222, 0x05D};
 EInit g_EInitThrownSpear = {ANIMSET_OVL(0x0C), 0x00, 0x53, 0x222, 0x060};
 EInit D_us_80180B18 = {ANIMSET_OVL(0x0D), 0x01, 0x50, 0x228, 0x0B1};

@@ -88,7 +88,16 @@ enum EntityID {
     E_AXE_KNIGHT_AXE_2,             // func_us_801CBA30
     E_UNK_ENTITY,                   // InitializeUnkEntity
     E_ARMOR_LORD,                   // EntityArmorLord
-    E_ARMOR_LORD_UNK1,              // func_us_801D348C
+    // Renamed 2026-08-17 with the adoption of upstream's src/st/e_armor_lord.h,
+    // which spawns this entity by the name E_ARMOR_LORD_SWORD_SHADOW.
+    // Positional, so the value is unchanged.
+    //
+    // WORTH KNOWING: leaving it as E_ARMOR_LORD_UNK1 did NOT fail to compile.
+    // This toolchain, at -w, silently takes an undeclared enum constant as 0,
+    // so `CreateEntityFromEntity(E_ARMOR_LORD_SWORD_SHADOW, ...)` built clean
+    // and emitted `move $a0, 0` where the original has `ori $a0, 0x37`. Exactly
+    // one word in the whole overlay differed and only the checksum caught it.
+    E_ARMOR_LORD_SWORD_SHADOW,      // EntityArmorLordSwordShadow
     E_ARMOR_LORD_FIRE_WAVE,         // EntityArmorLordFireWave
     E_ARMOR_LORD_UNK2,              // func_us_801D3700
     E_HUNTING_GIRL,                 // EntityHuntingGirl
