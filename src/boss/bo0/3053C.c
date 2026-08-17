@@ -546,7 +546,48 @@ INCLUDE_ASM("boss/bo0/nonmatchings/3053C", func_us_801B8D8C);
 
 INCLUDE_ASM("boss/bo0/nonmatchings/3053C", func_us_801B9BEC);
 
-INCLUDE_ASM("boss/bo0/nonmatchings/3053C", func_us_801BA030);
+// HARVESTED from upstream/master src/boss/bo0/3A030.c.
+//
+// NOT static, though upstream has it static. Upstream can, because its file
+// also holds the caller (EntityRealOlroxDrool, which is func_us_801BA128
+// here) as C. Here that caller is still INCLUDE_ASM, so the asm references
+// this by name and needs external linkage -- and a static with no visible
+// call site is a function the compiler is entitled to discard outright.
+// Binding is the only difference; the emitted instructions are identical,
+// which is what the oracle checks.
+//
+// Making it static is the right follow-up at the moment func_us_801BA128 is
+// harvested too. Upstream's body for that one is available and uses
+// Ext.olroxDrool, which this fork does not yet define.
+void func_us_801BA030(s16 sfxId) {
+    s32 yOffset;
+    s16 vol;
+    s16 pan;
+    s32 xOffset;
+
+    xOffset = g_CurrentEntity->posX.i.hi - 128;
+    pan = (abs(xOffset) - 0x20) >> 5;
+    if (pan > 8) {
+        pan = 8;
+    } else if (pan < 0) {
+        pan = 0;
+    }
+    if (xOffset < 0) {
+        pan = -pan;
+    }
+    vol = abs(xOffset) - 0x60;
+    yOffset = abs(g_CurrentEntity->posY.i.hi - 128) - 112;
+    if (yOffset > 0) {
+        vol += yOffset;
+    }
+    if (vol < 0) {
+        vol = 0;
+    }
+    vol = 0x58 - (vol >> 1);
+    if (vol > 0) {
+        g_api.PlaySfxVolPan(sfxId, vol, pan);
+    }
+}
 
 INCLUDE_ASM("boss/bo0/nonmatchings/3053C", func_us_801BA128);
 
