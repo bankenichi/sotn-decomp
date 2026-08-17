@@ -177,6 +177,58 @@ def _restorable(path: str, confirm_orphan: bool = False) -> str:
         f"confirm_orphan=True.")
 
 
+def _adoptable(path: str, confirm_overwrite: bool = False) -> str:
+    """An in-repo path safe to WRITE OVER from another ref, or Rejected.
+
+    This is the mirror of _restorable. _restorable guards `checkout HEAD --
+    <path>`, where the incoming content is the committed state and the thing
+    at risk is an uncommitted edit. This guards `checkout <ref> -- <path>`,
+    where the incoming content comes from somewhere else entirely -- normally
+    upstream/master -- and the thing at risk is the same uncommitted edit.
+
+    The risk cases are not symmetric, so the test is not the same one:
+
+      - destination does not exist -> adopting a NEW file. Nothing to lose.
+                                      This is the ordinary harvest case.
+      - destination is clean       -> the pre-adoption content is in HEAD, so
+                                      git_restore_from_head undoes this. Allowed.
+      - destination is dirty       -> REFUSE. An uncommitted edit is about to
+                                      be replaced by upstream's version of the
+                                      same file, and unlike a restore there is
+                                      no ref that holds what was there.
+
+    Deliberately NOT limited to src/, which _restorable is. A harvest also
+    overwrites config/ and include/, and a hand-edited splat config is exactly
+    as unrecoverable as a hand-edited source file.
+
+    confirm_overwrite=True proceeds, same speed-bump-not-veto shape.
+    """
+    p = _inrepo(path, must_exist=False)
+    if confirm_overwrite:
+        return p
+    if not Path(p).exists():
+        return p
+    try:
+        rel = Path(p).resolve().relative_to(REPO.resolve()).as_posix()
+    except (ValueError, OSError):
+        return p
+    try:
+        r = subprocess.run(["git", "status", "--porcelain", "--", rel],
+                           cwd=str(REPO), capture_output=True, text=True,
+                           timeout=60)
+        if r.returncode != 0 or not (r.stdout or "").strip():
+            return p                      # clean, or git could not say
+    except (OSError, subprocess.SubprocessError):
+        return p                          # never block on a broken check
+
+    raise Rejected(
+        f"refusing to overwrite {rel} from another ref: it has uncommitted "
+        f"changes, and the incoming content is NOT this repo's history, so "
+        f"nothing here would hold what is about to be replaced -- "
+        f"git_restore_from_head could not bring it back. Commit or stash it "
+        f"first, or pass confirm_overwrite=True if you know it is worthless.")
+
+
 def _reject_fmt(fmt):
     raise Rejected(f"fmt must be one of {sorted(FMT)}")
 
@@ -669,12 +721,30 @@ REGISTRY = {
     #
     # threads is capped: this box also runs a 4-worker fleet and a build, and
     # oversubscribing turns a background search into a foreground stall.
+    # debug=True is `--debug`: compile and score the BASE ONLY, then exit. It
+    # does not search at all, and that is the point.
+    #
+    # SCORE ONE CANDIDATE IN SECONDS INSTEAD OF BUILDING FOR MINUTES. Until this
+    # was exposed there were exactly two ways to find out whether a hand-written
+    # body matched: a full `make build` plus verify_build, which is minutes and
+    # exclusive and can only test one tree state at a time, or an unbounded
+    # permuter search, which answers a different question. So every codegen
+    # hypothesis -- statement order, which local holds a value, whether a
+    # constant is folded -- cost a build, and the CONSTANT_DIVERGENT twin ports
+    # are nothing but a series of those hypotheses. func_us_801C2044_from_no0
+    # burned two builds on guesses that this would have scored in seconds each.
+    #
+    # It is a SCORE, not a verdict. Same caveat as a zero from a search: the
+    # permuter compiles the one function in isolation against target.o, so it
+    # sees neither the overlay's size nor the 81 SHA-1s. Zero here means "worth
+    # a build"; only verify_build means matched.
     "permuter": lambda work_dir, threads=4, stop_on_zero=True,
-                       better_only=True, algorithm="": (
-        [PYTHON, "tools/decomp-permuter/permuter.py",
-         "-j", _count(threads, 1, 16)]
-        + (["--stop-on-zero"] if stop_on_zero else [])
-        + (["--better-only"] if better_only else [])
+                       better_only=True, algorithm="", debug=False: (
+        [PYTHON, "tools/decomp-permuter/permuter.py"]
+        + (["--debug"] if debug else
+           ["-j", _count(threads, 1, 16)]
+           + (["--stop-on-zero"] if stop_on_zero else [])
+           + (["--better-only"] if better_only else []))
         + (["--algorithm", algorithm] if algorithm in ("difflib", "levenshtein")
            else [] if not algorithm else _bad_algo(algorithm))
         + [_inrepo(work_dir, must_be_dir=True)]),
@@ -812,6 +882,26 @@ REGISTRY = {
     "git_show_file": lambda ref="HEAD", path="": (
         ["git", "show",
          f"{_ref(ref)}:{_relpath(_inrepo(path, must_exist=False))}"]),
+    # ADOPT A FILE FROM ANOTHER REF INTO THE WORKING TREE.
+    #
+    # git_show_file made upstream READABLE; this makes it ADOPTABLE. The
+    # difference is not convenience, it is whether the harvest can run at all:
+    # src/st/e_thornweed_corpseweed.h is 884 lines, and the only way to bring it
+    # in without this was to read all 884 through the model's context and type
+    # them back out through write_file. Three of the four shared headers left in
+    # the ST/RNO0 harvest are that size or larger, and a transcription is a
+    # chance to introduce a difference into a file whose entire value is being
+    # byte-for-byte upstream's.
+    #
+    # `git checkout <ref> -- <path>` also stages the path. That is correct here
+    # and worth stating: the standing rule is to stage files explicitly and
+    # never `git add -A`, and this stages exactly the one path asked for.
+    #
+    # Guarded by _adoptable, not _restorable: see that docstring for why the
+    # test is "is the destination dirty" rather than "is it an orphan".
+    "git_checkout_path": lambda ref, path, confirm_overwrite=False: (
+        ["git", "checkout", _ref(ref), "--",
+         _adoptable(path, confirm_overwrite)]),
     # FETCH IS READ-ONLY and the only way to learn what upstream has done.
     # Without it the fork could not even measure its own drift: on 2026-08-09
     # the local upstream/master was still f6bfa379, last fetched 2026-08-01,

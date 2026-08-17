@@ -715,6 +715,125 @@ def main() -> int:
         check("_inrepo(" not in _seg,
               f"and {_name} no longer bypasses it with a bare _inrepo")
 
+    # ------------------------------------------------------------------
+    # ADOPTING A FILE FROM ANOTHER REF (git_checkout_path).
+    #
+    # The mirror of the orphan guard, and its failure mode is worse. A restore
+    # brings back HEAD, so the thing it overwrites is at least comparable to
+    # something in history. An adoption writes UPSTREAM's version of the file,
+    # and if the destination held an uncommitted edit there is no ref anywhere
+    # that holds what was there -- git_restore_from_head cannot undo it.
+    print("\nadopting a file from another ref is guarded, in the other "
+          "direction")
+    check("git_checkout_path" in _reg,
+          "git_checkout_path is in REGISTRY")
+    check("git_checkout_path" in _tools,
+          "git_checkout_path is callable (@mcp.tool)")
+    _seg_cp = _src_cc.split('"git_checkout_path": lambda')[1].split("),\n")[0]
+    check("_adoptable(" in _seg_cp,
+          "git_checkout_path routes its path through _adoptable")
+    check("_ref(ref)" in _seg_cp,
+          "and its ref is validated, not passed through")
+
+    # A path that does not exist yet is the ordinary harvest case: adopting a
+    # new shared header. It must not need a flag.
+    _fresh = None
+    try:
+        _fresh = _cc_mod._adoptable("src/_adopt_probe_does_not_exist.h")
+    except Exception as e:                                      # noqa: BLE001
+        check(False, f"a nonexistent destination must not be blocked ({e})")
+    check(bool(_fresh),
+          "a destination that does not exist yet is allowed without ceremony")
+
+    # A clean tracked file is recoverable from HEAD, so it is allowed too.
+    _clean = None
+    try:
+        _clean = _cc_mod._adoptable("automation/dashboard.py")
+    except Exception as e:                                      # noqa: BLE001
+        _clean = None
+        check(False, f"a clean destination must not be blocked ({e})")
+    check(bool(_clean),
+          "a clean destination is allowed: HEAD still holds what it replaces")
+
+    _av_rel = "src/_adopt_guard_probe.c"
+    _av = _repo / _av_rel
+    _av_had = _av.exists()
+    try:
+        _av.write_text("/* uncommitted work */\n", encoding="utf-8")
+        _sp.run(["git", "add", "-N", "--", _av_rel], cwd=str(_repo),
+                capture_output=True, text=True, timeout=60)
+        _ablocked = None
+        try:
+            _cc_mod._adoptable(_av_rel)
+        except Exception as e:                                  # Rejected
+            _ablocked = str(e)
+        check(_ablocked is not None,
+              "a DIRTY destination is refused")
+        if _ablocked:
+            check("confirm_overwrite" in _ablocked,
+                  "and says how to override deliberately")
+            check("git_restore_from_head" in _ablocked,
+                  "and names why this is worse than a restore: nothing here "
+                  "would hold what is replaced")
+        check(_cc_mod._adoptable(_av_rel, True).endswith(
+            "_adopt_guard_probe.c"),
+            "confirm_overwrite=True lets it through: a speed bump, not a veto")
+
+        # NOT limited to src/. A hand-edited splat config is exactly as
+        # unrecoverable as a hand-edited source file, and the harvest overwrites
+        # config/ and include/ too.
+        _cfg_rel = "config/_adopt_guard_probe.yaml"
+        _cfgp = _repo / _cfg_rel
+        try:
+            _cfgp.write_text("probe: 1\n", encoding="utf-8")
+            _sp.run(["git", "add", "-N", "--", _cfg_rel], cwd=str(_repo),
+                    capture_output=True, text=True, timeout=60)
+            _cblocked = None
+            try:
+                _cc_mod._adoptable(_cfg_rel)
+            except Exception as e:                              # Rejected
+                _cblocked = str(e)
+            check(_cblocked is not None,
+                  "a dirty destination OUTSIDE src/ is refused too, unlike "
+                  "_restorable")
+        finally:
+            _sp.run(["git", "rm", "--cached", "-q", "--", _cfg_rel],
+                    cwd=str(_repo), capture_output=True, text=True, timeout=60)
+            _cfgp.unlink(missing_ok=True)
+    finally:
+        _sp.run(["git", "rm", "--cached", "-q", "--", _av_rel],
+                cwd=str(_repo), capture_output=True, text=True, timeout=60)
+        if not _av_had:
+            _av.unlink(missing_ok=True)
+
+    # ------------------------------------------------------------------
+    # THE PERMUTER'S FAST LOOP. --debug scores base.c and exits, which is the
+    # only way to test a codegen hypothesis without an exclusive minutes-long
+    # build. It must not be mixed with the search flags: -j, --stop-on-zero and
+    # --better-only all describe a search that --debug does not run.
+    print("\nthe permuter can score one candidate without searching")
+    _dbg = _cc_mod.build_argv("permuter", work_dir="automation", debug=True)
+    check("--debug" in _dbg, "debug=True passes --debug")
+    for _flag in ("-j", "--stop-on-zero", "--better-only"):
+        check(_flag not in _dbg,
+              f"and drops {_flag}, which only means something to a search")
+    _srch = _cc_mod.build_argv("permuter", work_dir="automation", threads=6)
+    check("--debug" not in _srch, "debug defaults off, so search is unchanged")
+    check("-j" in _srch and "6" in _srch,
+          "and the search still gets its thread count")
+    check("--stop-on-zero" in _srch,
+          "and still stops on zero, so a win is not searched past")
+    # The help is read textually for the same reason the surface lists are:
+    # importing sotn_cmd_mcp constructs a live FastMCP server.
+    _pm_doc = src_mcp.split("def permuter(")[1].split('"""')[1]
+    check("debug=True" in _pm_doc,
+          "permuter's help documents the debug mode")
+    check("verify_build" in _pm_doc,
+          "and says a zero here is not a match, which is the whole caveat")
+    check("debug: bool" in src_mcp.split("def permuter(")[1].split(")")[0],
+          "and the @mcp.tool signature actually accepts it, so the help is "
+          "not describing an argument no caller can pass")
+
     print()
     if FAILS:
         print(f"{len(FAILS)} FAILED:")

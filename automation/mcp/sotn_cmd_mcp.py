@@ -137,8 +137,25 @@ def asm_diff(symbol: str, version: str = "us", overlay: str = "dra",
 @mcp.tool()
 def permuter(work_dir: str, threads: int = 4, stop_on_zero: bool = True,
              better_only: bool = True, algorithm: str = "",
-             timeout: int = 1800) -> dict:
+             debug: bool = False, timeout: int = 1800) -> dict:
     """Run decomp-permuter on an in-repo work directory (from permuter_import).
+
+    debug=True IS THE FAST LOOP AND IS USUALLY WHAT YOU WANT FIRST. It compiles
+    and scores base.c ONLY, prints `base score = N`, and exits in seconds. No
+    search, no randomization, no job needed -- call it synchronously.
+
+    Use it to test a codegen hypothesis without a build. Write the candidate
+    body into the source file, permuter_import it, and read the score. Before
+    this existed the only way to ask "does this body match" was `make build`
+    plus verify_build: minutes, exclusive, one tree state at a time. The
+    CONSTANT_DIVERGENT twin ports are a chain of such questions -- which local
+    holds a value, what order the stores go in, whether a constant folds -- and
+    func_us_801C2044_from_no0 spent two builds on guesses that cost seconds
+    each here. Score 0 means WORTH A BUILD, not matched: the permuter compiles
+    one function against target.o and never sees the overlay size or the 81
+    SHA-1s. verify_build is still the only oracle.
+
+    Everything below is the SEARCH mode (debug=False).
 
     Prefer job_start(action="permuter", work_dir=...) -- the search is unbounded
     and will outlive any synchronous call. Permuter jobs are NOT exclusive, so
@@ -160,7 +177,7 @@ def permuter(work_dir: str, threads: int = 4, stop_on_zero: bool = True,
     has plateaued, since they score differently."""
     return cc.run("permuter", timeout=timeout, work_dir=work_dir,
                   threads=threads, stop_on_zero=stop_on_zero,
-                  better_only=better_only, algorithm=algorithm)
+                  better_only=better_only, algorithm=algorithm, debug=debug)
 
 
 @mcp.tool()
@@ -779,6 +796,40 @@ def git_show_file(ref: str = "HEAD", path: str = "", start: int = 0,
     """
     return cc.run("git_show_file", timeout=timeout, ref=ref, path=path,
                   start=start, count=count)
+
+
+@mcp.tool()
+def git_checkout_path(ref: str, path: str, timeout: int = 120,
+                      confirm_overwrite: bool = False) -> dict:
+    """ADOPT one path from another ref into the working tree, and stage it.
+
+    `git checkout <ref> -- <path>`. This is the write half of git_show_file:
+    that one answers "what does upstream HAVE", this one puts it in the tree.
+
+    USE THIS FOR EVERY UPSTREAM HARVEST OF A WHOLE FILE. The alternative is
+    reading the file through the model and typing it back out via write_file,
+    and upstream's shared headers run 500 to 1500 lines: e_thornweed_corpseweed.h
+    is 884. Re-typing a file whose entire value is being byte-identical to
+    upstream is both the expensive way and the only way to introduce a
+    difference that nothing downstream would look for.
+
+    It STAGES the path, which is intended -- the standing rule is to stage
+    explicitly rather than `git add -A`, and this stages exactly the one path
+    named. Run git_status afterwards to see it.
+
+    DESTRUCTIVE if the destination already exists and is dirty: the incoming
+    content is not from this repo's history, so git_restore_from_head cannot
+    undo it. Refused in that case; confirm_overwrite=True overrides. A path
+    that does not exist yet, or is clean, is allowed without ceremony.
+
+    Examples:
+        git_checkout_path(ref="upstream/master",
+                          path="src/st/e_thornweed_corpseweed.h")
+        git_checkout_path(ref="upstream/master",
+                          path="src/st/e_armor_lord.h")
+    """
+    return cc.run("git_checkout_path", timeout=timeout, ref=ref, path=path,
+                  confirm_overwrite=confirm_overwrite)
 
 
 @mcp.tool()
