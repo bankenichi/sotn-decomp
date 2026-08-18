@@ -464,7 +464,52 @@ void func_us_801C13A8(Entity* self) {
 
 INCLUDE_ASM("boss/bo6/nonmatchings/us_3E79C", BO6_RicEntityWhip);
 
-INCLUDE_ASM("boss/bo6/nonmatchings/us_3E79C", BO6_RicEntityArmBrandishWhip);
+extern s32 D_us_801D0874;
+extern u16 D_us_801827F8[];
+extern u16 D_us_8018280C[];
+extern u16 D_us_80182820[];
+extern u16 D_us_80182834[];
+extern u16 D_us_80182848[];
+extern u16 D_us_8018285C[];
+
+// BO6 twin of RicEntityArmBrandishWhip. The target uses BO6's camera-locked
+// entity setup, palette bank, animation set, and local frame tables.
+void BO6_RicEntityArmBrandishWhip(Entity* entity) {
+    if (g_Ric.unk46 == 0) {
+        DestroyEntity(entity);
+        return;
+    }
+
+    entity->facingLeft = RIC.facingLeft;
+    if (entity->step == 0) {
+        entity->flags = FLAG_UNK_10000000 | FLAG_POS_CAMERA_LOCKED;
+        entity->animSet = ANIMSET_OVL(3);
+        entity->unk5A = 0x24;
+        entity->palette = PAL_FLAG(0x220);
+        entity->zPriority = RIC.zPriority + 2;
+    }
+
+    if (RIC.step == PL_S_CROUCH) {
+        if (RIC.facingLeft) {
+            entity->animCurFrame = D_us_8018280C[D_us_801D0874];
+        } else {
+            entity->animCurFrame = D_us_801827F8[D_us_801D0874];
+        }
+    } else if (RIC.step == PL_S_STAND) {
+        if (RIC.facingLeft) {
+            entity->animCurFrame = D_us_80182834[D_us_801D0874];
+        } else {
+            entity->animCurFrame = D_us_80182820[D_us_801D0874];
+        }
+    } else if (RIC.facingLeft) {
+        entity->animCurFrame = D_us_8018285C[D_us_801D0874];
+    } else {
+        entity->animCurFrame = D_us_80182848[D_us_801D0874];
+    }
+
+    entity->posX.val = RIC.posX.val;
+    entity->posY.val = RIC.posY.val;
+}
 
 extern s16 D_us_80182870[];
 // Mirrors `ric` func_80167964 (src/ric/pl_whip.c:540) but the flags differ
