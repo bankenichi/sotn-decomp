@@ -1,7 +1,17 @@
 #!/usr/bin/env python3
 """
 sotn_cmd_mcp: a stdio FastMCP server exposing a HARD-ALLOWLISTED set of SOTN
-build/diff/permuter commands to Claude Desktop. There is no general shell tool.
+build/diff/permuter commands. There is no general shell tool.
+
+CLIENT-AGNOSTIC BY CONSTRUCTION. This is a plain stdio MCP server: it speaks the
+protocol over stdin/stdout and knows nothing about who is on the other end.
+Claude Desktop, Claude Code, OpenAI Codex CLI, Continue, Cline and anything else
+that can spawn a process all drive it the same way. Nothing in this file or in
+commands_client.py imports, detects, or branches on a specific client, and there
+is no Claude-only code path. The only Claude-specific artefacts in the repo are
+the two MCPB bundles under automation/mcpb/, which are packaging for one client
+and are NOT required to run this server. See docs/CONNECTORS.md for per-client
+registration, including the Codex TOML.
 
 Each tool validates its arguments (version enums, symbol/overlay regexes, in-repo
 path checks) and runs a fixed argv with subprocess (never shell=True). Output is
@@ -14,6 +24,12 @@ Environment:
   SOTN_CMD_DRYRUN  set to 1 to return the argv WITHOUT executing (safe preview)
   SOTN_CMD_MAXOUT  max stdout/stderr chars returned (default 20000)
 
+Every one of those has a working default derived from this file's own location,
+so a client that can only supply `command` and `args` -- with no `cwd` and no
+`env` -- still gets a correct server. That is not a nicety: MCPB's ${user_config}
+substitution is a Claude Desktop feature, and a client without it must be able to
+launch this by absolute path alone.
+
 Safety: this server can run make/asm-differ/permuter as you. Keep DRYRUN on
 until you have reviewed the argv it produces, and never widen the registry into
 a general 'run any command' tool.
@@ -23,8 +39,24 @@ import re
 import sys
 from pathlib import Path
 
-from mcp.server.fastmcp import FastMCP
-import commands_client as cc
+# Put this file's own directory on sys.path BEFORE importing its siblings.
+#
+# Python already sets sys.path[0] to the script's directory when the server is
+# launched as `python /abs/path/sotn_cmd_mcp.py`, which is why the Claude Desktop
+# launcher's `cd` was never strictly necessary. But that is only true for the
+# script launch form. A client that starts the server with `python -m`, through a
+# wrapper, or with an embedded interpreter gets a different sys.path[0] and the
+# import below raises at startup -- which presents as a connector that simply
+# never appears, with the traceback buried in that client's log.
+#
+# Two lines here remove a whole class of "works in Claude Desktop, silent in
+# Codex" failures, and they cost nothing when sys.path[0] is already correct.
+_HERE = str(Path(__file__).resolve().parent)
+if _HERE not in sys.path:
+    sys.path.insert(0, _HERE)
+
+from mcp.server.fastmcp import FastMCP  # noqa: E402
+import commands_client as cc  # noqa: E402
 
 mcp = FastMCP("sotn-cmd")
 

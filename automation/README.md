@@ -3,6 +3,13 @@
 The orchestration stack from `SOTN-Orchestration-Stack.md`, built and tested.
 Coordination is files and git only, no app puppeting.
 
+> **Companion documents, added 2026-08-17.** This file describes the MECHANISMS
+> that land matches. For the tool surface itself, read `docs/TOOLING.md` (every
+> connector tool and analysis script, with when to call each and when not to)
+> and `docs/CONNECTORS.md` (how the connectors are built, their security model,
+> and how to install them under any MCP client including OpenAI Codex).
+> `AGENTS.md` is the entry point for an agent arriving cold.
+
 > **Start here, updated 2026-08-09.** The sections below were written as the
 > stack was built and describe it in build order. For what to actually run
 > today, read *Operating it now* immediately below; where the two disagree,
@@ -88,6 +95,14 @@ python3 automation/empty_response_audit.py --self-test
         test_mock.py                    offline smoke test, no model needed
         claude_desktop_config.snippet.json       registration for sotn-local
         claude_desktop_config.cmd.snippet.json   registration for sotn-cmd
+        clients/                        registrations for ANY MCP client:
+                                        codex.config.toml (Codex CLI),
+                                        mcp_servers.native.json (Linux/macOS,
+                                        or a client inside WSL), and
+                                        mcp_servers.windows-wsl.json. Both
+                                        servers are plain stdio MCP with no
+                                        client detection; see
+                                        docs/CONNECTORS.md
       scheduler.py                      single writer to ~/sotn-work/queue.jsonl
       win/worker_direct.py              THE worker: prompt, gates, build, verify, journal
       run_selftests.py                  runs every test_*.py, one table

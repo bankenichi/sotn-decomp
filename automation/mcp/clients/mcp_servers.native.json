@@ -1,0 +1,35 @@
+{
+  "_comment": [
+    "Generic MCP registration for ANY client whose process runs on the same OS as",
+    "the build toolchain: native Linux, macOS, or a client installed inside WSL.",
+    "Replace REPO with the absolute repo path as the client process sees it.",
+    "",
+    "Most clients take this object under a top-level key. Claude Desktop and",
+    "Claude Code call it mcpServers; others may call it servers or mcp.servers.",
+    "The three inner fields (command, args, env) are the part that is standard.",
+    "",
+    "No cwd is set and none is needed. sotn_cmd_mcp.py puts its own directory on",
+    "sys.path and commands_client.py derives the repo root from the file location.",
+    "",
+    "SOTN_CMD_DRYRUN fails closed: unset or empty means dry-run. Leave it at 1,",
+    "call list_allowed, read the argv a few tools produce, then set it to 0."
+  ],
+  "mcpServers": {
+    "sotn-cmd": {
+      "command": "REPO/automation/mcp/.venv/bin/python",
+      "args": ["REPO/automation/mcp/sotn_cmd_mcp.py"],
+      "env": {
+        "SOTN_CMD_DRYRUN": "1",
+        "SOTN_CMD_MAXOUT": "20000"
+      }
+    },
+    "sotn-local": {
+      "command": "REPO/automation/mcp/.venv/bin/python",
+      "args": ["REPO/automation/mcp/sotn_local_mcp.py"],
+      "env": {
+        "LLAMA_BASE_URL": "http://localhost:8081/v1",
+        "LLAMA_TIMEOUT": "600"
+      }
+    }
+  }
+}

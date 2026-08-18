@@ -1,0 +1,46 @@
+{
+  "_comment": [
+    "Generic MCP registration for a client process running on the WINDOWS HOST",
+    "while the build toolchain lives in WSL. Replace WSL_REPO with the repo path",
+    "as WSL sees it (C:\\Users\\you\\Documents\\SOTN-Decomp becomes",
+    "/mnt/c/Users/you/Documents/SOTN-Decomp) and DISTRO with your distro name.",
+    "",
+    "If your client already runs INSIDE WSL, use mcp_servers.native.json instead.",
+    "It is faster and has one less quoting layer to get wrong.",
+    "",
+    "WHY SOTN_CMD_DRYRUN IS INLINE IN THE BASH STRING AND NOT IN env:",
+    "MCP env entries are applied to the wsl.exe process on the Windows side and",
+    "do NOT cross into WSL unless they are named in WSLENV. When they were in env",
+    "the server saw nothing, and because DRYRUN fails closed on an unset value it",
+    "did not run live -- but the operator could not turn dry-run OFF either, and",
+    "the reason was invisible. Passing it inline in the command is the fix.",
+    "",
+    "SOTN_CMD_MAXOUT is inline for the same reason."
+  ],
+  "mcpServers": {
+    "sotn-cmd": {
+      "command": "wsl.exe",
+      "args": [
+        "-d",
+        "DISTRO",
+        "-e",
+        "bash",
+        "-lc",
+        "SOTN_CMD_DRYRUN=1 SOTN_CMD_MAXOUT=20000 WSL_REPO/automation/mcp/.venv/bin/python WSL_REPO/automation/mcp/sotn_cmd_mcp.py"
+      ],
+      "env": {}
+    },
+    "sotn-local": {
+      "command": "wsl.exe",
+      "args": [
+        "-d",
+        "DISTRO",
+        "-e",
+        "bash",
+        "-lc",
+        "LLAMA_BASE_URL=http://localhost:8081/v1 LLAMA_TIMEOUT=600 WSL_REPO/automation/mcp/.venv/bin/python WSL_REPO/automation/mcp/sotn_local_mcp.py"
+      ],
+      "env": {}
+    }
+  }
+}

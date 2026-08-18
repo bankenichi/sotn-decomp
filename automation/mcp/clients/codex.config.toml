@@ -1,0 +1,35 @@
+# OpenAI Codex CLI registration for the SOTN connectors.
+#
+# Append to ~/.codex/config.toml and replace REPO with the absolute path to this
+# repository AS THE CODEX PROCESS SEES IT. If Codex runs inside WSL that is a
+# /mnt/c/... path; if it runs on native Linux it is the ordinary path.
+#
+# There is no cwd setting here and none is needed: sotn_cmd_mcp.py inserts its
+# own directory on sys.path and commands_client.py derives the repo root from
+# the file's location, so an absolute script path is sufficient.
+#
+# SOTN_CMD_DRYRUN fails closed. Leave it at "1", run list_allowed, read the argv
+# a few tools produce, and only then set it to "0".
+
+[mcp_servers.sotn-cmd]
+command = "REPO/automation/mcp/.venv/bin/python"
+args = ["REPO/automation/mcp/sotn_cmd_mcp.py"]
+
+[mcp_servers.sotn-cmd.env]
+SOTN_CMD_DRYRUN = "1"
+SOTN_CMD_MAXOUT = "20000"
+# Optional. Both have working defaults derived from the script location; set
+# them only if the repo is reached through a symlink or a bind mount whose real
+# path differs from the one you launched with.
+# SOTN_REPO   = "REPO"
+# SOTN_PYTHON = "REPO/.venv/bin/python"
+
+# The local-model bridge. Only needed if you run llama-server / Ollama locally
+# and want drafting done off the frontier model. Independent of sotn-cmd.
+[mcp_servers.sotn-local]
+command = "REPO/automation/mcp/.venv/bin/python"
+args = ["REPO/automation/mcp/sotn_local_mcp.py"]
+
+[mcp_servers.sotn-local.env]
+LLAMA_BASE_URL = "http://localhost:8081/v1"
+LLAMA_TIMEOUT = "600"

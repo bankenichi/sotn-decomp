@@ -1,13 +1,18 @@
 #!/usr/bin/env python3
 """
-sotn_local_mcp: a stdio FastMCP server that bridges Claude Desktop to a locally
+sotn_local_mcp: a stdio FastMCP server that bridges an MCP client to a locally
 running OpenAI-compatible LLM (llama-server / llama.cpp / Ollama /v1).
 
-Purpose (see automation/Orchestration-Setup.md):
-  Claude Desktop launches this server on your machine. It reaches your local
+CLIENT-AGNOSTIC. Plain stdio MCP, no client detection and no Claude-only path.
+Claude Desktop, Codex CLI and any other MCP client launch it identically. See
+docs/CONNECTORS.md for per-client registration.
+
+Purpose:
+  The client launches this server on your machine. It reaches your local
   llama-server at LLAMA_BASE_URL. Large assembly and diff text are processed
-  here and only compact structured results are returned to Claude, keeping big
-  payloads out of Claude's context and spending zero Claude tokens on drafting.
+  here and only compact structured results are returned to the client, keeping
+  big payloads out of the orchestrating model's context and spending zero
+  frontier tokens on drafting.
 
 CONCURRENCY
   Every tool is `async def` and offloads its blocking HTTP call with
@@ -29,9 +34,20 @@ Environment:
   LLAMA_TIMEOUT   seconds, default 600
 """
 from __future__ import annotations
-import anyio
-from mcp.server.fastmcp import FastMCP
-import llama_client as lc
+import sys
+from pathlib import Path
+
+# See the identical block in sotn_cmd_mcp.py for why. Short version: sys.path[0]
+# is only guaranteed to be this directory under the plain script launch form, and
+# a client that starts the server any other way would fail the sibling import at
+# startup with the traceback buried in its own log.
+_HERE = str(Path(__file__).resolve().parent)
+if _HERE not in sys.path:
+    sys.path.insert(0, _HERE)
+
+import anyio  # noqa: E402
+from mcp.server.fastmcp import FastMCP  # noqa: E402
+import llama_client as lc  # noqa: E402
 
 mcp = FastMCP("sotn-local")
 
@@ -76,4 +92,4 @@ async def local_transform(instruction: str, code: str) -> dict:
 
 
 if __name__ == "__main__":
-    mcp.run()  # stdio transport, as expected by Claude Desktop
+    mcp.run()  # stdio transport: what every MCP client expects

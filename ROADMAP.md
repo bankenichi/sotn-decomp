@@ -11,7 +11,37 @@ mistake impossible twice.
 
 ---
 
-## Where things actually stand (2026-08-09)
+## Where things actually stand (2026-08-17)
+
+| | |
+|---|---|
+| Oracle | **81/81** |
+| Queue | **259 matched**, 76 todo, 100 escalated, 30 deferred, 6 near (471 total) |
+| Tree | **94.7% of functions decompiled** overall, 6249/6561 |
+| Automation | 59 analysis scripts, 30 test suites, **73 connector tools**, 37 dashboard diagnostics |
+| Provenance | shim-header 55, model-fleet 54, upstream-harvest 44, twin-port 14, permuter 9, shim-segment 9, transplant 8, hand 4, **unknown 62 (24%)** |
+| Fleet backend | `zen` on `mimo-v2.5-free` |
+| Audit | 259 present, 0 uncommitted, 0 LOST |
+
+Where the remaining work sits, by overlay completion:
+
+```
+ST/RNO0   31.3%   97/193      BOSS/BO6  55.0%  138/237
+BOSS/BO0  68.8%  127/186      ST/RDAI   72.6%  112/130
+ST/RCEN   84.1%   99/118      ST/RCHI   85.3%   93/108
+ST/MAD    94.7%   99/102      SLUS      98.3%  515/517
+```
+
+Everything else is at 100%. Four overlays hold nearly all of what is left, and
+RNO0 carries both the most functions and the most structural debt.
+
+**The 24% unattributed is a finding, not noise.** 35 of those records had their
+method note overwritten by a build receipt, because `scheduler.py report`
+replaces `notes` wholesale; 51 never carried one. Fixable going forward by
+passing `keep_note=True`, not recoverable for those records. Counted as
+*contributors* rather than sole author, the model fleet touched 118 of 259.
+
+### Snapshot as of 2026-08-09 (superseded, kept for the trend)
 
 | | |
 |---|---|
@@ -760,3 +790,197 @@ Also worth building, in rough value order:
   counted as our defects; they are not.
 - **Preparing a pull request.** Stated above, repeated here because the framing
   has drifted before.
+
+---
+
+# The task ledger
+
+**Every task ever opened on this project, completed and pending.** The P0 to P6
+sections above explain direction; this is the record of what was actually done.
+
+Rules, from `AGENTS.md`:
+
+- **Nothing is ever deleted from this ledger.** A task that turned out to be
+  unnecessary is marked VOID or SUPERSEDED with the reason. Deleting it destroys
+  the evidence that it once looked necessary, which is the part worth keeping.
+- **Add a line when you start something new**, and update it when you finish.
+  Write the outcome, not the intent.
+- **Retract wrong entries explicitly.** If a line records a diagnosis that turned
+  out to be false, say so and give the real cause. See #123 and the
+  `func_us_801B6998` line in #128 for the pattern.
+
+Status: **done**, **open**, **partial**, **void** (turned out unnecessary),
+**superseded** (folded into another task).
+
+## Setup and scaffolding (#1 to #14)
+
+| # | status | task and outcome |
+|---|---|---|
+| 1 | done | Clone the fork into the project folder |
+| 2 | done | Survey the real build requirements against the initial assessment |
+| 3 | done | Attempt toolchain setup and a dry build in the sandbox |
+| 4 | done | Write a grounded getting-started doc |
+| 5 | done | Build and test the FastMCP connector to the local llama-server |
+| 6 | done | Write the queue schema and the scheduler skeleton |
+| 7 | done | Draft the `us` non-matching function seed file |
+| 8 | done | Build the allowlisted command connector |
+| 9 | done | Write the WSL2 dependency install script |
+| 10 | done | Build the runnable worker loop and the OpenCode agent/provider config |
+| 11 | done | Prepare everything doable without the machine or the disc image |
+| 12 | done | Write the ordered home checklist |
+| 13 | done | Draft the subagent definitions and wire them into the checklist |
+| 14 | done | Make the harness work under Claude Desktop and Cowork |
+
+## First harvest wave (#15 to #26)
+
+| # | status | task and outcome |
+|---|---|---|
+| 15 | done | Verify a clean baseline before harvesting |
+| 16 | done | Harvest Group C: 6 clock-room functions |
+| 17 | done | Harvest Group D: 9 single-file wins |
+| 18 | done | Resolve the divergent-variant candidates |
+| 19 | done | Commit and push the harvested batch |
+| 20 | done | Probe Group D before batching it |
+| 21 | done | Pre-check every rno0 stub for `D_us_` references |
+| 22 | done | Harvest the verified free-match candidates |
+| 23 | done | Harvest the 4 remaining confirmed-free singles |
+| 24 | done | Establish the permuter workflow |
+| 25 | done | Permute the 4 remaining codegen candidates |
+| 26 | done | Analyse 9 escalated functions, read-only |
+
+## Fleet backends and telemetry (#27 to #36)
+
+| # | status | task and outcome |
+|---|---|---|
+| 27 | done | Make OpenCode binary resolution work from both WSL and Windows |
+| 28 | done | Add backend selection and mixed fleets to `fleet_start` |
+| 29 | done | Add a preflight so a doomed `cli` fleet fails fast |
+| 30 | done | Verify the new code paths before running them |
+| 31 | done | Document the mixed fleet |
+| 32 | done | Test the struct-aliasing hypothesis on `func_us_801B9DE4` |
+| 33 | done | Re-run 2 CLI workers with the timeout fix |
+| 34 | done | Stage 1: recover and re-verify the 2 suspected lost matches |
+| 35 | done | Stage 2: triage the 22 remaining nears by permuter viability |
+| 36 | done | Root cause was a checksum mismatch misreported as BUILD FAILED. Seeds are now saved |
+
+## Quality gates (#37 to #47)
+
+| # | status | task and outcome |
+|---|---|---|
+| 37 | done | Scan every todo function for resolvable declaration coverage |
+| 38 | done | Build `quality_audit.py`: fake symbols, magic numbers, duplicates |
+| 39 | done | Fix the harness prompt to demand quality, not just matching |
+| 40 | done | Triage all 133 matches into keep / rework / discard |
+| 41 | done | rno0 `.bss` segmented, 4 files shimmed. The `.data` half went to #51 |
+| 42 | done | Sync upstream progress into the fork |
+| 43 | done | Rewrite the fork documentation and roadmap |
+| 44 | done | Reseed the queue against the post-merge unmatched set |
+| 45 | done | Re-audit all 134 matches against the corrected standards |
+| 46 | done | Add reviewer-perspective quality checks and re-run |
+| 47 | done | Fix the 9 remaining review findings and automate their classes |
+
+## Shims and segments (#48 to #70)
+
+| # | status | task and outcome |
+|---|---|---|
+| 48 | done | Giantbro split landed; the clock-room shim was blocked on `stone_door_pos_x` |
+| 49 | done | 34 string-label records pruned from the live queue |
+| 50 | done | Clock room shimmed into rno0, 6 functions matched |
+| 51 | done | rno0 `e_red_door` shimmed, `EntityRedDoor` matched, the duplicate deleted |
+| 52 | done | P4 review checks gate the worker pre-build (19 tests) |
+| 53 | done | P6 shim gate runs pre-model (21 tests). Relocation detector and tier 2/3 were still open |
+| 54 | void | All 8 "free" stubs were gate false positives. The gate was hardened instead |
+| 55 | done | Relocation detector built (9 self-tests). Found a stale-artifact bug and a hash-case bug |
+| 56 | partial | 4 `.data` addresses found and tooled. `st_update` was blocked on a +0x40 TEXT delta |
+| 57 | done | Diagnosed: the +0x40 is `st_update.h`'s unreserved `.bss`, not text. Needed a `.bss` segment |
+| 58 | done | `st_update` shimmed into rno0, 2 matched, 81/81, 0 shifted symbols |
+| 59 | done | `overlay_size_check` now attributes bss against text correctly (14 tests) |
+| 60 | done | `collision`, `e_particles`, `e_medusa_head` shimmed. 5 matched, 81/81 |
+| 61 | done | Journal replay scoped by pid and lock. Connector gated on BuildLock, `index.lock` self-heals |
+| 62 | done | False claims retracted. The 3 stems ARE shimmable in principle but are +0xC variants |
+| 63 | done | 3 vacuous tests repaired, the deferral branch is now exercised, whole suite green |
+| 64 | done | Parameterisation scoped in `docs/shared-header-parameterisation.md` |
+| 65 | partial | High-value medium findings fixed. Remainder tracked in #66 |
+| 66 | done | Audit tail closed: F9, artifact audit wired, H2, H3, doc retractions |
+| 67 | done | Giant-bro trio shimmed via `GIANTBRO_ZPRIORITY_ADJUST`. 7 matched |
+| 68 | done | Sweep complete: 12 candidates resolved to 7, with evidence |
+| 69 | done | All git moved into the connector. Sandbox git forbidden for this repo |
+| 70 | done | Header parameterisation landed for every stem that needed it |
+
+## Supervisor, dashboard, transplants (#71 to #87)
+
+| # | status | task and outcome |
+|---|---|---|
+| 71 | done | Untrack the committed `ctx` scratch files |
+| 72 | done | Build the permuter supervisor with auto-queue and self-termination |
+| 73 | done | Add `run-permuter`, `runfleet-cli`, `runfleet-llama` |
+| 74 | done | Write the status JSON endpoint and the web UI design docs |
+| 75 | done | Verify the supervisor against the live queue without starting jobs |
+| 76 | done | Resolve macro-expressed constants in transplants |
+| 77 | done | Feed `asm_twin_finder` similarity into the transplant scan |
+| 78 | done | Run the 9 ready transplants as a batch |
+| 79 | done | Compiles-but-differs transplants are saved as permuter seeds |
+| 80 | done | README reframed as an AI PoC. Architecture, control, roadmap and automation refreshed |
+| 81 | done | Transplants are countable and annotated, 81/81 unchanged |
+| 82 | done | ILLEGAL removed from the prompt. The offset table is now pointer-type aware |
+| 83 | done | The seed half was already fixed; the VERDICT half was not |
+| 84 | done | The lock is sound. Its wait was wrongly charged to FUNC_BUDGET and is now credited back |
+| 85 | done | Unanswerable from the archives. The instrument was fixed so it is measurable going forward |
+| 86 | done | Stubs declared in seeds via the C89 implicit form. 17 seeds retrofitted |
+| 87 | done | Not phantoms: two real jobs shared one work dir |
+
+## Audit and recovery (#88 to #97)
+
+| # | status | task and outcome |
+|---|---|---|
+| 88 | superseded | Old audit dropped in favour of a fresh one |
+| 89 | done | 16 requeued to `near`, all 18 work dirs re-imported from fixed seeds |
+| 90 | done | Both bo6 files were genuine matches. Verified 81/81 and committed |
+| 91 | partial | Detection half done: `orphan_check.py` plus a guard on `git_restore`. Prevention still open |
+| 92 | done | The zero-count now self-explains. Two theories ruled out, the race is inherent |
+| 93 | done | `matched_audit.py` built |
+| 94 | done | Stage 0: 202 matched, 14 requeued, 5 bases recovered |
+| 95 | done | Stage 1: all 5 gaps closed. One audit claim retracted |
+| 96 | done | Stage 2: 12 externs landed by hand, plus declaration injection at apply time |
+| 97 | done | Stage 5 scoping: 5 twins plus the m2c path. Execution went to #102 and #103 |
+
+## Open work (#98 to #121)
+
+| # | status | task and outcome |
+|---|---|---|
+| 98 | **open** | Stage 6, reassessed 2026-08-10: 54 hard records, and 17 free requeues sitting unclaimed |
+| 99 | superseded | Merged into #101: Stage 4 is one third of the single fleet run |
+| 100 | done | `77217a2` is shared-header extraction. 4 of the 11 already have twins |
+| 101 | **open** | The single fleet run: 33 records, once, after all prep |
+| 102 | done | m2c-only runs. The size wall is gone; the Entity naming wall is behind it |
+| 103 | done | The derivation plus 1 of 5. The other 4 each needed real work and were split out to #105 |
+| 104 | done | `grep -E`: alternation went from 0 to 8 matches, a bad regex now errors, the engine is reported |
+| 105 | **open** | The 4 remaining twins, each blocked on a different named thing |
+| 106 | done | The supervisor stamps `SEED_CURRENT`. The loop is closed |
+| 107 | done | README status tables AND prose are generated |
+| 108 | partial | Detection wired at the risk moment. Auto-commit deliberately not built |
+| 109 | done | Closed: no `Ext` field was missing. The m2c-only path could not name them |
+| 110 | **open** | P4: exhaust the `src/ric` to BO6 twin pipeline before spending model calls |
+| 111 | **open** | A/B reasoning: the per-worker effort knob landed and is ready to run |
+| 112 | partial | The doc drift check exists and covers three invariants. The rest is still human |
+| 113 | done | Handoff is tier-gated, with a claim breaker behind it |
+| 114 | done | Prefix-against-directory bug: 126 false LOST, the real number was 6 |
+| 115 | done | Staleness compared against the OLDEST artifact. The guard can now close |
+| 116 | done | Never committed, not reverted. All five requeued, audit clean |
+| 117 | done | `cancel()` never wrote the exit sentinel, so stopped jobs read as crashes |
+| 118 | done | Upstream harvest: 50 landed, 0 left. Closed 2026-08-17 |
+| 119 | done | Queue and tree agree at 240. 1 seeded, 11 stale closed, 3 tool bugs fixed |
+| 120 | done | `e_armor_lord.h` adopted across 3 overlays, 4 matched |
+| 121 | done | Both rename debts cleared. 907 lines of duplicate deleted |
+
+## Documentation and portability pass, 2026-08-17 (#122 to #128)
+
+| # | status | task and outcome |
+|---|---|---|
+| 122 | done | Inventoried every doc and every scaffolding file before writing, so the pass describes what exists rather than what was remembered. Found `AGENTS.md` was a 47-byte stub |
+| 123 | done | **Retracts an assumption.** The MCPB work did NOT make the connectors portable, and could not have: MCPB is a Claude Desktop archive format and its `${user_config}` substitution is a Claude Desktop feature. What IS portable is the server itself, which was already a plain stdio MCP server with no client detection. Hardened the two sibling imports so the launch form cannot break them, added registrations for Codex and for generic clients under `automation/mcp/clients/`, and added tests asserting each portability property |
+| 124 | done | `docs/TOOLING.md`: all 73 connector tools and the analysis scripts, with when to call each and when not to. A test asserts it names nothing that does not exist |
+| 125 | done | `AGENTS.md` rewritten from a stub into the entry point: framing, the nine standing constraints, where every other doc is, the cheapest-first work order, and the requirement to keep this ledger current |
+| 126 | done | This ledger. All 128 tasks, completed and pending |
+| 127 | done | Verified the docs against the code. `test_connector_surfaces.py` now checks the MCPB manifest against the callable surface (it listed 21 of 73), that the docs name only real tools, and that every repo path in the new docs resolves. **It also found a live defect in itself**: the test hardcoded `src/st/rno0/unk_4A320.c`, which #121 had renamed, so it reported a guard failure where there was none. The anchor is now discovered rather than named |
+| 128 | done | Two matches by hand derivation. `EntityClockRoomController`: a declaration-order problem plus `u16` where the asm's `sll 16` + `bnez` demands `s16`. `func_us_801B6998`: **retracts the 2026-08-16 diagnosis** of a delay-slot nop at +21. The real cause was switch dispatch form: four live cases compile to a compare chain, and the jump table's own extent named the two empty cases needed to restore it |

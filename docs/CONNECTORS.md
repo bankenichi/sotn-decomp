@@ -1,0 +1,188 @@
+# The connectors
+
+Two MCP servers live in `automation/mcp/`. Everything an agent does to this
+repository goes through one of them.
+
+| server | file | what it is for |
+|---|---|---|
+| `sotn-cmd` | `automation/mcp/sotn_cmd_mcp.py` | build, verify, diff, permuter, git, queue, jobs, fleet, scoped filesystem |
+| `sotn-local` | `automation/mcp/sotn_local_mcp.py` | bridge to a local OpenAI-compatible model, so drafting costs no frontier tokens |
+
+`sotn-cmd` is the one that matters. `sotn-local` is optional and only useful if
+you run llama-server or Ollama locally.
+
+For what each tool does and when to call it, read `docs/TOOLING.md`. This
+document is about how the connectors are built, why, and how to install them
+under any MCP client.
+
+---
+
+## 1. They are client-agnostic, and that is a property of the design
+
+Both servers are plain **stdio MCP servers**. They read the protocol on stdin,
+write it on stdout, and know nothing about who is on the other end. There is no
+client detection, no vendor SDK import, no `if claude:` branch, and no
+client-specific environment variable anywhere in `sotn_cmd_mcp.py`,
+`sotn_local_mcp.py` or `commands_client.py`. `automation/test_connector_surfaces.py`
+asserts each of those, so it stays true rather than merely being true today.
+
+Three properties make a server portable in practice, and all three hold here:
+
+1. **No `cwd` requirement.** Each server inserts its own directory on `sys.path`
+   before importing its siblings. Python already does this for the plain
+   `python /abs/path/server.py` launch form, which is why the Claude Desktop
+   launcher's `cd` was never strictly necessary, but it is *only* guaranteed for
+   that form. A client that launches through a wrapper or an embedded
+   interpreter gets a different `sys.path[0]`, and the import then fails at
+   startup with the traceback buried in that client's log. Two lines remove the
+   whole class.
+2. **No required environment.** `SOTN_REPO` falls back to two directories above
+   `commands_client.py`; `SOTN_PYTHON` falls back to `python3`. A client that can
+   supply only `command` and `args` still gets a correct server.
+3. **Safety fails closed.** `SOTN_CMD_DRYRUN` unset or empty means dry-run. You
+   cannot get a live server by forgetting a variable, only by setting it to `0`
+   deliberately.
+
+### What the MCPB bundles are, and what they are not
+
+`automation/mcpb/sotn-cmd.mcpb` and `sotn-local.mcpb` are **packaging for one
+client**. MCPB is a Claude Desktop archive format, and its `${user_config.*}`
+substitution is a Claude Desktop feature that no other client implements. The
+bundles are a convenience, not a dependency, and nothing in the harness needs
+them.
+
+Two things about them are easy to misread:
+
+- `"platforms": ["win32"]` describes **the bundle**, whose `mcp_config` shells
+  through `wsl.exe` from a Windows host into a Linux toolchain. It says nothing
+  about the server, which runs anywhere Python does.
+- Each bundle contains **only a `manifest.json`**. The MCPB spec permits that,
+  and it is deliberate: `mcp_config` runs the live source in the repo, so an
+  edit takes effect on the next client restart with no repack and no reinstall.
+  They used to also carry `server/` copies of the Python; by 2026-08-09 the
+  client copy had drifted to 18808 bytes against a live 66551 and still
+  contained an `_inrepo` path-containment bug that had been fixed in the live
+  copy the same day. A stale duplicate of security-relevant code is worse than
+  no copy, because it is what a reader or an auditor lands on. Deleted.
+
+The same reasoning applies to the manifest's `tools` array, which is a **third
+surface**: until 2026-08-17 it listed 21 tools while the connector exposed 72.
+A test now asserts it equals the callable set exactly.
+
+## 2. Installing under a specific client
+
+Ready-made snippets are in `automation/mcp/clients/`, with a README there
+covering the details. In summary:
+
+| your situation | use |
+|---|---|
+| OpenAI Codex CLI | `automation/mcp/clients/codex.config.toml` appended to `~/.codex/config.toml` |
+| any client on Linux or macOS, or a client running inside WSL | `automation/mcp/clients/mcp_servers.native.json` |
+| any client on a Windows host, toolchain in WSL | `automation/mcp/clients/mcp_servers.windows-wsl.json` |
+| Claude Desktop, and you want the install dialog | the `.mcpb` bundles |
+
+**If your client runs inside WSL, use the native form.** It is faster and it
+drops a whole quoting layer. The `wsl.exe` hop exists only to cross a host
+boundary and is not part of the design.
+
+### The WSL environment trap
+
+MCP `env` entries are applied to the **`wsl.exe` process on the Windows side**
+and do not cross into WSL unless they are named in `WSLENV`. When
+`SOTN_CMD_DRYRUN` lived in `env`, the server never saw it. Because the flag
+fails closed this did not run anything unsafe, but it also meant dry-run could
+not be turned off and the reason was invisible. Both the bundle and the
+Windows-WSL snippet now pass such variables **inline in the bash command**. In
+the native snippet, `env` behaves normally.
+
+## 3. The security model
+
+There is **no general shell tool**, and adding one would defeat the entire
+design. Concretely:
+
+- Only actions in `commands_client.REGISTRY` can run. Everything else is
+  rejected before a process is created.
+- Every argument is validated: version enums, strict regexes for symbols and
+  overlays, in-repo containment for paths.
+- `subprocess` is always given an argv list, never `shell=True`.
+- Output is truncated to `SOTN_CMD_MAXOUT` characters so a runaway build cannot
+  flood the caller's context.
+- Every action has a timeout.
+
+Path containment is a **parent check, not a prefix check**. It used to test
+`str(rp).startswith(str(REPO))`, which is a string comparison wearing a path's
+clothes: with `REPO=/repo`, the path `../repo-evil/x` resolves to `/repo-evil/x`,
+and that string does start with `/repo`. A sibling directory whose name merely
+began with the repo's name was accepted, and `_inrepo` guards the arguments
+handed to git. The correct test already existed a few hundred lines away in
+`_resolve`; the two had simply drifted. Found by an external audit, 2026-08-09.
+`.git` is refused as well: handing git a path inside its own object store is
+never a legitimate request from this layer.
+
+### Guards worth knowing about
+
+These refuse rather than warn, because each encodes a failure that has already
+cost real work:
+
+- `git_mv` and `git_rm` refuse when a splat segment still names the old stem.
+  splat resolves `[addr, c, stem]` to `<src_path>/<stem>.c`, so the segment and
+  the filename are one fact stored in two places, and renaming one without the
+  other breaks the build in a way whose error message points somewhere else.
+- `git_restore` refuses on orphaned `src/` work, because restoring over a body
+  that was never committed destroys it silently.
+- Build actions take an exclusive **BuildLock**. Two concurrent builds produce a
+  checksum result that belongs to neither.
+
+## 4. Two surfaces, and why `list_allowed` reports both
+
+`commands_client.REGISTRY` is the allowlist of shell actions. The `@mcp.tool()`
+decorators in `sotn_cmd_mcp.py` are what a caller can actually invoke. They are
+separate hand-maintained lists, and **a name in one but not the other is a
+wiring bug that presents as a capability**.
+
+It has bitten twice. `verify_build` exists only as a decorator, so a
+REGISTRY-only audit under-reported it. Later an action was added to REGISTRY and
+never decorated: it was uncallable, `list_allowed` still showed it, and reading
+that list looked like confirmation. Each cost a connector restart, which is the
+most expensive unit of work in this project.
+
+So `list_allowed` returns both lists and says which is which, and
+`automation/test_connector_surfaces.py` asserts they agree. It is a test and not
+a runtime check because a runtime check tells you after you have already paid.
+
+**When you add a capability, you touch three places:** the REGISTRY lambda, the
+`@mcp.tool()` wrapper, and the manifest's `tools` array. Miss one and the test
+names it.
+
+## 5. Long actions: `job_start`, not a bigger timeout
+
+Some actions run for minutes. A tool call that outlives its transport is not
+just slow, it reports a stale result, and `permuter_supervisor` has been killed
+mid-lock this way, leaving a seed applied and a stale build lock behind.
+
+Long actions therefore get **started and polled**:
+
+```
+job_start('run_analysis', script='matched_audit.py')   -> job id
+job_status(<id>)                                       -> poll
+```
+
+`argv` still comes from `build_argv`, so the allowlist remains the only way to
+construct a command.
+
+`elapsed_s` on a job **includes queue wait**, so it is not a runtime. Jobs are
+exclusive; the same call has measured 82s and 271s depending on what else was
+queued.
+
+## 6. Running the connector under a debugger or a test
+
+```
+python3 automation/test_connector_surfaces.py     # both surfaces plus portability
+python3 automation/mcp/test_mock.py               # sotn-local against a mock endpoint
+python3 automation/run_selftests.py               # every test_*.py, one table
+```
+
+`test_connector_surfaces.py` is the one to run after touching anything in
+`automation/mcp/`. It checks the REGISTRY/decorator agreement, the manifest
+drift, the portability properties in section 1, and that `docs/TOOLING.md` names
+no tool that does not exist.

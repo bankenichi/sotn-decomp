@@ -746,12 +746,26 @@ def main() -> int:
           "a destination that does not exist yet is allowed without ceremony")
 
     # A clean tracked file is recoverable from HEAD, so it is allowed too.
-    _clean = None
-    try:
-        _clean = _cc_mod._adoptable("automation/dashboard.py")
-    except Exception as e:                                      # noqa: BLE001
-        _clean = None
-        check(False, f"a clean destination must not be blocked ({e})")
+    #
+    # DISCOVERED, not named. This was automation/dashboard.py, which made the
+    # check depend on nobody having edited the dashboard: on 2026-08-17 a
+    # one-line dashboard change turned this into a reported guard defect that
+    # did not exist. Any test whose subject is "a CLEAN file" has to go and find
+    # one rather than assume a particular file is clean.
+    _clean, _clean_dest = None, None
+    for _cand in sorted((_repo / "automation").glob("*.py")):
+        _rel = _cand.relative_to(_repo).as_posix()
+        if _cc_mod._is_tracked(_rel) and not _cc_mod._is_dirty(_rel):
+            _clean_dest = _rel
+            break
+    check(_clean_dest is not None,
+          f"found a clean tracked destination to test with ({_clean_dest})")
+    if _clean_dest:
+        try:
+            _clean = _cc_mod._adoptable(_clean_dest)
+        except Exception as e:                                  # noqa: BLE001
+            _clean = None
+            check(False, f"a clean destination must not be blocked ({e})")
     check(bool(_clean),
           "a clean destination is allowed: HEAD still holds what it replaces")
 
@@ -856,13 +870,41 @@ def main() -> int:
     # _splat_refs is the interesting half: it encodes that a subsegment and a
     # filename are ONE fact in two places. Anchor the test on a reference that
     # really exists, so it cannot pass by finding nothing.
-    _live = "src/st/rno0/unk_4A320.c"
-    _refs = _cc_mod._splat_refs(_live)
+    #
+    # The anchor is DISCOVERED, not hardcoded. It used to name
+    # src/st/rno0/unk_4A320.c literally, and on 2026-08-17 that file was renamed
+    # to giantbro_helpers_2.c -- by git_mv, the very tool this block tests. The
+    # test then failed three checks and crashed on the fourth, reporting a guard
+    # defect where there was none. A test that names a moving target is a test
+    # that will one day lie about the thing it guards, and this one lied about a
+    # security guard. Pick any tracked, splat-referenced source file instead.
+    # Two things make an anchor usable, and the second is not obvious. It must be
+    # tracked and splat-referenced, AND its stem must be distinctive. The first
+    # candidate found by a naive scan was src/st/rno0/bss.c, whose stem `bss`
+    # appears in 52 subsegments across every overlay's config, so the reference
+    # this block wants to assert on was buried behind config/splat.hd.dra.yaml.
+    # A generic stem does not prove the tool located THIS file's subsegment.
+    _live, _ref = None, None
+    for _cand in sorted((_repo / "src" / "st" / "rno0").glob("*.c")):
+        _rel = _cand.relative_to(_repo).as_posix()
+        if not _cc_mod._is_tracked(_rel):
+            continue
+        _hits = _cc_mod._splat_refs(_rel)
+        _own = [r for r in _hits
+                if "splat.us.strno0.yaml" in r and _cand.stem in r]
+        # One reference, in this overlay's own config, is the unambiguous case.
+        if _own and len(_hits) <= 4:
+            _live, _ref = _rel, _own[0]
+            break
+    check(_live is not None,
+          f"found a tracked, splat-referenced anchor with a distinctive stem "
+          f"({_live})")
+    _refs = _cc_mod._splat_refs(_live) if _live else []
     check(bool(_refs),
           f"_splat_refs finds the live subsegment for {_live} ({len(_refs)})")
-    if _refs:
-        check("splat.us.strno0.yaml" in _refs[0] and "unk_4A320" in _refs[0],
-              f"and names the config and the line ({_refs[0].strip()})")
+    if _ref:
+        check("splat.us.strno0.yaml" in _ref and Path(_live).stem in _ref,
+              f"and names the config and the line ({_ref.strip()})")
     check(_cc_mod._splat_refs("src/st/e_floor_trap.h") == [],
           "a header is never splat-referenced, so it is not checked")
     check(_cc_mod._splat_refs("automation/dashboard.py") == [],
@@ -881,7 +923,7 @@ def main() -> int:
               "and the refusal names the config that has to be edited first")
         check("confirm_splat_ref" in _blocked_splat,
               "and says how to override deliberately")
-    check(_cc_mod._removable(_live, False, True).endswith("unk_4A320.c"),
+    check(_cc_mod._removable(_live, False, True).endswith(Path(_live).name),
           "confirm_splat_ref=True lets it through")
 
     # Untracked and directories are refused outright, with no override.
@@ -916,30 +958,49 @@ def main() -> int:
 
     # A clean, tracked, unreferenced file is removable without ceremony: that
     # is the ordinary case and it must not need a flag.
-    _plain = None
-    try:
-        _plain = _cc_mod._removable("automation/dashboard.py")
-    except Exception as e:                                      # noqa: BLE001
-        check(False, f"a clean tracked file must be removable ({e})")
+    #
+    # DISCOVERED, not named, and for a sharper reason than the anchor above.
+    # This used to be automation/dashboard.py, which meant the check asserted
+    # "the guard permits a clean file" only while nobody was editing the
+    # dashboard. On 2026-08-17 a one-line dashboard change made it dirty and
+    # this failed, reporting a defect in _removable that did not exist. A test
+    # whose subject is "clean" must not name a file a developer might have open.
+    _plain, _plain_path = None, None
+    for _cand in sorted((_repo / "automation").glob("*.py")):
+        _rel = _cand.relative_to(_repo).as_posix()
+        if _cc_mod._is_tracked(_rel) and not _cc_mod._is_dirty(_rel):
+            _plain_path = _rel
+            break
+    check(_plain_path is not None,
+          f"found a clean tracked file to test the ordinary case ({_plain_path})")
+    if _plain_path:
+        try:
+            _plain = _cc_mod._removable(_plain_path)
+        except Exception as e:                                  # noqa: BLE001
+            check(False, f"a clean tracked file must be removable ({e})")
     check(bool(_plain),
           "a clean, tracked, unreferenced file needs no override")
 
     # _movable's guard is DIRECTIONAL: it looks at the source stem only, so the
     # config-first ordering is the one that passes.
+    # The destination is a name that does not exist, for the same reason the
+    # anchor is discovered: a real filename here becomes wrong the moment
+    # somebody renames it.
+    _dest = "src/st/rno0/_mv_guard_probe_dest.c"
     _blocked_mv = None
     try:
-        _cc_mod._movable(_live, "src/st/rno0/giantbro_helpers_2.c")
+        _cc_mod._movable(_live, _dest)
     except Exception as e:                                      # Rejected
         _blocked_mv = str(e)
     check(_blocked_mv is not None,
           "moving a file whose OLD stem is still declared is refused")
     if _blocked_mv:
-        check("giantbro_helpers_2" in _blocked_mv,
+        check("_mv_guard_probe_dest" in _blocked_mv,
               "and the refusal names the new stem the config should point at")
         check("FIRST" in _blocked_mv,
               "and states the ordering, which is the actual lesson")
-    check(_cc_mod._movable(_live, "src/st/rno0/giantbro_helpers_2.c",
-                           False, True)[0].endswith("unk_4A320.c"),
+    check(_cc_mod._movable(_live, _dest, False, True)[0]
+          .endswith(Path(_live).name),
           "confirm_splat_ref=True lets it through and returns both paths")
     _mv_onto = None
     try:
@@ -948,6 +1009,163 @@ def main() -> int:
         _mv_onto = str(e)
     check(_mv_onto is not None and "already exists" in (_mv_onto or ""),
           "moving onto an existing file is refused")
+
+    # ------------------------------------------------------------------
+    # THE THIRD SURFACE: the MCPB bundle manifest.
+    #
+    # REGISTRY and @mcp.tool() were the two surfaces this file was written for.
+    # There is a third, and it drifted furthest of all: automation/mcpb/
+    # sotn-cmd/manifest.json carries a `tools` array that is what anyone reading
+    # the bundle sees as the connector's capabilities. It said 21 while the
+    # connector exposed 72 -- not a stale detail but a wrong answer to "what can
+    # this thing do", given to exactly the reader least able to check.
+    #
+    # Same failure mode as the stale server/ snapshots that were deleted on
+    # 2026-08-09: a hand-maintained copy of something authoritative, sitting
+    # where a reader lands first.
+    # ------------------------------------------------------------------
+    import json as _json
+
+    print("\nthe MCPB manifest agrees with the callable surface")
+    _man_path = REPO / "automation" / "mcpb" / "sotn-cmd" / "manifest.json"
+    check(_man_path.is_file(), "automation/mcpb/sotn-cmd/manifest.json exists")
+    if _man_path.is_file():
+        _man = _json.loads(_man_path.read_text(encoding="utf-8"))
+        _man_tools = {t["name"] for t in _man.get("tools", [])}
+        _missing = sorted(tools - _man_tools)
+        _extra = sorted(_man_tools - tools)
+        check(not _missing,
+              f"every callable tool is listed in the manifest (missing: {_missing})")
+        check(not _extra,
+              f"the manifest lists no tool that does not exist (extra: {_extra})")
+        # The manifest must say out loud that it is a launcher for one client,
+        # not the server, or `platforms: [win32]` reads as "Windows only".
+        _ld = _man.get("long_description", "")
+        check("NOT THE SERVER" in _ld.upper(),
+              "the manifest states it is not the server and is not required")
+        check("clients/" in _ld,
+              "and points at automation/mcp/clients/ for other MCP clients")
+
+    # ------------------------------------------------------------------
+    # PORTABILITY. The servers must run under any MCP client, not just Claude
+    # Desktop. Kenichi is migrating to OpenAI Codex, and "the mcpb work probably
+    # covered it" was an assumption worth testing rather than repeating: MCPB is
+    # a Claude Desktop packaging format and its ${user_config} substitution is a
+    # Claude Desktop feature, so the bundles prove nothing about portability.
+    #
+    # What actually has to hold is smaller and checkable:
+    #   1. no client-specific import or branch in the server sources
+    #   2. sibling imports survive a launch form where sys.path[0] is not the
+    #      script directory, which is why each server inserts its own path
+    #   3. every default is derived from the file's own location, so a client
+    #      that can set neither cwd nor env still gets a working server
+    #   4. a registration snippet exists for a non-Anthropic client
+    # ------------------------------------------------------------------
+    print("\nthe servers carry no client-specific code")
+    _cmd_src = (MCP / "sotn_cmd_mcp.py").read_text(encoding="utf-8")
+    _loc_src = (MCP / "sotn_local_mcp.py").read_text(encoding="utf-8")
+    _cc_src = (MCP / "commands_client.py").read_text(encoding="utf-8")
+    for _name, _src in (("sotn_cmd_mcp.py", _cmd_src),
+                        ("sotn_local_mcp.py", _loc_src),
+                        ("commands_client.py", _cc_src)):
+        _code = "\n".join(
+            ln for ln in _src.splitlines()
+            if not ln.lstrip().startswith("#"))
+        # Comments and docstrings may discuss clients; executable lines may not
+        # import one or branch on one.
+        check(not re.search(r"^\s*(import|from)\s+\w*(claude|anthropic|openai)",
+                            _code, re.I | re.M),
+              f"{_name} imports no vendor client SDK")
+        check("CLAUDE_" not in _code and "ANTHROPIC_" not in _code,
+              f"{_name} reads no client-specific environment variable")
+
+    print("\nsibling imports do not depend on the launch form")
+    for _name, _src in (("sotn_cmd_mcp.py", _cmd_src),
+                        ("sotn_local_mcp.py", _loc_src)):
+        check("sys.path.insert" in _src,
+              f"{_name} puts its own directory on sys.path before importing siblings")
+
+    print("\nevery default is self-locating, so no cwd and no env are required")
+    check("Path(__file__).resolve().parents[2]" in _cc_src,
+          "commands_client derives REPO from its own location when SOTN_REPO is unset")
+    # Proven rather than asserted: import the module with the repo variable
+    # cleared and confirm it still lands on this repo.
+    import os as _os
+    import importlib as _il
+    _saved = _os.environ.pop("SOTN_REPO", None)
+    try:
+        _il.reload(cc)
+        check(Path(cc.REPO).resolve() == REPO.resolve(),
+              "with SOTN_REPO unset the module still resolves to this repo")
+    finally:
+        if _saved is not None:
+            _os.environ["SOTN_REPO"] = _saved
+        _il.reload(cc)
+
+    print("\nnon-Anthropic clients have a registration to copy")
+    _clients = REPO / "automation" / "mcp" / "clients"
+    for _f in ("README.md", "codex.config.toml",
+               "mcp_servers.native.json", "mcp_servers.windows-wsl.json"):
+        check((_clients / _f).is_file(), f"automation/mcp/clients/{_f} exists")
+    if (_clients / "codex.config.toml").is_file():
+        _codex = (_clients / "codex.config.toml").read_text(encoding="utf-8")
+        check("[mcp_servers.sotn-cmd]" in _codex,
+              "the Codex snippet uses Codex's [mcp_servers.<name>] table syntax")
+        check("sotn_cmd_mcp.py" in _codex,
+              "and launches the real server script by absolute path")
+        check("SOTN_CMD_DRYRUN = \"1\"" in _codex,
+              "and ships dry-run ON, like every other registration")
+
+    # ------------------------------------------------------------------
+    # THE DOCS ARE A SURFACE TOO. docs/TOOLING.md tells an agent which tool to
+    # call; a tool named there that does not exist sends the agent down a path
+    # that ends in an error it cannot diagnose. Same class of harm as the stale
+    # manifest, so it gets the same treatment.
+    # ------------------------------------------------------------------
+    print("\nthe docs name only tools and scripts that exist")
+    _tooling = REPO / "docs" / "TOOLING.md"
+    check(_tooling.is_file(), "docs/TOOLING.md exists")
+    if _tooling.is_file():
+        _doc = _tooling.read_text(encoding="utf-8")
+        # Tool names are written as `name` in a leading table cell: | `name` |
+        _named = set(re.findall(r"^\|\s*`(\w+)`", _doc, re.M))
+        _known = tools | set(cc.FS_ACTIONS if hasattr(cc, "FS_ACTIONS") else ())
+        _known |= {"read_file", "write_file", "list_dir", "search_repo"}
+        _known |= set(cc.ANALYSIS_SCRIPTS)
+        _known |= {s[:-3] for s in cc.ANALYSIS_SCRIPTS}
+        _ghosts = sorted(n for n in _named if n not in _known)
+        check(not _ghosts,
+              f"no doc row names a tool or script that does not exist: {_ghosts}")
+        check(len(_named & tools) >= 60,
+              f"and the reference is not a token subset ({len(_named & tools)} "
+              f"of {len(tools)} tools documented)")
+
+    print("\nAGENTS.md points at the roadmap and requires keeping it current")
+    _agents = REPO / "AGENTS.md"
+    check(_agents.is_file(), "AGENTS.md exists")
+    if _agents.is_file():
+        _a = _agents.read_text(encoding="utf-8")
+        check("ROADMAP.md" in _a, "AGENTS.md references ROADMAP.md")
+        check("docs/TOOLING.md" in _a, "AGENTS.md references docs/TOOLING.md")
+        check("docs/CONNECTORS.md" in _a, "AGENTS.md references docs/CONNECTORS.md")
+        check(len(_a) > 2000,
+              f"AGENTS.md is not a stub ({len(_a)} bytes; it was 47)")
+    check((REPO / "docs" / "CONNECTORS.md").is_file(), "docs/CONNECTORS.md exists")
+
+    print("\nevery repo path named in the new docs resolves")
+    for _docname in ("docs/TOOLING.md", "docs/CONNECTORS.md", "AGENTS.md"):
+        _p = REPO / _docname
+        if not _p.is_file():
+            continue
+        _bad = []
+        for _ref in set(re.findall(r"`((?:automation|docs|config|src|include|tools)"
+                                   r"/[A-Za-z0-9_./-]+)`",
+                                   _p.read_text(encoding="utf-8"))):
+            if "<" in _ref or "*" in _ref:
+                continue
+            if not (REPO / _ref).exists():
+                _bad.append(_ref)
+        check(not _bad, f"{_docname} names only paths that exist: {sorted(_bad)}")
 
     print()
     if FAILS:

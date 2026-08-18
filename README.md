@@ -310,13 +310,16 @@ The harness currently works `ST/RNO0`, `BOSS/BO6`, `BOSS/BO0`, `ST/RCEN` and
 
 | file | what it is for |
 |---|---|
+| `AGENTS.md` | **start here.** The entry point for any agent: framing, constraints, where everything else is |
+| `docs/TOOLING.md` | every connector tool and analysis script, with when to call it and when not to |
+| `docs/CONNECTORS.md` | how the connectors are built, their security model, and installing them under any MCP client |
 | `automation/README.md` | operating the harness day to day |
 | `docs/HARNESS-ARCHITECTURE.md` | how the pieces fit and why |
 | `docs/harness-control.md` | supervisor, connector, dashboard |
 | `docs/fleet-dead-time.md` | where fleet time actually goes |
 | `MATCHING-LESSONS.md` | evidence-backed matching notes, with retractions |
 | `docs/NAMING.md`, `docs/STYLE.md` | conventions |
-| `ROADMAP.md` | what is next and what was abandoned |
+| `ROADMAP.md` | direction, plus the ledger of every task ever opened |
 
 A standing rule across all of them: **when a claim turns out to be wrong it is
 retracted in place, with the measurement that disproved it.** Several documents

@@ -726,6 +726,15 @@ DIAGNOSTICS = [
      "a runaway forced-code pass aborts instead of filling the budget"),
     ("Self-test: audit", "empty_response_audit.py", "--self-test",
      "the audit parser's own checks"),
+    # Added 2026-08-17. It was allowlisted in ANALYSIS_SCRIPTS and wired to no
+    # button, so it was runnable through the connector and invisible from the
+    # UI: the exact reachability gap this tab's own self-test was written to
+    # catch, and the self-test was correctly failing on it. Third time this
+    # class of miss has appeared here, after overlay_size_check and the eleven
+    # buttonless suites that produced run_selftests.py.
+    ("Queue coverage", "queue_coverage.py", "",
+     "does the queue cover what is actually in the tree, and where the two "
+     "populations legitimately disagree"),
 ]
 
 
