@@ -14,8 +14,14 @@
    tested an old-style declaration plus func_us_801B9DE4(0) at both call sites.
    That variant compiled but remained -0x4, so the hypothesis is exhausted.
 
+   The standalone include and RIC_step declaration supply context already
+   present in the original source file. They do not alter the exact captured
+   declarations or body.
+
    Do not apply this as a match. It is preserved as a compiling starting point
    for asm-differ and the permuter. */
+#include "../../src/boss/bo6/bo6.h"
+
 extern void BO6_DisableAfterImage(s32, s32);
 extern void BO6_RicSetAnimation(AnimationFrame*);
 extern void func_us_801B9DE4(void);
@@ -25,6 +31,7 @@ extern AnimationFrame D_us_801822B8[];
 extern AnimationFrame* RIC_anim;
 extern s16 RIC_pose;
 extern s16 RIC_poseTimer;
+extern u16 RIC_step;
 
 void BO6_RicStepStand(void) {
     if (BO6_RicCheckInput(0x4305C) == 0) {

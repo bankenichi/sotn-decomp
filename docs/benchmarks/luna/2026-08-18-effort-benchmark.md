@@ -168,6 +168,22 @@ queue was snapshotted at
 `automation/queue/snapshots/queue.20260818-032759.37a5d1b.jsonl`. The source
 still holds the original stub and the tree remains 81/81.
 
+After the connector restart, the root added only the original source file's
+standalone header and `RIC_step` declaration around the unchanged body. The seed
+then imported cleanly at `nonmatchings/BO6_RicStepStand-3`, and permuter debug
+compiled it at base score 605. The preserved queue note now carries that live
+evidence, with a second 471-record snapshot at
+`automation/queue/snapshots/queue.20260818-035840.9c1b96e.jsonl`.
+The connector's proof-length cap clipped that snapshot's receipt, so the root
+replaced only the proof with a complete 157-character receipt while retaining
+the derivation note. The resulting third 471-record snapshot is
+`automation/queue/snapshots/queue.20260818-042220.9c1b96e.jsonl`. That report
+also incorrectly put the raw debug dissimilarity score of 605 into the queue's
+`best_score`, replacing the established score of 50. The live record was
+explicitly corrected to 50, with the mistaken snapshot retained and the
+corrected fourth snapshot at
+`automation/queue/snapshots/queue.20260818-042729.9c1b96e.jsonl`.
+
 This is useful candidate yield. It is not sufficient replacement evidence:
 Stage C covered one record, not the mixed multi-record sample required by the
 design, and the candidate did not match.
@@ -203,8 +219,10 @@ The Codex connector therefore had a portability defect affecting at least these
 two Python-backed actions. `commands_client.py` now selects the root repository
 venv by default, retains an explicit `SOTN_PYTHON` override, and falls back to
 the current interpreter only if the root venv is absent. The regression failed
-before the change and passes after it. Live asm-differ and permuter verification
-still require a connector restart.
+before the change and passes after it. After restart, both `asm_diff` and
+`permuter_import` launched through the repository `.venv/bin/python` and
+returned successfully. A clean imported seed then passed the permuter debug
+compile, closing the portability defect with live evidence.
 
 ## Root-gated support assignment
 

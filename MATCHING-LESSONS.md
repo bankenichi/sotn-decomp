@@ -598,6 +598,13 @@ restored the stub before saving the body. The exact patch was recoverable from
 the Codex task transcript and was saved later. That recovery was luck. A green
 restored tree does not excuse losing the only compiling form.
 
+An exact body is not yet a usable permuter seed. The body may have compiled only
+because its original file supplied a local header or an earlier flat extern.
+Keep the captured body unchanged, add the same standalone context around it,
+then require both a clean `permuter_import` and a successful debug compile.
+`permuter_import` can report a base.c syntax error, proceed, and still return
+zero, so directory creation alone is not a validation gate.
+
 General form: when a pipeline records outcomes, a single "failed" bucket
 collapses distinctions the downstream router needs. If two failures have
 different owners, they need different statuses.

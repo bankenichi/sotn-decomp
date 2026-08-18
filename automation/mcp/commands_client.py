@@ -1376,6 +1376,46 @@ def run(action: str, timeout: float = 3600, **kwargs) -> dict:
     argv = build_argv(action, **kwargs)
     if DRYRUN:
         return {"action": action, "argv": argv, "dry_run": True}
+    run_cwd = REPO
+    debug_output_dir = None
+    if action == "permuter" and kwargs.get("debug"):
+        # Upstream debug mode writes two fixed relative paths with replacement:
+        # ./debug_source.c and ./debug_compiled_object.o. Running from REPO
+        # therefore overwrote unrelated untracked evidence. Give every debug
+        # pass an owned, unique directory beneath the seed that produced it.
+        work_dir = Path(argv[-1]).resolve()
+        stamp = time.strftime("%Y%m%d-%H%M%S", time.gmtime())
+        debug_root = work_dir / "debug-runs"
+        debug_root.mkdir(parents=True, exist_ok=True)
+        try:
+            resolved_debug_root = debug_root.resolve(strict=True)
+            resolved_debug_root.relative_to(work_dir)
+        except (OSError, ValueError) as exc:
+            raise Rejected(
+                "permuter debug-runs must resolve inside its work directory"
+            ) from exc
+        suffix = 0
+        while True:
+            tail = f"{stamp}-{os.getpid()}" + (f"~{suffix}" if suffix else "")
+            candidate = resolved_debug_root / tail
+            try:
+                candidate.mkdir()
+                debug_output_dir = candidate
+                break
+            except FileExistsError:
+                suffix += 1
+        run_cwd = debug_output_dir
+
+        # The script path is fixed by REGISTRY but relative to REPO. An explicit
+        # SOTN_PYTHON may also be a repo-relative path. Once cwd belongs to the
+        # seed, make both path-like command entries absolute. Leave bare names
+        # such as python3 alone so normal PATH lookup still works.
+        if (not Path(argv[0]).is_absolute()
+                and ("/" in argv[0] or "\\" in argv[0])):
+            argv[0] = str((REPO / argv[0]).resolve())
+        script = Path(argv[1])
+        if not script.is_absolute():
+            argv[1] = str((REPO / script).resolve())
     if action in _NEEDS_BUILD_LOCK:
         holder = build_lock_holder()
         if holder:
@@ -1393,7 +1433,7 @@ def run(action: str, timeout: float = 3600, **kwargs) -> dict:
     if argv and argv[0] == "git":
         lock_note = clear_stale_index_lock()
     try:
-        p = subprocess.run(argv, cwd=str(REPO), capture_output=True, text=True,
+        p = subprocess.run(argv, cwd=str(run_cwd), capture_output=True, text=True,
                            timeout=timeout)
         head = action in _HEAD_TRUNCATE
         cut = (lambda s: s[:MAX_OUT]) if head else (lambda s: s[-MAX_OUT:])
@@ -1422,12 +1462,16 @@ def run(action: str, timeout: float = 3600, **kwargs) -> dict:
             out["index_lock"] = lock_note
         if _sliced:
             out["slice"] = _sliced
+        if debug_output_dir is not None:
+            out["debug_output_dir"] = str(debug_output_dir)
         return out
     except subprocess.TimeoutExpired:
         # A killed git leaves .git/index.lock behind. Say so here rather than
         # letting the NEXT caller discover it as a confusing failure.
         res = {"action": action, "argv": argv, "dry_run": False,
                "timed_out": True, "timeout": timeout}
+        if debug_output_dir is not None:
+            res["debug_output_dir"] = str(debug_output_dir)
         if argv and argv[0] == "git":
             res["warning"] = ("git was killed by the timeout; it may have left "
                               ".git/index.lock. The next git action through "

@@ -69,6 +69,19 @@ answers a different question.
 | `permuter` | search the space. Hours. `-j` defaults to 1 |
 | `run_analysis` | everything else; see section 6 |
 
+`permuter_import` returning zero means it created a directory, not that the seed
+is usable. Upstream may print `Syntax error in base.c`, say it is proceeding
+anyway, and still exit successfully. Read both output streams, then run
+`permuter(debug=True)` as the compile gate. A saved function fragment needs the
+same header and preceding flat extern context that made it compile in its source
+file. Keep the captured body exact and add that context around it.
+
+Upstream permuter debug mode writes fixed relative filenames. The connector
+runs each debug pass from a unique `debug-runs/` directory below its own work
+directory and returns the path as `debug_output_dir`. This keeps generated
+sources and objects attached to their seed and prevents an unrelated root-level
+debug file from being replaced.
+
 **Read the side-by-side, not the score.** Permuter scores are inflated by symbol
 naming alone: `PLAYER_posX_i_hi` against `g_Entities+2`, `g_api_PlaySfx` against
 `g_api+0x68`, `jtbl_us_*` against `.rodata`. A function has scored 50 on naming

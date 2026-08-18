@@ -23,6 +23,7 @@ from __future__ import annotations
 import re
 import sys
 import tempfile
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
@@ -869,6 +870,138 @@ def main() -> int:
     check("debug: bool" in src_mcp.split("def permuter(")[1].split(")")[0],
           "and the @mcp.tool signature actually accepts it, so the help is "
           "not describing an argument no caller can pass")
+
+    # Upstream debug mode writes ./debug_source.c and
+    # ./debug_compiled_object.o with unconditional replacement. The connector
+    # must give each run an owned directory under its work dir, or running the
+    # fast loop can silently replace unrelated untracked evidence at repo root.
+    print("\npermuter debug output is unique and owned by its work directory")
+    _saved_subprocess_run = _cc_mod.subprocess.run
+    _saved_cc_dryrun = _cc_mod.DRYRUN
+    _saved_cc_repo = _cc_mod.REPO
+    _saved_cc_python = _cc_mod.PYTHON
+    _captured_debug_runs = []
+    _fake_debug_mode = {"value": "success"}
+
+    def _fake_debug_run(argv, **kwargs):
+        _cwd = Path(kwargs["cwd"])
+        _captured_debug_runs.append({"argv": argv, "cwd": str(_cwd)})
+        (_cwd / "debug_source.c").write_text("new source", encoding="utf-8")
+        if _fake_debug_mode["value"] == "timeout":
+            raise _cc_mod.subprocess.TimeoutExpired(argv, 1)
+        (_cwd / "debug_compiled_object.o").write_bytes(b"new object")
+        _rc = 7 if _fake_debug_mode["value"] == "nonzero" else 0
+        return _cc_mod.subprocess.CompletedProcess(argv, _rc, "", "")
+
+    try:
+        with tempfile.TemporaryDirectory(dir=REPO / "automation") as _td:
+            _fake_repo = Path(_td)
+            _work_dir = _fake_repo / "seed"
+            _work_dir.mkdir()
+            _script = _fake_repo / "tools" / "decomp-permuter" / "permuter.py"
+            _script.parent.mkdir(parents=True)
+            _script.touch()
+            _root_source = _fake_repo / "debug_source.c"
+            _root_object = _fake_repo / "debug_compiled_object.o"
+            _root_source.write_text("old source", encoding="utf-8")
+            _root_object.write_bytes(b"old object")
+
+            _cc_mod.REPO = _fake_repo
+            _cc_mod.PYTHON = ".venv/bin/python"
+            _cc_mod.subprocess.run = _fake_debug_run
+
+            _cc_mod.DRYRUN = True
+            _dry_plan = _cc_mod.run(
+                "permuter", work_dir=str(_work_dir), debug=True, timeout=1)
+            check(_dry_plan.get("dry_run") is True
+                  and not (_work_dir / "debug-runs").exists(),
+                  "dry-run previews without creating an output directory")
+
+            _cc_mod.DRYRUN = False
+            _debug_result_1 = _cc_mod.run(
+                "permuter", work_dir=str(_work_dir), debug=True, timeout=1)
+            _debug_result_2 = _cc_mod.run(
+                "permuter", work_dir=str(_work_dir), debug=True, timeout=1)
+            _debug_cwd_1 = Path(_captured_debug_runs[0].get("cwd", REPO))
+            _debug_cwd_2 = Path(_captured_debug_runs[1].get("cwd", REPO))
+            check(_debug_cwd_1 != REPO and _work_dir in _debug_cwd_1.parents,
+                  "debug files cannot land at repo root or outside the seed")
+            check(_debug_cwd_1.is_dir() and _debug_cwd_2.is_dir(),
+                  "the connector creates the owned debug output directory")
+            check(_debug_cwd_1 != _debug_cwd_2,
+                  "repeated debug runs never replace one another")
+            check((_debug_cwd_1 / "debug_source.c").read_text() == "new source"
+                  and (_debug_cwd_1 / "debug_compiled_object.o").read_bytes()
+                  == b"new object",
+                  "upstream's fixed debug filenames land in the owned directory")
+            check(_root_source.read_text() == "old source"
+                  and _root_object.read_bytes() == b"old object",
+                  "pre-existing root debug evidence remains byte-identical")
+            _debug_python = Path(_captured_debug_runs[0]["argv"][0])
+            _debug_script = Path(
+                _captured_debug_runs[0].get("argv", ["", ""])[1])
+            check(_debug_python == (_fake_repo / ".venv/bin/python").resolve(),
+                  "a relative SOTN_PYTHON remains relative to the repo")
+            check(_debug_script == _script.resolve(),
+                  "permuter.py remains resolvable from the owned directory")
+            check(_debug_result_1.get("debug_output_dir") == str(_debug_cwd_1)
+                  and _debug_result_2.get("debug_output_dir") == str(_debug_cwd_2),
+                  "the caller is told where the preserved debug artifacts live")
+
+            _fake_debug_mode["value"] = "nonzero"
+            _nonzero = _cc_mod.run(
+                "permuter", work_dir=str(_work_dir), debug=True, timeout=1)
+            check(_nonzero.get("returncode") == 7
+                  and Path(_nonzero["debug_output_dir"]).is_dir(),
+                  "nonzero compiles still preserve and report their artifacts")
+
+            _fake_debug_mode["value"] = "timeout"
+            _timed_out = _cc_mod.run(
+                "permuter", work_dir=str(_work_dir), debug=True, timeout=1)
+            _timeout_dir = Path(_timed_out["debug_output_dir"])
+            check(_timed_out.get("timed_out") is True
+                  and (_timeout_dir / "debug_source.c").is_file(),
+                  "timeouts report the directory holding partial artifacts")
+
+            _fake_debug_mode["value"] = "success"
+            with ThreadPoolExecutor(max_workers=2) as _pool:
+                _parallel = list(_pool.map(
+                    lambda _: _cc_mod.run(
+                        "permuter", work_dir=str(_work_dir), debug=True,
+                        timeout=1),
+                    range(2)))
+            _parallel_dirs = {r["debug_output_dir"] for r in _parallel}
+            check(len(_parallel_dirs) == 2,
+                  "concurrent debug calls receive distinct output directories")
+
+            _escape_work = _fake_repo / "escape-seed"
+            _escape_work.mkdir()
+            _outside_seed = _fake_repo / "outside-seed"
+            _outside_seed.mkdir()
+            try:
+                (_escape_work / "debug-runs").symlink_to(
+                    _outside_seed, target_is_directory=True)
+            except OSError:
+                _source = (MCP / "commands_client.py").read_text()
+                check("debug_root.resolve(" in _source and
+                      "resolved_debug_root.relative_to(work_dir)" in _source,
+                      "source validates debug-root containment when symlinks "
+                      "are unavailable")
+            else:
+                try:
+                    _cc_mod.run(
+                        "permuter", work_dir=str(_escape_work), debug=True,
+                        timeout=1)
+                    check(False,
+                          "a debug-runs symlink outside its seed is refused")
+                except _cc_mod.Rejected:
+                    check(True,
+                          "a debug-runs symlink outside its seed is refused")
+    finally:
+        _cc_mod.subprocess.run = _saved_subprocess_run
+        _cc_mod.DRYRUN = _saved_cc_dryrun
+        _cc_mod.REPO = _saved_cc_repo
+        _cc_mod.PYTHON = _saved_cc_python
 
     # ------------------------------------------------------------------
     # DELETING AND RENAMING. The third and fourth members of the guard family,

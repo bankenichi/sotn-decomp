@@ -174,7 +174,9 @@ def permuter(work_dir: str, threads: int = 4, stop_on_zero: bool = True,
 
     debug=True IS THE FAST LOOP AND IS USUALLY WHAT YOU WANT FIRST. It compiles
     and scores base.c ONLY, prints `base score = N`, and exits in seconds. No
-    search, no randomization, no job needed -- call it synchronously.
+    search, no randomization, no job needed -- call it synchronously. Each run
+    preserves any debug artifacts it produces in a unique debug-runs directory
+    under work_dir and returns that path as debug_output_dir.
 
     Use it to test a codegen hypothesis without a build. Write the candidate
     body into the source file, permuter_import it, and read the score. Before
