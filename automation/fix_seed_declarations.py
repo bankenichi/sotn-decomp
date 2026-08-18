@@ -40,6 +40,8 @@ SEEDS = os.path.join(HERE, "candidates")
 # The seed carries a banner comment; the C starts after it. The banner is a
 # single /* ... */ block written by save_candidate.
 RX_BANNER = re.compile(r"\A\s*/\*.*?\*/\s*", re.S)
+WRITER_START = "/* Added by the permuter-seed writer. INCLUDE_ASM expands to nothing under"
+WRITER_END = "/* End permuter-seed writer declarations. */"
 
 
 def split_banner(text: str) -> tuple[str, str]:
@@ -48,23 +50,87 @@ def split_banner(text: str) -> tuple[str, str]:
     return (m.group(0), text[m.end():]) if m else ("", text)
 
 
+def strip_writer_blocks(body: str) -> tuple[str, list[str]]:
+    """Remove generated declaration blocks, including the legacy unbounded form.
+
+    New blocks carry an explicit end sentinel. Historical blocks predate it,
+    but the writer always separated them from the original file with a blank
+    line. Refuse to guess when that boundary is absent: preserving a suspect
+    seed is better than consuming an original declaration.
+    """
+    removed = []
+    while True:
+        start = body.find(WRITER_START)
+        if start < 0:
+            return body, removed
+        start = body.rfind("/*", 0, start + 2)
+        line_start = body.rfind("\n", 0, start) + 1
+        sentinel = body.find(WRITER_END, start)
+        if sentinel >= 0:
+            end = sentinel + len(WRITER_END)
+            if end < len(body) and body[end] == "\n":
+                end += 1
+        else:
+            marker_end = body.find("*/", start)
+            if marker_end < 0:
+                raise ValueError("unterminated permuter-seed writer block")
+            boundary = re.search(r"\n[ \t]*\n", body[marker_end + 2:])
+            if not boundary:
+                raise ValueError(
+                    "legacy permuter-seed writer block has no safe blank-line boundary")
+            # Consume the generated block's final newline and preserve the
+            # original file's leading newline.
+            end = marker_end + 2 + boundary.start() + 1
+        removed.append(body[line_start:end])
+        body = body[:line_start] + body[end:]
+
+
+def block_declarations(blocks: list[str]) -> list[str]:
+    """Declarations inside generated blocks, normalised for comparison."""
+    out = []
+    for block in blocks:
+        bare = wd._strip_comments_and_strings(block)
+        for match in re.finditer(
+                r"(?ms)^[ \t]*(?:extern\b|[A-Za-z_]\w*)[^;{}]*;", bare):
+            declaration = block[match.start():match.end()].strip()
+            if declaration:
+                out.append(" ".join(declaration.split()))
+    return out
+
+
 def fix_one(text: str) -> tuple[str, list[str]]:
-    """Returns (new_text, declarations_added)."""
+    """Returns (new_text, declaration changes)."""
     banner, body = split_banner(text)
+    clean_body, old_blocks = strip_writer_blocks(body)
     # The "code" argument decides which stubs count as called. Using the whole
     # body is right here: any call anywhere in the seed can be mutated.
-    new_body = wd._declare_stub_siblings(body, body)
+    new_body = wd._declare_stub_siblings(clean_body, clean_body)
+    _new_clean, new_blocks = strip_writer_blocks(new_body)
+    old_declarations = block_declarations(old_blocks)
+    new_declarations = block_declarations(new_blocks)
+
+    # Do not churn every sound pre-sentinel seed merely to add the new end
+    # marker. Version it only when the declaration evidence itself changes.
+    if old_blocks and old_declarations == new_declarations:
+        return text, []
     if new_body == body:
         return text, []
-    original_lines = set(body.splitlines())
-    added = [line.strip() for line in new_body.splitlines()
-             if line not in original_lines and line.strip().endswith(";")]
-    return banner + new_body, added
+    if old_blocks:
+        changes = ([f"- {item}" for item in old_declarations
+                    if item not in new_declarations] +
+                   [f"+ {item}" for item in new_declarations
+                    if item not in old_declarations])
+    else:
+        original_lines = set(clean_body.splitlines())
+        changes = [line.strip() for line in new_body.splitlines()
+                   if line not in original_lines and line.strip().endswith(";")]
+    return banner + new_body, changes
 
 
 def _called_symbols(text: str) -> list[str]:
     """Names the seed writer may need to declare for the permuter typemap."""
     _banner, body = split_banner(text)
+    body, _blocks = strip_writer_blocks(body)
     stubs = set(wd._RX_STUB_IN_FILE.findall(body))
     called = sorted(
         name for name in stubs
@@ -226,6 +292,32 @@ def self_test() -> int:
         twice, added2 = fix_one(new)
         ck(added2 == [], f"no second declaration ({added2})")
         ck(twice == new, "byte-identical, so --apply is idempotent")
+
+        print("\na legacy conflicting writer block is replaced, not preserved")
+        legacy_bad = (
+            '/* seed */\n#include "rno0.h"\n\n'
+            '/* Added by the permuter-seed writer. INCLUDE_ASM expands to nothing under\n'
+            '   PERMUTER, so these same-file stubs lose their only mention and the\n'
+            "   permuter's typemap raises KeyError on every mutation touching them. */\n"
+            '/* Not declared anywhere in the tree, so the real build compiles these by\n'
+            '   C89 implicit declaration (6.3.2.2), which is exactly `extern int f();`.\n'
+            '   Writing it out changes no codegen. */\n'
+            'extern int DrawLaserRing();\n'
+            'extern int RotTransPers4();\n\n'
+            'static void DrawLaserRing(void) { RotTransPers4(0); }\n')
+        wd.lookup_declarations = lambda syms, limit=40: [
+            'long RotTransPers4(\n    SVECTOR*, SVECTOR*, SVECTOR*, SVECTOR*,\n'
+            '    long*, long*, long*, long*, long*);'
+        ]
+        repaired, changes = fix_one(legacy_bad)
+        ck("extern int DrawLaserRing();" not in repaired,
+           "the conflicting target declaration is removed")
+        ck("extern int RotTransPers4();" not in repaired,
+           "the conflicting SDK declaration is removed")
+        ck("long RotTransPers4(" in repaired,
+           "the real multiline prototype replaces the fallback")
+        ck(any("RotTransPers4" in item for item in changes),
+           f"the replacement is reported ({changes})")
 
         print("\na seed needing nothing is returned untouched")
         plain = "/* banner */\n#include \"x.h\"\ns32 f(void){return 0;}\n"

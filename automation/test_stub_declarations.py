@@ -137,6 +137,9 @@ def main():
          's32 f(Entity* e){return Known(e);}\n', "already prototyped"),
         ('#include "x.h"\ns32 Known(Entity* e){return 1;}\n'
          's32 f(Entity* e){return Known(e);}\n', "defined in this file"),
+        ('#include "x.h"\nstatic void Known(Entity* e) { (void)e; }\n'
+         's32 f(Entity* e){Known(e); return 1;}\n',
+         "defined static in this file"),
     ):
         got = wd._declare_stub_siblings(src_ok, src_ok)
         check("extern int Known();" not in got, f"not re-declared: {why}")
@@ -188,6 +191,29 @@ def main():
     check("Declared by the tree" in out4, "labelled as coming from the tree")
 
     wd.lookup_declarations = real_lookup
+
+    print("\nmultiline SDK prototypes win over implicit-int fallbacks")
+    sdk = wd.lookup_declarations(["RotTransPers4", "LoadTPage"])
+    check(any("long RotTransPers4(" in line for line in sdk),
+          f"RotTransPers4 multiline prototype found ({sdk})")
+    check(any("extern u_short LoadTPage(" in line for line in sdk),
+          f"LoadTPage multiline prototype found ({sdk})")
+    sdk_seed = ('#include "rno0.h"\n'
+                'static void DrawLaserRing(void) {\n'
+                '    RotTransPers4(0, 0, 0, 0, 0, 0, 0, 0, 0);\n'
+                '}\n'
+                'void f(void) { DrawLaserRing(); LoadTPage(0, 0, 0, 0, 0, 0, 0); }\n')
+    sdk_out = wd._declare_stub_siblings(sdk_seed, sdk_seed)
+    check("extern int DrawLaserRing();" not in sdk_out,
+          "the seed target's static definition is not contradicted")
+    check("extern int RotTransPers4();" not in sdk_out,
+          "the SDK's RotTransPers4 type is not contradicted")
+    check("extern int LoadTPage();" not in sdk_out,
+          "the SDK's LoadTPage type is not contradicted")
+    check("long RotTransPers4(" in sdk_out,
+          "the real multiline RotTransPers4 prototype is copied")
+    check("extern u_short LoadTPage(" in sdk_out,
+          "the real multiline LoadTPage prototype is copied")
 
     print("\nglobals are recognised, locals and temporaries are not")
     rx = wd._RX_GLOBALISH

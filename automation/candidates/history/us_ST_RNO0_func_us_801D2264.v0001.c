@@ -39,17 +39,15 @@
    PERMUTER, so these same-file stubs lose their only mention and the
    permuter's typemap raises KeyError on every mutation touching them. */
 /* Declared by the tree: */
-void InitializeEntity(u16 arg0[]);
 extern s16 (*g_api_AllocPrimitives)(PrimitiveType type, s32 count);
-void DestroyEntity(Entity*);
-void MoveEntity();
+extern void DestroyEntity(Entity* entity);
 /* Not declared anywhere in the tree, so the real build compiles these by
    C89 implicit declaration (6.3.2.2), which is exactly `extern int f();`.
    Writing it out changes no codegen. */
+extern int InitializeEntity();
 extern int UnkPolyFunc2();
+extern int MoveEntity();
 extern int UnkPrimHelper();
-/* End permuter-seed writer declarations. */
-
 
 // func_us_801D1BF0's candidate failed to build on this name alone. Defined by
 // THIS overlay at src/st/rno0/e_init.c:229, not borrowed from another one.

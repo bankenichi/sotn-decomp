@@ -1245,22 +1245,16 @@ def lookup_declarations(symbols: list[str], limit: int = 40) -> list[str]:
     """
     wanted = [s for s in symbols if s not in _DECL_CACHE][:limit]
     if wanted:
-        # One grep for all of them: per-symbol greps over src/ and include/ cost
-        # seconds each and this runs before every attempt.
+        # One grep finds the candidate files for the whole batch. The old grep
+        # tried to return complete declarations one physical line at a time.
+        # That silently missed multiline SDK prototypes such as RotTransPers4
+        # and LoadTPage, then the seed writer invented conflicting implicit-int
+        # declarations for them. Read only the files containing a wanted name
+        # and parse complete C declaration spans in Python instead.
         alt = "|".join(re.escape(s) for s in wanted)
-        # A declaration is not required to spell `extern`. Public headers use
-        # ordinary prototypes such as `void InitializeEntity(u16 arg0[]);` and
-        # `int rsin(int a);`. Missing those and falling back to implicit int
-        # creates a conflicting declaration in the seed. Keep the extern arm
-        # for data and function-pointer globals, and add a prototype arm whose
-        # leading type token prevents an ordinary call statement from matching.
-        extern_decl = rf"extern[^;]*\b({alt})\b[^;]*;"
-        prototype = (
-            rf"[A-Za-z_]\w*[^;{{}}=]*\b({alt})[[:space:]]*"
-            rf"\([^;{{}}]*\)[[:space:]]*;")
-        pat = rf"^[[:space:]]*({extern_decl}|{prototype})"
+        pat = rf"(^|[^[:alnum:]_])({alt})([^[:alnum:]_]|$)"
         rc, out = wsl(
-            f"grep -rhoE {shlex.quote(pat)} src include "
+            f"grep -rlE {shlex.quote(pat)} src include "
             f"--include='*.c' --include='*.h' "
             f"--exclude='*_psp.c' --exclude='*_psp.h' "
             f"--exclude-dir='saturn' --exclude-dir='psp' "
@@ -1268,33 +1262,24 @@ def lookup_declarations(symbols: list[str], limit: int = 40) -> list[str]:
             timeout=120)
         found: dict[str, str] = {}
         if rc == 0:
-            for line in out.splitlines():
-                line = line.strip()
+            for rel in out.splitlines():
+                rel = rel.strip()
+                if not rel:
+                    continue
+                path = os.path.join(WIN_REPO, *rel.replace("\\", "/").split("/"))
+                try:
+                    with open(path, encoding="utf-8", errors="replace") as f:
+                        source = f.read()
+                except OSError:
+                    continue
                 for s in wanted:
-                    if not re.search(rf"\b{re.escape(s)}\b", line):
+                    if not re.search(rf"\b{re.escape(s)}\b", source):
                         continue
-                    # The grep arm is intentionally broad enough to accept
-                    # repository typedefs as return types. Reject call
-                    # statements here: a prototype has a nonempty type prefix
-                    # with no expression punctuation or control keyword.
-                    if not line.startswith("extern"):
-                        match = re.match(
-                            rf"(?P<prefix>.*?)\b{re.escape(s)}\s*"
-                            rf"\([^;{{}}]*\)\s*;$", line)
-                        prefix = (match.group("prefix").strip()
-                                  if match else "")
-                        first = prefix.split(None, 1)[0] if prefix else ""
-                        if (not prefix
-                                or any(mark in prefix
-                                       for mark in ("=", "(", ")", ".", "->"))
-                                or first in {"return", "if", "for", "while",
-                                             "switch", "case"}):
-                            continue
-                    # Bind each declaration to its symbol, shortest wins: the
-                    # shortest matching line is the plain declaration rather
-                    # than something that merely mentions the name.
-                    if s not in found or len(line) < len(found[s]):
-                        found[s] = line
+                    declaration = _repo_declaration(source, s)
+                    if (declaration and
+                            (s not in found or
+                             len(declaration) < len(found[s]))):
+                        found[s] = declaration
         for s in wanted:
             _DECL_CACHE[s] = found.get(s, "")
     return [_DECL_CACHE[s] for s in symbols
@@ -1641,6 +1626,87 @@ def _strip_comments_and_strings(text: str) -> str:
     return "".join(out)
 
 
+_DECL_CONTROL_HEADS = {
+    "return", "if", "for", "while", "switch", "case", "sizeof", "do",
+    "else", "goto",
+}
+
+
+def _function_declaration_span(text: str, name: str,
+                               terminators: str = ";{") -> tuple[int, int] | None:
+    """Find one real prototype/definition of `name` in C source text.
+
+    This is deliberately a small lexical recogniser rather than another
+    line-oriented regular expression. It accepts storage qualifiers and
+    multiword/pointer return types, balances multiline argument lists, and
+    rejects expression prefixes such as `return f(` or `x = f(`. Comments and
+    literals are blanked without moving offsets, so the returned span indexes
+    the original text.
+    """
+    bare = _strip_comments_and_strings(text)
+    for match in re.finditer(rf"\b{re.escape(name)}\s*\(", bare):
+        line_start = bare.rfind("\n", 0, match.start()) + 1
+        prefix = bare[line_start:match.start()].strip()
+        if not prefix or prefix.startswith("#"):
+            continue
+        if not re.fullmatch(
+                r"[A-Za-z_]\w*(?:[ \t]+[A-Za-z_]\w*|[ \t]*\*)*",
+                prefix):
+            continue
+        first = re.match(r"[A-Za-z_]\w*", prefix)
+        if first and first.group(0) in _DECL_CONTROL_HEADS:
+            continue
+
+        open_paren = bare.find("(", match.start(), match.end())
+        depth = 0
+        close_paren = -1
+        for pos in range(open_paren, len(bare)):
+            if bare[pos] == "(":
+                depth += 1
+            elif bare[pos] == ")":
+                depth -= 1
+                if depth == 0:
+                    close_paren = pos
+                    break
+        if close_paren < 0:
+            continue
+        end = close_paren + 1
+        while end < len(bare) and bare[end].isspace():
+            end += 1
+        if end < len(bare) and bare[end] in terminators:
+            return line_start, end + 1
+    return None
+
+
+def _extern_declaration_span(text: str, name: str) -> tuple[int, int] | None:
+    """Find a complete extern declaration, including multiline forms."""
+    bare = _strip_comments_and_strings(text)
+    match = re.search(
+        rf"(?m)^[ \t]*extern\b[^;{{}}]*\b{re.escape(name)}\b[^;{{}}]*;",
+        bare)
+    return match.span() if match else None
+
+
+def _symbol_declared_in_text(text: str, name: str) -> bool:
+    """Whether this translation unit text declares or defines `name`."""
+    return bool(_function_declaration_span(text, name) or
+                _extern_declaration_span(text, name))
+
+
+def _repo_declaration(text: str, name: str) -> str:
+    """Return the shortest real declaration for `name` found in one file."""
+    spans = []
+    function = _function_declaration_span(text, name, terminators=";")
+    if function:
+        spans.append(function)
+    external = _extern_declaration_span(text, name)
+    if external:
+        spans.append(external)
+    declarations = [text[start:end].strip() for start, end in spans]
+    declarations = [item for item in declarations if item]
+    return min(declarations, key=len) if declarations else ""
+
+
 def _undeclared_calls(whole: str, code: str, skip: set) -> list:
     """Functions `code` calls that NOTHING in `whole` declares or defines.
 
@@ -1672,8 +1738,7 @@ def _undeclared_calls(whole: str, code: str, skip: set) -> list:
         # Any declaration, definition or stub of it in this file is evidence.
         # Checked against the STRIPPED file for the same reason: prose that
         # happens to read like a prototype is not one.
-        if re.search(rf"^[^\S\n]*(?:extern[^\S\n]+)?[A-Za-z_]\w*[\s*]+"
-                     rf"{re.escape(name)}\s*\(", bare_whole, re.M):
+        if _symbol_declared_in_text(bare_whole, name):
             continue
         if re.search(rf'INCLUDE_ASM\([^)]*\b{re.escape(name)}\s*\)', whole):
             continue
@@ -1738,8 +1803,7 @@ def _declare_stub_siblings(whole: str, code: str) -> str:
     for n in called:
         if n in found:
             decls.append(found[n])
-        elif not re.search(rf"^[^\S\n]*(?:extern[^\S\n]+)?[A-Za-z_]\w*[\s*]+"
-                           rf"{re.escape(n)}\s*\(", whole, re.M):
+        elif not _symbol_declared_in_text(whole, n):
             # Nothing in the tree and nothing in this file: the real build
             # reached it by implicit declaration, so write that down verbatim.
             implicit.append(f"extern int {n}();")
@@ -1756,7 +1820,8 @@ def _declare_stub_siblings(whole: str, code: str) -> str:
         block += ["/* Not declared anywhere in the tree, so the real build "
                   "compiles these by\n   C89 implicit declaration (6.3.2.2), "
                   "which is exactly `extern int f();`.\n   Writing it out "
-                  "changes no codegen. */"] + implicit
+                   "changes no codegen. */"] + implicit
+    block += ["/* End permuter-seed writer declarations. */"]
 
     lines = whole.splitlines(keepends=True)
     last_inc = max((i for i, l in enumerate(lines)
