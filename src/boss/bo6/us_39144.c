@@ -476,7 +476,33 @@ void func_us_801B9E70(void) {
     RIC.velocityY = FIX(-4.6875);
 }
 
-INCLUDE_ASM("boss/bo6/nonmatchings/us_39144", BO6_RicSetFall);
+extern AnimationFrame D_us_801820BC[];
+
+// Richter (BO6): enter the falling step. BO6's RicSteps values are one above
+// the playable RIC values, and the target comparisons match the BO6 enum.
+void BO6_RicSetFall(void) {
+    if (g_Ric.prev_step != PL_S_RUN && g_Ric.prev_step != PL_S_SLIDE) {
+        RIC.velocityX = 0;
+    }
+    if (g_Ric.prev_step != PL_S_WALK && g_Ric.prev_step != PL_S_RUN) {
+        BO6_RicSetAnimation(D_us_801820BC);
+    }
+    if (g_Ric.prev_step == PL_S_RUN) {
+        g_Ric.unk44 = 0x10;
+    }
+    BO6_RicSetStep(PL_S_FALL);
+    RIC.velocityY = FIX(2);
+    g_Ric.timers[PL_T_5] = 8;
+    g_Ric.timers[PL_T_6] = 8;
+    g_Ric.timers[PL_T_CURSE] = 0;
+    g_Ric.timers[PL_T_8] = 0;
+    if (g_Ric.prev_step == PL_S_SLIDE) {
+        g_Ric.timers[PL_T_5] = g_Ric.timers[PL_T_6] = 0;
+        RIC.pose = 2;
+        RIC.poseTimer = 0x10;
+        RIC.velocityX /= 2;
+    }
+}
 
 extern AnimationFrame D_us_80182324;
 
