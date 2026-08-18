@@ -16,7 +16,7 @@ mistake impossible twice.
 | | |
 |---|---|
 | Oracle | **81/81** |
-| Queue | **282 matched**, 58 todo, 95 escalated, 36 deferred, 0 near (471 total) |
+| Queue | **282 matched**, 57 todo, 95 escalated, 36 deferred, 1 near (471 total) |
 | Tree | **97.1% of functions decompiled** overall, 6372/6561 |
 | Automation | 59 analysis scripts, 30 test suites, **77 connector tools**, 37 dashboard diagnostics |
 | Provenance | shim-header 60, upstream-harvest 44, shim-segment 40, model-fleet 31, twin-port 41, permuter 10, transplant 8, hand 4, **unknown 44 (16%)** |
@@ -171,11 +171,11 @@ it. Everything downstream inherits that blind spot.
 **Done when:** `queue_stats` totals match the index, and RCHI/RDAI functions
 appear in `queue_list`.
 
-## P2 — Run the permuter against the escalated pool  *(done 2026-08-18 after correcting scope to `near`)*
+## P2: Run the permuter against the compiling pool  *(reopened 2026-08-18 for a new `near`)*
 
 **The premise is wrong, measured 2026-08-03.** The permuter needs an
 ALREADY-COMPILING function, and `escalated` is mostly code that does not
-compile. The records that actually suit it are `near`. The live queue now has seven, and
+compile. The records that actually suit it are `near`. The live queue then had seven, and
 all seven have tracked seeds in `automation/candidates/`. Import and exhaustion
 state belongs in each queue note rather than in a hand-maintained count here.
 
@@ -193,6 +193,14 @@ for `func_us_801CEEB4`, 270 for `func_us_801AD26C`, 5105 for
 `BO6_RicStepStand` initially faulted because its seed lacked callable
 declarations; after #168 through #171 repaired and re-imported the preserved
 seed, it improved from 605 to 230 and then exhausted. No source was applied.
+
+The pool reopened on 2026-08-18 when the `BO6_RicEntityCrashBibleBeam` RIC
+twin compiled and its linked diff reached score 60. Only one store-scheduling
+window differs; all following instructions realign. The exact whole-file source
+is preserved as immutable generation
+`automation/candidates/history/us_BOSS_BO6_BO6_RicEntityCrashBibleBeam.v0001.c`.
+The source stub was restored and the recovery build verified 81/81. #174 owns
+the pending targeted permuter search.
 
 **The pool is now 12, not 34** (2026-08-02): 11 records were requeued as false
 escalations — nine quoting build failures in overlays they never touched, two
@@ -269,6 +277,11 @@ local blueprint and entity-range tables, ten BO6 origin modes, RIC state and
 fixed boss-overlay slots. Explicit no-op origin labels preserve GCC's 0..9 jump
 table, and the target-visible `flags |= 0` preserves its running-origin
 fallthrough load/store. BO6 does not propagate `FLAG_UNK_10000` to children.
+`BO6_RicEntityCrashBibleBeam` compiled from `src/ric/319C4.c` and reached a
+linked score of 60. The remaining delta is one zero-store scheduled two
+instructions later than the target before the allocator call. Its exact source
+is preserved as an immutable whole-file seed and routed to the permuter rather
+than being manually tuned further.
 
 These are NOT shimmable and must not be treated as such. RIC's copies read
 `g_Player` and `PLAYER`; BO6's read `g_Ric` and `RIC`, which are different
@@ -1023,7 +1036,7 @@ Status: **done**, **open**, **partial**, **void** (turned out unnecessary),
 | 107 | done | README status tables AND prose are generated |
 | 108 | done | Auto-commit remains deliberately rejected. The worker now writes a durable verified landing snapshot before reporting `matched`, while root review, explicit staging, commit and push remain the only Git authority |
 | 109 | done | Closed: no `Ext` field was missing. The m2c-only path could not name them |
-| 110 | partial | P4 twin exhaustion is in progress. Thirteen current-campaign twins are matched: `BO6_RicEntitySubwpnBible`, `BO6_RicStepSlide`, `BO6_RicStepSlideKick`, `BO6_RicEntityArmBrandishWhip`, `BO6_RicEntityHitByDark`, `BO6_RicDoCrash`, `BO6_RicEntityHitByHoly`, `BO6_RicDoAttack`, `BO6_RicStepCrouch`, `BO6_RicEntitySubwpnHolyWaterBreakGlass`, `BO6_RicEntitySubwpnCrashCross`, `BO6_RicStepJump`, and `BO6_RicEntityFactory`. `BO6_RicCheckSubweapon` has a specific false-twin disposition. All target-visible differences and derivations are retained in their queue records; the remaining named RIC twins must still match or receive the same evidence-backed disposition before model calls |
+| 110 | partial | P4 twin exhaustion is in progress. Thirteen current-campaign twins are matched: `BO6_RicEntitySubwpnBible`, `BO6_RicStepSlide`, `BO6_RicStepSlideKick`, `BO6_RicEntityArmBrandishWhip`, `BO6_RicEntityHitByDark`, `BO6_RicDoCrash`, `BO6_RicEntityHitByHoly`, `BO6_RicDoAttack`, `BO6_RicStepCrouch`, `BO6_RicEntitySubwpnHolyWaterBreakGlass`, `BO6_RicEntitySubwpnCrashCross`, `BO6_RicStepJump`, and `BO6_RicEntityFactory`. `BO6_RicCheckSubweapon` has a specific false-twin disposition. `BO6_RicEntityCrashBibleBeam` is a compiling score-60 near with its immutable seed preserved for #174. All target-visible differences and derivations are retained in their queue records; the remaining named RIC twins must still match or receive the same evidence-backed disposition before model calls |
 | 111 | **open** | A/B reasoning: the per-worker effort knob landed and is ready to run |
 | 112 | partial | The doc drift check exists and covers three invariants. The rest is still human |
 | 113 | done | Handoff is tier-gated, with a claim breaker behind it |
@@ -1097,3 +1110,4 @@ Status: **done**, **open**, **partial**, **void** (turned out unnecessary),
 | 171 | done | Every supervisor report now passes `--keep-note`, with a behavioral argv regression proving the full new note is forwarded. The lost `BO6_RicStepStand` seed reference was reconstructed from immutable evidence, targeted re-import succeeded, and the subsequent exhausted-search report retained the reconstructed note and prior fault evidence |
 | 172 | **open** | Reconcile progress accounting without deleting preserved assembly evidence. After thirteen verified BO6 C landings advanced the ledger from #159's 6359/6561 baseline to 6372/6561, `progress_table.py` still reports 6359/6561 and BO6 179/237 because generated `.s` files remain under `asm/us/boss/bo6/nonmatchings` after their `INCLUDE_ASM` calls are removed. Make the generated metric identify the linked C implementation, then regenerate README and correct any affected roadmap figures |
 | 173 | **open** | Make isolated permuter import tolerate unrelated GNU computed-goto code in the same translation unit. Importing `BO6_RicStepJump` retained the later `BO6_RicStepCrouch` label-address table in `base.c`; both import and debug reported a syntax error at `&&case_0`, and debug exited before compiling the selected function. Isolate the selected candidate from unrelated function bodies or support GNU label addresses, with a regression using the live Richter pair |
+| 174 | **open** | Run the targeted permuter on the preserved `BO6_RicEntityCrashBibleBeam` score-60 seed. The RIC twin compiles and linked code differs only by the placement of `sh zero,0x3c(s2)` before the allocator pointer load; every later instruction realigns. Start from `automation/candidates/history/us_BOSS_BO6_BO6_RicEntityCrashBibleBeam.v0001.c`, test the `g_api.AllocPrimitives` call surface and nearby declaration/order variants, preserve every improved generation, and apply nothing without a fresh full build and 81/81 proof |
