@@ -1060,4 +1060,61 @@ void BO6_RicStepBladeDash(void) {
 
 INCLUDE_ASM("boss/bo6/nonmatchings/richter", func_us_801B8E80);
 
-INCLUDE_ASM("boss/bo6/nonmatchings/richter", BO6_RicStepHighJump);
+extern AnimationFrame D_us_801820BC[];
+
+// Richter (BO6): sustain the high jump, react to the ceiling, then transition
+// to the ordinary jump step once upward momentum or the recovery timer ends.
+void BO6_RicStepHighJump(void) {
+    bool loadAnim;
+
+    loadAnim = false;
+    g_Ric.high_jump_timer++;
+    switch (RIC.step_s) {
+    case 0:
+        if (g_Ric.padPressed & (PAD_LEFT | PAD_RIGHT)) {
+            if (RIC.facingLeft) {
+                if (!(g_Ric.padPressed & PAD_LEFT)) {
+                    DecelerateX(FIX(0.0625));
+                }
+            } else {
+                if (!(g_Ric.padPressed & PAD_RIGHT)) {
+                    DecelerateX(FIX(0.0625));
+                }
+            }
+        } else {
+            DecelerateX(FIX(0.0625));
+        }
+
+        if (g_Ric.vram_flag & TOUCHING_CEILING) {
+            func_us_801B8E80(3);
+            g_Ric.high_jump_timer = 0;
+            RIC.step_s = 2;
+        } else if (g_Ric.high_jump_timer > 0x1C) {
+            RIC.step_s = 1;
+            RIC.velocityY = -0x60000;
+        }
+        break;
+    case 1:
+        if (g_Ric.vram_flag & TOUCHING_CEILING) {
+            RIC.step_s = 2;
+            func_us_801B8E80(3);
+            g_Ric.high_jump_timer = 0;
+        } else {
+            RIC.velocityY += 0x6000;
+            if (RIC.velocityY > 0x8000) {
+                loadAnim = true;
+            }
+        }
+        break;
+    case 2:
+        if (g_Ric.high_jump_timer > 4) {
+            loadAnim = true;
+        }
+        break;
+    }
+
+    if (loadAnim) {
+        BO6_RicSetAnimation(D_us_801820BC);
+        BO6_RicSetStep(PL_S_JUMP);
+    }
+}
