@@ -16,30 +16,32 @@ mistake impossible twice.
 | | |
 |---|---|
 | Oracle | **81/81** |
-| Queue | **259 matched**, 75 todo, 100 escalated, 30 deferred, 7 near (471 total) |
-| Tree | **94.7% of functions decompiled** overall, 6249/6561 |
+| Queue | **269 matched**, 70 todo, 95 escalated, 30 deferred, 7 near (471 total) |
+| Tree | **96.8% of functions decompiled** overall, 6359/6561 |
 | Automation | 59 analysis scripts, 30 test suites, **77 connector tools**, 37 dashboard diagnostics |
-| Provenance | shim-header 55, model-fleet 54, upstream-harvest 44, twin-port 14, permuter 9, shim-segment 9, transplant 8, hand 4, **unknown 62 (24%)** |
+| Provenance | shim-header 60, upstream-harvest 44, shim-segment 40, model-fleet 31, twin-port 28, permuter 10, transplant 8, hand 4, **unknown 44 (16%)** |
 | Fleet backend | `zen` on `mimo-v2.5-free` |
-| Audit | 259 present, 0 uncommitted, 0 LOST |
+| Audit | 269 present, 0 uncommitted, 0 LOST |
 
 Where the remaining work sits, by overlay completion:
 
 ```
-ST/RNO0   31.3%   97/193      BOSS/BO6  55.0%  138/237
-BOSS/BO0  68.8%  127/186      ST/RDAI   72.6%  112/130
-ST/RCEN   84.1%   99/118      ST/RCHI   85.3%   93/108
-ST/MAD    94.7%   99/102      SLUS      98.3%  515/517
+BOSS/BO6  69.4%  179/237      ST/RDAI   72.6%  112/130
+BOSS/BO0  73.1%  132/186      ST/RNO0   82.0%  153/193
+ST/RCHI   86.9%   95/108      ST/RCEN   88.4%  102/118
+SLUS      98.3%  515/517
 ```
 
-Everything else is at 100%. Four overlays hold nearly all of what is left, and
-RNO0 carries both the most functions and the most structural debt.
+Everything else is at 100%. BO6, BO0, RNO0 and RDAI hold 170 of the 201
+functions left (85%). BO6 is now the largest pool; RNO0 still carries the most
+structural debt.
 
-**The 24% unattributed is a finding, not noise.** 35 of those records had their
-method note overwritten by a build receipt, because `scheduler.py report`
-replaces `notes` wholesale; 51 never carried one. Fixable going forward by
-passing `keep_note=True`, not recoverable for those records. Counted as
-*contributors* rather than sole author, the model fleet touched 118 of 259.
+**The 16% unattributed is a finding, not noise.** 44 of 269 matches still lack
+enough evidence for a primary method. Historically, 35 records had method notes
+overwritten by build receipts and 51 never carried a note; source and history
+evidence can still classify some of those records. Current writers preserve
+notes and proofs losslessly. Counted as *contributors* rather than sole author,
+the model fleet touched 124 of 269.
 
 ### Snapshot as of 2026-08-09 (superseded, kept for the trend)
 
@@ -173,9 +175,9 @@ appear in `queue_list`.
 
 **The premise is wrong, measured 2026-08-03.** The permuter needs an
 ALREADY-COMPILING function, and `escalated` is mostly code that does not
-compile. The records that actually suit it are `near`, and there are now 4
-saved seeds in `automation/candidates/` (only one of which has been imported).
-Re-read this entry as "run the permuter against the NEAR pool".
+compile. The records that actually suit it are `near`. The live queue now has seven, and
+all seven have tracked seeds in `automation/candidates/`. Import and exhaustion
+state belongs in each queue note rather than in a hand-maintained count here.
 
 First real run: 16,630 iterations on `func_us_8019AA04`, 0 errors, score floor
 1720 never beaten. No match. The permuter mutates expressions and cannot
@@ -188,24 +190,26 @@ claiming a missing `INCLUDE_ASM` that clang-format had merely wrapped onto two
 lines. The worker now reports `BUILD DIRTY` rather than escalating when no
 diagnostic names its own overlay, so the pool should stay honest from here.
 
-**Why:** the permuter is free, it has never been run against this pool, and
-escalated records are by definition the ones that got close. Spending model
-quota on them before exhausting a free search is the exact waste the tiering
-exists to prevent.
+**Why:** the permuter is free, and `near` records are the ones already proven to
+compile while differing in bytes. Spending model quota on them before exhausting
+an applicable expression search is the exact waste the tiering exists to
+prevent.
 
 Sequencing matters and is easy to get wrong: the permuter searches for a
 byte-exact variant of an **already-compiling** function. It cannot fix a wrong
 parameter type or a missing shared implementation, because neither is a search
 problem. Exhaust the structural and type causes first, then permute the residue.
 
-**Done when:** every escalated record has either matched, or carries a note
-saying the permuter was run and what it exhausted.
+**Done when:** every live `near` record has either matched or carries a complete
+note identifying the preserved seed, the search attempted, its best score, and
+why further permuter work is exhausted or structurally inapplicable.
 
-## P2b — Port BO6's 65 named twins from `src/ric`  *(open, no blockers)*
+## P2b: Exhaust BO6's remaining `src/ric` twins  *(open, no blockers)*
 
-`automation/asm_twin_finder.py` found that 65 of BO6's unmatched stubs have a
-same-named function in `src/ric`. Four have been ported by hand and all four
-matched, two of them on the first build.
+The original scan found 65 BO6 stubs with same-named `src/ric` functions. That
+is a historical opening count, not the remaining workload. A fresh 2026-08-18
+scan reports 49 BO6 stubs with any twin candidate; #110 owns the surviving named
+RIC subset. The ported cases continue to validate the method.
 
 These are NOT shimmable and must not be treated as such. RIC's copies read
 `g_Player` and `PLAYER`; BO6's read `g_Ric` and `RIC`, which are different
@@ -891,7 +895,7 @@ Status: **done**, **open**, **partial**, **void** (turned out unnecessary),
 | 53 | done | P6 shim gate runs pre-model (21 tests). Relocation detector and tier 2/3 were still open |
 | 54 | void | All 8 "free" stubs were gate false positives. The gate was hardened instead |
 | 55 | done | Relocation detector built (9 self-tests). Found a stale-artifact bug and a hash-case bug |
-| 56 | partial | 4 `.data` addresses found and tooled. `st_update` was blocked on a +0x40 TEXT delta |
+| 56 | done | Initial `.data` investigation found four addresses and exposed the `st_update` blocker; #57 diagnosed it and #58 landed the completed shim |
 | 57 | done | Diagnosed: the +0x40 is `st_update.h`'s unreserved `.bss`, not text. Needed a `.bss` segment |
 | 58 | done | `st_update` shimmed into rno0, 2 matched, 81/81, 0 shifted symbols |
 | 59 | done | `overlay_size_check` now attributes bss against text correctly (14 tests) |
@@ -900,7 +904,7 @@ Status: **done**, **open**, **partial**, **void** (turned out unnecessary),
 | 62 | done | False claims retracted. The 3 stems ARE shimmable in principle but are +0xC variants |
 | 63 | done | 3 vacuous tests repaired, the deferral branch is now exercised, whole suite green |
 | 64 | done | Parameterisation scoped in `docs/shared-header-parameterisation.md` |
-| 65 | partial | High-value medium findings fixed. Remainder tracked in #66 |
+| 65 | done | High-value medium findings fixed; the explicitly transferred remainder was completed by #66 |
 | 66 | done | Audit tail closed: F9, artifact audit wired, H2, H3, doc retractions |
 | 67 | done | Giant-bro trio shimmed via `GIANTBRO_ZPRIORITY_ADJUST`. 7 matched |
 | 68 | done | Sweep complete: 12 candidates resolved to 7, with evidence |
@@ -948,10 +952,10 @@ Status: **done**, **open**, **partial**, **void** (turned out unnecessary),
 
 | # | status | task and outcome |
 |---|---|---|
-| 98 | **open** | Stage 6, reassessed 2026-08-10: 54 hard records, and 17 free requeues sitting unclaimed |
+| 98 | **open** | Re-baseline Stage 6 against the live queue before execution; the 2026-08-10 counts no longer describe the 70 todo and 95 escalated records |
 | 99 | superseded | Merged into #101: Stage 4 is one third of the single fleet run |
 | 100 | done | `77217a2` is shared-header extraction. 4 of the 11 already have twins |
-| 101 | **open** | The single fleet run: 33 records, once, after all prep |
+| 101 | **open** | One controlled production fleet pass after deterministic prep and a fresh eligible-pool measurement; preserve and disposition every generated artifact |
 | 102 | done | m2c-only runs. The size wall is gone; the Entity naming wall is behind it |
 | 103 | done | The derivation plus 1 of 5. The other 4 each needed real work and were split out to #105 |
 | 104 | done | `grep -E`: alternation went from 0 to 8 matches, a bad regex now errors, the engine is reported |
@@ -986,7 +990,7 @@ Status: **done**, **open**, **partial**, **void** (turned out unnecessary),
 | 129 | done | **The queue had no backup, and a backup branch did not reveal it.** Making a checkpoint branch on 2026-08-17 exposed the gap: the queue lives at `~/sotn-work/queue.jsonl`, outside the repo, so a branch protects `src/` and the docs and not the record of how any of it was produced. That location is correct and stays (a cloud sync daemon destroyed the in-repo queue in 2026-07 and took 438 records with it), but it answered *where the hot file lives* and never answered *what backs it up*. Built `queue_snapshot` and `queue_restore`: the hot file stays on WSL-native storage, a point-in-time copy lands in `automation/queue/snapshots/` on demand and is never rewritten, so no daemon has a race to lose. snapshot borrows the writer's lock and is deliberately NOT guarded by the queue-owner check, because backing up a queue you distrust is exactly when you need it to work; restore is guarded, validates every line before touching anything, and snapshots what it is about to replace |
 | 128 | done | Two matches by hand derivation. `EntityClockRoomController`: a declaration-order problem plus `u16` where the asm's `sll 16` + `bnez` demands `s16`. `func_us_801B6998`: **retracts the 2026-08-16 diagnosis** of a delay-slot nop at +21. The real cause was switch dispatch form: four live cases compile to a compare chain, and the jump table's own extent named the two empty cases needed to restore it |
 
-## Codex transition and dependency audit, 2026-08-18 (#130 to #158)
+## Codex transition and dependency audit, 2026-08-18 (#130 to #159)
 
 | # | status | task and outcome |
 |---|---|---|
@@ -1019,3 +1023,4 @@ Status: **done**, **open**, **partial**, **void** (turned out unnecessary),
 | 156 | done | Closed the orchestration defect that allowed review findings to remain only in chat. `ORCHESTRATOR.md` now requires a live-tree check and numbered roadmap disposition for every subagent finding, blocks affected landings on unresolved Critical or Important findings, and forbids treating a passing suite as an override for a concrete review defect |
 | 157 | done | Normalized generated-artifact ownership so routine Git status is useful. The 17 untracked compiling candidates and 55 rejected bodies are preserved as explicit tracked evidence with directory contracts; future root sessions must land each new artifact with its queue disposition. Only the two legacy root permuter debug files are ignored. The current OpenCode model catalog is recorded. Parent status suppresses the two known submodule mode-only worktrees, while exact-path submodule state still exposes all four mode flips whenever dependency work is in scope |
 | 158 | done | The artifact cleanup exposed another evidence cap: candidate and rejected headers sliced verdicts to 160 or 400 characters and copied noisy build tails containing forbidden symbols. A failing long-verdict regression proved the loss. Both writers now preserve the complete diagnostic portion, stop before disposable build-status output, and normalize forbidden punctuation; the preserved corpus was mechanically normalized without changing any C body |
+| 159 | done | Reconciled this roadmap against live generators before resuming work: queue 269/70/95/30/7, progress 6359/6561, match audit 269 present with zero lost, and provenance 44 unknown. Corrected the stale #56 and #65 partial statuses, re-baselined #98 and #101, and made P2 consistently describe the seven compiling `near` seeds rather than the noncompiling escalated pool |
