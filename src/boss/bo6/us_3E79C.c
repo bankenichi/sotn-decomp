@@ -1660,7 +1660,29 @@ void func_us_801CA340(Entity* self) {
     DestroyEntity(self);
 }
 
-INCLUDE_ASM("boss/bo6/nonmatchings/us_3E79C", BO6_GetAguneaLightningAngle);
+// Richter (BO6): recursively choose the next Agunea lightning segment angle
+// and update the two-point working buffer shared with the caller.
+s16 BO6_GetAguneaLightningAngle(
+    s16* points, s16 angle, s16 depth, s16* length) {
+    angle += rand() % 256 - 0x80;
+    *length = (rand() % 48) + 0x10;
+    points[0] = points[1];
+    points[2] = points[3];
+    if (depth) {
+        points[1] += (rcos(angle) * *length) >> 0xC;
+        points[3] += (rsin(angle) * *length) >> 0xC;
+        if (depth % 2) {
+            return BO6_GetAguneaLightningAngle(
+                points, angle - 0x140, depth / 2, length);
+        } else {
+            rand();
+            rand();
+            return BO6_GetAguneaLightningAngle(
+                points, angle + 0x140, (depth - 1) / 2, length);
+        }
+    }
+    return angle;
+}
 
 // Richter (BO6): Fisher-Yates shuffle of the Agunea lightning parameter array,
 // walking DOWNWARD from the last element and swapping each with a uniformly
