@@ -1148,7 +1148,194 @@ Entity* BO6_RicCreateEntFactoryFromEntity(
     return entity;
 }
 
-INCLUDE_ASM("boss/bo6/nonmatchings/us_39144", BO6_RicEntityFactory);
+extern FactoryBlueprint D_us_801816A0[];
+extern u8 D_us_80181868[8][2];
+
+enum BO6_BlueprintKind {
+    BO6_B_DECORATION = 0,
+    BO6_B_WHIP = 4,
+    BO6_B_CUTSCENE_MARIA = 5,
+};
+
+enum BO6_BlueprintOrigin {
+    BO6_B_ORIGIN_DEFAULT = 0,
+    BO6_B_ORIGIN_FOLLOW_CAMERA = 1,
+    BO6_B_ORIGIN_FOLLOW_PLAYER = 2,
+    BO6_B_ORIGIN_FOLLOW_PLAYER_WHILE_HIT = 3,
+    BO6_B_ORIGIN_FOLLOW_PLAYER_WHILE_RUNNING = 4,
+    BO6_B_ORIGIN_UNUSED_5 = 5,
+    BO6_B_ORIGIN_UNUSED_6 = 6,
+    BO6_B_ORIGIN_FOLLOW_PLAYER_WHILE_NOT_HIT = 7,
+    BO6_B_ORIGIN_FOLLOW_PARENT = 8,
+    BO6_B_ORIGIN_CRASH_PARTICLE = 9,
+};
+
+// Richter (BO6): decode a six-byte factory blueprint, track its requested
+// origin, and create the requested children in the BO6 entity ranges. This is
+// the RicEntityFactory twin from src/ric/pl_blueprints.c, adapted to the boss
+// overlay's local blueprint and range tables.
+//
+// Two absent operations matter. BO6 does not propagate FLAG_UNK_10000 to a
+// child, and its running-origin setup does not set FLAG_UNK_20000. The latter
+// still performs a load/store of flags in the target. `flags |= 0` preserves
+// that instruction pair and the original fallthrough shape.
+void BO6_RicEntityFactory(Entity* self) {
+    Entity* newEntity;
+    s16 nPerCycle;
+    s16 i;
+    s16 startIndex;
+    s16 endIndex;
+    u8* data;
+
+    if (self->step == 0) {
+        data = (u8*)&D_us_801816A0[self->params];
+        self->ext.factory.newEntityId = *data++;
+        self->ext.factory.amount = *data++;
+        self->ext.factory.nPerCycle = *data & 0x3F;
+        self->ext.factory.isNonCritical = (s16)(*data >> 7) & 1;
+        self->ext.factory.incParamsKind = (s16)(*data++ >> 6) & 1;
+        self->ext.factory.tCycle = *data++;
+        self->ext.factory.kind = *data & 0x7;
+        self->ext.factory.origin = (s16)(*data++ >> 3) & 0x1F;
+        self->ext.factory.delay = *data;
+        self->flags |= FLAG_UNK_10000000;
+        self->step++;
+
+        switch (self->ext.factory.origin) {
+        case BO6_B_ORIGIN_DEFAULT:
+            self->flags |= FLAG_POS_CAMERA_LOCKED;
+            break;
+
+        case BO6_B_ORIGIN_FOLLOW_PLAYER_WHILE_RUNNING:
+            self->flags |= 0;
+        case BO6_B_ORIGIN_FOLLOW_PLAYER:
+        case BO6_B_ORIGIN_CRASH_PARTICLE:
+            self->flags |= FLAG_POS_CAMERA_LOCKED;
+        case BO6_B_ORIGIN_FOLLOW_PLAYER_WHILE_HIT:
+        case BO6_B_ORIGIN_FOLLOW_PLAYER_WHILE_NOT_HIT:
+            self->posX.val = RIC.posX.val;
+            self->posY.val = RIC.posY.val;
+            break;
+
+        case BO6_B_ORIGIN_FOLLOW_PARENT:
+            if (self->ext.factory.parent != NULL) {
+                self->posX.val = self->ext.factory.parent->posX.val;
+                self->posY.val = self->ext.factory.parent->posY.val;
+            }
+            self->flags |= FLAG_POS_CAMERA_LOCKED;
+            break;
+        }
+    } else {
+        switch (self->ext.factory.origin) {
+        case BO6_B_ORIGIN_DEFAULT:
+        case BO6_B_ORIGIN_FOLLOW_CAMERA:
+        case BO6_B_ORIGIN_UNUSED_5:
+        case BO6_B_ORIGIN_UNUSED_6:
+            break;
+
+        case BO6_B_ORIGIN_CRASH_PARTICLE:
+            if (g_Ric.unk4E) {
+                DestroyEntity(self);
+                return;
+            }
+        case BO6_B_ORIGIN_FOLLOW_PLAYER:
+            self->posX.val = RIC.posX.val;
+            self->posY.val = RIC.posY.val;
+            break;
+
+        case BO6_B_ORIGIN_FOLLOW_PLAYER_WHILE_RUNNING:
+            self->posX.val = RIC.posX.val;
+            self->posY.val = RIC.posY.val;
+            if (RIC.step != PL_S_RUN) {
+                self->entityId = 0;
+                return;
+            }
+            break;
+
+        case BO6_B_ORIGIN_FOLLOW_PLAYER_WHILE_HIT:
+            self->posX.val = RIC.posX.val;
+            self->posY.val = RIC.posY.val;
+            if (RIC.step == PL_S_HIT) {
+                self->entityId = 0;
+                return;
+            }
+            break;
+
+        case BO6_B_ORIGIN_FOLLOW_PLAYER_WHILE_NOT_HIT:
+            self->posX.val = RIC.posX.val;
+            self->posY.val = RIC.posY.val;
+            if (RIC.step != PL_S_HIT) {
+                self->entityId = 0;
+                return;
+            }
+            break;
+
+        case BO6_B_ORIGIN_FOLLOW_PARENT:
+            if (self->ext.factory.parent != NULL) {
+                self->posX.val = self->ext.factory.parent->posX.val;
+                self->posY.val = self->ext.factory.parent->posY.val;
+            }
+            break;
+        }
+    }
+
+    if (self->ext.factory.delay) {
+        if (--self->ext.factory.delay) {
+            return;
+        }
+        self->ext.factory.delay = self->ext.factory.tCycle;
+    }
+
+    nPerCycle = self->ext.factory.nPerCycle;
+    for (i = 0; i < nPerCycle; i++) {
+        data = D_us_80181868[0];
+        data += self->ext.factory.kind * 2;
+        startIndex = *data++;
+        endIndex = *data;
+
+        if (self->ext.factory.kind == BO6_B_DECORATION) {
+            newEntity =
+                BO6_RicGetFreeEntityReverse(startIndex, endIndex + 1);
+        } else if (self->ext.factory.kind == BO6_B_WHIP) {
+            newEntity = &g_Entities[STAGE_ENTITY_START + 31];
+        } else if (self->ext.factory.kind == BO6_B_CUTSCENE_MARIA) {
+            newEntity = &g_Entities[STAGE_ENTITY_START + 48];
+        } else {
+            newEntity = BO6_RicGetFreeEntity(startIndex, endIndex + 1);
+        }
+
+        if (newEntity == NULL) {
+            if (self->ext.factory.isNonCritical == 1) {
+                self->entityId = 0;
+            } else {
+                self->ext.factory.delay = self->ext.factory.tCycle;
+            }
+            return;
+        }
+
+        DestroyEntity(newEntity);
+        newEntity->entityId =
+            self->ext.factory.newEntityId + self->ext.factory.entityIdMod;
+        newEntity->params = self->ext.factory.paramsBase;
+        newEntity->ext.factory.parent = self->ext.factory.parent;
+        newEntity->posX.val = self->posX.val;
+        newEntity->posY.val = self->posY.val;
+        newEntity->facingLeft = self->facingLeft;
+        newEntity->zPriority = self->zPriority;
+
+        if (self->ext.factory.incParamsKind) {
+            newEntity->params += self->ext.factory.spawnIndex;
+        } else {
+            newEntity->params += i;
+        }
+        self->ext.factory.spawnIndex++;
+        if (self->ext.factory.spawnIndex == self->ext.factory.amount) {
+            self->entityId = 0;
+            return;
+        }
+    }
+    self->ext.factory.delay = self->ext.factory.tCycle;
+}
 
 INCLUDE_ASM("boss/bo6/nonmatchings/us_39144", func_us_801BC2F0);
 

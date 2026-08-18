@@ -16,23 +16,23 @@ mistake impossible twice.
 | | |
 |---|---|
 | Oracle | **81/81** |
-| Queue | **281 matched**, 59 todo, 95 escalated, 36 deferred, 0 near (471 total) |
-| Tree | **97.1% of functions decompiled** overall, 6371/6561 |
+| Queue | **282 matched**, 58 todo, 95 escalated, 36 deferred, 0 near (471 total) |
+| Tree | **97.1% of functions decompiled** overall, 6372/6561 |
 | Automation | 59 analysis scripts, 30 test suites, **77 connector tools**, 37 dashboard diagnostics |
-| Provenance | shim-header 60, upstream-harvest 44, shim-segment 40, model-fleet 31, twin-port 40, permuter 10, transplant 8, hand 4, **unknown 44 (16%)** |
+| Provenance | shim-header 60, upstream-harvest 44, shim-segment 40, model-fleet 31, twin-port 41, permuter 10, transplant 8, hand 4, **unknown 44 (16%)** |
 | Fleet backend | `zen` on `mimo-v2.5-free` |
-| Audit | 281 present, 0 uncommitted, 0 LOST |
+| Audit | 282 present, 0 uncommitted, 0 LOST |
 
 Where the remaining work sits, by overlay completion:
 
 ```
-BOSS/BO6  71.4%  184/237      ST/RDAI   72.6%  112/130
+BOSS/BO6  71.8%  185/237      ST/RDAI   72.6%  112/130
 BOSS/BO0  73.1%  132/186      ST/RNO0   82.0%  153/193
 ST/RCHI   86.9%   95/108      ST/RCEN   88.4%  102/118
 SLUS      98.3%  515/517
 ```
 
-Everything else is at 100%. BO6, BO0, RNO0 and RDAI hold 165 of the 196
+Everything else is at 100%. BO6, BO0, RNO0 and RDAI hold 164 of the 195
 functions left (84%). BO6 is now the largest pool; RNO0 still carries the most
 structural debt.
 
@@ -41,7 +41,7 @@ enough evidence for a primary method. Historically, 35 records had method notes
 overwritten by build receipts and 51 never carried a note; source and history
 evidence can still classify some of those records. Current writers preserve
 notes and proofs losslessly. Counted as *contributors* rather than sole author,
-the model fleet touched 124 of 281.
+the model fleet touched 124 of 282.
 
 ### Snapshot as of 2026-08-09 (superseded, kept for the trend)
 
@@ -264,6 +264,11 @@ member because that is the surface that emits the target's pointer call.
 playable-only jump-cut and `unk72` branches were removed. The otherwise empty
 `case 2` is codegen-significant: omitting it changed GCC's sparse-switch tree,
 shortened the function by one instruction, and shifted all later BO6 symbols.
+`BO6_RicEntityFactory` matched from `src/ric/pl_blueprints.c` after adapting the
+local blueprint and entity-range tables, ten BO6 origin modes, RIC state and
+fixed boss-overlay slots. Explicit no-op origin labels preserve GCC's 0..9 jump
+table, and the target-visible `flags |= 0` preserves its running-origin
+fallthrough load/store. BO6 does not propagate `FLAG_UNK_10000` to children.
 
 These are NOT shimmable and must not be treated as such. RIC's copies read
 `g_Player` and `PLAYER`; BO6's read `g_Ric` and `RIC`, which are different
@@ -1018,7 +1023,7 @@ Status: **done**, **open**, **partial**, **void** (turned out unnecessary),
 | 107 | done | README status tables AND prose are generated |
 | 108 | done | Auto-commit remains deliberately rejected. The worker now writes a durable verified landing snapshot before reporting `matched`, while root review, explicit staging, commit and push remain the only Git authority |
 | 109 | done | Closed: no `Ext` field was missing. The m2c-only path could not name them |
-| 110 | partial | P4 twin exhaustion is in progress. Twelve current-campaign twins are matched: `BO6_RicEntitySubwpnBible`, `BO6_RicStepSlide`, `BO6_RicStepSlideKick`, `BO6_RicEntityArmBrandishWhip`, `BO6_RicEntityHitByDark`, `BO6_RicDoCrash`, `BO6_RicEntityHitByHoly`, `BO6_RicDoAttack`, `BO6_RicStepCrouch`, `BO6_RicEntitySubwpnHolyWaterBreakGlass`, `BO6_RicEntitySubwpnCrashCross`, and `BO6_RicStepJump`. `BO6_RicCheckSubweapon` has a specific false-twin disposition. All target-visible differences and derivations are retained in their queue records; the remaining named RIC twins must still match or receive the same evidence-backed disposition before model calls |
+| 110 | partial | P4 twin exhaustion is in progress. Thirteen current-campaign twins are matched: `BO6_RicEntitySubwpnBible`, `BO6_RicStepSlide`, `BO6_RicStepSlideKick`, `BO6_RicEntityArmBrandishWhip`, `BO6_RicEntityHitByDark`, `BO6_RicDoCrash`, `BO6_RicEntityHitByHoly`, `BO6_RicDoAttack`, `BO6_RicStepCrouch`, `BO6_RicEntitySubwpnHolyWaterBreakGlass`, `BO6_RicEntitySubwpnCrashCross`, `BO6_RicStepJump`, and `BO6_RicEntityFactory`. `BO6_RicCheckSubweapon` has a specific false-twin disposition. All target-visible differences and derivations are retained in their queue records; the remaining named RIC twins must still match or receive the same evidence-backed disposition before model calls |
 | 111 | **open** | A/B reasoning: the per-worker effort knob landed and is ready to run |
 | 112 | partial | The doc drift check exists and covers three invariants. The rest is still human |
 | 113 | done | Handoff is tier-gated, with a claim breaker behind it |
@@ -1090,5 +1095,5 @@ Status: **done**, **open**, **partial**, **void** (turned out unnecessary),
 | 169 | done | Declaration lookup now finds ordinary header prototypes as well as explicit `extern` declarations and rejects call statements that merely resemble prototypes. Conflicting-type regressions cover `InitializeEntity` and `rsin`; all 25 affected stable views were rebuilt from preserved clean generations, while both flawed intermediate generations remain immutable evidence |
 | 170 | done | Declaration lookup now excludes Saturn, PSP, and PSPSDK sources and headers. The regression proves the US `void DestroyEntity(Entity*)` prototype wins over Saturn's shorter `s32 DestroyEntity();`; the same 25 stable views were rebuilt from their clean pre-repair generations and all intermediate generations remain preserved |
 | 171 | done | Every supervisor report now passes `--keep-note`, with a behavioral argv regression proving the full new note is forwarded. The lost `BO6_RicStepStand` seed reference was reconstructed from immutable evidence, targeted re-import succeeded, and the subsequent exhausted-search report retained the reconstructed note and prior fault evidence |
-| 172 | **open** | Reconcile progress accounting without deleting preserved assembly evidence. After twelve verified BO6 C landings advanced the ledger from #159's 6359/6561 baseline to 6371/6561, `progress_table.py` still reports 6359/6561 and BO6 179/237 because generated `.s` files remain under `asm/us/boss/bo6/nonmatchings` after their `INCLUDE_ASM` calls are removed. Make the generated metric identify the linked C implementation, then regenerate README and correct any affected roadmap figures |
+| 172 | **open** | Reconcile progress accounting without deleting preserved assembly evidence. After thirteen verified BO6 C landings advanced the ledger from #159's 6359/6561 baseline to 6372/6561, `progress_table.py` still reports 6359/6561 and BO6 179/237 because generated `.s` files remain under `asm/us/boss/bo6/nonmatchings` after their `INCLUDE_ASM` calls are removed. Make the generated metric identify the linked C implementation, then regenerate README and correct any affected roadmap figures |
 | 173 | **open** | Make isolated permuter import tolerate unrelated GNU computed-goto code in the same translation unit. Importing `BO6_RicStepJump` retained the later `BO6_RicStepCrouch` label-address table in `base.c`; both import and debug reported a syntax error at `&&case_0`, and debug exited before compiling the selected function. Isolate the selected candidate from unrelated function bodies or support GNU label addresses, with a regression using the live Richter pair |
