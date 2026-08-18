@@ -32,8 +32,19 @@ git_add automation/queue/snapshots/<the file it printed>
 git_commit
 ```
 
-Take one **before every checkpoint or backup branch**. A checkpoint without one
-restores the code and not the reasoning.
+Take one **once per deliberate recovery batch**, immediately before creating
+its backup branch or other intentional recovery point. In this directory,
+"checkpoint" does not mean every ordinary commit.
+
+Do not take a snapshot after each `queue_report`, each function match, or each
+ordinary source commit or push. Coalesce all queue changes from a work batch
+into one snapshot. Take an additional snapshot in the same session only before
+a manual bulk or destructive queue operation that does not already create its
+own safety copy. Do not create another snapshot when the queue has not changed.
+
+This gives a recovery point that restores both code and reasoning without
+turning the full queue into per-report history. Queue history belongs in
+the records themselves; snapshots are disaster-recovery artifacts.
 
 Restoring:
 

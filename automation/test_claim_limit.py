@@ -96,14 +96,15 @@ def main():
         write_queue(q, [rec("us:ST/RDAI:loop_fn", "todo", claims=i)])
 
     print("\nthe breaker trips at the ceiling and parks the record")
+    prior_note = "TIER_HANDOFF_TOO_LARGE: real prior note " + ("Z" * 1600)
     write_queue(q, [rec("us:ST/RDAI:loop_fn", "todo", claims=11,
-                        notes="TIER_HANDOFF_TOO_LARGE: real prior note")])
+                        notes=prior_note)])
     r = sched(q, "next", "--worker", "t")
     check(r.get("id") == "us:ST/RDAI:loop_fn",
           "claim 12 is still allowed; the ceiling is a limit, not an off-by-one")
 
     write_queue(q, [rec("us:ST/RDAI:loop_fn", "todo", claims=12,
-                        notes="TIER_HANDOFF_TOO_LARGE: real prior note")])
+                        notes=prior_note)])
     r = sched(q, "next", "--worker", "t")
     check(r.get("id") != "us:ST/RDAI:loop_fn",
           f"claim 13 is REFUSED (got {r.get('id')!r})")
@@ -116,6 +117,8 @@ def main():
     check("TIER_HANDOFF_TOO_LARGE" in parked["notes"],
           "and the PRIOR note survives; the note is the only index, and "
           "overwriting it has destroyed a record's classification before")
+    check(parked["notes"].endswith(prior_note),
+          "and the complete prior note survives beyond the old 1000-character cap")
 
     print("\na burned record does not block the rest of the queue")
     write_queue(q, [rec("us:ST/RDAI:loop_fn", "todo", claims=50),

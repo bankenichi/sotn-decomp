@@ -128,6 +128,11 @@ A branch alone protects `src/` and the docs and **not** the queue, which lives
 outside the repo on purpose. Skipping the snapshot gives you a checkpoint that
 restores the code without the record of how it was produced.
 
+Here, a checkpoint means a deliberate backup or recovery boundary, not every
+ordinary commit. Take one queue snapshot for the whole recovery batch. Do not
+take one after each `queue_report`, function match, source commit, or push. See
+`automation/queue/snapshots/README.md` for the canonical frequency rule.
+
 ### The order to try things
 
 Cheapest first. Every step below is free or nearly free compared to the one

@@ -423,7 +423,7 @@ def cmd_next(args):
                 f"CLAIM_LIMIT: claimed {r['claims']} times without ever "
                 f"reaching a verdict; the fleet is looping on this record, not "
                 f"working it (see #113). Requeue only after that is fixed. "
-                f"|| {was}")[:1000]
+                f"|| {was}")
             todo.remove(r)
         if not todo:
             return records, None
@@ -519,6 +519,26 @@ def _verify_artifacts(version: str) -> tuple[bool, str]:
 
 
 def cmd_report(args):
+    if args.evidence_stdin:
+        try:
+            evidence = json.load(sys.stdin)
+        except (json.JSONDecodeError, OSError) as exc:
+            sys.exit(f"invalid --evidence-stdin JSON: {exc}")
+        if not isinstance(evidence, dict):
+            sys.exit("invalid --evidence-stdin JSON: expected an object")
+        unknown = sorted(set(evidence) - {"notes", "proof"})
+        if unknown:
+            sys.exit("invalid --evidence-stdin keys: " + ", ".join(unknown))
+        for field in ("notes", "proof"):
+            value = evidence.get(field)
+            if value is None:
+                continue
+            if not isinstance(value, str):
+                sys.exit(f"invalid --evidence-stdin {field}: expected a string")
+            if getattr(args, field) is not None:
+                sys.exit(f"refused: {field} supplied both on argv and stdin")
+            setattr(args, field, value)
+
     if args.status not in VALID_STATUS:
         sys.exit(f"invalid status: {args.status}")
 
@@ -572,7 +592,12 @@ def cmd_report(args):
                     # and the record vanished from deferred_triage's handoff
                     # class while sitting in plain sight in the queue.
                     if args.keep_note and (r.get("notes") or "").strip():
-                        r["notes"] = (args.notes + " || " + r["notes"])[:1000]
+                        # Evidence is never a display summary. The old 1000
+                        # character slice silently cut derivations mid-word
+                        # after the connector had already shortened each new
+                        # note. If a storage bound is ever needed, reject the
+                        # write loudly instead of accepting partial evidence.
+                        r["notes"] = args.notes + " || " + r["notes"]
                     else:
                         r["notes"] = args.notes
                 if args.proof:
@@ -973,6 +998,10 @@ def main():
                          "which are only ever recorded in the note")
     pr.add_argument("--proof", default=None,
                     help="machine proof of a match; REQUIRED for status=matched")
+    pr.add_argument("--evidence-stdin", action="store_true",
+                    help="read a JSON object containing notes and/or proof from "
+                         "stdin. Used by Windows workers so durable evidence "
+                         "does not cross the command-line length boundary")
     pr.add_argument("--add-iters", type=int, default=0)
     pr.add_argument("--handoff-limit", type=int, default=0,
                     help="the MAX_FUNC_CHARS of the tier deferring this "

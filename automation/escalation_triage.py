@@ -694,7 +694,7 @@ def requeue(rows: list[dict], apply: bool = False) -> int:
         note = f"requeued by escalation_triage [{cls}]: {action}"
         r = subprocess.run(
             [PYTHON, str(REPO / "automation" / "scheduler.py"), "report",
-             "--id", rid, "--status", status, "--notes", note[:900]],
+             "--id", rid, "--status", status, "--notes", note],
             capture_output=True, text=True, timeout=120, cwd=str(REPO))
         if r.returncode == 0:
             ok += 1

@@ -110,7 +110,7 @@ invisible to the harness".
 | `queue_annotate` | attach twin candidates from `automation/twins.us.json` | writes only the `twin` field, never status; re-running is a no-op |
 | `queue_init` | seed a fresh queue from a seed file | destructive to ordering; not a routine action |
 | `queue_prune` | drop records that are not real functions | **no record is ever removed from scope**; this is only for string labels and similar non-functions |
-| `queue_snapshot` | **before any checkpoint or branch.** Copies the queue into `automation/queue/snapshots/` so git can hold it | expecting it to be automatic; it is deliberate and on demand |
+| `queue_snapshot` | once per deliberate backup or recovery batch, immediately before its recovery point | taking one after every report, function, ordinary commit, or push |
 | `queue_restore` | recovering from a corrupted or wrongly-rewritten queue | with the fleet running; it replaces the records workers hold claims on |
 
 ### The queue has no backup unless you take one
@@ -129,8 +129,10 @@ in one place, on one disk, with no history.
 
 `queue_snapshot` closes it without reopening the sync race: the hot file stays
 where it is, and a point-in-time copy is written into the repo once, on demand,
-and never rewritten. **Take one before every checkpoint and commit it with the
-branch.** `queue_restore` reads one back, refuses without `confirm=True`,
+and never rewritten. **Take one per deliberate backup or recovery batch, not
+per report, function, ordinary commit, or push.** The canonical frequency rule
+is in `automation/queue/snapshots/README.md`. `queue_restore` reads one back,
+refuses without `confirm=True`,
 validates every line before touching anything, and snapshots what it is about
 to replace so the restore itself is reversible.
 
@@ -139,7 +141,11 @@ The scheduler's raw `report` command replaces `notes` wholesale unless it gets
 solved and became part of the 24% that `match_provenance.py` reports as
 unattributed. Not recoverable for those records. The connector now exposes
 `keep_note` and defaults it to `True`; pass `False` only when the new note really
-supersedes the old derivation.
+supersedes the old derivation. Every queue writer must forward notes and proof
+in full. A size policy may reject a write loudly, but may never accept a
+silently truncated prefix. The 2026-08-17 truncation incident, affected records,
+and exact recovery payloads are preserved in
+`docs/queue-evidence-recovery-2026-08-17.md`.
 
 Status vocabulary: `todo`, `claimed`, `near` (compiles, bytes differ), `matched`,
 `escalated` (a model produced something unusable), `deferred` (too large for the

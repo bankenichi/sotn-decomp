@@ -1737,14 +1737,18 @@ def queue_report(function_id: str, status: str, proof: str = "",
         # Proof is a single-line provenance string (a path and a sha1), not a
         # commit message. It was validated with the old _msg(); that helper is
         # now multi-line-aware and belongs to commits only, so validate here.
+        # Never shorten it here. Queue evidence is durable data, not display
+        # text, and silent slicing previously destroyed the artifact details.
         p = " ".join(str(proof).split())
         if not p:
             raise Rejected("proof must not be blank")
-        argv += ["--proof", p[:200]]
+        argv += ["--proof", p]
     if score:
         argv += ["--score", score]
     if notes:
-        argv += ["--notes", notes[:250]]
+        # The scheduler owns the record and must receive the complete note.
+        # Any future size policy must reject loudly, never accept a prefix.
+        argv += ["--notes", notes]
     if keep_note:
         argv.append("--keep-note")
     if DRYRUN:

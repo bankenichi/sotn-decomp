@@ -56,7 +56,8 @@ Start every working session with:
 
 Stop if the oracle is not 81/81. A green compiler is not a match.
 
-Before a checkpoint:
+Before a deliberate backup or recovery checkpoint, once for the whole work
+batch (see `automation/queue/snapshots/README.md`):
 
 1. `queue_snapshot`
 2. stage the printed snapshot path with one `git_add`

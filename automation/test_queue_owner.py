@@ -19,6 +19,8 @@ Run: python3 automation/test_queue_owner.py
 """
 from __future__ import annotations
 
+import ast
+import json
 import os
 import subprocess
 import sys
@@ -95,6 +97,90 @@ def test_stamped_queue_still_allows_reads() -> None:
             check(r.returncode == 0, f"'{cmd}' still exits 0 on a stamped queue")
 
 
+def test_report_preserves_complete_evidence() -> None:
+    """Queue notes and proofs are evidence, not display summaries. Neither a
+    direct report nor --keep-note accumulation may silently shorten them."""
+    print("\ntest_report_preserves_complete_evidence")
+    with tempfile.TemporaryDirectory() as d:
+        q = Path(d) / "queue.jsonl"
+        q.write_text(REC)
+        first = "first derivation: " + ("A" * 800)
+        second = "second derivation: " + ("B" * 800)
+        proof = "build proof: " + ("C" * 700)
+
+        r = run(q, "report", "--id", "us:ST/RNO0:Demo", "--status", "near",
+                "--notes", first, "--proof", proof)
+        check(r.returncode == 0, "the first long report succeeds")
+        record = json.loads(q.read_text().splitlines()[0])
+        check(record.get("notes") == first,
+              "a direct report preserves the complete note")
+        check(record.get("proof") == proof,
+              "a direct report preserves the complete proof")
+
+        r = run(q, "report", "--id", "us:ST/RNO0:Demo", "--status", "near",
+                "--notes", second, "--keep-note")
+        check(r.returncode == 0, "the prepending long report succeeds")
+        record = json.loads(q.read_text().splitlines()[0])
+        check(record.get("notes") == second + " || " + first,
+              "--keep-note preserves both complete derivations")
+
+
+def test_queue_writers_do_not_slice_evidence() -> None:
+    """Catch silent caps in queue records and direct scheduler calls."""
+    print("\ntest_queue_writers_do_not_slice_evidence")
+    offenders: list[str] = []
+
+    def contains_slice(value: ast.AST) -> bool:
+        return any(isinstance(part, ast.Subscript) and
+                   isinstance(part.slice, ast.Slice)
+                   for part in ast.walk(value))
+
+    def evidence_target(target: ast.AST) -> bool:
+        return (isinstance(target, ast.Subscript) and
+                isinstance(target.slice, ast.Constant) and
+                target.slice.value in {"notes", "proof"})
+
+    for path in (REPO / "automation").rglob("*.py"):
+        if ".venv" in path.parts or "__pycache__" in path.parts:
+            continue
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8"), str(path))
+        except (OSError, SyntaxError):
+            continue
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Assign):
+                targets = node.targets
+                value = node.value
+            elif isinstance(node, (ast.AnnAssign, ast.AugAssign)):
+                targets = [node.target]
+                value = node.value
+            else:
+                targets = []
+                value = None
+            if (value is not None and any(evidence_target(t) for t in targets)
+                    and contains_slice(value)):
+                offenders.append(
+                    f"{path.relative_to(REPO)}:{getattr(value, 'lineno', 0)}")
+
+            if isinstance(node, (ast.List, ast.Tuple)):
+                values = node.elts
+            elif isinstance(node, ast.Call):
+                values = node.args
+            else:
+                continue
+            for index, item in enumerate(values[:-1]):
+                if not (isinstance(item, ast.Constant) and
+                        item.value in {"--notes", "--proof"}):
+                    continue
+                value = values[index + 1]
+                if contains_slice(value):
+                    offenders.append(
+                        f"{path.relative_to(REPO)}:{getattr(value, 'lineno', 0)}")
+    check(not offenders,
+          "no queue writer silently slices --notes or --proof arguments "
+          f"(offenders: {offenders})")
+
+
 def test_every_mutating_command_is_covered() -> None:
     """The guard is a name list, so it silently stops protecting anything that
     gets renamed or added. Assert the list against the actual subparsers."""
@@ -139,6 +225,8 @@ def main() -> int:
     for fn in (test_unstamped_queue_allows_writes,
                test_stamped_queue_refuses_writes,
                test_stamped_queue_still_allows_reads,
+               test_report_preserves_complete_evidence,
+               test_queue_writers_do_not_slice_evidence,
                test_every_mutating_command_is_covered):
         fn()
     print()

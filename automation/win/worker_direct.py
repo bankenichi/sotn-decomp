@@ -1001,7 +1001,8 @@ def win_path(rel: str) -> str:
     return os.path.join(WIN_REPO, *[part for part in rel.split("/") if part])
 
 
-def wsl(cmd: str, timeout: float = 300) -> tuple[int, str]:
+def wsl(cmd: str, timeout: float = 300,
+        input_text: str | None = None) -> tuple[int, str]:
     """Run one bash command inside the repo in WSL. Returns (rc, output).
 
     encoding/errors are pinned explicitly: with bare text=True, Python on
@@ -1013,7 +1014,7 @@ def wsl(cmd: str, timeout: float = 300) -> tuple[int, str]:
     argv = (["wsl.exe", "-d", DISTRO, "-e", "bash", "-lc", full] if IS_WINDOWS
             else ["bash", "-lc", full])
     try:
-        p = subprocess.run(argv, capture_output=True, text=True,
+        p = subprocess.run(argv, input=input_text, capture_output=True, text=True,
                            encoding="utf-8", errors="replace", timeout=timeout)
         return p.returncode, ((p.stdout or "") + (p.stderr or ""))
     except subprocess.TimeoutExpired:
@@ -1079,7 +1080,7 @@ def release_claim_if_held() -> None:
                   "--score", "50", "--tier", "0",
                   "--notes", ("interrupted, but an earlier attempt compiled "
                               f"with a byte mismatch; permuter candidate. "
-                              f"seed={seed}")[:250])
+                              f"seed={seed}"))
             return
         print(f"[worker] releasing stranded claim {cid} -> {back}",
               file=sys.stderr)
@@ -1097,6 +1098,31 @@ def release_claim_if_held() -> None:
         print(f"[worker] could not release {cid}: {e}", file=sys.stderr)
 
 
+def _scheduler_report_transport(args: tuple[str, ...]) -> tuple[list[str], str | None]:
+    """Move report evidence from Windows argv to lossless JSON on stdin."""
+    forwarded = list(args)
+    if not forwarded or forwarded[0] != "report":
+        return forwarded, None
+    evidence: dict[str, str] = {}
+    for flag, field in (("--notes", "notes"), ("--proof", "proof")):
+        positions = [i for i, value in enumerate(forwarded) if value == flag]
+        if len(positions) > 1:
+            raise ValueError(f"duplicate scheduler argument: {flag}")
+        if not positions:
+            continue
+        pos = positions[0]
+        if pos + 1 >= len(forwarded):
+            raise ValueError(f"missing scheduler value: {flag}")
+        evidence[field] = forwarded[pos + 1]
+        del forwarded[pos:pos + 2]
+    if not evidence:
+        return forwarded, None
+    if "--evidence-stdin" in forwarded:
+        raise ValueError("scheduler evidence supplied both directly and by stdin")
+    forwarded.append("--evidence-stdin")
+    return forwarded, json.dumps(evidence, ensure_ascii=True)
+
+
 def sched(*args: str) -> str:
     # shlex.quote, not naive double-quoting. The old version only quoted args
     # containing spaces, so a note containing a quote, parenthesis or backtick
@@ -1105,16 +1131,18 @@ def sched(*args: str) -> str:
     # the real failure was lost. It was also a shell injection vector, since the
     # notes field carries model output.
     global _CURRENT_CLAIM
+    report_id = None
     if args and args[0] == "report" and "--id" in args:
-        _rid = args[args.index("--id") + 1]
-        if _rid == _CURRENT_CLAIM:
-            _CURRENT_CLAIM = None
+        report_id = args[args.index("--id") + 1]
+    forwarded, input_text = _scheduler_report_transport(args)
     rc, out = wsl("python3 automation/scheduler.py " + " ".join(
-        shlex.quote(a) for a in args))
+        shlex.quote(a) for a in forwarded), input_text=input_text)
     if rc != 0:
         # Keep the whole traceback. Truncating this to 300 chars once hid a
         # queue-locking bug behind a cut-off stack trace for an entire session.
         raise RuntimeError(f"scheduler failed (rc={rc}):\n{out.strip()}")
+    if report_id == _CURRENT_CLAIM:
+        _CURRENT_CLAIM = None
     return out.strip()
 
 
@@ -4816,7 +4844,7 @@ def process_one(dry: bool = False, only: str | None = None) -> bool:
                               f"m2c draft reads ext offsets {_offs} as ->unkNN "
                               f"and only a model can choose the ext variant. "
                               f"No build attempted. ext_demand.py lists the "
-                              f"variants that already cover these.")[:250])
+                              f"variants that already cover these."))
             return True
     # P6. Ask BEFORE the model, not after: a record whose right answer is a
     # shim must never cost a generation. The blocked-but-not-shimmable case is
@@ -4825,7 +4853,7 @@ def process_one(dry: bool = False, only: str | None = None) -> bool:
     if _defer and not dry:
         print(f"[worker] SHIM INSTEAD: {_why}", flush=True)
         sched("report", "--id", rec["id"], "--status", "deferred",
-              "--notes", (DEFER_SHIMMABLE + ": " + _why)[:250])
+              "--notes", DEFER_SHIMMABLE + ": " + _why)
         return True
     if _why and not dry:
         print(f"  ~~ {_why}", flush=True)
@@ -4840,7 +4868,7 @@ def process_one(dry: bool = False, only: str | None = None) -> bool:
         # The record is still workable by the fleet.
         try:
             sched("report", "--id", rec["id"], "--status", "todo",
-                  "--notes", ("SHIM_BLOCKED: " + _why)[:250])
+                  "--notes", "SHIM_BLOCKED: " + _why)
         except Exception as e:      # noqa: BLE001
             print(f"  ~~ could not record shim blocker: {type(e).__name__}",
                   flush=True)
@@ -5053,7 +5081,7 @@ def process_one(dry: bool = False, only: str | None = None) -> bool:
                     print(f"[worker] MATCHED {fn}")
                     sched("report", "--id", rec["id"], "--status", "matched",
                           "--score", "100", "--tier", "0",
-                          "--proof", detail[:200], "--notes", detail[:200])
+                          "--proof", detail, "--notes", detail)
                     matched = True
                     # DISCARD THE CRASH JOURNAL. This is not tidy-up; omitting
                     # it destroys the match.
@@ -5147,7 +5175,7 @@ def process_one(dry: bool = False, only: str | None = None) -> bool:
                   # and not whatever the last one happened to do.
                   "--notes", (_m2c_tag + "compiled, byte mismatch; permuter "
                               "candidate." + where + " "
-                              + (best_build or best))[:250])
+                              + (best_build or best)))
         elif not produced_code:
             # The model NEVER produced a candidate: every attempt errored during
             # generation (server error, empty gateway drop, degeneration, or
@@ -5163,7 +5191,7 @@ def process_one(dry: bool = False, only: str | None = None) -> bool:
                   f"{gen_errors} error(s); back to todo", flush=True)
             sched("report", "--id", rec["id"], "--status", "todo",
                   "--notes", (f"requeued: model produced no candidate "
-                              f"({gen_errors} generation errors). {best}")[:250])
+                              f"({gen_errors} generation errors). {best}"))
         else:
             # A candidate WAS produced and it failed to build. That is a genuine
             # escalation: the model tried and wrote non-compiling C.
@@ -5205,7 +5233,7 @@ def process_one(dry: bool = False, only: str | None = None) -> bool:
                                   f"> {MAX_FUNC_CHARS}; the m2c draft was "
                                   f"built with no model call and "
                                   f"{_why}." + where + " "
-                                  + (best_build or best))[:250])
+                                  + (best_build or best)))
                 return True
             sched("report", "--id", rec["id"], "--status", "escalated",
                   # Prefer the BUILD verdict. A later generation timeout must
@@ -5216,7 +5244,7 @@ def process_one(dry: bool = False, only: str | None = None) -> bool:
                   # `iterations` was permanently 0 and nothing could ever brake
                   # a requeue loop or tell a first attempt from a fifth.
                   "--add-iters", str(attempt),
-                  "--notes", (where + " " + (best_build or best))[:250])
+                  "--notes", where + " " + (best_build or best))
     except KeyboardInterrupt:
         # Ctrl-C must never leave a half-applied edit in a real source file.
         print("\n[worker] interrupted; restoring source and releasing record")
@@ -5237,7 +5265,7 @@ def process_one(dry: bool = False, only: str | None = None) -> bool:
             try: restore(ctx, original)
             except Exception: pass
         sched("report", "--id", rec["id"], "--status", "escalated",
-              "--notes", f"worker error: {type(e).__name__}: {e}"[:250])
+              "--notes", f"worker error: {type(e).__name__}: {e}")
         print(f"[worker] ERROR: {e}", file=sys.stderr)
     return True
 

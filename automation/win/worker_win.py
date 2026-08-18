@@ -230,11 +230,12 @@ def opencode_argv(prompt: str, model: str, exe: str | None = None) -> list[str]:
 
 # ---- WSL bridge ------------------------------------------------------------
 
-def _wsl(*args: str, check: bool = True) -> str:
+def _wsl(*args: str, check: bool = True,
+         input_text: str | None = None) -> str:
     """Run the WSL-side dispatcher and return stdout."""
     argv = ["wsl.exe", "-d", DISTRO, "-e", "bash",
             f"{wsl_repo()}/automation/win/sotn_dispatch.sh", *args]
-    p = subprocess.run(argv, capture_output=True, text=True)
+    p = subprocess.run(argv, input=input_text, capture_output=True, text=True)
     if check and p.returncode != 0:
         raise RuntimeError(f"wsl dispatch failed ({p.returncode}): {p.stderr.strip()}")
     return p.stdout.strip()
@@ -253,8 +254,35 @@ def wsl_repo() -> str:
     return _REPO_CACHE.rstrip("/")
 
 
+def _scheduler_report_transport(args: tuple[str, ...]) -> tuple[list[str], str | None]:
+    """Move report evidence from Windows argv to lossless JSON on stdin."""
+    forwarded = list(args)
+    if not forwarded or forwarded[0] != "report":
+        return forwarded, None
+    evidence: dict[str, str] = {}
+    for flag, field in (("--notes", "notes"), ("--proof", "proof")):
+        positions = [i for i, value in enumerate(forwarded) if value == flag]
+        if len(positions) > 1:
+            raise ValueError(f"duplicate scheduler argument: {flag}")
+        if not positions:
+            continue
+        pos = positions[0]
+        if pos + 1 >= len(forwarded):
+            raise ValueError(f"missing scheduler value: {flag}")
+        evidence[field] = forwarded[pos + 1]
+        del forwarded[pos:pos + 2]
+    if not evidence:
+        return forwarded, None
+    if "--evidence-stdin" in forwarded:
+        raise ValueError("scheduler evidence supplied both directly and by stdin")
+    forwarded.append("--evidence-stdin")
+    # ASCII escaping keeps subprocess input independent of the Windows locale.
+    return forwarded, json.dumps(evidence, ensure_ascii=True)
+
+
 def sched(*args: str) -> str:
-    return _wsl("sched", *args)
+    forwarded, input_text = _scheduler_report_transport(args)
+    return _wsl("sched", *forwarded, input_text=input_text)
 
 
 def claim_next() -> dict | None:
@@ -367,7 +395,7 @@ def process_one() -> bool:
         msg = f"{type(e).__name__}: {e}"
         print(f"[worker] ERROR on {rec['id']}: {msg}", file=sys.stderr)
         sched("report", "--id", rec["id"], "--status", "escalated",
-              "--score", "0", "--tier", "0", "--notes", f"worker error: {msg}"[:300])
+              "--score", "0", "--tier", "0", "--notes", f"worker error: {msg}")
         return False
     sched("report", "--id", rec["id"], "--status", res["status"],
           "--score", str(res.get("best_score", 0)),

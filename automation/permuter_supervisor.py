@@ -552,9 +552,9 @@ def report(fn_id: str, status: str, notes: str, proof: str = "") -> str:
     # "refused: status 'matched' requires --proof", leaving the record at
     # `near` -- the work was done and the queue did not know.
     argv = [PYTHON, str(REPO / "automation" / "scheduler.py"), "report",
-            "--id", fn_id, "--status", status, "--notes", notes[:250]]
+            "--id", fn_id, "--status", status, "--notes", notes]
     if proof:
-        argv += ["--proof", proof[:250]]
+        argv += ["--proof", proof]
     r = subprocess.run(argv, cwd=str(REPO), capture_output=True, text=True,
                        timeout=60)
     out = (r.stdout or r.stderr).strip()

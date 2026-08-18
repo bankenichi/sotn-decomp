@@ -1205,6 +1205,26 @@ def main() -> int:
     check("keep_note=keep_note" in _mcp_queue_src,
           "the MCP wrapper forwards keep_note rather than accepting it cosmetically")
 
+    _long_note = "derivation:" + ("N" * 2048)
+    _long_proof = "verified:" + ("P" * 1024)
+    _saved_dryrun = cc.DRYRUN
+    cc.DRYRUN = True
+    try:
+        _long_report = cc.queue_report(
+            "us:BOSS/BO6:BO6_RicStepStand", "near",
+            notes=_long_note, proof=_long_proof)
+    finally:
+        cc.DRYRUN = _saved_dryrun
+    _long_argv = _long_report.get("argv", [])
+    _note_arg = (_long_argv[_long_argv.index("--notes") + 1]
+                 if "--notes" in _long_argv else "")
+    _proof_arg = (_long_argv[_long_argv.index("--proof") + 1]
+                  if "--proof" in _long_argv else "")
+    check(_note_arg == _long_note,
+          "commands_client forwards the complete queue note without truncation")
+    check(_proof_arg == _long_proof,
+          "commands_client forwards the complete proof without truncation")
+
     print("\nthe queue can be snapshotted into the repo and restored")
     check("queue_snapshot" in registry, "queue_snapshot is in REGISTRY")
     check("queue_snapshot" in tools, "queue_snapshot is callable (@mcp.tool)")

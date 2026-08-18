@@ -401,7 +401,8 @@ def queue_report(function_id: str, status: str, proof: str = "",
     'matched' is REFUSED unless proof is supplied: pass the verify_build
     verdict plus the artifact hash. Existing derivation notes are preserved by
     default; pass keep_note=False only when the new note explicitly supersedes
-    them. Never hand-edit work/queue.jsonl."""
+    them. Notes and proofs are forwarded in full; this surface never silently
+    truncates evidence. Never hand-edit work/queue.jsonl."""
     return cc.queue_report(function_id, status, proof=proof, score=score,
                            notes=notes, keep_note=keep_note)
 
@@ -700,8 +701,11 @@ def queue_annotate(from_file: str = "automation/twins.us.json",
 def queue_snapshot(out: str = "", timeout: int = 300) -> dict:
     """Copy the live queue INTO the repo so a git checkpoint can hold it.
 
-    CALL THIS BEFORE ANY CHECKPOINT. A backup branch protects `src/` and the
-    docs; it does not protect the queue, because the queue is not in the repo.
+    USE THIS ONCE PER DELIBERATE RECOVERY BATCH. A checkpoint here means a
+    backup branch or other intentional recovery boundary, not a queue report,
+    ordinary source commit, or per-function push. Coalesce the whole work batch
+    into one snapshot. A backup branch protects `src/` and the docs; it does not
+    protect the queue, because the queue is not in the repo.
     That is deliberate -- see scheduler.py's `_DEFAULT_QUEUE`: a cloud sync
     daemon lost a race against the hot file in 2026-07, renamed it to
     "queue (# Name clash ... #).jsonl" and left a zero-byte queue.jsonl, and all
@@ -713,7 +717,8 @@ def queue_snapshot(out: str = "", timeout: int = 300) -> dict:
 
     A snapshot resolves it without reopening the sync race: the hot file stays
     where it is, and a point-in-time copy is written into the repo once, on
-    demand, never rewritten. Commit it with the checkpoint.
+    demand, never rewritten. Commit one with the recovery checkpoint. The
+    canonical frequency rule is in automation/queue/snapshots/README.md.
 
     Read-only with respect to the queue. It borrows the writer's exclusive lock
     so a running fleet cannot be caught mid-write, but leaves content identical.
