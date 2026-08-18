@@ -990,6 +990,6 @@ Status: **done**, **open**, **partial**, **void** (turned out unnecessary),
 
 | # | status | task and outcome |
 |---|---|---|
-| 130 | in progress | Preserve the Claude orchestration as an archive and replace the active plan with a Codex-native root workflow. The owner delegated routine architecture and maintenance decisions to the active orchestrator |
-| 131 | in progress | Close the root-only Git visibility gap with read-only state and diff tools restricted to declared submodules |
-| 132 | open | Benchmark Sol, Terra, and Luna on fixed read-only project cases before assigning production roles. Subagents remain prohibited from builds, Git, and queue writes |
+| 130 | done | Archived the Claude orchestrator and both Opus/Sonnet/Haiku prompt bodies under `docs/archive/claude-orchestration/`; the active `ORCHESTRATOR.md` now keeps every stateful operation in the root Codex agent and treats Sol, Terra and Luna roles as hypotheses until benchmarked |
+| 131 | partial | Added `git_submodule_state` and `git_submodule_diff`, restricted to exact `.gitmodules` paths, with decorator, manifest, documentation and rejection tests. An independent Sol review found that canonical aliases such as `tools/psyz/.` still passed the first version; raw-string membership and three regression cases now close that gap. Connector surfaces and all 54 automation suites pass. The running MCP process predates the new decorators, so inspection of the two dirty submodules waits for the post-commit connector restart |
+| 132 | open | Benchmark Sol, Terra, and Luna on fixed read-only project cases before assigning production roles. Subagents remain prohibited from builds, Git, and queue writes. The unscored Sol implementation review caught a real exact-path defect, which is useful evidence but not a substitute for the fixed benchmark |

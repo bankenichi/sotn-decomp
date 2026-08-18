@@ -76,6 +76,7 @@ def main() -> int:
     # sandbox, which is now forbidden.
     required = {
         "git_status", "git_state", "git_log", "git_diff", "git_diff_stat",
+        "git_submodule_state", "git_submodule_diff",
         "git_show", "git_rev_parse", "git_branch_list", "git_remote_list",
         "git_ls_files", "git_add", "git_add_all", "git_commit",
         "git_commit_amend", "git_push", "git_restore", "git_restore_from_head",
@@ -86,6 +87,26 @@ def main() -> int:
     }
     missing = sorted(required - git_tools)
     check(not missing, f"no required git operation is absent (missing: {missing})")
+
+    print("\nsubmodule inspection is read-only and declaration-scoped")
+    _sm_state = cc.REGISTRY["git_submodule_state"](path="tools/psyz")
+    check(_sm_state[:3] == ["git", "-C", str((REPO / "tools/psyz").resolve())],
+          "submodule state uses a fixed git -C path inside the repo")
+    check(_sm_state[3:] == ["status", "--porcelain=v2", "--branch"],
+          "submodule state has a fixed read-only argv tail")
+    _sm_diff = cc.REGISTRY["git_submodule_diff"](
+        path="tools/saturn-splitter", staged=True, stat=True)
+    check(_sm_diff[-3:] == ["diff", "--staged", "--stat"],
+          "submodule diff exposes only staged and stat switches")
+    for _bad_submodule in (
+        "src", "tools", "../outside", "tools/psyz/.",
+        "tools/m2c/../psyz", str((REPO / "tools/psyz").resolve()),
+    ):
+        try:
+            cc.REGISTRY["git_submodule_state"](path=_bad_submodule)
+            check(False, f"undeclared submodule path is refused: {_bad_submodule}")
+        except cc.Rejected:
+            check(True, f"undeclared submodule path is refused: {_bad_submodule}")
 
     print("\ndestructive git actions cannot run by default")
     must_confirm = ["git_reset", "git_clean", "git_stash_pop",

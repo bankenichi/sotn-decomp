@@ -45,6 +45,11 @@ These are absolute. Each exists because breaking it cost real work.
 8. **No em dashes and no emojis**, in code, comments, commits or documents.
 9. **Verify before claiming.** A match is `verify_build` returning 81/81 and
    nothing else.
+10. **Archive before replacement.** Superseded plans, prompts and records move
+    under `docs/archive/`; they are evidence and are not silently deleted.
+11. **Vendor intentional dependency divergence when practical.** This fork does
+    not prepare pull requests for submodules. External repositories are
+    reference corpora and dependency sources, not contribution targets.
 
 ## 3. Where everything is
 

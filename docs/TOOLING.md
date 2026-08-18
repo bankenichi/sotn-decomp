@@ -146,6 +146,8 @@ All of it goes through the connector. Push to `origin` only.
 | `git_fetch` | before comparing against upstream |
 | `git_diff` | review before staging |
 | `git_diff_stat` | scope of a change |
+| `git_submodule_state` | inspect nested work before deciding whether a dependency change should be vendored |
+| `git_submodule_diff` | read the nested diff or stat for one path declared in `.gitmodules` |
 | `git_diff_stat_range` | what a range of commits touched |
 | `git_log` | history |
 | `git_log_range` | history between two revisions |

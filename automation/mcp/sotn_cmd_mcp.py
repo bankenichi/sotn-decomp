@@ -848,6 +848,27 @@ def git_diff_stat(ref: str = "", staged: bool = False,
 
 
 @mcp.tool()
+def git_submodule_state(path: str, timeout: int = 120) -> dict:
+    """Porcelain-v2 status inside one declared submodule. Read-only.
+
+    Root Git reports only `<gitlink>-dirty`, which cannot distinguish valuable
+    vendored work from generated output. The path must exactly match a path in
+    `.gitmodules`; this is not a general Git cwd escape hatch."""
+    return cc.run("git_submodule_state", timeout=timeout, path=path)
+
+
+@mcp.tool()
+def git_submodule_diff(path: str, staged: bool = False, stat: bool = False,
+                       timeout: int = 120) -> dict:
+    """Working-tree diff inside one declared submodule. Read-only.
+
+    staged=True reads its index; stat=True returns only per-file churn. No ref,
+    remote, or arbitrary Git argument is accepted."""
+    return cc.run("git_submodule_diff", timeout=timeout, path=path,
+                  staged=staged, stat=stat)
+
+
+@mcp.tool()
 def git_show(ref: str = "HEAD", path: str = "", timeout: int = 120) -> dict:
     """One commit: header, full message, and diff. Read-only."""
     return cc.run("git_show", timeout=timeout, ref=ref, path=path)

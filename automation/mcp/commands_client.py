@@ -5,7 +5,7 @@ Security model:
   - There is NO general shell. Only the actions in REGISTRY can run.
   - Every argument is validated (enums, strict regexes, in-repo path checks).
   - subprocess is always invoked with an argv list, never shell=True.
-  - stdout/stderr are truncated to keep Claude's context small.
+  - stdout/stderr are truncated to keep the caller's context small.
   - Each action has a timeout. Set SOTN_CMD_DRYRUN=1 to return argv without running.
 
 Stdlib only, so it is importable and unit-testable anywhere.
@@ -105,6 +105,27 @@ def _relpath(abs_path: str) -> str:
     reached through a WSL mount and git will not accept backslashes.
     """
     return Path(abs_path).resolve().relative_to(REPO.resolve()).as_posix()
+
+
+def _submodule_dir(path: str) -> str:
+    """A declared submodule directory, or Rejected.
+
+    Root Git reports only that a gitlink is dirty. That is insufficient for a
+    standalone fork which may vendor intentional dependency changes: the work
+    has to be inspected before it can be preserved. Keep this narrower than a
+    general cwd option by accepting only exact `path =` values from
+    `.gitmodules`.
+    """
+    modules = REPO / ".gitmodules"
+    declared = set()
+    if modules.is_file():
+        for line in modules.read_text(encoding="utf-8").splitlines():
+            match = re.match(r"^\s*path\s*=\s*(.+?)\s*$", line)
+            if match:
+                declared.add(Path(match.group(1)).as_posix())
+    if path not in declared:
+        raise Rejected("path must exactly match a submodule declared in .gitmodules")
+    return _inrepo(path, must_be_dir=True)
 
 
 def _restorable(path: str, confirm_orphan: bool = False) -> str:
@@ -1059,6 +1080,13 @@ REGISTRY = {
     "git_diff_stat": lambda ref="", staged=False: (
         ["git", "diff", "--stat"] + (["--staged"] if staged else [])
         + ([_ref(ref)] if ref else [])),
+    "git_submodule_state": lambda path: (
+        ["git", "-C", _submodule_dir(path), "status", "--porcelain=v2",
+         "--branch"]),
+    "git_submodule_diff": lambda path, staged=False, stat=False: (
+        ["git", "-C", _submodule_dir(path), "diff"]
+        + (["--staged"] if staged else [])
+        + (["--stat"] if stat else [])),
     "git_show": lambda ref="HEAD", path="": (
         ["git", "show", "--format=%h %an <%ae> %ad%n%n%B", "--date=short",
          _ref(ref)] + (["--", _inrepo(path, must_exist=False)] if path else [])),

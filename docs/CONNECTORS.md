@@ -104,6 +104,8 @@ design. Concretely:
   rejected before a process is created.
 - Every argument is validated: version enums, strict regexes for symbols and
   overlays, in-repo containment for paths.
+- Submodule inspection accepts only exact paths declared in `.gitmodules`; it
+  does not expose a general working-directory or Git-argument parameter.
 - `subprocess` is always given an argv list, never `shell=True`.
 - Output is truncated to `SOTN_CMD_MAXOUT` characters so a runaway build cannot
   flood the caller's context.
@@ -130,6 +132,9 @@ cost real work:
   other breaks the build in a way whose error message points somewhere else.
 - `git_restore` refuses on orphaned `src/` work, because restoring over a body
   that was never committed destroys it silently.
+- `git_submodule_state` and `git_submodule_diff` are read-only and reject every
+  directory that is not an exact `.gitmodules` path. Root Git otherwise reports
+  only `-dirty`, which cannot distinguish vendored work from generated output.
 - Build actions take an exclusive **BuildLock**. Two concurrent builds produce a
   checksum result that belongs to neither.
 

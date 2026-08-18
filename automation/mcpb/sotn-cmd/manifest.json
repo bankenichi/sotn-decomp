@@ -63,6 +63,8 @@
     { "name": "git_state", "description": "Branch, HEAD, upstream and dirty summary in one call" },
     { "name": "git_diff", "description": "git diff for a path" },
     { "name": "git_diff_stat", "description": "git diff --stat" },
+    { "name": "git_submodule_state", "description": "Read porcelain-v2 status inside one declared submodule" },
+    { "name": "git_submodule_diff", "description": "Read a working-tree, staged, or stat diff inside one declared submodule" },
     { "name": "git_diff_stat_range", "description": "git diff --stat between two revisions" },
     { "name": "git_log", "description": "git log" },
     { "name": "git_log_range", "description": "git log between two revisions" },
