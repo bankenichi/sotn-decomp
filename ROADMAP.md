@@ -16,12 +16,12 @@ mistake impossible twice.
 | | |
 |---|---|
 | Oracle | **81/81** |
-| Queue | **270 matched**, 70 todo, 95 escalated, 36 deferred, 0 near (471 total) |
-| Tree | **96.9% of functions decompiled** overall, 6360/6561 |
+| Queue | **271 matched**, 70 todo, 94 escalated, 36 deferred, 0 near (471 total) |
+| Tree | **97.0% of functions decompiled** overall, 6361/6561 |
 | Automation | 59 analysis scripts, 30 test suites, **77 connector tools**, 37 dashboard diagnostics |
-| Provenance | shim-header 60, upstream-harvest 44, shim-segment 40, model-fleet 31, twin-port 29, permuter 10, transplant 8, hand 4, **unknown 44 (16%)** |
+| Provenance | shim-header 60, upstream-harvest 44, shim-segment 40, model-fleet 31, twin-port 30, permuter 10, transplant 8, hand 4, **unknown 44 (16%)** |
 | Fleet backend | `zen` on `mimo-v2.5-free` |
-| Audit | 270 present, 0 uncommitted, 0 LOST |
+| Audit | 271 present, 0 uncommitted, 0 LOST |
 
 Where the remaining work sits, by overlay completion:
 
@@ -220,6 +220,11 @@ The original scan found 65 BO6 stubs with same-named `src/ric` functions. That
 is a historical opening count, not the remaining workload. A fresh 2026-08-18
 scan reports 49 BO6 stubs with any twin candidate; #110 owns the surviving named
 RIC subset. The ported cases continue to validate the method.
+
+`BO6_RicStepSlide` matched on 2026-08-18 from `src/ric/pl_steps.c`. Its live
+body was instruction-identical after the BO6 object swap, but the compiler
+collapsed the target's 0x40-byte frame to 0x18. A volatile ten-word local
+preserves that otherwise empty frame area without adding runtime instructions.
 
 These are NOT shimmable and must not be treated as such. RIC's copies read
 `g_Player` and `PLAYER`; BO6's read `g_Ric` and `RIC`, which are different
@@ -974,7 +979,7 @@ Status: **done**, **open**, **partial**, **void** (turned out unnecessary),
 | 107 | done | README status tables AND prose are generated |
 | 108 | done | Auto-commit remains deliberately rejected. The worker now writes a durable verified landing snapshot before reporting `matched`, while root review, explicit staging, commit and push remain the only Git authority |
 | 109 | done | Closed: no `Ext` field was missing. The m2c-only path could not name them |
-| 110 | partial | P4 twin exhaustion is in progress. `BO6_RicEntitySubwpnBible` matched from `src/ric/319C4.c` with the full derivation retained in its queue record; the remaining named RIC twins must still match or receive a specific twin-limit disposition before model calls |
+| 110 | partial | P4 twin exhaustion is in progress. `BO6_RicEntitySubwpnBible` matched from `src/ric/319C4.c`, and `BO6_RicStepSlide` matched from `src/ric/pl_steps.c` after preserving its otherwise empty 0x40-byte stack frame. Both full derivations are retained in their queue records; the remaining named RIC twins must still match or receive a specific twin-limit disposition before model calls |
 | 111 | **open** | A/B reasoning: the per-worker effort knob landed and is ready to run |
 | 112 | partial | The doc drift check exists and covers three invariants. The rest is still human |
 | 113 | done | Handoff is tier-gated, with a claim breaker behind it |
