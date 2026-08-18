@@ -344,6 +344,12 @@ def run_inner(options: Options, heartbeat: Callable[[], None]) -> List[int]:
         if "func_name" in settings:
             fn_name = json_prop(settings, "func_name", str)
 
+        symbol_map: Optional[str] = None
+        if "symbol_map" in settings:
+            symbol_map = json_prop(settings, "symbol_map", str)
+            if not os.path.isabs(symbol_map):
+                symbol_map = os.path.join(d, symbol_map)
+
         if not fn_name:
             try:
                 with open(os.path.join(d, "function.txt"), encoding="utf-8") as f:
@@ -364,6 +370,7 @@ def run_inner(options: Options, heartbeat: Callable[[], None]) -> List[int]:
             stack_differences=options.stack_differences,
             algorithm=options.algorithm,
             debug_mode=options.debug_mode,
+            symbol_map=symbol_map,
         )
         c_source = preprocess(base_c)
 

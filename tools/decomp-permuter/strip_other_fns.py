@@ -1,49 +1,113 @@
 import re
 import argparse
-from typing import Optional
+from typing import List, Optional, Tuple
 from pathlib import Path
 
 
+_FUNCTION = re.compile(
+    r"(?m)^[ \t]*"
+    r"(?P<head>[A-Za-z_][A-Za-z0-9_ \t*\n]*?[ \t*]+"
+    r"(?P<name>[A-Za-z_]\w*)\s*\([^;{}]*\)\s*)\{"
+)
+
+
 def _find_bracket_end(input: str, start_index: int) -> int:
+    """Find a function's closing brace without counting comments or literals."""
     level = 1
     assert input[start_index] == "{"
     i = start_index + 1
+    state = "code"
     while i < len(input):
-        if input[i] == "{":
-            level += 1
-        elif input[i] == "}":
-            level -= 1
-            if level == 0:
-                break
+        pair = input[i : i + 2]
+        char = input[i]
+        if state == "code":
+            if pair == "//":
+                state = "line"
+                i += 2
+                continue
+            if pair == "/*":
+                state = "block"
+                i += 2
+                continue
+            if char == '"':
+                state = "string"
+            elif char == "'":
+                state = "char"
+            elif char == "{":
+                level += 1
+            elif char == "}":
+                level -= 1
+                if level == 0:
+                    break
+        elif state == "line":
+            if char == "\n":
+                state = "code"
+        elif state == "block":
+            if pair == "*/":
+                state = "code"
+                i += 2
+                continue
+        elif state in ("string", "char"):
+            quote = '"' if state == "string" else "'"
+            if char == "\\":
+                i += 2
+                continue
+            if char == quote:
+                state = "code"
         i += 1
 
     assert level == 0, "unbalanced {}"
     return i
 
 
-def strip_other_fns(source: str, keep_fn_name: str) -> str:
-    result = ""
-    remain = source
+def _function_definitions(source: str) -> List[Tuple[int, int, int, str]]:
+    """Return (start, opening brace, end, name) for top-level definitions."""
+    out: List[Tuple[int, int, int, str]] = []
+    cursor = 0
     while True:
-        fn_regex = re.compile(r"^.*\s+\**(\w+)\(.*\)\s*?{", re.M)
-        fn = re.search(fn_regex, remain)
-        if fn is None:
-            result += remain
-            remain = ""
+        match = _FUNCTION.search(source, cursor)
+        if match is None:
             break
+        opening = match.end() - 1
+        end = _find_bracket_end(source, opening)
+        out.append((match.start(), opening, end, match.group("name")))
+        cursor = end + 1
+    return out
 
-        fn_name = fn.group(1)
-        bracket_end = _find_bracket_end(remain, fn.end() - 1)
-        if fn_name.startswith("PERM"):
-            result += remain[: bracket_end + 1]
-        elif fn_name == keep_fn_name:
-            result += "\n\n" + remain[: bracket_end + 1] + "\n\n"
+
+def strip_other_fns(source: str, keep_fn_name: str) -> str:
+    """Replace unrelated function bodies with declarations.
+
+    Directly called helpers are retained transitively. Removing a static inline
+    helper can change the selected function's codegen even though it makes an
+    unrelated GNU extension disappear, so target-only is too aggressive.
+    """
+    definitions = _function_definitions(source)
+    names = {name for _start, _opening, _end, name in definitions}
+    bodies = {
+        name: source[opening : end + 1]
+        for _start, opening, end, name in definitions
+    }
+    keep = {keep_fn_name}
+    pending = [keep_fn_name]
+    while pending:
+        body = bodies.get(pending.pop(), "")
+        for name in names - keep:
+            if re.search(r"\b" + re.escape(name) + r"\s*\(", body):
+                keep.add(name)
+                pending.append(name)
+
+    pieces: List[str] = []
+    cursor = 0
+    for start, opening, end, name in definitions:
+        pieces.append(source[cursor:start])
+        if name.startswith("PERM") or name in keep:
+            pieces.append(source[start : end + 1])
         else:
-            result += remain[: fn.end() - 1].rstrip() + ";"
-
-        remain = remain[bracket_end + 1 :]
-
-    return result
+            pieces.append(source[start:opening].rstrip() + ";")
+        cursor = end + 1
+    pieces.append(source[cursor:])
+    return "".join(pieces)
 
 
 def strip_other_fns_and_write(

@@ -70,6 +70,9 @@ RX_EXHAUSTED = re.compile(r"PERMUTER_EXHAUSTED")
 # permanent seed-retrofit marker; see the degraded-search branch in classify().
 RX_CURRENT_SEED = re.compile(r"SEED_CURRENT")
 RX_RESCUED = re.compile(r"RESCUED", re.I)
+RX_CLEAN_RERUN = re.compile(
+    r"\b[\d,]+\s+iterations?\b.*?\b0 errors\b", re.I | re.S)
+RX_NOTE_SEPARATOR = re.compile(r"\s+\|\|\s+")
 
 # What the hosted tiers will actually attempt. Kept in sync with
 # worker_direct._DEFAULT_MAX_FUNC; a record is only "stale" if it is under it.
@@ -249,6 +252,16 @@ def defines_in_own_overlay(symbol: str, rec_id: str) -> str:
     return hit
 
 
+def latest_verdict(note: str) -> str:
+    """Newest search/handoff segment from keep_note's newest-first history."""
+    parts = [part.strip() for part in RX_NOTE_SEPARATOR.split(note or "")
+             if part.strip()]
+    for part in parts:
+        if RX_TOO_LARGE.search(part) or RX_EXHAUSTED.search(part):
+            return part
+    return parts[0] if parts else ""
+
+
 def classify(note: str, asm_chars: int | None = None,
              seed_retrofitted: bool = False,
              rec_id: str = "") -> tuple[str, str]:
@@ -256,6 +269,11 @@ def classify(note: str, asm_chars: int | None = None,
     note = note or ""
     if not note.strip():
         return "no-note", "no note to assess; read the record"
+    # queue_report(keep_note=True) prepends evidence and retains earlier
+    # segments after ` || `. Searching the accumulated string lets an old
+    # UNDECLARED SYMBOL override a newer SEED_CURRENT exhaustion. Classify the
+    # first actual verdict because the history is newest-first.
+    note = latest_verdict(note)
 
     if RX_TOO_LARGE.search(note):
         m = RX_ASM_CHARS.search(note)
@@ -316,7 +334,9 @@ def classify(note: str, asm_chars: int | None = None,
                     f"the seed did not declare `{m.group(1)}`, so the "
                     f"permuter's typemap raised KeyError on part of the "
                     f"search. The seed is fixed; requeue as near")
-        if seed_retrofitted and not RX_CURRENT_SEED.search(note):
+        if (seed_retrofitted
+                and not RX_CURRENT_SEED.search(note)
+                and not RX_CLEAN_RERUN.search(note)):
             # THE NOTE WINS OVER THE SEED'S HISTORY.
             #
             # seed_retrofitted is permanent -- it says the seed was ONCE
@@ -341,7 +361,7 @@ def classify(note: str, asm_chars: int | None = None,
                     "reported as exhausted, but its seed was missing stub "
                     "declarations at the time, so part of every mutation set "
                     "died on KeyError. Verdict not trustworthy; requeue as "
-                    "near")
+                     "near")
         return ("permuter-out",
                 "permuter genuinely exhausted; re-derive from the asm")
 
@@ -735,6 +755,27 @@ def self_test() -> int:
     ck("re-derive" in act_f, "and the action says re-derive, not requeue")
     ck(classify(fresh, None, False)[0] == "permuter-out",
        "and the stamp changes nothing when the seed was never retrofitted")
+
+    print("\nnewest search evidence overrides older retained failures")
+    retained = (
+        fresh
+        + " || Recovered and repaired seed evidence; older proof retained."
+        + " || PERMUTER_EXHAUSTED: UNDECLARED SYMBOL: the seed calls "
+          "BO6_RicCheckFacing without declaring it.")
+    cls_new, _ = classify(retained, None, True)
+    ck(cls_new == "permuter-out",
+       f"a current exhaustion is not clipped by an older seed bug ({cls_new})")
+
+    targeted = (
+        "Seed declaration audit repaired the current whole-file seed."
+        " || PERMUTER_EXHAUSTED targeted rerun after parser and scorer "
+        "repairs. The immutable seed imports cleanly. A search ran 8,980 "
+        "iterations with 0 errors and never improved below 60."
+        " || Earlier pre-repair derivation evidence retained.")
+    cls_targeted, _ = classify(targeted, None, True)
+    ck(cls_targeted == "permuter-out",
+       f"a clean targeted rerun is authoritative despite seed history "
+       f"({cls_targeted})")
 
     print("\nthe two modules agree on the token, which is why this works")
     # Same failure mode as scheduler.py's `set` subcommand that never existed:

@@ -50,6 +50,8 @@ import sys
 from collections import Counter, defaultdict
 from pathlib import Path
 
+from source_index import include_asm_symbols as _source_include_asm_symbols
+
 REPO = Path(__file__).resolve().parent.parent
 ASM_ROOT = REPO / "asm" / "us"
 SRC_ROOT = REPO / "src"
@@ -316,15 +318,7 @@ def include_asm_symbols() -> set[tuple[str, str]]:
     Comparing the full relative directory removes the whole class here: a PSP
     path can never equal a us stub's directory.
     """
-    out: set[tuple[str, str]] = set()
-    pat = re.compile(r"INCLUDE_ASM\(\s*\"([^\"]*)\"\s*,\s*(\w+)\s*\)")
-    for path in SRC_ROOT.rglob("*.c"):
-        try:
-            for asm_rel, sym in pat.findall(path.read_text(errors="ignore")):
-                out.add((asm_rel.strip("/"), sym))
-        except OSError:
-            continue
-    return out
+    return _source_include_asm_symbols(SRC_ROOT)
 
 
 def analyse(only: str = "") -> list[dict]:

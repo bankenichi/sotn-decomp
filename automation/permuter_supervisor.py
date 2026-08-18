@@ -55,13 +55,16 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
 import time
+import tomllib
 from pathlib import Path
 
 REPO = Path(os.environ.get("SOTN_REPO", Path(__file__).resolve().parents[1]))
@@ -139,12 +142,14 @@ def workdir_for(fn: str) -> Path | None:
     equality is what lets func_us_8019AA04-2 be found at all.
     """
     exact = WORKROOT / fn
-    if exact.is_dir():
+    if exact.is_dir() and not (exact / "adapt-score.json").is_file():
         return exact
     if not WORKROOT.is_dir():
         return None
     for p in sorted(WORKROOT.iterdir()):
-        if p.is_dir() and re.fullmatch(rf"{re.escape(fn)}(-\d+)?", p.name):
+        if (p.is_dir()
+                and not (p / "adapt-score.json").is_file()
+                and re.fullmatch(rf"{re.escape(fn)}(-\d+)?", p.name)):
             return p
     return None
 
@@ -162,7 +167,7 @@ def best_score(work: Path) -> int | None:
 
 
 def workdir_is_stale(work, seed: str) -> bool:
-    """Was this work dir imported from an OLDER version of its seed?
+    """Was this work dir imported before its seed or import configuration?
 
     A WORK DIR IS A SNAPSHOT, NOT A LINK. import.py copies the seed into
     base.c once; nothing afterwards notices that the seed changed. The only
@@ -178,8 +183,9 @@ def workdir_is_stale(work, seed: str) -> bool:
 
     mtime is the right comparison here: import.py writes base.c at import
     time, and the permuter never rewrites it afterwards (candidates go to
-    output-*/source.c). A base.c older than its seed therefore means exactly
-    one thing.
+    output-*/source.c). Parser fixes, macro policy, and work-dir metadata also
+    take effect only at import time, so their files are part of the snapshot
+    boundary too.
     """
     if not work or not seed:
         return False
@@ -188,7 +194,16 @@ def workdir_is_stale(work, seed: str) -> bool:
     try:
         if not base.is_file() or not s.is_file():
             return False
-        return base.stat().st_mtime < s.stat().st_mtime
+        import_inputs = [
+            s,
+            REPO / "tools" / "decomp-permuter" / "import.py",
+            REPO / "tools" / "decomp-permuter" / "strip_other_fns.py",
+            REPO / "config" / "permuter_settings.toml",
+        ]
+        latest_input = max(
+            item.stat().st_mtime for item in import_inputs if item.is_file()
+        )
+        return base.stat().st_mtime < latest_input
     except OSError:
         return False
 
@@ -206,8 +221,8 @@ def _why_skip(rec: dict, work, seed: str = "") -> str:
         # Deliberately phrased to start with "no work dir" so the two import
         # paths, which both test startswith("no work dir"), pick it up with no
         # further change. There is effectively no usable work dir here.
-        return ("no work dir worth keeping: it was imported from an older "
-                "seed than the one on disk; will re-import")
+        return ("no work dir worth keeping: its import snapshot predates the "
+                "seed or importer configuration; will re-import")
     return ""
 
 
@@ -450,6 +465,38 @@ def standalone_import_copy(seed: Path) -> tuple[Path, Path | None]:
     return temp_path, temp_path
 
 
+def imported_workdir(result: dict | None, fn: str) -> Path | None:
+    """Exact directory named by this importer invocation's success receipt."""
+    if not result:
+        return None
+    output = ((result.get("stdout") or "") + "\n"
+              + (result.get("stderr") or ""))
+    matches = re.findall(
+        r"(?m)^Done\. Imported into\s+(nonmatchings/[^\s]+)\s*$", output)
+    if len(matches) != 1:
+        return None
+    candidate = (REPO / matches[0]).resolve()
+    try:
+        candidate.relative_to(WORKROOT.resolve())
+    except ValueError:
+        return None
+    if (not re.fullmatch(rf"{re.escape(fn)}(?:-\d+)?", candidate.name)
+            or not candidate.is_dir()):
+        return None
+    return candidate
+
+
+def import_outcome(
+    fn: str, ok: bool, detail: str, work: Path | None = None
+) -> tuple[Path | None, str]:
+    """A failed importer can never be rescued by an older work directory."""
+    if not ok:
+        return None, f"import failed: {detail}"
+    if work is None:
+        return None, f"import did not identify its exact work dir: {detail}"
+    return work, "imported"
+
+
 def _build_lock():
     """A factory for the SAME lock the fleet workers use.
 
@@ -461,6 +508,23 @@ def _build_lock():
     sys.path.insert(0, str(here / "win"))
     from worker_direct import BuildLock             # type: ignore
     return lambda: BuildLock(str(here / ".build.lock"))
+
+
+def _score_lock(fn: str):
+    """Cross-process lock for one bare-name permuter work-dir namespace.
+
+    Import names work directories from the function, not the queue overlay.
+    Two exact records with the same function name must therefore serialize the
+    complete before/import/debug/archive sequence or each process can claim the
+    other's newly created directory as its own evidence.
+    """
+    here = Path(__file__).resolve().parent
+    sys.path.insert(0, str(here / "win"))
+    from worker_direct import BuildLock                 # type: ignore
+    lock_root = WORKROOT / ".adapt-scores" / ".locks"
+    lock_root.mkdir(parents=True, exist_ok=True)
+    slug = re.sub(r"[^A-Za-z0-9_.-]+", "_", fn)
+    return BuildLock(str(lock_root / f"{slug}.lock"))
 
 
 def import_workdir(fn: str, seed_rel: str, lock=None) -> tuple[Path | None, str]:
@@ -500,7 +564,7 @@ def import_workdir(fn: str, seed_rel: str, lock=None) -> tuple[Path | None, str]
             f"{existing.name}.stale-{time.strftime('%Y%m%d-%H%M%S')}")
         try:
             existing.rename(aside)
-            print(f"[import] {fn}: work dir predates its seed; moved to "
+            print(f"[import] {fn}: work dir predates its import inputs; moved to "
                   f"{aside.name} and re-importing")
         except OSError as e:
             return None, (f"work dir is stale but could not be moved aside: "
@@ -577,17 +641,15 @@ def _import_standalone(seed: Path, asm_rel: str, fn: str, cc
             c_file=str(import_path.relative_to(REPO)),
             asm_file=f"{wd.asm_dir(asm_rel)}/{fn}.s")
         ok = result.get("returncode") == 0
-        detail = (result.get("stdout") or result.get("stderr") or "")[-300:]
+        detail = command_detail(result)
+        work = imported_workdir(result, fn) if ok else None
     except Exception as exc:                              # noqa: BLE001
-        ok, detail = False, f"{type(exc).__name__}: {exc}"
+        ok, detail, work = False, f"{type(exc).__name__}: {exc}", None
     finally:
         if cleanup is not None:
             cleanup.unlink(missing_ok=True)
 
-    work = workdir_for(fn)
-    if work is None:
-        return None, f"import did not produce a work dir: {detail}"
-    return work, ("imported" if ok else f"imported with warnings: {detail}")
+    return import_outcome(fn, ok, detail, work)
 
 
 def staged_seed_source(original: str, match, body: str,
@@ -629,9 +691,10 @@ def _import_locked(path: Path, original: str, m, body: str, asm_rel: str,
                    c_file=str(path.relative_to(REPO)),
                    asm_file=f"{wd.asm_dir(asm_rel)}/{fn}.s")
         ok = r.get("returncode") == 0
-        detail = (r.get("stdout") or r.get("stderr") or "")[-300:]
+        detail = command_detail(r)
+        work = imported_workdir(r, fn) if ok else None
     except Exception as e:                                # noqa: BLE001
-        ok, detail = False, f"{type(e).__name__}: {e}"
+        ok, detail, work = False, f"{type(e).__name__}: {e}", None
     finally:
         # Unconditional. The tree must look untouched whatever happened above.
         # Restore FIRST, drop the journal only once the file is actually back:
@@ -640,10 +703,333 @@ def _import_locked(path: Path, original: str, m, body: str, asm_rel: str,
         path.write_text(original)
         wd.journal_clear()
 
-    work = workdir_for(fn)
-    if work is None:
-        return None, f"import did not produce a work dir: {detail}"
-    return work, ("imported" if ok else f"imported with warnings: {detail}")
+    return import_outcome(fn, ok, detail, work)
+
+
+def parse_debug_score(output: str) -> int | None:
+    """Numeric base score from decomp-permuter's debug-only output."""
+    match = re.search(r"\bbase score\s*=\s*(\d+)\b", output or "")
+    return int(match.group(1)) if match else None
+
+
+def validated_debug_score(debug_result: dict | None) -> int | None:
+    """Accept a score only from a debug command that completed successfully."""
+    if not debug_result or debug_result.get("returncode") != 0:
+        return None
+    return parse_debug_score(debug_result.get("stdout") or "")
+
+
+def command_detail(result: dict | None) -> str:
+    """Preserve both output streams from a failed compiler/import command."""
+    if not result:
+        return ""
+    pieces = []
+    for stream in ("stdout", "stderr"):
+        value = result.get(stream) or ""
+        if value:
+            pieces.append(f"{stream}:\n{value.rstrip()}")
+    return "\n".join(pieces)
+
+
+def debug_relocation_addresses(output: str) -> dict[str, int]:
+    """Candidate relocation names paired with target addresses in a clean diff.
+
+    This is deliberately stricter than a sequence-alignment proposal. The
+    permuter scorer has compiled the candidate and aligned it to the target;
+    aliases are returned only when stack, ordering and instruction counts are
+    already exact and relocation registers are the only possible residue.
+    """
+    penalties = {}
+    for name in ("Stack", "Register", "Reorderings", "Insertions", "Deletions"):
+        match = re.search(rf"{name}(?: Differences)?:\s+(\d+)\b", output or "")
+        if not match:
+            return {}
+        penalties[name] = int(match.group(1))
+    if any(penalties[name] for name in
+           ("Stack", "Reorderings", "Insertions", "Deletions")):
+        return {}
+
+    symbol = r"(?P<name>[A-Za-z_]\w*)(?P<offset>[+-](?:0x[0-9A-Fa-f]+|\d+))?"
+    high_rx = re.compile(
+        rf"<hi:(?P<target>[0-9A-Fa-f]{{4}})>[^\n]*?%hi\({symbol}\)")
+    low_rx = re.compile(
+        rf"<lo:(?P<target>[0-9A-Fa-f]{{4}})>[^\n]*?%lo\({symbol}\)")
+    halves: dict[tuple[str, int], dict[str, set[int]]] = {}
+    for kind, regex in (("hi", high_rx), ("lo", low_rx)):
+        for match in regex.finditer(output or ""):
+            offset = int(match.group("offset") or "0", 0)
+            key = (match.group("name"), offset)
+            halves.setdefault(key, {"hi": set(), "lo": set()})[kind].add(
+                int(match.group("target"), 16))
+
+    out = {}
+    for (name, offset), values in halves.items():
+        if len(values["hi"]) != 1 or len(values["lo"]) != 1:
+            continue
+        high = next(iter(values["hi"]))
+        low = next(iter(values["lo"]))
+        signed_low = low - 0x10000 if low & 0x8000 else low
+        out[name] = ((high << 16) + signed_low - offset) & 0xFFFFFFFF
+    return out
+
+
+def _work_symbol_addresses(work: Path) -> dict[str, int]:
+    """Link-map symbols available to one imported permuter work directory."""
+    try:
+        settings = tomllib.loads(
+            (work / "settings.toml").read_text(encoding="utf-8"))
+        symbol_map = settings.get("symbol_map")
+        if not isinstance(symbol_map, str):
+            return {}
+        map_path = Path(symbol_map)
+        if not map_path.is_absolute():
+            map_path = work / map_path
+        rows = map_path.read_text(encoding="utf-8", errors="ignore").splitlines()
+    except (OSError, tomllib.TOMLDecodeError):
+        return {}
+
+    address_first = re.compile(
+        r"^\s*(0x[0-9a-fA-F]+)\s+([A-Za-z_.$][A-Za-z0-9_.$]*)\s*(?:=|$)")
+    symbol_first = re.compile(
+        r"^\s*([A-Za-z_.$][A-Za-z0-9_.$]*)\s*=\s*(0x[0-9a-fA-F]+)\s*;?\s*$")
+    out = {}
+    for row in rows:
+        match = address_first.match(row)
+        if match:
+            value, name = match.groups()
+        else:
+            match = symbol_first.match(row)
+            if not match:
+                continue
+            name, value = match.groups()
+        out[name] = int(value, 16)
+    return out
+
+
+def target_labels_for_addresses(work: Path,
+                                addresses: dict[str, int]) -> dict[str, str]:
+    """Prefer concrete C-visible labels for debug-derived target addresses."""
+    by_address: dict[int, list[str]] = {}
+    for name, address in _work_symbol_addresses(work).items():
+        if re.fullmatch(r"[A-Za-z_]\w*", name):
+            by_address.setdefault(address, []).append(name)
+
+    def rank(name: str) -> tuple[int, int, str]:
+        if re.fullmatch(r"D_us_[0-9A-Fa-f]+", name):
+            tier = 0
+        elif name.startswith("g_"):
+            tier = 1
+        elif name.startswith(("D_", "func_")):
+            tier = 2
+        elif name.startswith("_"):
+            tier = 4
+        else:
+            tier = 3
+        return tier, len(name), name
+
+    return {source: min(by_address[address], key=rank)
+            for source, address in addresses.items()
+            if by_address.get(address)}
+
+
+def archived_debug_dir(work: Path, destination: Path,
+                       debug_result: dict | None) -> str:
+    """Map the runner's pre-archive debug path to its durable location."""
+    raw = (debug_result or {}).get("debug_output_dir")
+    if not isinstance(raw, str) or not raw:
+        return ""
+    try:
+        relative = Path(raw).resolve().relative_to(work.resolve())
+        return str((destination / relative).relative_to(REPO))
+    except (OSError, ValueError):
+        return ""
+
+
+def _tree_manifest(root: Path) -> list[tuple[str, str, int, str]]:
+    """Content manifest used before removing a copied score work directory."""
+    rows: list[tuple[str, str, int, str]] = []
+    for path in sorted(root.rglob("*")):
+        rel = path.relative_to(root).as_posix()
+        if path.is_symlink():
+            rows.append(("link", rel, 0, os.readlink(path)))
+        elif path.is_dir():
+            rows.append(("dir", rel, 0, ""))
+        elif path.is_file():
+            digest = hashlib.sha256(path.read_bytes()).hexdigest()
+            rows.append(("file", rel, path.stat().st_size, digest))
+    return rows
+
+
+def archive_score_workdir(work: Path, destination: Path,
+                          rename_func=None) -> tuple[bool, str]:
+    """Archive one owned score directory without discarding its evidence.
+
+    Renaming a directory on a Windows mount can fail while a just-exited child
+    process releases its handles. A verified copy is a safe fallback: the live
+    directory is removed only after every file and empty directory matches.
+    """
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    mover = rename_func or (lambda source, target: source.rename(target))
+    try:
+        mover(work, destination)
+        return True, "renamed into the isolated score archive"
+    except OSError as rename_error:
+        try:
+            if not destination.exists():
+                shutil.copytree(work, destination, symlinks=True)
+            if _tree_manifest(work) != _tree_manifest(destination):
+                return False, ("archive copy did not match the live work directory; "
+                               "both copies were preserved")
+        except OSError as copy_error:
+            return False, (f"rename failed ({rename_error}); archive copy failed "
+                           f"({copy_error}); live evidence was preserved")
+        try:
+            shutil.rmtree(work)
+        except OSError as cleanup_error:
+            return True, ("verified archive copy created; live duplicate retained "
+                          f"because cleanup failed ({cleanup_error})")
+        return True, "verified archive copy created after rename was unavailable"
+
+
+def recover_isolated_score_workdirs(fn: str) -> list[str]:
+    """Finish any prior isolated archive interrupted after its receipt write."""
+    if not WORKROOT.is_dir():
+        return []
+    messages = []
+    pattern = re.compile(rf"{re.escape(fn)}(?:-\d+)?")
+    archive_root = (WORKROOT / ".adapt-scores").resolve()
+    for work in sorted(WORKROOT.iterdir()):
+        receipt_path = work / "adapt-score.json"
+        if not (work.is_dir() and pattern.fullmatch(work.name)
+                and receipt_path.is_file()):
+            continue
+        try:
+            receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+            destination = (REPO / receipt["archive"]).resolve()
+            destination.relative_to(archive_root)
+            if destination.name != work.name:
+                raise ValueError("archive name does not match work directory")
+        except (KeyError, OSError, ValueError, json.JSONDecodeError) as error:
+            messages.append(f"preserved {work.name}: invalid archive receipt ({error})")
+            continue
+        ok, detail = archive_score_workdir(work, destination)
+        messages.append(f"{work.name}: {detail}")
+        if ok:
+            receipt["archive_detail"] = "recovered on the next isolated score: " + detail
+            (destination / "adapt-score.json").write_text(
+                json.dumps(receipt, indent=2, sort_keys=True), encoding="utf-8")
+    return messages
+
+
+def score_body_draft(fn: str, body: str, provenance: str = "",
+                     context: dict | None = None,
+                     overlay_hint: str = "") -> dict:
+    """Serialize one function namespace through isolated scoring."""
+    with _score_lock(fn):
+        return _score_body_draft_locked(
+            fn, body, provenance, context, overlay_hint)
+
+
+def _score_body_draft_locked(fn: str, body: str, provenance: str = "",
+                             context: dict | None = None,
+                             overlay_hint: str = "") -> dict:
+    """Import and debug-score a supplied body without a game build.
+
+    The existing source is staged only inside the same journaled BuildLock
+    path used by seed imports and is restored before debug scoring begins. A
+    newly created permuter work dir is never allowed to masquerade as a queue
+    candidate: after scoring it moves, intact, beneath ignored
+    nonmatchings/.adapt-scores/ with the draft and receipt beside it.
+    """
+    result = {"function": fn, "score": None, "status": "import-failed",
+              "archive": "", "debug_archive": "", "archive_detail": "",
+              "relocation_addresses": {}, "relocation_aliases": {},
+              "context": dict(context or {}),
+              "recovery": recover_isolated_score_workdirs(fn), "detail": ""}
+    dirty = require_clean_src()
+    if dirty:
+        result["detail"] = dirty
+        return result
+    found = find_stub(fn, overlay_hint)
+    if not found:
+        result["detail"] = f"no INCLUDE_ASM stub for {fn} in src/"
+        return result
+
+    path, asm_rel, match = found
+    original = path.read_text(errors="ignore")
+    import commands_client as cc
+    with _build_lock()():
+        work, import_detail = _import_locked(
+            path, original, match, body, asm_rel, fn, cc)
+    restoration_failed = path.read_text(errors="ignore") != original
+    debug_result = None
+    if restoration_failed:
+        # The source discrepancy remains a hard stop, but the import directory
+        # and receipt are still evidence. Returning here used to strand that
+        # directory in the live supervisor pool with no ownership marker.
+        result["status"] = "source-restore-failed"
+        result["detail"] = "source restoration check failed after import"
+    elif work is not None:
+        try:
+            debug_result = cc.run(
+                "permuter", timeout=300,
+                work_dir=str(work.relative_to(REPO)), debug=True)
+            output = ((debug_result.get("stdout") or "") + "\n"
+                      + (debug_result.get("stderr") or ""))
+            result["score"] = validated_debug_score(debug_result)
+            if result["score"] is not None:
+                result["relocation_addresses"] = debug_relocation_addresses(
+                    debug_result.get("stdout") or "")
+                result["relocation_aliases"] = target_labels_for_addresses(
+                    work, result["relocation_addresses"])
+            result["status"] = ("scored" if result["score"] is not None
+                                else "debug-failed")
+            result["detail"] = (
+                "base score captured" if result["score"] is not None
+                else output.strip()[-500:] or "debug produced no score")
+        except Exception as exc:                              # noqa: BLE001
+            result["status"] = "debug-failed"
+            result["detail"] = f"{type(exc).__name__}: {exc}"
+    else:
+        result["detail"] = import_detail
+
+    stamp = time.strftime("%Y%m%d-%H%M%S", time.gmtime())
+    archive_root = (WORKROOT / ".adapt-scores"
+                    / f"{stamp}-{os.getpid()}-{time.time_ns() % 1000000:06d}")
+    archive_root.mkdir(parents=True, exist_ok=False)
+    evidence_dir = work if work is not None else archive_root
+    destination = archive_root / work.name if work is not None else archive_root
+    result["archive"] = str(destination.relative_to(REPO))
+    if work is not None:
+        result["debug_archive"] = archived_debug_dir(
+            work, destination, debug_result)
+    (evidence_dir / "transplant-body.c").write_text(body, encoding="utf-8")
+    receipt = {
+        **result,
+        "provenance": provenance,
+        "source": str(path.relative_to(REPO)),
+        "asm": f"{asm_rel}/{fn}.s",
+        "import_detail": import_detail,
+        "debug": debug_result,
+    }
+    (evidence_dir / "adapt-score.json").write_text(
+        json.dumps(receipt, indent=2, sort_keys=True), encoding="utf-8")
+    (evidence_dir / "adapt-detail.txt").write_text(
+        provenance + ("\n" if provenance else ""), encoding="utf-8")
+
+    if work is not None:
+        archived, archive_detail = archive_score_workdir(work, destination)
+        result["archive_detail"] = archive_detail
+        if not archived:
+            result["status"] = "archive-failed"
+        receipt.update(result)
+        receipt_home = destination if archived else work
+        (receipt_home / "adapt-score.json").write_text(
+            json.dumps(receipt, indent=2, sort_keys=True), encoding="utf-8")
+        if work.is_dir() and archived:
+            (work / "adapt-score.json").write_text(
+                json.dumps(receipt, indent=2, sort_keys=True), encoding="utf-8")
+    return result
 
 
 # Notes markers. Same pattern as worker_direct's DEFER_TOO_LARGE: the status
@@ -708,11 +1094,11 @@ def report(fn_id: str, status: str, notes: str, proof: str = "") -> str:
 
 # ------------------------------------------------------- landing a match
 
-_STUB_INDEX: dict[str, tuple[Path, str]] | None = None
+_STUB_INDEX: dict[str, list[tuple[Path, str]]] | None = None
 _ANY_STUB = re.compile(r'INCLUDE_ASM\(\s*"([^"]+)"\s*,\s*(\w+)\s*\)\s*;')
 
 
-def find_stub(fn: str) -> tuple[Path, str, object] | None:
+def find_stub(fn: str, overlay_hint: str = "") -> tuple[Path, str, object] | None:
     """(src file, asm path, regex match) for fn's INCLUDE_ASM stub.
 
     INDEXED. The original read every .c under src/ looking for one name --
@@ -728,11 +1114,17 @@ def find_stub(fn: str) -> tuple[Path, str, object] | None:
         _STUB_INDEX = {}
         for p in (REPO / "src").rglob("*.c"):
             for asm_rel, name in _ANY_STUB.findall(p.read_text(errors="ignore")):
-                _STUB_INDEX.setdefault(name, (p, asm_rel))
-    hit = _STUB_INDEX.get(fn)
-    if not hit:
+                _STUB_INDEX.setdefault(name, []).append((p, asm_rel))
+    hits = _STUB_INDEX.get(fn, [])
+    if overlay_hint:
+        prefix = overlay_hint.strip("/\\").replace("\\", "/").lower() + "/"
+        hits = [(path, asm_rel) for path, asm_rel in hits
+                if asm_rel.replace("\\", "/").lower().startswith(prefix)]
+    # A bare C function name is not queue identity. Refuse both an absent hit
+    # and multiple hits rather than selecting directory-walk order.
+    if len(hits) != 1:
         return None
-    path, asm_rel = hit
+    path, asm_rel = hits[0]
     m = re.compile(
         rf'INCLUDE_ASM\(\s*"([^"]+)"\s*,\s*{re.escape(fn)}\s*\)\s*;'
     ).search(path.read_text(errors="ignore"))
@@ -792,6 +1184,12 @@ def classify_build_failure(detail: str) -> str:
     return "UNKNOWN: " + detail[:400]
 
 
+def land_supervisor_slot(work: Path, slot: dict) -> tuple[bool, str]:
+    """Land one live slot without dropping its exact queue identity."""
+    return land_match(
+        work, slot["function"], rec_id=slot.get("id", ""))
+
+
 def land_match(work: Path, fn: str, build: str = "us",
                lock=None, body: str = "", rec_id: str = "") -> tuple[bool, str]:
     """Apply a score-0 seed to src/, BUILD it, and revert unless it is green.
@@ -830,7 +1228,11 @@ def land_match(work: Path, fn: str, build: str = "us",
         if not body:
             return False, f"could not extract {fn} from the score-0 source"
 
-    found = find_stub(fn)
+    overlay_hint = ""
+    record_parts = rec_id.split(":", 2) if rec_id else []
+    if len(record_parts) == 3:
+        overlay_hint = record_parts[1]
+    found = find_stub(fn, overlay_hint)
     if not found:
         return False, (f"no INCLUDE_ASM stub for {fn} in src/; it may already "
                        f"be applied")
@@ -1413,7 +1815,7 @@ def supervise(slots: int, threads: int, stall: int, cycles: int,
                 slot["result"] = "MATCH"
                 slot["best"] = 0
                 if apply_matches:
-                    good, why = land_match(work, fn)
+                    good, why = land_supervisor_slot(work, slot)
                     if good:
                         slot["result"] = "MATCHED AND BUILT"
                         print(f"[LANDED] {fn}: {why}")
@@ -1871,6 +2273,11 @@ def self_test() -> int:
         ck(workdir_for("fn_zz") is None, "returns None for an unknown function")
         ck(workdir_for("fn_") is None,
            "does not match a prefix that is not a full name")
+        hidden = WORKROOT / "fn_hidden"
+        hidden.mkdir()
+        (hidden / "adapt-score.json").write_text("{}")
+        ck(workdir_for("fn_hidden") is None,
+           "an interrupted isolated score cannot become a live queue work dir")
 
         print("\nbest score")
         ck(best_score(WORKROOT / "fn_a") == 220, "lowest output wins")
@@ -2075,6 +2482,37 @@ def self_test() -> int:
     ck(got.count("{") == got.count("}") == 2, "braces balance")
     ck(extract_function(tu, "nope") == "", "a missing function yields empty")
 
+    print("\na failed import cannot inherit an older work directory")
+    real_repo, real_workroot = globals()["REPO"], globals()["WORKROOT"]
+    try:
+        with tempfile.TemporaryDirectory() as import_root:
+            globals()["REPO"] = Path(import_root)
+            globals()["WORKROOT"] = Path(import_root) / "nonmatchings"
+            globals()["WORKROOT"].mkdir()
+            old = globals()["WORKROOT"] / "my_fn"
+            produced = globals()["WORKROOT"] / "my_fn-2"
+            old.mkdir()
+            produced.mkdir()
+            receipt = {"stdout": "Done. Imported into nonmatchings/my_fn-2\n",
+                       "stderr": ""}
+            exact = imported_workdir(receipt, "my_fn")
+            ck(exact == produced,
+               "the importer receipt selects its own directory, not an older hit")
+            failed_work, failed_detail = import_outcome(
+                "my_fn", False, "syntax error", old)
+            ck(failed_work is None and failed_detail.startswith("import failed:"),
+               "nonzero import is rejected even when an old work dir exists")
+            good_work, good_detail = import_outcome(
+                "my_fn", True, "ok", exact)
+            ck(good_work == produced and good_detail == "imported",
+               "a successful import returns only its receipt-owned work dir")
+            unknown_work, unknown_detail = import_outcome(
+                "my_fn", True, "receipt missing", None)
+            ck(unknown_work is None and "exact work dir" in unknown_detail,
+               "success without an ownership receipt is rejected")
+    finally:
+        globals()["REPO"], globals()["WORKROOT"] = real_repo, real_workroot
+
     print("\nlanding a match ALWAYS builds, and reverts unless green")
     i = src_sup.index("def land_match")
     lm = src_sup[i:src_sup.index("\ndef _jobs")]
@@ -2087,6 +2525,25 @@ def self_test() -> int:
        "and the whole apply/build/revert happens under the fleet's lock")
     ck(lm.index("build_and_check") < lm.index("return True"),
        "there is no path that returns success without having built")
+
+    print("\nlive supervisor landing retains exact queue identity")
+    captured_landing = []
+    real_lander = globals()["land_match"]
+    try:
+        def fake_lander(work, fn, **kwargs):
+            captured_landing.append((work, fn, kwargs))
+            return False, "fixture"
+        globals()["land_match"] = fake_lander
+        land_supervisor_slot(Path("nonmatchings/EntityShaft"), {
+            "function": "EntityShaft",
+            "id": "us:BOSS/BO6:EntityShaft",
+        })
+    finally:
+        globals()["land_match"] = real_lander
+    ck(bool(captured_landing)
+       and captured_landing[0][2].get("rec_id")
+       == "us:BOSS/BO6:EntityShaft",
+       "a score-zero live slot passes its record id into landing")
 
     print("\ninternal permuter faults are detected and acted on")
     from permuter_stall import scan_faults, fault_verdict, MIN_FAULTS
@@ -2210,6 +2667,97 @@ def self_test() -> int:
     ck(callable(lf) and type(lf()).__name__ == "BuildLock",
        "the DEFAULT really resolves to BuildLock, so production always locks "
        "even though the test injects a null lock for speed")
+    score_lock_a = _score_lock("EntityShaft")
+    score_lock_b = _score_lock("EntityShaft")
+    score_lock_c = _score_lock("EntityBreakable")
+    ck(type(score_lock_a).__name__ == "BuildLock"
+       and score_lock_a.path == score_lock_b.path,
+       "same-name isolated scores share one cross-process lock")
+    ck(score_lock_a.path != score_lock_c.path,
+       "unrelated function names retain parallel score capacity")
+
+    print("\nisolated draft scoring cannot become a game verdict")
+    ck(parse_debug_score("base score = 500\n") == 500,
+       "the debug-only score is parsed exactly")
+    ck(parse_debug_score("compile failed") is None,
+       "missing score output is a failure, never an implicit zero")
+    ck(validated_debug_score(
+           {"returncode": 1, "stdout": "base score = 1200\n"}) is None,
+       "a numeric score printed by a failed debug command is rejected")
+    ck(validated_debug_score(
+           {"returncode": 0, "stdout": "base score = 500\n"}) == 500,
+       "a successful debug command retains its numeric score")
+    detail_joiner = globals().get("command_detail")
+    ck(detail_joiner is not None,
+       "import receipts expose the shared stdout/stderr detail helper")
+    if detail_joiner is not None:
+        combined = detail_joiner({"stdout": "import progress\n",
+                                  "stderr": "compiler failure\n"})
+        ck("import progress" in combined and "compiler failure" in combined,
+           f"non-empty stdout cannot hide the compiler diagnostic ({combined!r})")
+    alias_parser = globals().get("debug_relocation_addresses")
+    ck(alias_parser is not None,
+       "the debug scorer exposes target addresses for unresolved relocations")
+    if alias_parser is not None:
+        alias_fixture = (
+            "\x1b[94m lui a0,<hi:8018>        \t lui a0,%hi(sensors2)\n"
+            "\x1b[94m addiu a0,a0,<lo:1fac>  \t addiu a0,a0,%lo(sensors2)\n"
+            "Stack Differences:             0  (1)\n"
+            "Register Differences:          2  (5)\n"
+            "Reorderings:                   0  (60)\n"
+            "Insertions:                    0  (100)\n"
+            "Deletions:                     0  (100)\n")
+        ck(alias_parser(alias_fixture) == {"sensors2": 0x80181FAC},
+           "a paired adjusted-hi/lo relocation resolves to its target address")
+        ck(alias_parser(alias_fixture.replace(
+               "Insertions:                    0",
+               "Insertions:                    1")) == {},
+           "relocation proposals are withheld when any structural penalty remains")
+    test_work = REPO / "nonmatchings" / "Example"
+    test_destination = (REPO / "nonmatchings" / ".adapt-scores" / "run"
+                        / "Example")
+    mapped_debug = archived_debug_dir(
+        test_work, test_destination,
+        {"debug_output_dir": str(test_work / "debug-runs" / "stamp")})
+    ck(mapped_debug.endswith(
+           "nonmatchings/.adapt-scores/run/Example/debug-runs/stamp"),
+       "the receipt names the debug evidence after its work dir is archived")
+    with _tf2.TemporaryDirectory() as fallback_td:
+        fallback_root = Path(fallback_td)
+        fallback_work = fallback_root / "fallback-work"
+        fallback_destination = fallback_root / "fallback-archive" / "fallback-work"
+        fallback_work.mkdir()
+        (fallback_work / "evidence.txt").write_text("preserve me")
+        def refuse_rename(_source, _target):
+            raise PermissionError("simulated Windows handle")
+        fallback_ok, fallback_detail = archive_score_workdir(
+            fallback_work, fallback_destination, refuse_rename)
+        ck(fallback_ok and not fallback_work.exists()
+           and (fallback_destination / "evidence.txt").read_text() == "preserve me",
+           "a failed directory rename falls back to a verified archive copy")
+        ck("verified archive copy" in fallback_detail,
+           "the fallback is explicit in durable archive evidence")
+    score_src = src_sup[src_sup.index("def score_body_draft"):]
+    score_src = score_src[:score_src.index("\n# Notes markers")]
+    ck("with _build_lock()" in score_src and "_import_locked(" in score_src,
+       "source staging reuses the journaled, fleet-locked importer")
+    ck("with _score_lock(fn)" in score_src,
+       "import, debug and archiving serialize by function name")
+    ck("_score_workdirs(fn) - before" not in score_src
+       and "created -" not in score_src,
+       "isolated scoring never infers ownership from a global directory diff")
+    ck(".adapt-scores" in score_src
+       and "archive_score_workdir(work, destination)" in score_src,
+       "the new work dir is archived intact outside live supervisor selection")
+    restore_check = score_src.index("restoration_failed =")
+    archive_check = score_src.index("archive_score_workdir(work, destination)")
+    ck(restore_check < archive_check and
+       "return result" not in score_src[restore_check:archive_check],
+       "a restoration failure still reaches durable work-dir archiving")
+    for forbidden in ("land_match(", "build_and_check(", "report(",
+                      "verify_checksums("):
+        ck(forbidden not in score_src,
+           f"isolated scoring never reaches {forbidden[:-1]}")
 
     print("\nwrapped INCLUDE_ASM stubs are found")
     # Against the REAL tree: this is a formatting artefact, so a fixture would
@@ -2232,6 +2780,21 @@ def self_test() -> int:
            "bug this guards")
     else:
         print("  ~~ src/boss/bo6/us_3E79C.c missing; wrap check skipped")
+
+    print("\nduplicate function names require exact overlay identity")
+    ck(find_stub("EntityShaft") is None,
+       "a bare duplicated name is refused instead of guessed")
+    shaft_bo6 = find_stub("EntityShaft", "boss/bo6")
+    shaft_rcen = find_stub("EntityShaft", "st/rcen")
+    ck(shaft_bo6 is not None and "boss/bo6/" in shaft_bo6[1],
+       "the BO6 queue identity resolves its own stub")
+    ck(shaft_rcen is not None and "st/rcen/" in shaft_rcen[1],
+       "the RCEN queue identity resolves its own stub")
+    land_src = src_sup[src_sup.index("def land_match"):]
+    land_src = land_src[:land_src.index("\ndef ", 1)]
+    ck('rec_id.split(":", 2)' in land_src
+       and "find_stub(fn, overlay_hint)" in land_src,
+       "landing carries record overlay identity into stub selection")
 
     print("\nthe loop can terminate: outcomes are written back to the queue")
     src_sup = Path(__file__).read_text()
@@ -2305,6 +2868,16 @@ def self_test() -> int:
            "a work dir newer than its seed is NOT stale")
         ck(_why_skip({"notes": ""}, _w, _seedrel) == "",
            "and is runnable again")
+        importer_inputs = [
+            REPO / "tools" / "decomp-permuter" / "import.py",
+            REPO / "tools" / "decomp-permuter" / "strip_other_fns.py",
+            REPO / "config" / "permuter_settings.toml",
+        ]
+        importer_time = max(p.stat().st_mtime for p in importer_inputs)
+        os.utime(_seed, (importer_time - 2, importer_time - 2))
+        os.utime(_w / "base.c", (importer_time - 1, importer_time - 1))
+        ck(workdir_is_stale(_w, _seedrel) is True,
+           "a work dir newer than its seed but older than its importer is stale")
         ck(workdir_is_stale(_w, "") is False,
            "a record with no seed= is never called stale")
         ck(workdir_is_stale(_w, "automation/candidates/_no_such.c") is False,

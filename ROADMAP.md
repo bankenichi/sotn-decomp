@@ -16,32 +16,32 @@ mistake impossible twice.
 | | |
 |---|---|
 | Oracle | **81/81** |
-| Queue | **282 matched**, 57 todo, 95 escalated, 36 deferred, 1 near (471 total) |
+| Queue | **282 matched**, 57 todo, 95 escalated, 37 deferred, 0 near (471 total) |
 | Tree | **97.1% of functions decompiled** overall, 6372/6561 |
-| Automation | 59 analysis scripts, 30 test suites, **77 connector tools**, 37 dashboard diagnostics |
-| Provenance | shim-header 60, upstream-harvest 44, shim-segment 40, model-fleet 31, twin-port 41, permuter 10, transplant 8, hand 4, **unknown 44 (16%)** |
+| Automation | 80 Python modules, 28 test suites plus 32 module self-tests, **87 connector tools**, 64 diagnostics |
+| Provenance | upstream-harvest 44, shim-segment 9, shim-header 55, transplant 9, twin-port 29, permuter 13, model-fleet 54, hand 4, **unknown 65 (23%)** |
 | Fleet backend | `zen` on `mimo-v2.5-free` |
 | Audit | 282 present, 0 uncommitted, 0 LOST |
 
 Where the remaining work sits, by overlay completion:
 
 ```
-BOSS/BO6  71.8%  185/237      ST/RDAI   72.6%  112/130
+BOSS/BO6  74.2%  192/237      ST/RDAI   72.6%  112/130
 BOSS/BO0  73.1%  132/186      ST/RNO0   82.0%  153/193
 ST/RCHI   86.9%   95/108      ST/RCEN   88.4%  102/118
 SLUS      98.3%  515/517
 ```
 
-Everything else is at 100%. BO6, BO0, RNO0 and RDAI hold 164 of the 195
-functions left (84%). BO6 is now the largest pool; RNO0 still carries the most
+Everything else is at 100%. BO6, BO0, RNO0 and RDAI hold 157 of the 189
+functions left (83%). BO6 is now the largest pool; RNO0 still carries the most
 structural debt.
 
-**The 16% unattributed is a finding, not noise.** 44 of 281 matches still lack
-enough evidence for a primary method. Historically, 35 records had method notes
-overwritten by build receipts and 51 never carried a note; source and history
-evidence can still classify some of those records. Current writers preserve
-notes and proofs losslessly. Counted as *contributors* rather than sole author,
-the model fleet touched 124 of 282.
+**The 23% unattributed is a finding, not noise.** 65 of 282 matches still lack
+enough evidence for a primary method. Three were overwritten outright by a
+build receipt; the other 62 carry no method evidence the generator will accept.
+Source and history evidence can still classify some of those records. Current
+writers preserve notes and proofs losslessly. Counted as *contributors* rather
+than sole author, the model fleet touched 126 of 282.
 
 ### Snapshot as of 2026-08-09 (superseded, kept for the trend)
 
@@ -200,7 +200,15 @@ window differs; all following instructions realign. The exact whole-file source
 is preserved as immutable generation
 `automation/candidates/history/us_BOSS_BO6_BO6_RicEntityCrashBibleBeam.v0001.c`.
 The source stub was restored and the recovery build verified 81/81. #174 owns
-the pending targeted permuter search.
+the targeted permuter disposition.
+
+That disposition is now complete. Parser isolation and link-map scoring first
+made the measurement honest: zero stack differences, zero register differences,
+one reordering, score 60. A four-thread targeted search ran about 8,980
+iterations with zero errors and no improvement, beyond the supervisor's 2,500
+iteration stall policy. It was stopped, the immutable seed remains preserved,
+the source stub was never changed, and the queue record is deferred with the
+full evidence.
 
 **The pool is now 12, not 34** (2026-08-02): 11 records were requeued as false
 escalations — nine quoting build failures in overlays they never touched, two
@@ -1062,7 +1070,7 @@ Status: **done**, **open**, **partial**, **void** (turned out unnecessary),
 | 129 | done | **The queue had no backup, and a backup branch did not reveal it.** Making a checkpoint branch on 2026-08-17 exposed the gap: the queue lives at `~/sotn-work/queue.jsonl`, outside the repo, so a branch protects `src/` and the docs and not the record of how any of it was produced. That location is correct and stays (a cloud sync daemon destroyed the in-repo queue in 2026-07 and took 438 records with it), but it answered *where the hot file lives* and never answered *what backs it up*. Built `queue_snapshot` and `queue_restore`: the hot file stays on WSL-native storage, a point-in-time copy lands in `automation/queue/snapshots/` on demand and is never rewritten, so no daemon has a race to lose. snapshot borrows the writer's lock and is deliberately NOT guarded by the queue-owner check, because backing up a queue you distrust is exactly when you need it to work; restore is guarded, validates every line before touching anything, and snapshots what it is about to replace |
 | 128 | done | Two matches by hand derivation. `EntityClockRoomController`: a declaration-order problem plus `u16` where the asm's `sll 16` + `bnez` demands `s16`. `func_us_801B6998`: **retracts the 2026-08-16 diagnosis** of a delay-slot nop at +21. The real cause was switch dispatch form: four live cases compile to a compare chain, and the jump table's own extent named the two empty cases needed to restore it |
 
-## Codex transition and dependency audit, 2026-08-18 (#130 to #173)
+## Codex transition and dependency audit, 2026-08-18 (#130 to #192)
 
 | # | status | task and outcome |
 |---|---|---|
@@ -1108,6 +1116,24 @@ Status: **done**, **open**, **partial**, **void** (turned out unnecessary),
 | 169 | done | Declaration lookup now finds ordinary header prototypes as well as explicit `extern` declarations and rejects call statements that merely resemble prototypes. Conflicting-type regressions cover `InitializeEntity` and `rsin`; all 25 affected stable views were rebuilt from preserved clean generations, while both flawed intermediate generations remain immutable evidence |
 | 170 | done | Declaration lookup now excludes Saturn, PSP, and PSPSDK sources and headers. The regression proves the US `void DestroyEntity(Entity*)` prototype wins over Saturn's shorter `s32 DestroyEntity();`; the same 25 stable views were rebuilt from their clean pre-repair generations and all intermediate generations remain preserved |
 | 171 | done | Every supervisor report now passes `--keep-note`, with a behavioral argv regression proving the full new note is forwarded. The lost `BO6_RicStepStand` seed reference was reconstructed from immutable evidence, targeted re-import succeeded, and the subsequent exhausted-search report retained the reconstructed note and prior fault evidence |
-| 172 | **open** | Reconcile progress accounting without deleting preserved assembly evidence. After thirteen verified BO6 C landings advanced the ledger from #159's 6359/6561 baseline to 6372/6561, `progress_table.py` still reports 6359/6561 and BO6 179/237 because generated `.s` files remain under `asm/us/boss/bo6/nonmatchings` after their `INCLUDE_ASM` calls are removed. Make the generated metric identify the linked C implementation, then regenerate README and correct any affected roadmap figures |
-| 173 | **open** | Make isolated permuter import tolerate unrelated GNU computed-goto code in the same translation unit. Importing `BO6_RicStepJump` retained the later `BO6_RicStepCrouch` label-address table in `base.c`; both import and debug reported a syntax error at `&&case_0`, and debug exited before compiling the selected function. Isolate the selected candidate from unrelated function bodies or support GNU label addresses, with a regression using the live Richter pair |
-| 174 | **open** | Run the targeted permuter on the preserved `BO6_RicEntityCrashBibleBeam` score-60 seed. The RIC twin compiles and linked code differs only by the placement of `sh zero,0x3c(s2)` before the allocator pointer load; every later instruction realigns. Start from `automation/candidates/history/us_BOSS_BO6_BO6_RicEntityCrashBibleBeam.v0001.c`, test the `g_api.AllocPrimitives` call surface and nearby declaration/order variants, preserve every improved generation, and apply nothing without a fresh full build and 81/81 proof |
+| 172 | done | Reconciled progress without deleting preserved assembly evidence. `source_index.py` provides a comment-aware, path-aware live `INCLUDE_ASM` index shared by progress and twin discovery; individual retained `.s` files are no longer mistaken for active stubs, while `.NON_MATCHING` and configured whole-file assembly remain authoritative. Focused fixtures cover a stale BO6 factory listing, a live CrashBibleBeam stub, path collisions and whole-file assembly. The generator now reports 6372/6561 overall and BO6 192/237. The README status headline delegates to that same generator, and the detailed completion table was regenerated |
+| 173 | done | Permuter import now retries an unparseable translation unit after replacing unrelated function bodies with declarations. The brace scanner ignores strings, comments and character literals and handles multiline signatures. Live `BO6_RicStepJump` import now compiles despite the later GNU computed goto; selecting `BO6_RicStepCrouch` itself exits nonzero and creates no unusable directory. The supervisor also rejects a failed import even if an older work directory exists |
+| 174 | done | Ran the preserved `BO6_RicEntityCrashBibleBeam` seed through the repaired importer and scorer. Debug reports the honest score 60 with zero stack or register differences and one reordering. A four-thread difflib search ran about 8,980 iterations with zero errors, never improved, and was cancelled after exceeding the measured 2,500-iteration stall policy. No game source was left changed and no build was warranted; the queue record is deferred with `PERMUTER_EXHAUSTED`. Immutable v0001 remains archived exactly, and declaration-complete v0002 is the current future-import seed |
+| 175 | done | Fixed the permuter's relocation detection failure. New imports discover the overlay link map from the target assembly path and record it in `settings.toml`; the scorer resolves alias and base-plus-offset forms by address, including adjusted MIPS `%hi` and `%lo`, while excluding register names. CrashBibleBeam fell from a false 120, then 90 during diagnosis, to 60 with all six false register penalties removed. Work directories now become stale when their seed, importer, parser or macro configuration advances, and old directories are renamed aside before re-import |
+| 176 | done | Removed the matched-donor blind spot from twin automation. `asm_delta.py` disassembles `build/us/<source>.c.o` when a donor listing is absent, normalizes objdump and splat syntax, and separates clean, schedule-only, structural-near and not-twin evidence with concrete codegen hints. The BO6 scan now finds 22 adaptable donors instead of leaving 36 as unresolved map work |
+| 177 | done | Prevented structural alignment from generating destructive automatic maps. The first adaptable HolyWater draft exposed the false proposal `rand -> InitializeEntity`; only clean position-aligned twins may now emit symbol or constant rewrites. Near drafts retain shape diagnostics, suppress and report ambiguous proposals, and may still apply target-proven API surface changes. Shared uppercase macros and enum members are no longer misreported as missing declarations. `transplant.py --adapt` emits a clean read-only draft and its scan keeps such work in a distinct `adaptable` bucket |
+| 178 | done | The full-suite gate found two current permuter seeds whose typemap declarations had drifted. `fix_seed_declarations.py --apply` published repaired immutable generations without overwriting evidence: CrashBibleBeam v0002 and the already-matched `func_us_801BC3E0` v0006. The prior generations remain byte-identical, the CrashBibleBeam queue record now points future imports at v0002, and the focused corpus regression passes |
+| 179 | done | Closed the focused-test connector gap exposed while diagnosing #178. The five discovered suites added during the evidence, parser and progress work are explicit `run_analysis` entries, so a single regression can be rerun without paying for another repository-wide pass. The restarted connector ran those entries during the final discovered suite, `test_connector_surfaces.py` passed, and the complete gate finished 59/59 |
+| 180 | done | Prevented false entity-enum adaptation. Matching ordinal comments are no longer treated as proof; both overlays' `EntityUpdates[entityId - 1]` entries must identify the same normalized update function. The live Nova and Jack O'Bones false maps are rejected, the known `E_ID_16 -> E_UNK_16` suffix case is proven, and every enum rewrite remains diagnostic-only for a non-clean twin |
+| 181 | done | Made compiled donor lookup work for shared headers. `asm_delta.py` follows targeted local include edges, including transitive headers, to actual US C consumer objects and selects the structurally closest consumer when several exist. `EntityRelicOrb` now reaches a real `e_collect.c.o` instead of the impossible `e_collect.h.o`; a header with no consumer reports an include or splat wiring problem instead of asking for another build |
+| 182 | done | Corrected deferred triage to classify the newest durable verdict segment rather than letting an older `UNDECLARED SYMBOL` marker override later evidence. Clean exhausted reruns with iterations and zero errors are authoritative. `BO6_RicStepStand` and `BO6_RicEntityCrashBibleBeam` now remain `permuter-out`, correcting the actionable deferred count from 25 to 23 without changing the queue |
+| 183 | done | Retracted four false adaptable scores and fixed the compiler-result boundary. A pipeline without `pipefail` allowed `cc1-psx` to diagnose undeclared symbols while the final assembler returned zero and left a scoreable object. The original 500, 1400, 1260, and 1200 receipts remain archived as evidence; any compiler output now rejects the object even on zero exit, while a silent zero-exit control still succeeds |
+| 184 | done | Added isolated adaptable-draft scoring under the existing journaled BuildLock. Each run restores source before debug, archives the complete work directory and linked receipt under `.adapt-scores`, survives Windows rename failures through a verified-copy fallback, derives donor-local extern, enum, macro and array context, and performs one target-map relocation normalization pass only after structural penalties reach zero. The exact-overlay sweep classified 48 candidate records: 42 received honest scores, 10 reached score 0, and six repeated-name records were proven not-twins for their own targets. The score-zero set is `BO6_RicEntitySubwpnStopwatchCircle`, `DrawLaserRing`, `EntityJackOBonesDeathParts`, `EntityNovaLaserPulse`, `EntitySlograSpear`, `EntitySmallGaibonProjectile`, `TryShoot`, `TryThrow`, `UpdateFallingPebble`, and `func_us_801D289C`. No game build, source landing, or queue write was part of the sweep |
+| 185 | done | Closed every failure exposed by the adaptable sweep without hand-deriving a candidate. The resolver now follows local donor headers, ignores inactive PSP-only declarations for a US score, derives exact extents for unsized arrays with braced initializers, carries `E_ID` donor enum values, and never emits a macro for a function-local enum member. Import receipts preserve both stdout and stderr. Repeated function names are resolved by the queue overlay instead of skipped or guessed. The five genuine failures now score 340, 3020, 15, 2170 and 10; the six formerly ambiguous records now carry structural not-twin evidence. The final discovered automation gate passed 59/59, the US build completed, and `verify_build` returned 81/81 |
+| 186 | **open** | Run the 10 score-zero bodies through controlled full-build landings, one exact queue record at a time. A zero is only permission to build. Preserve every nonmatching body as an immutable candidate, record the linked isolated receipt and build result with `keep_note=True`, and verify 81/81 before calling any function matched |
+| 187 | **open** | Publish and route the low-score adaptable bodies after #186, starting with score 5 to 35. Use the preserved isolated receipts to separate relocation cleanup from real expression or scheduling work, then send only honest residual source-shape differences to the permuter |
+| 188 | done | Closed the isolated-score ownership and recovery boundary found in final review. Every same-name score holds a cross-process lock through import, debug and archive; the importer names the exact directory it created in its success receipt, and scoring trusts only that path rather than a global directory set difference. An ordinary import can no longer be captured or archived as another invocation's evidence. A source-restoration mismatch remains a hard stop but still writes and archives its complete receipt instead of stranding an unmarked live work directory |
+| 189 | done | Carried exact queue identity through every public transplant and landing route. Ordinary scan, scored scan, single apply, batch apply and live supervisor landing all pass the record overlay or full record ID. Bare duplicate names are refused. Behavioral regressions drive both `BOSS/BO6:EntityShaft` and `ST/RCEN:EntityShaft` through ordinary scan and prove a score-zero live slot forwards its exact ID before landing |
+| 190 | done | Hardened automatic map proof. A donor symbol or literal that aligns to more than one target value now makes the pair structural-near and suppresses every automatic edit instead of retaining the last proposal. Entity-update enum proof filters inactive PSP tables before reading ordinals and removes all conditional directive lines, so a PSP-only dispatch table cannot authorize a US rename |
+| 191 | done | Made compiled-donor freshness dependency-complete. `asm_delta.py` reads Ninja's compiler dependency database for each consumer object and rejects the object if any direct or transitive header is missing or newer. A focused regression changes an included header while leaving the C source older and proves the stale object is refused; the live shared-header `EntityRelicOrb` path still resolves through a current consumer object |
+| 192 | done | Made the programmatic score pass account for every exact record it examines. Clean ready twins and structural not-twins are rendered instead of silently skipped, `--limit` counts actual isolated scores rather than unrelated classifications, and any import, debug, archive, restoration or instrument error makes the command fail even when another record produced a numeric score. Focused `asm_delta`, `transplant` and `permuter_supervisor` gates pass; final build job `make_build-143051-67032` succeeded and the US oracle returned 81/81 |

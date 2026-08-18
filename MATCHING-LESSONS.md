@@ -362,16 +362,15 @@ worked at all. Both are committed; you should not have to repeat them.
    `base.c`, `target.o`, `target.s`, `compile.sh`, `settings.toml`.
 3. `permuter work_dir=nonmatchings/<NAME>`
 4. Results appear as `output-<score>-<n>/` directories, each with `score.txt`,
-   `diff.txt` and `source.c`. **Score 0 means a match.** Anything above 0 is a
-   near miss; lower is closer.
+   `diff.txt` and `source.c`. Score 0 means the isolated function object agrees.
+   It is worth a build, not yet a match. Anything above 0 is a near miss; lower
+   is closer after relocation aliases have been normalized.
 5. Always revert the seed C to the stub afterwards unless you got a real match,
    then `make_build` + `verify_build` to confirm 81/81.
 
-**Operational hazard:** the `permuter` MCP call reliably exceeds the transport
-timeout and returns error -32001, but the process KEEPS RUNNING server-side and
-still writes output directories. Do not interpret the timeout as failure, and do
-not relaunch on top of a still-running search. Poll the `nonmatchings/<NAME>/`
-directory for `output-*` instead.
+**Operational rule:** run searches with `job_start(action="permuter", ...)` and
+poll `job_status`. Debug mode is bounded and may run synchronously. Do not
+relaunch on top of a live search.
 
 **Do NOT point the permuter at a static-data failure.** It searches for equivalent
 code generation. It cannot change where rodata or BSS lands, so any function
@@ -379,7 +378,7 @@ failing per section 1a (duplicate data at the wrong address) is out of scope. Of
 13 `near` records, only about 5 were genuine permuter candidates; the other 8 were
 1a failures.
 
-### 8c. The permuter has not yet solved anything here. Reason about types first.
+### 8c. Historical first campaign: reason about types before searching
 
 Honest scoreboard after the first campaign: **5 permuter runs, 0 matches.** Best
 scores were 340 on `BO6_ReboundStoneBounce2` and 220 on two others. Meanwhile 4 of
@@ -407,6 +406,31 @@ shape are confirmed correct and the remaining difference really is scheduling.
 
 Also: verify a `near` record still reproduces before spending effort on it. Two of
 these four needed no work at all.
+
+### 8c-1. Relocation spelling is not codegen, and scheduling needs its own class
+
+The BO6 CrashBibleBeam seed exposed two different phenomena that the old score
+collapsed. The target used `g_api_PlaySfx` while C emitted `g_api+0x68`, and an
+interior data label while C emitted `array+2`. They resolve to the same addresses
+and produce the same linked bytes. Scoring their object-file spelling added six
+false register differences and hid the real result.
+
+New imports record the overlay link map. The vendored scorer resolves symbols
+and addends to address identities, with MIPS `%hi/%lo` semantics, before it
+compares operands. The same seed then reported zero register differences and one
+reordering, score 60. Do not make source uglier to imitate a relocation alias.
+
+The remaining reordering was legal output from the exact PSYQ 4.0 compiler and
+the project's real flags. It came from source alias and API call surface, not a
+wrong compiler executable. Treat this as a bounded search problem: compare
+`g_api.Member`, `g_api_Member`, cached function pointers and temporary placement,
+then use the permuter. `asm_delta.py` now calls this `schedule-only` when the
+instruction-shape multiset is identical.
+
+One more boundary matters: sequence alignment over a structural near miss may
+pair unrelated `jal` instructions. It once proposed `rand -> InitializeEntity`.
+Near alignment may provide diagnostics and codegen hints, but only a clean,
+position-aligned twin may perform automatic operand substitutions.
 
 First run result: `BO6_ReboundStoneBounce2`, best score 340 across several
 outputs, no match. A negative result on a genuinely hard scheduling difference.
@@ -602,8 +626,12 @@ An exact body is not yet a usable permuter seed. The body may have compiled only
 because its original file supplied a local header or an earlier flat extern.
 Keep the captured body unchanged, add the same standalone context around it,
 then require both a clean `permuter_import` and a successful debug compile.
-`permuter_import` can report a base.c syntax error, proceed, and still return
-zero, so directory creation alone is not a validation gate.
+Retracted 2026-08-18: `permuter_import` no longer reports a parse error and then
+returns success. It first retries after replacing unrelated function bodies with
+declarations, which lets an ordinary target coexist with GNU computed goto code
+elsewhere in the file. If the selected function itself cannot parse, import exits
+nonzero and creates no work directory. A debug compile remains the validation
+gate because parsing alone does not prove codegen.
 
 General form: when a pipeline records outcomes, a single "failed" bucket
 collapses distinctions the downstream router needs. If two failures have
@@ -1208,3 +1236,122 @@ as permission to build, never as proof of a match. For a function with a jump
 table or an unexpectedly large frame, inspect the linked diff on failure before
 changing the body. Section alignment and concrete stack immediates are outside
 the isolated scorer's guarantee.
+
+## 23. Retained assembly is evidence; the live stub is the authority
+
+This fork retains many individual `nonmatchings/*.s` files after their C bodies
+land. `progress_table.py` treated every surviving file as an active stub and
+undercounted the tree by 13 functions, including the already-landed BO6 entity
+factory. The corrected count is 6372 of 6561 functions, with BO6 at 192 of 237.
+
+For an individual function, ask whether a path-aware live `INCLUDE_ASM` still
+owns that symbol. A same-named assembly file in another overlay is not evidence
+about this one. Configured whole-file assembly and `.NON_MATCHING` symbols remain
+authoritative negative evidence. `source_index.py` now supplies this boundary to
+both progress reporting and twin discovery.
+
+The inverse lesson unlocks mechanical twin work. A donor's extracted `.s` often
+disappears or becomes stale precisely because the donor matched, but its current
+`build/us/<source>.c.o` is fresh compiler evidence. `asm_delta.py` now
+disassembles that object when no distinct donor listing exists. On the remaining
+BO6 set this changed the transplant scan from 36 unresolved map cases to 22
+structural or scheduling drafts that can be generated and inspected without a
+model or a manual port.
+
+## 24. A zero-exit compiler pipeline can still have rejected the C
+
+The PSX compile command is a shell pipeline. Without `pipefail`, its exit status
+comes from the final assembler, not from `cc1-psx`. The compiler can diagnose an
+undeclared identifier, emit partial assembly, and fail while the assembler still
+returns zero and leaves a plausible object. Decomp-permuter previously accepted
+that object and assigned it a numeric score.
+
+That produced four confident but false measurements during the first adaptable
+draft sweep: `TryShoot` 500, `TryThrow` 1400,
+`EntityJackOBonesDeathParts` 1260, and `DrawLaserRing` 1200. Those scores are
+retracted. Their raw receipts remain archived because the stderr is the evidence
+that exposed the defect.
+
+The vendored compiler boundary now captures both output streams. A successful
+permuter compile is silent; any diagnostic output or nonzero exit removes the
+temporary object and returns compile failure. Test both sides of this boundary:
+a wrapper that writes an object, prints an undeclared-symbol diagnostic, and
+exits zero must fail, while a silent zero-exit wrapper must return its fresh
+object.
+
+Near-twin bodies often depend on file-local arrays and step enums that do not
+travel with the function. The transplant scorer derives exact extern types and
+numeric enum values from the donor's file scope. These declarations are labeled
+score-only because they make isolated compilation honest but do not prove the
+target symbol relationship. Function locals are removed from the dependency set
+before donor globals are considered; otherwise a same-named donor global creates
+noise such as an unnecessary `extern unused[]`.
+
+Once the candidate compiles, a second safe normalization is possible. If stack,
+reordering, insertion, and deletion penalties are all zero, paired MIPS adjusted
+`%hi` and `%lo` rows identify the exact target address for an unresolved donor
+symbol. Resolving that address through the overlay map and compiling once more
+with the concrete `D_us_*` label distinguishes a relocation-name residue from a
+code difference. Both receipts are retained and linked. The normalized zero is
+still only permission to build; section placement, jump tables, and the full 81
+artifact oracle remain outside the isolated score.
+
+Three dependency details determine whether that score is honest. First, an
+unsized donor array cannot be declared merely as `extern T name[]` when the body
+uses `LEN(name)` or `sizeof(name)`. Count the donor's braced initializer and emit
+the exact compile-only extent. Second, declarations guarded by `VERSION_PSP`
+must not enter a US score. An `extern s32 E_ID(NAME)` from that branch expands to
+an ordinary US enum member and can conflict with the enum constant. Third, an
+enum declared inside the transplanted function is already self-contained. A
+generated `#define INIT 0` before that body rewrites `INIT = 0` into invalid
+`0 = 0`. Remove local enum members from the dependency set just like local
+variables.
+
+Queue identity is also part of compiler identity. `EntityShaft`,
+`EntityBreakable`, and `EntityUnkId1B` each name more than one US target. A scan
+that groups by the bare function name either guesses the wrong assembly or skips
+real records as ambiguous. Carry the overlay from the queue ID through stub
+lookup, import and scoring. In the 2026-08-18 sweep this turned three ambiguous
+rows into six exact structural not-twin verdicts.
+
+Finally, preserve both output streams from import. The importer prints progress
+on stdout and its useful parse failure on stderr. Selecting stdout with an
+`or stderr` fallback discarded the diagnostic precisely when it mattered. Join
+the streams in the durable receipt, while keeping the display free to show only
+a short summary.
+
+Exact identity has to survive every public route, not only the path used during
+the first measurement. Fixing scored scan while ordinary scan, batch apply or
+live supervisor landing still passes a bare name leaves the same bug one command
+away. Exercise repeated names through each route with their full queue ID. A
+safe bare lookup returns no target when more than one stub exists.
+
+Filesystem set differences do not establish process ownership. Between an
+import and a later directory listing, another same-name import can create a
+newer directory. Selecting the newest entry can score and archive the other
+process's evidence while leaving the intended import live. The importer already
+knows the directory it created, so print that exact path in a success receipt,
+validate it beneath the work root, and pass it directly to every later step. A
+same-name lock protects cooperating score calls, but the receipt is what makes
+ownership true even beside an ordinary importer.
+
+A compiled object is evidence only for the dependency state that produced it.
+Comparing its timestamp with the C source and one shared header is incomplete:
+any direct or transitive include can alter declarations, macros and codegen.
+Use the build system's dependency database and reject the object when any
+recorded input is missing or newer. The regression must change an included
+header while leaving the C source older, because a source-only test proves the
+weaker rule rather than the real boundary.
+
+An aligned operand proposal must be a function, not a relation. If the same
+donor symbol or numeric value maps to two target values, retaining the last row
+creates a destructive rewrite that still looks position-proven. Mark the pair
+structural-near, preserve the conflicting proposals as diagnostics, and emit no
+automatic map. Runtime-table proof needs the same discipline: filter inactive
+PSP branches before using `EntityUpdates` ordinals to authorize a US enum name.
+
+A programmatic queue pass must report every exact record it examined. Silently
+dropping ready twins and structural not-twins forces the operator to reconstruct
+the missing accounting by hand. It must also return failure when any import,
+debug, archive or restoration step fails; one numeric score elsewhere cannot
+turn an incomplete sweep into a successful one.

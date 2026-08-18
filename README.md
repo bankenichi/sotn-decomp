@@ -69,21 +69,17 @@ every one of them already had a generator that nobody was running.
 | | |
 |---|---|
 | Build oracle | **81 / 81** overlay SHA-1s in `config/check.us.sha` |
-| Queue | 471 records: **235 matched**, 89 todo, 108 escalated, 32 deferred, 7 near |
-| `INCLUDE_ASM` stubs left in `src/` | 239 (126 `boss`, 108 `st`, 3 `servant`, 2 `main`) |
-| Automation | 75 Python modules, 24 test suites plus 31 modules with their own `--self-test`, 80 connector tools, 59 diagnostics |
+| Code decompiled | **96.9%** (6372 / 6561 functions) across 44 built binaries |
+| Queue | 471 records: **282 matched**, 57 todo, 95 escalated, 37 deferred |
+| `INCLUDE_ASM` stubs left in `src/` | 192 (99 `boss`, 88 `st`, 3 `servant`, 2 `main`) |
+| Automation | 80 Python modules, 28 test suites plus 32 modules with their own `--self-test`, 87 connector tools, 64 diagnostics |
 
-The `matched` count is *our* work, across 6 overlays. The stub count is `us` only: it excludes `saturn` and the `_psp` trees, which the queue and the oracle also exclude. Counting every `.c` under `src/` instead gives 2707, most of it a Saturn port by an external team.
+The `matched` count is *our* work, across 6 overlays. The stub count is `us` only: it excludes `saturn` and the `_psp` trees, which the queue and the oracle also exclude. Counting every `.c` under `src/` instead gives 2660, most of it a Saturn port by an external team.
 <!-- STATUS:END -->
 
-**Code decompiled: 95.2%** (6235 / 6567 functions) across 44 built binaries.
-That figure comes from `make reports` and is left out of the generated block
-deliberately -- deriving it here would be a second implementation of a number
-the build already computes, and it is overwhelmingly upstream's work rather
-than this fork's.
-
-The 95.2% is the whole game and mostly predates this fork; see
-[Completion](#completion) for the per-binary split and
+The completion row above is generated from linker maps by
+`automation/progress_table.py`; see [Completion](#completion) for the
+per-binary split and
 [Relationship to upstream](#relationship-to-upstream) for who did what.
 
 The tree is byte-identical to the retail binaries at every commit. That is not
@@ -100,20 +96,20 @@ history rather than anyone's recollection:
 
 | source | count | share | what it means |
 |---|---|---|---|
-| upstream-harvest | 25 | 11% |  |
-| shim-segment | 9 | 4% | shared header plus splat segment work |
-| shim-header | 55 | 23% | body copied from a shared header |
-| transplant | 8 | 3% | transplant.py moved a twin body in mechanically |
-| twin-port | 10 | 4% | ported from a sibling overlay or RIC, by hand |
-| permuter | 8 | 3% | decomp-permuter search reached 0 |
-| claude-manual | 4 | 2% | written or repaired by hand |
-| model-fleet | 54 | 23% | an OpenCode or llama worker wrote it |
-| unknown | 62 | 26% | evidence insufficient; **not** a guess |
+| upstream-harvest | 44 | 16% | upstream had already decompiled it; copied and verified here, **not** produced by this fork |
+| shim-segment | 9 | 3% | shared header plus splat segment work |
+| shim-header | 55 | 20% | body copied from a shared header |
+| transplant | 9 | 3% | transplant.py moved a twin body in mechanically |
+| twin-port | 29 | 10% | ported from a sibling overlay or RIC, by hand |
+| permuter | 13 | 5% | decomp-permuter search reached 0 |
+| claude-manual | 4 | 1% | written or repaired by hand |
+| model-fleet | 54 | 19% | an OpenCode or llama worker wrote it |
+| unknown | 65 | 23% | evidence insufficient; **not** a guess |
 
 Two things this table is honest about, because a progress number that flatters itself is useless for deciding what to build next:
 
-- **62 of 235 are unattributed, and that is not shrinking on its own.** 3 were overwritten outright by a build receipt (`scheduler.py report` replaces `notes` wholesale); the other 59 carry no method evidence this tool will accept, which is a weaker claim than saying they are empty. Recoverable going forward, not for these records; `match_provenance.py --unknown` lists them.
-- **The categories overlap.** Each match is counted once, by whichever step was DECISIVE. The model fleet is sole author of 54 but contributed to 108; a model draft the permuter drove to zero counts as `permuter`, deliberately, because crediting the model would overstate the fleet.
+- **65 of 282 are unattributed, and that is not shrinking on its own.** 3 were overwritten outright by a build receipt (`scheduler.py report` replaces `notes` wholesale); the other 62 carry no method evidence this tool will accept, which is a weaker claim than saying they are empty. Recoverable going forward, not for these records; `match_provenance.py --unknown` lists them.
+- **The categories overlap.** Each match is counted once, by whichever step was DECISIVE. The model fleet is sole author of 54 but contributed to 126; a model draft the permuter drove to zero counts as `permuter`, deliberately, because crediting the model would overstate the fleet.
 - **`transplant` is separate from `twin-port` on purpose.** Both move a body from a sibling overlay, but a twin-port had its divergences worked out by hand while a transplant was placed mechanically with the substitutions derived from an asm diff. They need different follow-up, so they are not pooled.
 <!-- PROVENANCE:END -->
 
@@ -212,40 +208,39 @@ python3 automation/dashboard.py --self-test
 
 ### Completion
 
-**Overall: 95.2% of code decompiled** (6235 of 6567 functions), across 44 built
+**Overall: 96.9% of code decompiled** (6372 of 6561 functions), across 44 built
 binaries.
 
 Measured from the linker maps by `automation/progress_table.py`, which reads
-`build/us/*.map` and applies the same rule upstream's `tools/progress.py` does:
-a function counts only when it has no `.NON_MATCHING` symbol and no `.s` under
-the overlay's nonmatchings path. Ours prints a table and talks to no network.
-`--markdown` regenerates this block, so these figures are generated rather than
-typed and cannot quietly drift from the tree.
+`build/us/*.map` and checks `.NON_MATCHING`, configured whole-file assembly, and
+the live path-aware `INCLUDE_ASM` index. Extracted `.s` files are retained after
+many C landings, so their presence is evidence, not proof that a function is
+still a stub. Ours prints a table and talks to no network. `--markdown`
+regenerates these figures from the current tree.
 
-**36 binaries are at 100%:** `DRA.BIN`, `BIN/RIC`, `BOSS/BO4`, `BOSS/RBO0`,
+**37 binaries are at 100%:** `DRA.BIN`, `BIN/RIC`, `BOSS/BO4`, `BOSS/RBO0`,
 `BOSS/RBO3`, `BOSS/RBO5`, all five `SERVANT/TT_00x`, `ST/ARE`, `ST/CAT`,
-`ST/CEN`, `ST/CHI`, `ST/DAI`, `ST/DRE`, `ST/LIB`, `ST/NO0`, `ST/NO1`,
+`ST/CEN`, `ST/CHI`, `ST/DAI`, `ST/DRE`, `ST/LIB`, `ST/MAD`, `ST/NO0`, `ST/NO1`,
 `ST/NO2`, `ST/NO3`, `ST/NO4`, `ST/NP3`, `ST/NZ0`, `ST/NZ1`, `ST/RARE`,
 `ST/RCAT`, `ST/RNO3`, `ST/RNZ0`, `ST/RTOP`, `ST/RWRP`, `ST/SEL`, `ST/ST0`,
 `ST/TOP`, `ST/WRP`.
 
-The eight that are not:
+The seven that are not:
 
 | binary | code | functions | |
 |---|---:|---:|---|
 | `SLUS_000.67` | 98.3% | 515/517 | |
-| `ST/MAD` | 96.4% | 99/102 | |
-| `ST/RCHI` | 85.3% | 93/108 | harness target |
-| `ST/RCEN` | 84.1% | 99/119 | harness target |
+| `ST/RCEN` | 88.4% | 102/118 | harness target |
+| `ST/RCHI` | 86.9% | 95/108 | harness target |
+| `ST/RNO0` | 82.0% | 153/193 | harness target |
+| `BOSS/BO6` | 74.2% | 192/237 | harness target |
+| `BOSS/BO0` | 73.1% | 132/186 | harness target |
 | `ST/RDAI` | 72.6% | 112/130 | |
-| `BOSS/BO0` | 69.7% | 122/188 | harness target |
-| `BOSS/BO6` | 60.5% | 138/237 | harness target |
-| `ST/RNO0` | 27.3% | 88/196 | harness target |
 
 Two caveats, because a percentage invites over-reading:
 
-- **Code bytes, not functions.** Overall functions are at 94.9% while code is
-  at 95.2%; the two differ because the functions still left are systematically
+- **Code bytes, not functions.** Overall functions are at 97.1% while code is
+  at 96.9%; the two differ because the functions still left are systematically
   the large ones. Expect this number to move slowly from here.
 - **Code only.** Data import is tracked separately and is much further behind
   in several overlays (`ST/RARE` 4.4%, `BOSS/RBO0` 6.9%). Run

@@ -13,12 +13,11 @@ WHY THIS EXISTS RATHER THAN tools/progress.py
 
 WHAT "COMPLETE" MEANS HERE
     Code bytes whose function is compiled from C, over total code bytes in
-    that binary. A function counts as decompiled only when it has NO
-    `.NON_MATCHING` symbol in the map and NO `.s` under the overlay's
-    nonmatchings path -- the same test tools/progress.py applies. This is a
-    stricter and more meaningful number than "how many functions are done",
-    because the functions still left are systematically the big ones: it goes
-    up more slowly than the function count and that is the point.
+    that binary. A function counts as decompiled when its map contribution is
+    a C object, it has no `.NON_MATCHING` symbol, and no live path-aware
+    `INCLUDE_ASM` still names it. Extracted `.s` files are retained evidence,
+    not build ownership, so their mere presence cannot make linked C disappear
+    from the metric.
 
     Data is reported separately. A binary can be at 100% code and still be
     importing data, and conflating the two flatters the code number.
@@ -34,6 +33,8 @@ import argparse
 import os
 import sys
 from pathlib import Path
+
+from source_index import include_asm_symbols
 
 REPO = Path(__file__).resolve().parent.parent
 
@@ -113,7 +114,29 @@ def _nonmatchings(asm_path: Path, opts: dict) -> Path:
     return nm
 
 
-def collect(module: str, path: str, pretty: str, version: str) -> Stats:
+def function_is_undecompiled(
+    function: str,
+    asm_dir: str,
+    live_stubs: set[tuple[str, str]],
+    has_nonmatching_symbol: bool,
+    whole_file_asm: bool,
+) -> bool:
+    """Classify one map function from actual link and source ownership."""
+    stub_key = (asm_dir.strip("/").replace("\\", "/"), function)
+    return (
+        whole_file_asm
+        or has_nonmatching_symbol
+        or stub_key in live_stubs
+    )
+
+
+def collect(
+    module: str,
+    path: str,
+    pretty: str,
+    version: str,
+    live_stubs: set[tuple[str, str]] | None = None,
+) -> Stats:
     st = Stats(module, pretty)
     cfg_path = REPO / "config" / f"splat.{version}.{module}.yaml"
     if not cfg_path.is_file():
@@ -131,6 +154,9 @@ def collect(module: str, path: str, pretty: str, version: str) -> Stats:
     mf.readMapFile(map_path)
     asm_path = REPO / opts.get("asm_path", f"asm/{version}")
     nm = _nonmatchings(asm_path, opts)
+    version_asm_root = REPO / "asm" / version
+    if live_stubs is None:
+        live_stubs = include_asm_symbols(REPO / "src")
     depth = 4 + path.count("/")
 
     text = mf.filterBySectionType(".text")
@@ -142,15 +168,23 @@ def collect(module: str, path: str, pretty: str, version: str) -> Stats:
         while stem.suffix:
             stem = stem.with_suffix("")
         whole_file_asm = (asm_path / stem.with_suffix(".s")).exists()
+        try:
+            asm_dir = (nm / stem).relative_to(version_asm_root).as_posix()
+        except ValueError:
+            asm_dir = (nm / stem).as_posix()
         for func in file:
             if func.name.endswith(".NON_MATCHING"):
                 continue
             st.fn_total += 1
             size = func.size or 0
-            undecomped = (
-                whole_file_asm
-                or mf.findSymbolByName(f"{func.name}.NON_MATCHING") is not None
-                or (nm / stem / f"{func.name}.s").exists())
+            undecomped = function_is_undecompiled(
+                func.name,
+                asm_dir,
+                live_stubs,
+                mf.findSymbolByName(
+                    f"{func.name}.NON_MATCHING") is not None,
+                whole_file_asm,
+            )
             if undecomped:
                 st.code_total += size
             else:
@@ -169,7 +203,9 @@ def collect(module: str, path: str, pretty: str, version: str) -> Stats:
 
 
 def gather(version: str) -> list[Stats]:
-    return [s for s in (collect(m, p, n, version) for m, p, n in MODULES)
+    live_stubs = include_asm_symbols(REPO / "src")
+    return [s for s in (
+        collect(m, p, n, version, live_stubs) for m, p, n in MODULES)
             if s.exists and s.code_total]
 
 
@@ -222,6 +258,34 @@ def self_test() -> int:
             fails.append(label)
 
     print("the table is derived from real maps, or it reports nothing")
+    live = include_asm_symbols(REPO / "src")
+    stale_factory_asm = (
+        REPO / "asm/us/boss/bo6/nonmatchings/us_39144"
+        / "BO6_RicEntityFactory.s"
+    )
+    factory_key = (
+        "boss/bo6/nonmatchings/us_39144",
+        "BO6_RicEntityFactory",
+    )
+    beam_key = (
+        "boss/bo6/nonmatchings/us_3E79C",
+        "BO6_RicEntityCrashBibleBeam",
+    )
+    ck(stale_factory_asm.is_file(),
+       "the regression fixture retains Factory's extracted assembly")
+    ck(factory_key not in live,
+       "Factory has linked C and no live INCLUDE_ASM")
+    ck(beam_key in live,
+       "CrashBibleBeam remains a live path-aware stub")
+    ck(not function_is_undecompiled(
+        factory_key[1], factory_key[0], live, False, False),
+       "stale extracted assembly cannot hide a linked C function")
+    ck(function_is_undecompiled(
+        beam_key[1], beam_key[0], live, False, False),
+       "a live INCLUDE_ASM inside a C object still counts as unmatched")
+    ck(function_is_undecompiled(
+        "WholeFileFunction", "boss/bo6/whole_file", live, False, True),
+       "a configured whole-file extracted assembly segment remains unmatched")
     rows = gather("us")
     ck(bool(rows), f"maps were found and parsed ({len(rows)} binaries). "
                    f"If this fails, run a build first.")

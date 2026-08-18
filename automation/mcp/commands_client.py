@@ -589,6 +589,7 @@ ANALYSIS_SCRIPTS = {
     "asm_delta.py",
     "test_stub_locate.py",
     "test_permuter_seed.py",
+    "test_permuter_import_parser.py",
     "permuter_stall.py",
     "permuter_promote.py",
     "permuter_supervisor.py",
@@ -599,6 +600,7 @@ ANALYSIS_SCRIPTS = {
     # per-overlay completion; it writes nothing and talks to no network,
     # unlike tools/progress.py which posts to frogress and Discord.
     "progress_table.py",
+    "test_progress_detection.py",
     # The day's two new suites. Both were runnable from a shell and NOT from
     # the connector, which is the same two-surfaces gap this file warns about
     # a few lines up: a test nobody can reach from the dashboard is a test
@@ -610,6 +612,12 @@ ANALYSIS_SCRIPTS = {
     "test_candidate_validation.py",
     "test_m2c_only.py",
     "test_targeted_claim.py",
+    # Regression suites added with the durable-evidence fixes. Keeping them on
+    # the same connector surface as the older suites makes focused diagnosis
+    # possible without paying for another repository-wide self-test pass.
+    "test_claim_limit.py",
+    "test_evidence_transport.py",
+    "test_matched_landing.py",
     # Regenerates the README status tables. Read-only without --write, and
     # --write only splices between markers, so it cannot append a second table.
     "readme_status.py",

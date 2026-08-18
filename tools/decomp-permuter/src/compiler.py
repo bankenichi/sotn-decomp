@@ -1,4 +1,5 @@
 from typing import Optional
+import sys
 import tempfile
 import subprocess
 import shutil
@@ -39,12 +40,27 @@ class Compiler:
             o_name = f2.name
 
         try:
-            stderr = 2 if show_errors else subprocess.DEVNULL
-            subprocess.check_call(
+            completed = subprocess.run(
                 [self.compile_cmd, c_name, "-o", o_name],
-                stdout=stderr,
-                stderr=stderr,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
             )
+            diagnostics = (completed.stdout or b"") + (completed.stderr or b"")
+            if show_errors and diagnostics:
+                sys.stderr.buffer.write(diagnostics)
+                sys.stderr.buffer.flush()
+            # A permuter compile command is intentionally silent on success.
+            # Some legacy compiler pipelines omit pipefail, so an early stage
+            # can diagnose invalid C while a later assembler exits zero and
+            # leaves a plausible object. Never score that object.
+            if completed.returncode != 0 or diagnostics.strip():
+                raise subprocess.CalledProcessError(
+                    completed.returncode or 1,
+                    completed.args,
+                    output=completed.stdout,
+                    stderr=completed.stderr,
+                )
         except subprocess.CalledProcessError:
             if not show_errors:
                 try_remove(c_name)

@@ -17,16 +17,15 @@ WHAT IT REGENERATES
     Two fenced blocks, delimited by HTML comment markers so the surrounding
     prose is untouched and re-running is idempotent:
 
-        <!-- STATUS:BEGIN -->      the queue / oracle / inventory table
+        <!-- STATUS:BEGIN -->      queue / oracle / completion / inventory
         <!-- PROVENANCE:BEGIN -->  the how-were-these-matched table
 
-WHAT IT DELIBERATELY DOES NOT TOUCH
-    The "Code decompiled 95.2%" figure and the per-binary completion table.
-    Those come from `make reports`, they are overwhelmingly upstream's work
-    rather than this fork's, and deriving them here would mean a second
-    implementation of a number the build already computes. The README says
-    where they come from; this tool leaves them alone rather than producing a
-    slightly different answer from a different method.
+COMPLETION AUTHORITY
+    The completion headline is delegated to `automation/progress_table.py`,
+    which reads the linker maps and live source ownership. This module does not
+    reimplement that calculation. The detailed per-binary table remains in the
+    README's Completion section and is regenerated with
+    `progress_table.py --markdown`.
 
     THE ORACLE IS READ, NEVER RUN. Building takes minutes and needs the lock.
     This hashes whatever artifacts are on disk and reports the result with the
@@ -187,6 +186,26 @@ def inventory() -> dict[str, int]:
             "diagnostics": diagnostics}
 
 
+_COMPLETION: tuple[float, int, int, int] | None = None
+
+
+def completion() -> tuple[float, int, int, int]:
+    """(code percent, functions done, total, built binaries).
+
+    progress_table owns the classification. Keeping this as a delegation is
+    what prevents the headline and detailed table from becoming two metrics
+    that merely happen to share a label.
+    """
+    global _COMPLETION
+    if _COMPLETION is None:
+        sys.path.insert(0, str(AUTO))
+        import progress_table as pt                         # type: ignore
+        rows = pt.gather("us")
+        cp, _fp, fd, ft = pt.totals(rows)
+        _COMPLETION = (cp, fd, ft, len(rows))
+    return _COMPLETION
+
+
 _RAW: list[dict] | None = None
 
 
@@ -251,6 +270,7 @@ def status_block() -> str:
     ok, exp, present = oracle()
     total_stubs, per = stub_counts()
     inv = inventory()
+    code_pct, fn_done, fn_total, built = completion()
     all_stubs, _ = stub_counts(us_only=False)
     overlays = len({r["overlay"] for r in raw_rows() if r.get("overlay")})
     order = ["matched", "todo", "escalated", "deferred", "near", "claimed"]
@@ -261,6 +281,12 @@ def status_block() -> str:
     oracle_cell = (f"**{ok} / {exp}** overlay SHA-1s in `config/check.us.sha`"
                    if present else
                    "no build artifacts on disk; run `make build` then re-run")
+    completion_cell = (
+        f"**{code_pct:.1f}%** ({fn_done} / {fn_total} functions) across "
+        f"{built} built binaries"
+        if built and fn_total else
+        "no linker maps on disk; run `make build` then re-run"
+    )
     return "\n".join([
         STATUS_BEGIN,
         GENERATED,
@@ -268,6 +294,7 @@ def status_block() -> str:
         "| | |",
         "|---|---|",
         f"| Build oracle | {oracle_cell} |",
+        f"| Code decompiled | {completion_cell} |",
         f"| Queue | {q.get('total', sum(q.get(k, 0) for k in order))} "
         f"records: {qbits} |",
         f"| `INCLUDE_ASM` stubs left in `src/` | {total_stubs} ({areas}) |",
@@ -737,6 +764,14 @@ def self_test() -> int:
     src_self = Path(__file__).read_text(encoding="utf-8")
     ck("ANALYSIS_SCRIPTS" in src_self,
        "diagnostics read the real registry, not a literal")
+
+    print("\nthe completion headline delegates to progress_table")
+    cp, fd, ft, built = completion()
+    sb = status_block()
+    ck(built > 0 and ft > 0,
+       f"linker-map completion is available ({fd}/{ft}, {built} binaries)")
+    ck(f"**{cp:.1f}%** ({fd} / {ft} functions)" in sb,
+       "the status row contains progress_table's live result")
 
     print("\nthe oracle is READ, never run")
     # A generator that triggers a build would take minutes and need the lock.

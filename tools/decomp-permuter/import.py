@@ -21,6 +21,7 @@ from src import ast_util
 from src.compiler import Compiler
 from src.error import CandidateConstructionFailure
 from src.helpers import get_default_randomization_weights
+from strip_other_fns import strip_other_fns
 
 is_macos = platform.system() == "Darwin"
 
@@ -596,30 +597,32 @@ def prune_source(
     function and functions/struct/variables that it uses.
 
     Returns (source, compilable_source)."""
-    try:
-        ast = ast_util.parse_c(source, from_import=True)
+    def parse_and_prune(candidate: str) -> Tuple[str, Optional[str]]:
+        ast = ast_util.parse_c(candidate, from_import=True)
         orig_fn, _ = ast_util.extract_fn(ast, func_name)
         if should_prune:
             try:
                 ast_util.prune_ast(orig_fn, ast)
-                source = ast_util.to_c_raw(ast)
+                candidate = ast_util.to_c_raw(ast)
             except Exception:
                 print(
                     "Source minimization failed! "
                     "You could try --no-prune as a workaround."
                 )
                 raise
-        return source, ast_util.to_c(ast, from_import=True)
-    except CandidateConstructionFailure as e:
-        print(e.message)
-        if should_prune and "PERM_" in source:
-            print(
-                "Please put in PERM macros after import, otherwise source "
-                "minimization does not work."
-            )
-        else:
-            print("Proceeding anyway, but expect errors when permuting!")
-        return source, None
+        return candidate, ast_util.to_c(ast, from_import=True)
+
+    try:
+        return parse_and_prune(source)
+    except CandidateConstructionFailure:
+        # pycparser does not implement every GNU extension. An extension in an
+        # unrelated function must not block the selected function, since
+        # extract_fn replaces those same bodies with declarations immediately
+        # after parsing. Do that isolation textually, then retry the real parse.
+        isolated = strip_other_fns(source, func_name)
+        if isolated == source:
+            raise
+        return parse_and_prune(isolated)
 
 
 def prune_and_separate_context(
@@ -764,8 +767,47 @@ def compile_base(compile_script: str, source: str, c_file: str, out_file: str) -
         print("Warning: failed to compile .c file.")
 
 
+def find_symbol_map(root_dir: str, asm_file: str) -> Optional[str]:
+    """Find the built link map belonging to an extracted assembly path."""
+    if not os.path.isfile(asm_file):
+        return None
+    asm_abs = os.path.realpath(asm_file)
+    config_dir = os.path.join(root_dir, "config")
+    if not os.path.isdir(config_dir):
+        return None
+
+    def option(text: str, name: str) -> Optional[str]:
+        match = re.search(
+            rf"(?m)^\s+{re.escape(name)}:\s*([^\s#]+)\s*(?:#.*)?$", text
+        )
+        return match.group(1) if match else None
+
+    for entry in sorted(os.listdir(config_dir)):
+        if not fnmatch.fnmatch(entry, "splat.*.yaml"):
+            continue
+        config_path = os.path.join(config_dir, entry)
+        with open(config_path, encoding="utf-8", errors="ignore") as stream:
+            config = stream.read()
+        asm_path = option(config, "asm_path")
+        build_path = option(config, "build_path")
+        basename = option(config, "basename")
+        if not asm_path or not build_path or not basename:
+            continue
+        configured_asm = os.path.realpath(os.path.join(root_dir, asm_path))
+        try:
+            if os.path.commonpath([asm_abs, configured_asm]) != configured_asm:
+                continue
+        except ValueError:
+            continue
+        candidate = os.path.join(root_dir, build_path, basename + ".map")
+        if os.path.isfile(candidate):
+            return os.path.realpath(candidate)
+    return None
+
+
 def create_write_settings_toml(
-    func_name: str, compiler_type: str, filename: str
+    func_name: str, compiler_type: str, filename: str,
+    symbol_map: Optional[str] = None,
 ) -> None:
 
     rand_weights = get_default_randomization_weights(compiler_type)
@@ -773,6 +815,8 @@ def create_write_settings_toml(
     with open(filename, "w", encoding="utf-8") as f:
         f.write(f'func_name = "{func_name}"\n')
         f.write(f'compiler_type = "{compiler_type}"\n\n')
+        if symbol_map:
+            f.write(f'symbol_map = {json.dumps(symbol_map)}\n\n')
 
         f.write("# uncomment lines below to customize randomization pass weights\n")
         f.write("# see --help=randomization-passes for descriptions\n")
@@ -958,7 +1002,17 @@ def main(arg_list: List[str]) -> None:
             print(e)
         return
 
-    source, compilable_source = prune_source(source, args.prune, func_name)
+    try:
+        source, compilable_source = prune_source(
+            source, args.prune, func_name)
+    except CandidateConstructionFailure as e:
+        print(e.message, file=sys.stderr)
+        print(
+            "Import aborted: the selected function could not be parsed. "
+            "No unusable work directory was created.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
 
     dirname = create_directory(func_name)
     base_c_file = f"{dirname}/base.c"
@@ -967,10 +1021,15 @@ def main(arg_list: List[str]) -> None:
     target_o_file = f"{dirname}/target.o"
     compile_script = f"{dirname}/compile.sh"
     settings_file = f"{dirname}/settings.toml"
+    symbol_map = find_symbol_map(root_dir, args.asm_file_or_func_name)
+    symbol_map_rel = os.path.relpath(symbol_map, dirname) if symbol_map else None
+    if symbol_map:
+        print(f"Symbol map: {symbol_map}")
 
     try:
         write_to_file(source, base_c_file)
-        create_write_settings_toml(func_name, compiler_type, settings_file)
+        create_write_settings_toml(
+            func_name, compiler_type, settings_file, symbol_map_rel)
         write_compile_command(compiler, root_dir, compile_script)
         write_asm(asm_prelude_file, asm_cont, target_s_file)
         compile_asm(assembler, root_dir, target_s_file, target_o_file)

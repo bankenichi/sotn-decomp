@@ -69,12 +69,15 @@ answers a different question.
 | `permuter` | search the space. Hours. `-j` defaults to 1 |
 | `run_analysis` | everything else; see section 6 |
 
-`permuter_import` returning zero means it created a directory, not that the seed
-is usable. Upstream may print `Syntax error in base.c`, say it is proceeding
-anyway, and still exit successfully. Read both output streams, then run
-`permuter(debug=True)` as the compile gate. A saved function fragment needs the
-same header and preceding flat extern context that made it compile in its source
-file. Keep the captured body exact and add that context around it.
+`permuter_import` isolates the selected function before retrying a translation
+unit that pycparser cannot read. An unrelated GNU computed goto therefore no
+longer poisons an ordinary target. If the selected function itself still cannot
+parse, import exits nonzero and creates no work directory. Run
+`permuter(debug=True)` as the compile and scoring gate. A saved function fragment
+still needs the header and preceding flat extern context that made it compile in
+its source file. Keep the captured body exact and add that context around it.
+Import failure evidence joins stdout and stderr. Progress text on stdout must
+never hide the parser or compiler diagnostic written to stderr.
 
 Upstream permuter debug mode writes fixed relative filenames. The connector
 runs each debug pass from a unique `debug-runs/` directory below its own work
@@ -82,12 +85,72 @@ directory and returns the path as `debug_output_dir`. This keeps generated
 sources and objects attached to their seed and prevents an unrelated root-level
 debug file from being replaced.
 
-**Read the side-by-side, not the score.** Permuter scores are inflated by symbol
-naming alone: `PLAYER_posX_i_hi` against `g_Entities+2`, `g_api_PlaySfx` against
-`g_api+0x68`, `jtbl_us_*` against `.rodata`. A function has scored 50 on naming
-artefacts and still matched byte for byte. Conversely a score of 0 is an
-isolated-compile result only, and `func_us_801CFD70` sits at 0 with the overlay
-checksum still wrong.
+New work directories record the overlay link map in `settings.toml`. The scorer
+uses it to resolve relocation aliases such as `g_api_PlaySfx` versus
+`g_api+0x68` and an interior label versus `array+2`, including MIPS `%hi/%lo`
+semantics. This removes false register-allocation penalties without treating
+different addresses as equal. Older work directories are re-imported when the
+seed or import configuration changes and are moved aside, never deleted.
+Still read the side-by-side: a score of 0 is an isolated-compile result only,
+and `func_us_801CFD70` sits at 0 with the overlay checksum still wrong.
+
+The vendored permuter rejects compiler diagnostics even when a legacy shell
+pipeline exits zero and leaves an object. This is necessary because an early
+`cc1-psx` failure can be hidden by a successful assembler at the end of a
+pipeline without `pipefail`. A successful candidate compile is silent. Do not
+recover a numeric score from a receipt whose compiler wrote diagnostics.
+
+`transplant.py --function NAME --score` is the cheap gate for an adaptable
+draft. It stages the generated body only under the journaled BuildLock, restores
+the source before scoring, invokes no game build, and writes nothing to the
+queue. The newly imported work directory, exact body, debug artifacts, raw
+result, and receipt move under ignored
+`nonmatchings/.adapt-scores/<run>/<function>/`. A Windows rename failure falls
+back to a content-verified copy; an interrupted live score directory carries a
+receipt, is excluded from supervisor selection, and is recovered on the next
+run.
+
+Directory ownership comes from the importer's exact `Done. Imported into ...`
+receipt. It never comes from comparing directory listings before and after an
+import. A same-name cross-process lock covers import through archive, and only
+the receipt-owned directory may be debugged or moved. This matters when two
+queue records share a function name or an ordinary import starts beside a score.
+A source restoration mismatch stops scoring but still archives the owned work
+directory and failure receipt.
+
+Pass `--overlay BOSS/BO6` or the corresponding queue overlay when a function
+name is repeated. Full scans carry that identity automatically. A bare function
+name is not enough to choose between `BOSS/BO6:EntityShaft` and
+`ST/RCEN:EntityShaft`.
+Ordinary scan, scored scan, batch apply and live supervisor landing all retain
+the overlay or complete queue ID. An ambiguous bare lookup returns no target; it
+never falls back to directory order.
+
+The score path derives donor-local extern types, object-like macros, enum values
+and initialized array extents for compilation. It follows quoted local headers,
+ignores inactive PSP-only declarations for the US target, expands `E_ID` demand
+to the donor enum value, and excludes function-local variables and enum members.
+Every synthesized declaration remains score-only context, not target-symbol
+proof.
+Entity enum renames are proven against the active US `EntityUpdates` tables, not
+same-ordinal comments or an inactive PSP table. A symbol or literal that would
+need two different target substitutions invalidates the automatic map instead
+of letting the last aligned row win.
+If the only remaining penalties are relocation registers, it resolves paired
+MIPS high/low operands to target map labels and performs one linked second
+score. The final receipt points back to the first score and records every alias.
+Use `transplant.py --scan --score --limit N --overlay RNO0` to rank a bounded
+pool, or omit the filters for the full queue pass. The output includes exact
+ready, scored, not-twin and unsupported records instead of silently dropping
+non-score outcomes. `--limit` counts isolated score attempts. Any tool failure
+makes the pass nonzero even if a different record received a numeric score. A
+final score of zero is a build candidate, never a match verdict.
+
+`Reorderings: 1` means the exact project compiler emitted the same instruction
+shape in a different local position. It is not evidence that a different
+compiler binary ran. Check alias visibility, API member versus standalone
+pointer form, and temporary placement, then let a targeted permuter search the
+remaining source-shape space.
 
 **Before blaming the scheduler, check the dispatch form.** If a body links but
 the overlay is short by roughly the size of a jump table, the switch compiled to
@@ -242,7 +305,7 @@ supports `--help` and most support `--self-test`.
 | `asm_twin_finder.py` | which unmatched stubs already exist elsewhere in the tree |
 | `upstream_harvest.py` | what upstream has decompiled that we do not |
 | `shim_sweep.py` | which shared headers could retire several stubs at once |
-| `transplant.py` | move a twin body in mechanically |
+| `transplant.py` | move a twin body mechanically; `--scan` classifies donors, `--adapt` emits a target-informed draft, and `--score` ranks adaptable drafts without a game build or queue write |
 | `codebase_index.py` | the searchable index of the whole tree |
 | `queue_coverage.py` | does the queue cover what is actually in the tree |
 | `decl_coverage.py` | are the declarations a candidate needs already reachable |
@@ -254,7 +317,7 @@ supports `--help` and most support `--self-test`.
 
 | script | answers |
 |---|---|
-| `asm_delta.py` | structured difference between two functions |
+| `asm_delta.py` | structured difference using retained assembly or a matched donor's compiled object; shared headers are resolved through their real US C consumers; Ninja's complete dependency record rejects objects older than any included header; distinguishes clean, schedule-only, structural-near and not-twin |
 | `fn_diff.py` | one function against its twin |
 | `relocation_check.py` | are the byte differences only a shifted relocation |
 | `overlay_size_check.py` | is the overlay long or short, and is it text or bss |
@@ -275,7 +338,7 @@ supports `--help` and most support `--self-test`.
 | `review_checks.py` | the gate the worker runs before building |
 | `decomp_fidelity.py` | callee recall and constant coverage against the asm |
 | `escalation_triage.py` | why each escalated record failed |
-| `deferred_triage.py` | why each deferred record was deferred, and whether it still holds |
+| `deferred_triage.py` | why each deferred record was deferred, using the newest actual verdict segment so older accumulated failure markers cannot override a clean rerun |
 | `empty_response_audit.py` | dead-call rate per model. Reads current logs only unless you pass `--archived` |
 | `fleet_forensics.py` | what a fleet run actually did |
 | `reasoning_audit.py` | reasoning-effort A/B results |
@@ -295,6 +358,11 @@ supports `--help` and most support `--self-test`.
 
 The remaining `test_*.py` scripts are all callable through `run_analysis` and
 each explains itself when run. `run_selftests.py` is the one to reach for.
+
+`progress_table.py` uses `.NON_MATCHING`, configured whole-file assembly and
+the shared path-aware live `INCLUDE_ASM` index. A retained individual `.s` file
+does not make a landed C function undecompiled. `asm_twin_finder.py` uses the
+same index, so progress and twin discovery cannot drift on that boundary.
 
 ## 7. Scoped filesystem
 

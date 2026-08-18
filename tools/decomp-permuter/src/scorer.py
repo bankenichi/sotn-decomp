@@ -1,10 +1,82 @@
 import difflib
 import hashlib
 import re
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import Dict, List, Mapping, Optional, Sequence, Tuple
 from collections import Counter
 
 from .objdump import ArchSettings, Line, objdump, get_arch
+
+
+_MAP_ADDRESS_FIRST = re.compile(
+    r"^\s*(0x[0-9a-fA-F]+)\s+([A-Za-z_.$][A-Za-z0-9_.$]*)\s*(?:=|$)"
+)
+_MAP_SYMBOL_FIRST = re.compile(
+    r"^\s*([A-Za-z_.$][A-Za-z0-9_.$]*)\s*=\s*(0x[0-9a-fA-F]+)\s*;?\s*$"
+)
+_SYMBOL_EXPR = re.compile(
+    r"(?<![A-Za-z0-9_.$])"
+    r"(?P<name>[A-Za-z_.$][A-Za-z0-9_.$]*)"
+    r"(?P<offset>[+-](?:0x[0-9a-fA-F]+|[0-9]+))?"
+    r"(?![A-Za-z0-9_.$])"
+)
+_MIPS_REGISTERS = {
+    "zero", "at", "v0", "v1", "a0", "a1", "a2", "a3",
+    "t0", "t1", "t2", "t3", "t4", "t5", "t6", "t7", "t8", "t9",
+    "s0", "s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8",
+    "k0", "k1", "gp", "sp", "fp", "ra",
+}.union({f"f{index}" for index in range(32)})
+_HI_IDENTITY = re.compile(r"%hi\(<sym:([0-9a-f]{8})>\)")
+_LO_IDENTITY = re.compile(r"%lo\(<sym:([0-9a-f]{8})>\)")
+
+
+def load_symbol_addresses(filename: str) -> Dict[str, int]:
+    """Read symbol values from a GNU ld map or an assignment file."""
+    out: Dict[str, int] = {}
+    with open(filename, encoding="utf-8", errors="ignore") as stream:
+        for row in stream:
+            match = _MAP_ADDRESS_FIRST.match(row)
+            if match:
+                value, name = match.groups()
+            else:
+                match = _MAP_SYMBOL_FIRST.match(row)
+                if not match:
+                    continue
+                name, value = match.groups()
+            out[name] = int(value, 16)
+    return out
+
+
+def normalize_symbolic_row(row: str, addresses: Mapping[str, int]) -> str:
+    """Replace relocation aliases with their resolved address identity.
+
+    The assembler can spell one address as `alias` or `base+offset`. Those
+    forms link to identical bytes, but comparing their relocation text adds a
+    false register-allocation penalty and can hide a real one-instruction near
+    miss. Unknown symbols stay unchanged, so different unresolved references
+    are still visible.
+    """
+
+    def replace(match: re.Match[str]) -> str:
+        name = match.group("name")
+        if name in _MIPS_REGISTERS or name not in addresses:
+            return match.group(0)
+        offset_text = match.group("offset")
+        offset = int(offset_text, 0) if offset_text else 0
+        address = (addresses[name] + offset) & 0xFFFFFFFF
+        return f"<sym:{address:08x}>"
+
+    normalized = _SYMBOL_EXPR.sub(replace, row)
+
+    def hi_identity(match: re.Match[str]) -> str:
+        address = int(match.group(1), 16)
+        return f"<hi:{((address + 0x8000) >> 16) & 0xFFFF:04x}>"
+
+    def lo_identity(match: re.Match[str]) -> str:
+        address = int(match.group(1), 16)
+        return f"<lo:{address & 0xFFFF:04x}>"
+
+    normalized = _HI_IDENTITY.sub(hi_identity, normalized)
+    return _LO_IDENTITY.sub(lo_identity, normalized)
 
 
 class Scorer:
@@ -23,12 +95,16 @@ class Scorer:
         stack_differences: bool,
         algorithm: str,
         debug_mode: bool,
+        symbol_map: Optional[str] = None,
     ):
         self.target_o = target_o
         self.arch = get_arch(target_o)
         self.stack_differences = stack_differences
         self.algorithm = algorithm
         self.debug_mode = debug_mode
+        self.symbol_addresses = (
+            load_symbol_addresses(symbol_map) if symbol_map else {}
+        )
         _, self.target_seq = self._objdump(target_o)
         self.difflib_differ: difflib.SequenceMatcher[str] = difflib.SequenceMatcher(
             autojunk=False
@@ -37,6 +113,16 @@ class Scorer:
 
     def _objdump(self, o_file: str) -> Tuple[str, List[Line]]:
         lines = objdump(o_file, self.arch, stack_differences=self.stack_differences)
+        if self.symbol_addresses:
+            lines = [
+                Line(
+                    row=normalize_symbolic_row(line.row, self.symbol_addresses)
+                    if line.has_symbol else line.row,
+                    mnemonic=line.mnemonic,
+                    has_symbol=line.has_symbol,
+                )
+                for line in lines
+            ]
         return "\n".join([line.row for line in lines]), lines
 
     def score(self, cand_o: Optional[str]) -> Tuple[int, str]:

@@ -242,6 +242,7 @@ def apply_map(body: str, pairs: list[str]) -> tuple[str, list[str]]:
         notes.append(f"{o} -> {n_}  ({hits} occurrence(s))")
     if not table:
         return body, notes
+
     # SIMULTANEOUS, in ONE pass. Applying the pairs in sequence cannot express
     # a swap: the inverted castle mirrors this sprite, so 0xC0 and 0xE0 trade
     # places, and `0xC0->0xE0` followed by `0xE0->0xC0` collapses both to
@@ -250,6 +251,26 @@ def apply_map(body: str, pairs: list[str]) -> tuple[str, list[str]]:
         re.escape(k) for k in sorted(table, key=len, reverse=True))
         + r")(?![\w.])")
     return pat.sub(lambda m: table[m.group(1)], body), notes
+
+
+def adapt_api_surfaces(
+    body: str, target_symbols: set[str]
+) -> tuple[str, list[str]]:
+    """Select standalone API pointers when the target relocation proves one."""
+    notes: list[str] = []
+    members = sorted(set(re.findall(r"\bg_api\s*\.\s*([A-Za-z_]\w*)", body)))
+    for member in members:
+        standalone = f"g_api_{member}"
+        if standalone not in target_symbols:
+            continue
+        pattern = re.compile(
+            r"\bg_api\s*\.\s*" + re.escape(member) + r"\b")
+        body, count = pattern.subn(standalone, body)
+        if count:
+            notes.append(
+                f"g_api.{member} -> {standalone} "
+                f"({count} target-proven occurrence(s))")
+    return body, notes
 
 
 RX_OBJ_MACRO = re.compile(r"^#\s*define\s+([A-Z][A-Z0-9_]*)\s+(\S[^\n]*)$",
@@ -405,10 +426,18 @@ def auto_decls(body: str, dest: Path,
                   flags=re.M)
     decls, notes = [], []
     # Only symbols that look like this project's globals. A broad identifier
-    # sweep would try to declare locals, macros and enum members.
+    # sweep would try to declare locals, macros and enum members. Overlay
+    # globals have a mixed-case suffix (`RNO0_EInitSpawner`); all-uppercase
+    # suffixes such as DRAW_COLORS and PL_W_BIBLE are shared enum or macro
+    # names and need no file-scope declaration here.
     cands = set(re.findall(r"\b(?:func_us_\w+|func_\d\w*|"
                            r"[A-Z][A-Z0-9]+_[A-Za-z]\w*|D_us_\w+|g_\w+)\b",
                            body))
+    cands = {
+        sym for sym in cands
+        if not re.match(r"^[A-Z][A-Z0-9]+_", sym)
+        or any(char.islower() for char in sym.split("_", 1)[1])
+    }
     # THE FUNCTION BEING DEFINED NEEDS NO DECLARATION. Leaving it in reported
     # "NO DECLARATION FOUND for func_us_801D1184_from_are" while transplanting
     # exactly that function, and the scan then filed five clean candidates
@@ -505,6 +534,358 @@ def auto_decls(body: str, dest: Path,
     return decls, notes
 
 
+_C_TYPE = (r"(?:(?:const|volatile)[ \t]+)*"
+           r"(?:struct[ \t]+[A-Za-z_]\w*|union[ \t]+[A-Za-z_]\w*|"
+           r"enum[ \t]+[A-Za-z_]\w*|[A-Za-z_]\w*)"
+           r"(?:[ \t]*\*)*")
+_DONOR_OBJECT = re.compile(
+    rf"(?m)^(?P<storage>(?:(?:static|extern)[ \t]+)*)"
+    rf"(?P<type>{_C_TYPE})[ \t]+"
+    r"(?P<name>[A-Za-z_]\w*)(?P<array>(?:[ \t]*\[[^\]\n]*\])*)"
+    r"[ \t]*(?:=|;)")
+_DONOR_FUNCTION = re.compile(
+    rf"(?m)^(?P<storage>(?:(?:static|extern|inline)[ \t]+)*)"
+    rf"(?P<type>{_C_TYPE})[ \t]+"
+    r"(?P<name>[A-Za-z_]\w*)[ \t]*\((?P<args>[^;{}]*)\)[ \t]*(?:\{|;)")
+_DONOR_ENUM = re.compile(
+    r"(?s)(?:typedef[ \t]+)?enum(?:[ \t]+[A-Za-z_]\w*)?[ \t]*"
+    r"\{(?P<body>.*?)\}[ \t]*(?:[A-Za-z_]\w*)?[ \t]*;")
+_DONOR_DEFINE = re.compile(
+    r"(?m)^[ \t]*#\s*define[ \t]+(?P<name>[A-Za-z_]\w*)"
+    r"(?![ \t]*\()[ \t]+(?P<value>[^\n]+)")
+
+
+def _donor_scope_sources(donor: Path) -> list[tuple[Path, str]]:
+    """Donor plus recursively reachable quoted headers, each read once."""
+    pending = [donor]
+    seen: set[Path] = set()
+    out: list[tuple[Path, str]] = []
+    repo = REPO.resolve()
+    donor_root = donor.resolve().parent
+    while pending and len(seen) < 64:
+        path = pending.pop(0).resolve()
+        if path in seen or not path.is_file():
+            continue
+        in_allowed_root = False
+        for root in (repo, donor_root):
+            try:
+                path.relative_to(root)
+                in_allowed_root = True
+                break
+            except ValueError:
+                continue
+        if not in_allowed_root:
+            continue
+        seen.add(path)
+        text = path.read_text(errors="ignore")
+        out.append((path, text))
+        for include in re.findall(r'^\s*#\s*include\s+"([^"]+)"',
+                                  text, flags=re.M):
+            candidates = [path.parent / include,
+                          REPO / "src" / include,
+                          REPO / "include" / include]
+            found = next((item for item in candidates if item.is_file()), None)
+            if found is not None and found.resolve() not in seen:
+                pending.append(found)
+    return out
+
+
+def _us_visible_source(text: str) -> str:
+    """Mask VERSION_PSP-only branches while preserving line structure.
+
+    Isolated scores target the US build. Donor files often carry PSP-only
+    declarations whose macro-expanded names conflict with US enum constants.
+    This is intentionally a narrow conditional reader, not a C preprocessor:
+    unknown conditions keep both branches visible, matching the resolver's
+    previous conservative behavior.
+    """
+    stack: list[tuple[bool, bool | None, bool]] = []
+    active = True
+    out: list[str] = []
+    for line in text.splitlines(keepends=True):
+        directive = re.match(r"^\s*#\s*(if|ifdef|ifndef|else|elif|endif)\b(.*)",
+                             line)
+        if directive:
+            op, tail = directive.groups()
+            if op in {"if", "ifdef", "ifndef"}:
+                expr = tail.strip()
+                verdict: bool | None = None
+                if op == "ifdef" and expr == "VERSION_PSP":
+                    verdict = False
+                elif op == "ifndef" and expr == "VERSION_PSP":
+                    verdict = True
+                elif op == "if":
+                    if re.fullmatch(
+                            r"defined\s*(?:\(\s*VERSION_PSP\s*\)|"
+                            r"VERSION_PSP)", expr):
+                        verdict = False
+                    elif re.fullmatch(
+                            r"!\s*defined\s*(?:\(\s*VERSION_PSP\s*\)|"
+                            r"VERSION_PSP)", expr):
+                        verdict = True
+                stack.append((active, verdict, False))
+                active = active and (verdict is not False)
+            elif op in {"else", "elif"} and stack:
+                parent, verdict, _seen_else = stack[-1]
+                if op == "else":
+                    stack[-1] = (parent, verdict, True)
+                    active = parent and (verdict is not True)
+                else:
+                    # An elif attached to a known PSP condition is an unknown
+                    # alternative. Keep it visible when the PSP arm was false.
+                    active = parent and (verdict is not True)
+            elif op == "endif" and stack:
+                parent, _verdict, _seen_else = stack.pop()
+                active = parent
+            # These lines are control metadata, not C declarations. Keeping an
+            # active #else or #endif produces orphan directives after the PSP
+            # arm is masked and can confuse the declaration scanners.
+            out.append("\n" if line.endswith("\n") else "")
+            continue
+        out.append(line if active else ("\n" if line.endswith("\n") else ""))
+    return "".join(out)
+
+
+def _braced_initializer_extent(text: str, start: int) -> int | None:
+    """Count top-level elements in a braced initializer at or after start."""
+    pos = start
+    while pos < len(text) and text[pos].isspace():
+        pos += 1
+    if pos >= len(text) or text[pos] != "{":
+        return None
+    depth = 0
+    elements = 0
+    has_token = False
+    quote = ""
+    escaped = False
+    i = pos
+    while i < len(text):
+        char = text[i]
+        if quote:
+            has_token = True
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == quote:
+                quote = ""
+            i += 1
+            continue
+        if char in {'"', "'"}:
+            quote = char
+            has_token = True
+        elif text.startswith("/*", i):
+            end = text.find("*/", i + 2)
+            i = len(text) if end < 0 else end + 2
+            continue
+        elif text.startswith("//", i):
+            end = text.find("\n", i + 2)
+            i = len(text) if end < 0 else end
+            continue
+        elif char == "{":
+            depth += 1
+            if depth > 1:
+                has_token = True
+        elif char == "}":
+            if depth == 1:
+                if has_token:
+                    elements += 1
+                return elements
+            depth -= 1
+            has_token = True
+        elif char == "," and depth == 1:
+            if has_token:
+                elements += 1
+            has_token = False
+        elif depth >= 1 and not char.isspace():
+            has_token = True
+        i += 1
+    return None
+
+
+def _complete_array_shape(source: str, match: re.Match) -> str:
+    """Fill one unsized array dimension from its braced initializer."""
+    array = match.group("array").replace(" ", "")
+    if "[]" not in array or not match.group(0).rstrip().endswith("="):
+        return array
+    extent = _braced_initializer_extent(source, match.end())
+    return array.replace("[]", f"[{extent}]", 1) if extent else array
+
+
+def _without_comments(text: str) -> str:
+    return re.sub(r"/\*.*?\*/|//[^\n]*", "", text, flags=re.S)
+
+
+def _destination_visible(dest: Path, name: str) -> bool:
+    """Whether the destination translation unit already names a dependency."""
+    pieces = [dest.read_text(errors="ignore")]
+    pieces.extend(path.read_text(errors="ignore")
+                  for path in sorted(dest.parent.glob("*.h")))
+    text = _without_comments("\n".join(pieces))
+    text = re.sub(r"^.*INCLUDE_(?:ASM|RODATA)\(.*$", "", text, flags=re.M)
+    return bool(re.search(
+        rf"#\s*define[ \t]+{re.escape(name)}\b|"
+        rf"\b{re.escape(name)}\b[ \t]*(?:\[|\(|=|,|;)", text))
+
+
+def _local_names(body: str) -> set[str]:
+    """Names declared inside the transplanted function, including parameters."""
+    out: set[str] = set()
+    local_decl = re.compile(
+        rf"(?m)^[ \t]+(?:(?:auto|register|static)[ \t]+)?"
+        rf"(?P<type>{_C_TYPE})[ \t]+(?P<name>[A-Za-z_]\w*)"
+        r"[ \t]*(?:\[|=|,|;)")
+    non_types = {"return", "if", "else", "for", "while", "switch", "goto"}
+    for match in local_decl.finditer(body):
+        base_type = re.sub(r"\b(?:const|volatile)\b|\*", "",
+                           match.group("type")).strip().split()[0]
+        if base_type not in non_types:
+            out.add(match.group("name"))
+
+    header = body.split("{", 1)[0]
+    args_match = re.search(r"\((.*)\)", header, re.S)
+    if args_match:
+        for arg in args_match.group(1).split(","):
+            names = re.findall(r"[A-Za-z_]\w*", arg)
+            if names and names[-1] != "void":
+                out.add(names[-1])
+    for match in re.finditer(
+            rf"\bfor[ \t]*\([ \t]*(?:register[ \t]+)?{_C_TYPE}[ \t]+"
+            r"(?P<name>[A-Za-z_]\w*)", body):
+        out.add(match.group("name"))
+    for enum in _DONOR_ENUM.finditer(_without_comments(body)):
+        for raw in enum.group("body").split(","):
+            name = raw.partition("=")[0].strip()
+            if re.fullmatch(r"[A-Za-z_]\w*", name):
+                out.add(name)
+    return out
+
+
+def _enum_values(source: str) -> dict[str, int]:
+    """Numeric values of donor enums when their expressions are self-contained."""
+    out: dict[str, int] = {}
+    for enum in _DONOR_ENUM.finditer(_without_comments(source)):
+        current = -1
+        valid = True
+        for raw in enum.group("body").split(","):
+            item = raw.strip()
+            if not item:
+                continue
+            name, mark, expr = item.partition("=")
+            name = name.strip()
+            if not re.fullmatch(r"[A-Za-z_]\w*", name):
+                valid = False
+                continue
+            if mark:
+                cooked = re.sub(r"(?<=\d)[uUlL]+\b", "", expr.strip())
+                cooked = re.sub(
+                    r"\b[A-Za-z_]\w*\b",
+                    lambda match: str(out[match.group(0)])
+                    if match.group(0) in out else match.group(0), cooked)
+                if (re.search(r"\b[A-Za-z_]\w*\b", cooked)
+                        or not re.fullmatch(r"[0-9a-fA-FxX()~+\-*%|&^<> \t]+",
+                                            cooked)):
+                    valid = False
+                    continue
+                try:
+                    current = int(eval(cooked, {"__builtins__": {}}, {}))  # noqa: S307
+                    valid = True
+                except (SyntaxError, TypeError, ValueError, ZeroDivisionError):
+                    valid = False
+                    continue
+            elif valid:
+                current += 1
+            else:
+                continue
+            out[name] = current
+    return out
+
+
+def donor_scope_decls(body: str, donor: Path, dest: Path,
+                      defining: str = "") -> tuple[list[str], list[str]]:
+    """Compile-only declarations for donor-local dependencies of a near twin.
+
+    These declarations make the isolated scorer reject or score the actual C
+    instead of accepting the legacy compiler's zero-exit invalid object. They
+    are not target-symbol proof and are labeled score-only. A full build still
+    has to resolve each dependency before a candidate can land.
+    """
+    sources = [(path, _us_visible_source(text))
+               for path, text in _donor_scope_sources(donor)]
+    source = "\n".join(text for _path, text in sources)
+    used = set(re.findall(r"\b[A-Za-z_]\w*\b", body)) - _local_names(body)
+    used.update("E_" + match.group(1) for match in re.finditer(
+        r"\bE_ID\s*\(\s*([A-Z][A-Z0-9_]*)\s*\)", body))
+    object_decls: list[str] = []
+    function_decls: list[str] = []
+    define_decls: list[str] = []
+    notes: list[str] = []
+    claimed: set[str] = set()
+
+    for source_path, source_text in sources:
+        for match in _DONOR_OBJECT.finditer(source_text):
+            name = match.group("name")
+            if (name in claimed or name not in used or name == defining
+                    or _destination_visible(dest, name)):
+                continue
+            array = _complete_array_shape(source_text, match)
+            declaration = f"extern {match.group('type').strip()} {name}{array};"
+            object_decls.append(declaration)
+            claimed.add(name)
+            used.update(re.findall(r"\b[A-Za-z_]\w*\b", array))
+            notes.append(f"score-only {declaration} from {source_path.name}")
+
+        for match in _DONOR_FUNCTION.finditer(source_text):
+            name = match.group("name")
+            if (name in claimed or name not in used or name == defining
+                    or not re.search(rf"\b{re.escape(name)}\s*\(", body)
+                    or _destination_visible(dest, name)):
+                continue
+            storage = "extern " if "extern" in match.group("storage").split() else ""
+            declaration = (f"{storage}{match.group('type').strip()} {name}"
+                           f"({match.group('args').strip() or 'void'});")
+            function_decls.append(declaration)
+            claimed.add(name)
+            notes.append(f"score-only {declaration} from {source_path.name}")
+
+    macros: dict[str, tuple[str, Path]] = {}
+    for source_path, source_text in sources:
+        for match in _DONOR_DEFINE.finditer(source_text):
+            macros.setdefault(
+                match.group("name"),
+                (_without_comments(match.group("value")).strip(), source_path))
+    required = set(used)
+    pending = set(required)
+    added_macros: set[str] = set()
+    while pending:
+        name = min(pending)
+        pending.remove(name)
+        item = macros.get(name)
+        if (not item or name in added_macros
+                or _destination_visible(dest, name)):
+            continue
+        value, source_path = item
+        if not value:
+            continue
+        declaration = f"#define {name} {value}"
+        define_decls.append(declaration)
+        added_macros.add(name)
+        dependencies = set(re.findall(r"\b[A-Za-z_]\w*\b", value))
+        required.update(dependencies)
+        pending.update(dependencies)
+        notes.append(f"score-only {declaration} from {source_path.name}")
+
+    enum_values = _enum_values(source)
+    for name in sorted(required):
+        if (name not in enum_values or _destination_visible(dest, name)
+                or name in added_macros):
+            continue
+        declaration = f"#define {name} {enum_values[name]}"
+        define_decls.append(declaration)
+        notes.append(f"score-only {declaration} from donor enum scope")
+    return define_decls + object_decls + function_decls, notes
+
+
 RX_ENUM = re.compile(r"enum\s+\w*\s*\{(.*?)\}", re.S)
 RX_ENUM_MEMBER = re.compile(
     r"^[ \t]*(?:/\*[^*]*\*/[ \t]*)?([A-Z][A-Z0-9_]*)[ \t]*(?:=[^,]*)?,"
@@ -524,7 +905,44 @@ def _enum_members(header: Path) -> list[tuple[str, str]]:
     return best
 
 
-def enum_map(body: str, src_h: Path, dest_h: Path) -> tuple[dict, list[str]]:
+RX_ENTITY_UPDATES = re.compile(
+    r"\bPfnEntityUpdate\s+EntityUpdates\s*\[\s*\]\s*=\s*\{(.*?)\};",
+    re.S)
+
+
+def _entity_updates(header: Path) -> list[str]:
+    """EntityUpdates entries beside one overlay header, in enum order."""
+    init = header.parent / "e_init.c"
+    if not init.is_file():
+        return []
+    # Entity update tables can have PSP and US alternatives. Enum-map proof is
+    # for the US queue, so parsing both arms can either shift every ordinal or
+    # prove a relationship against the wrong runtime table.
+    source = _us_visible_source(init.read_text(errors="ignore"))
+    match = RX_ENTITY_UPDATES.search(source)
+    if not match:
+        return []
+    value = re.sub(r"/\*.*?\*/|//[^\n]*", "", match.group(1), flags=re.S)
+    value = re.sub(r"^\s*#.*$", "", value, flags=re.M)
+    out: list[str] = []
+    for item in value.split(","):
+        item = item.strip()
+        if not item:
+            continue
+        exported = re.fullmatch(r"OVL_EXPORT\s*\(\s*(\w+)\s*\)", item)
+        plain = re.fullmatch(r"&?\s*(\w+)", item)
+        out.append((exported or plain).group(1) if (exported or plain) else "")
+    return out
+
+
+def _same_update(a: str, b: str) -> bool:
+    """Treat a transplant provenance suffix as the same update function."""
+    normal = lambda value: re.sub(r"_from_\w+$", "", value or "")
+    return bool(a and b) and normal(a) == normal(b)
+
+
+def enum_map(body: str, src_h: Path, dest_h: Path,
+             allow_apply: bool = True) -> tuple[dict, list[str]]:
     """Entity-id members the destination overlay spells differently.
 
     THE ONE SUBSTITUTION THE ASSEMBLY CANNOT SUPPLY. E_ID_16 and E_UNK_16 have
@@ -532,15 +950,17 @@ def enum_map(body: str, src_h: Path, dest_h: Path) -> tuple[dict, list[str]]:
     asm_delta sees nothing. The rename is needed only because rno0.h does not
     declare E_ID_16, and the C would not compile.
 
-    Resolved by ORDINAL, then cross-checked against the destination's own
-    comment. rno0.h annotates its members with the function each id belongs
-    to (`E_UNK_16, // func_us_801CC8F8_from_no0`), which is independent
-    evidence: the two enums are 82 and 81 members long, so ordinals CAN drift,
-    and a bare ordinal match would be a guess dressed as a derivation.
+    Resolved by ORDINAL, then cross-checked against both overlays' actual
+    EntityUpdates arrays. rno0's E_UNK_16 is safe because ordinal 0x16 points
+    at func_us_801CC8F8 in NO0 and func_us_801CC8F8_from_no0 in RNO0. By
+    contrast, RNO3's E_NOVA_PULSE and RNO0's E_CORPSEWEED_PROJECTILE share an
+    ordinal but dispatch different functions. Comments are diagnostics, not
+    proof. The arrays are the runtime relationship the enum controls.
 
     A mapping with neither signal confirmed is reported and NOT applied.
     """
     src, dest = _enum_members(src_h), _enum_members(dest_h)
+    src_updates, dest_updates = _entity_updates(src_h), _entity_updates(dest_h)
     if not src or not dest:
         return {}, []
     have = {n for n, _c in dest}
@@ -554,15 +974,30 @@ def enum_map(body: str, src_h: Path, dest_h: Path) -> tuple[dict, list[str]]:
                          f"left alone")
             continue
         cand, comment = dest[idx]
-        # Independent confirmation: the destination's comment should name the
-        # twin function, i.e. the source function name with or without the
-        # _from_<overlay> suffix.
-        confirmed = bool(comment) and bool(
-            re.search(r"func_|Entity", comment))
+        # EntityUpdates is indexed as EntityUpdates[entityId - 1]; E_NONE is
+        # enum slot zero and has no dispatch-table entry.
+        update_idx = idx - 1 if (idx > 0 and src[0][0] == "E_NONE"
+                                 and dest[0][0] == "E_NONE") else -1
+        src_update = (src_updates[update_idx]
+                      if 0 <= update_idx < len(src_updates) else "")
+        dest_update = (dest_updates[update_idx]
+                       if 0 <= update_idx < len(dest_updates) else "")
+        if not _same_update(src_update, dest_update):
+            detail = (f"{src_update or 'unknown'} != "
+                      f"{dest_update or 'unknown'}")
+            notes.append(f"{name} -> {cand}: ordinal {idx} dispatches "
+                         f"different updates ({detail}); left alone")
+            continue
+        evidence = f"{src_update} == {dest_update}"
+        if not allow_apply:
+            notes.append(f"{name} -> {cand}: proven by EntityUpdates "
+                         f"({evidence}) but suppressed for a non-clean twin")
+            continue
         out[name] = cand
-        notes.append(f"{name} -> {cand}  (ordinal {idx}"
-                     + (f", destination comment: {comment}" if confirmed
-                        else ", NO comment to confirm it") + ")")
+        notes.append(f"{name} -> {cand}  (ordinal {idx}, EntityUpdates: "
+                     f"{evidence}"
+                     + (f", destination comment: {comment}" if comment else "")
+                     + ")")
     return out, notes
 
 
@@ -574,6 +1009,8 @@ def candidate_probe_failure_class(reason: str) -> str:
     """Turn one asm-delta failure into stable scan evidence."""
     if "no distinct twin asm" in reason:
         return "needs-maps"
+    if "structural near:" in reason or "schedule-only twin:" in reason:
+        return "adaptable"
     if "not a twin" in reason:
         return "not-twin"
     return "error"
@@ -584,6 +1021,8 @@ def aggregate_candidate_failures(classes: list[str]) -> str:
     kinds = set(classes)
     if "needs-maps" in kinds:
         return "needs-maps"
+    if "adaptable" in kinds:
+        return "adaptable"
     if "error" in kinds or not kinds:
         return "error"
     if "not-twin" in kinds:
@@ -594,7 +1033,8 @@ def aggregate_candidate_failures(classes: list[str]) -> str:
 
 
 def preflight(fn: str, mapping: list[str] | None = None,
-              auto: bool = False, skip_clean: bool = False
+              auto: bool = False, skip_clean: bool = False,
+              adapt: bool = False, stub_overlay: str = ""
               ) -> tuple[bool, str, str]:
     """Everything checkable before the tree is touched.
 
@@ -616,7 +1056,7 @@ def preflight(fn: str, mapping: list[str] | None = None,
     # version stripped `_from_no0` for both lookups and then reported "no
     # INCLUDE_ASM stub for func_us_801CC750" -- true, and irrelevant: the stub
     # we are replacing is `func_us_801CC750_from_no0`.
-    found = ps.find_stub(fn)
+    found = ps.find_stub(fn, stub_overlay)
     if not found:
         return False, "", (f"no INCLUDE_ASM stub for {fn} in src/; it is "
                            f"either already applied or not ours to write")
@@ -640,6 +1080,7 @@ def preflight(fn: str, mapping: list[str] | None = None,
     # -- it found 12 candidates where the similarity index knows many more.
     tried: list[tuple[str, str, str]] = []
     body = path = src_kind = ""
+    selected_delta: dict | None = None
     for cand in (twin_sources(fn) or [base]):
         b, pth = local_twin(cand, exclude=Path(stub_path).name)
         if not b:
@@ -658,12 +1099,17 @@ def preflight(fn: str, mapping: list[str] | None = None,
             # pth is the donor local_twin just found.
             probe = ad.for_function(fn, twin_name=cand,
                                     overlay=ad.src_overlay(stub_path),
-                                    twin_overlay=ad.src_overlay(pth))
-            if not probe["ok"]:
+                                    twin_overlay=ad.src_overlay(pth),
+                                    twin_source=pth)
+            adaptable = probe.get("kind") in {
+                "structural-near", "schedule-only"
+            }
+            if not probe["ok"] and not (adapt and adaptable):
                 reason = probe["reason"]
                 tried.append((cand, candidate_probe_failure_class(reason),
                               reason))
                 continue
+            selected_delta = probe
         body, path, src_kind, base = b, pth, "local twin", cand
         break
     if not body:
@@ -677,23 +1123,45 @@ def preflight(fn: str, mapping: list[str] | None = None,
 
     pairs = list(mapping or [])
     auto_notes: list[str] = []
+    target_symbols: set[str] = set()
+    adapt_kind = ""
     if auto:
         # DERIVED, not supplied. asm_delta reads the two listings and returns
         # every symbol rename and constant change between them; the first
         # transplant needed all of that by hand.
         import asm_delta as ad                                # type: ignore
-        d = ad.for_function(fn, twin_name=base,
-                            overlay=ad.src_overlay(stub_path),
-                            twin_overlay=ad.src_overlay(path))
+        d = selected_delta or ad.for_function(
+            fn, twin_name=base,
+            overlay=ad.src_overlay(stub_path),
+            twin_overlay=ad.src_overlay(path),
+            twin_source=path)
         auto_notes.append(f"asm delta: {d['reason']} "
                           f"({d['insns']} insns, {d['diffs']} differing)")
-        if not d["ok"]:
+        adaptable = d.get("kind") in {"structural-near", "schedule-only"}
+        if not d["ok"] and not (adapt and adaptable):
             return False, "", "\n  ".join([detail_head(fn, path, stub_path,
                                                         base)] + auto_notes)
+        if adaptable:
+            adapt_kind = d["kind"]
+            auto_notes.extend(f"codegen: {hint}" for hint in d.get("hints", []))
+            proposed = len(d.get("symbols", {})) + len(d.get("consts", {}))
+            if proposed:
+                auto_notes.append(
+                    f"safety: suppressed {proposed} operand-map proposal(s) "
+                    "from non-positional alignment")
+                auto_notes.extend(
+                    f"safety: diagnostic-only symbol {old} -> {new}"
+                    for old, new in sorted(d.get("symbols", {}).items()))
+                auto_notes.extend(
+                    f"safety: diagnostic-only constant {old} -> {new}"
+                    for old, new in sorted(d.get("consts", {}).items()))
+        target_symbols = set(d.get("target_symbols", set()))
         pairs = ad.as_maps(d) + pairs
-        em, en = enum_map(body, Path(path).parent / f"{Path(path).parent.name}.h",
+        em, en = enum_map(body,
+                          Path(path).parent / f"{Path(path).parent.name}.h",
                           Path(REPO / stub_path).parent
-                          / f"{Path(stub_path).parent.name}.h")
+                          / f"{Path(stub_path).parent.name}.h",
+                          allow_apply=not bool(adapt_kind))
         pairs += [f"{k}={v}" for k, v in em.items()]
         auto_notes += [f"enum: {x}" for x in en]
 
@@ -702,7 +1170,13 @@ def preflight(fn: str, mapping: list[str] | None = None,
     mc, mc_notes = macro_consts(body, pairs)
     auto_notes += [f"macro: {x}" for x in mc_notes]
     body, map_notes = apply_map(body, pairs + mc)
+    body, api_notes = adapt_api_surfaces(body, target_symbols)
     decls, decl_notes = auto_decls(body, REPO / stub_path, defining=fn)
+    if adapt_kind:
+        donor_decls, donor_notes = donor_scope_decls(
+            body, REPO / path, REPO / stub_path, defining=fn)
+        decls = list(dict.fromkeys(decls + donor_decls))
+        decl_notes += donor_notes
     if decls:
         body = "\n".join(decls) + "\n\n" + body
 
@@ -724,21 +1198,25 @@ def preflight(fn: str, mapping: list[str] | None = None,
     if bad:
         return False, body, ("upstream's C uses members this tree does not "
                              "have: " + "; ".join(bad[:3]))
-    detail = (f"ready: {len(body)} chars from the {src_kind} "
+    readiness = "adaptable draft" if adapt_kind else "ready"
+    detail = (f"{readiness}: {len(body)} chars from the {src_kind} "
               f"{path}\n  stub: {stub_path}"
               + (f"\n  renamed {base} -> {fn}" if base != fn else ""))
     for n in auto_notes:
         detail += f"\n  {n}"
     for n in map_notes:
         detail += f"\n  map: {n}"
+    for n in api_notes:
+        detail += f"\n  api: {n}"
     for n in decl_notes:
         detail += f"\n  decl: {n}"
     return True, body, detail
 
 
 def run(fn: str, apply: bool, mapping: list[str] | None = None,
-        auto: bool = False) -> int:
-    ok, body, detail = preflight(fn, mapping, auto)
+        auto: bool = False, adapt: bool = False, overlay: str = "") -> int:
+    ok, body, detail = preflight(
+        fn, mapping, auto or adapt, adapt=adapt, stub_overlay=overlay)
     print(f"{fn}\n  {detail}")
     if not ok:
         return 1
@@ -752,7 +1230,8 @@ def run(fn: str, apply: bool, mapping: list[str] | None = None,
 
     ps = _sup()
     print("\n  applying under the fleet's own build lock...")
-    good, why = ps.land_match(Path("."), fn, body=body)
+    record_id = f"us:{overlay.upper()}:{fn}" if overlay else ""
+    good, why = ps.land_match(Path("."), fn, body=body, rec_id=record_id)
     print(f"  {'MATCHED' if good else 'not a match'}: {why}")
     if good:
         print("\n  The overlay rebuilt and all 81 SHA-1s verified. Report it "
@@ -762,6 +1241,134 @@ def run(fn: str, apply: bool, mapping: list[str] | None = None,
         print("\n  Reverted. src/ is back to HEAD; land_match proves the "
               "revert rather\n  than asserting it.")
     return 0 if good else 2
+
+
+def score_draft(fn: str, mapping: list[str] | None = None,
+                body: str = "", detail: str = "", overlay: str = "") -> dict:
+    """Isolated permuter debug score for one target-informed draft."""
+    if not body:
+        ok, body, detail = preflight(
+            fn, mapping, auto=True, adapt=True, stub_overlay=overlay)
+        if not ok:
+            return {"function": fn, "score": None, "status": "preflight-failed",
+                    "archive": "", "detail": detail}
+    supervisor = _sup()
+    first = supervisor.score_body_draft(
+        fn, body, detail, overlay_hint=overlay)
+    aliases = {
+        old: new for old, new in
+        (first.get("relocation_aliases") or {}).items()
+        if (re.fullmatch(r"[A-Za-z_]\w*", old)
+            and re.fullmatch(r"[A-Za-z_]\w*", new) and old != new)
+    }
+    if first.get("score") is None or not aliases:
+        return first
+
+    mapped_body, map_notes = apply_map(
+        body, [f"{old}={new}" for old, new in sorted(aliases.items())])
+    if mapped_body == body:
+        return first
+    lineage = {
+        "prior_score": first.get("score"),
+        "prior_archive": first.get("archive", ""),
+        "relocation_aliases": aliases,
+    }
+    normalized_detail = detail
+    for note in map_notes:
+        normalized_detail += f"\n  score relocation: {note}"
+    normalized_detail += f"\n  prior score evidence: {first.get('archive', '')}"
+    return supervisor.score_body_draft(
+        fn, mapped_body, normalized_detail, context=lineage,
+        overlay_hint=overlay)
+
+
+def score_one(fn: str, mapping: list[str] | None = None,
+              overlay: str = "") -> int:
+    result = score_draft(fn, mapping, overlay=overlay)
+    score = result.get("score")
+    print(f"{fn}\n  status: {result.get('status')}")
+    print(f"  score:  {score if score is not None else 'not available'}")
+    print(f"  detail: {result.get('detail', '')}")
+    if result.get("archive"):
+        print(f"  evidence: {result['archive']}")
+    print("\nNo game build or queue write was performed. A score of zero is "
+          "only a build candidate, never a match verdict.")
+    return 0 if score is not None else 1
+
+
+def score_scan_preflight_status(ok: bool, detail: str) -> str:
+    """Render every exact preflight outcome instead of silently dropping it."""
+    if ok and detail.startswith("adaptable draft:"):
+        return ""
+    if ok and detail.startswith("ready:"):
+        return "ready-unscored"
+    match = re.search(r"(?m)^scan-class:\s*([^\n]+)", detail)
+    if match:
+        return match.group(1).strip()
+    return "preflight-failed"
+
+
+def score_scan_failed(rows: list[dict]) -> bool:
+    failures = {
+        "preflight-error", "preflight-failed", "import-failed",
+        "debug-failed", "archive-failed", "source-restore-failed", "error",
+    }
+    return not rows or any(row.get("status") in failures for row in rows)
+
+
+def score_scan(limit: int = 0, overlay: str = "") -> int:
+    """Generate, isolate-score and rank adaptable queue records."""
+    recs = _harv().unmatched_records()
+    if overlay:
+        recs = [rec for rec in recs if overlay.lower() in rec[1].lower()]
+    dirty = _sup().require_clean_src()
+    if dirty:
+        print(f"src/ is not clean: {dirty}")
+        return 1
+
+    rows: list[dict] = []
+    attempted = 0
+    for _rid, ovl, fn in recs:
+        try:
+            ok, body, detail = preflight(
+                fn, None, auto=True, skip_clean=True, adapt=True,
+                stub_overlay=ovl)
+        except Exception as exc:                              # noqa: BLE001
+            rows.append({"function": fn, "overlay": ovl, "score": None,
+                         "status": "preflight-error", "archive": "",
+                         "detail": f"{type(exc).__name__}: {exc}"})
+            continue
+        preflight_status = score_scan_preflight_status(ok, detail)
+        if preflight_status:
+            rows.append({"function": fn, "overlay": ovl, "score": None,
+                         "status": preflight_status, "archive": "",
+                         "detail": detail})
+            continue
+        print(f"[score] {fn} ({ovl})", flush=True)
+        result = score_draft(fn, body=body, detail=detail, overlay=ovl)
+        result["overlay"] = ovl
+        rows.append(result)
+        attempted += 1
+        if limit and attempted >= limit:
+            break
+
+    ranked = sorted(rows, key=lambda row: (
+        row.get("score") is None,
+        row.get("score") if row.get("score") is not None else 10**18,
+        row["function"]))
+    print(f"\n{len(ranked)} exact candidate result(s), {attempted} isolated "
+          "score(s). Nothing touched the queue or invoked a game build.\n")
+    print(f"{'score':>8}  {'function':36} {'overlay':12} status")
+    print("-" * 92)
+    for row in ranked:
+        value = str(row["score"]) if row.get("score") is not None else "-"
+        print(f"{value:>8}  {row['function'][:35]:36} "
+              f"{row.get('overlay', '')[:11]:12} {row.get('status', '')}")
+        if row.get("archive"):
+            print(f"          evidence: {row['archive']}")
+        if row.get("score") is None:
+            print(f"          detail: {row.get('detail', '')[:160]}")
+    return 1 if score_scan_failed(ranked) else 0
 
 
 def list_all() -> int:
@@ -782,7 +1389,7 @@ def list_all() -> int:
 def scan_failure_bucket(detail: str) -> str:
     """Classify one unsuccessful automatic twin preflight."""
     marker = re.search(
-        r"(?m)^scan-class:\s*(needs-maps|not-twin|no-twin|error)\s*$",
+        r"(?m)^scan-class:\s*(adaptable|needs-maps|not-twin|no-twin|error)\s*$",
         detail)
     return marker.group(1) if marker else "error"
 
@@ -810,6 +1417,9 @@ def scan(limit: int = 0, overlay: str = "") -> int:
                    was decompiled. Automatic delta proof is unavailable, so
                    derive explicit maps from the target assembly before a
                    dry-run preflight.
+      adaptable   compiled donor evidence is structurally close or differs
+                   only in scheduling. The tool can generate a target-informed
+                   draft, but it is not clean enough to call build-ready.
       not-twin    the assembly genuinely differs: different length, or a
                    different instruction. No amount of renaming fixes that,
                   and saying so is more useful than a failed build.
@@ -827,8 +1437,8 @@ def scan(limit: int = 0, overlay: str = "") -> int:
         recs = recs[:limit]
 
     buckets: dict[str, list] = {"ready": [], "needs-defs": [],
-                                "needs-maps": [], "not-twin": [],
-                                "no-twin": [], "error": []}
+                                "adaptable": [], "needs-maps": [],
+                                "not-twin": [], "no-twin": [], "error": []}
     dirty = _sup().require_clean_src()
     if dirty:
         print(f"src/ is not clean: {dirty}\n")
@@ -836,7 +1446,8 @@ def scan(limit: int = 0, overlay: str = "") -> int:
     for _rid, ovl, fn in recs:
         try:
             ok, _body, detail = preflight(fn, None, auto=True,
-                                          skip_clean=True)
+                                          skip_clean=True,
+                                          stub_overlay=ovl)
         except Exception as e:                                # noqa: BLE001
             buckets["error"].append((fn, ovl, f"error: {type(e).__name__}"))
             continue
@@ -863,10 +1474,11 @@ def scan(limit: int = 0, overlay: str = "") -> int:
 
     total = sum(len(v) for v in buckets.values())
     print(f"{total} unmatched record(s) examined, nothing written\n")
-    for k in ("ready", "needs-defs", "needs-maps", "not-twin", "no-twin",
-              "error"):
+    for k in ("ready", "needs-defs", "adaptable", "needs-maps", "not-twin",
+              "no-twin", "error"):
         print(f"  {k:12} {len(buckets[k])}")
-    for k in ("ready", "needs-defs", "needs-maps", "not-twin", "error"):
+    for k in ("ready", "needs-defs", "adaptable", "needs-maps", "not-twin",
+              "error"):
         if not buckets[k]:
             continue
         print(f"\n=== {k} ===")
@@ -875,6 +1487,9 @@ def scan(limit: int = 0, overlay: str = "") -> int:
     if buckets["ready"]:
         print("\nEach `ready` is one build away from a verdict:")
         print("  transplant.py --function <name> --auto --apply")
+    if buckets["adaptable"]:
+        print("\nEach `adaptable` can become a target-informed dry-run draft:")
+        print("  transplant.py --function <name> --auto --adapt")
     return 0
 
 
@@ -911,7 +1526,7 @@ def batch(limit: int = 0, overlay: str = "") -> int:
     landed: set[str] = set()
     results: list[tuple[str, str, str]] = []
     done = 0
-    for fn, _ovl in rows:
+    for fn, ovl in rows:
         if limit and done >= limit:
             break
         now = _dirty_files()
@@ -919,13 +1534,15 @@ def batch(limit: int = 0, overlay: str = "") -> int:
             print(f"\nSTOPPING: unexpected change in {sorted(now - landed)}")
             print("The tree is not in the state the next build assumes.")
             break
-        ok, body, detail = preflight(fn, None, auto=True, skip_clean=True)
+        ok, body, detail = preflight(
+            fn, None, auto=True, skip_clean=True, stub_overlay=ovl)
         if not ok:
             results.append((fn, "skipped", detail.splitlines()[-1].strip()))
             continue
         done += 1
         print(f"\n[{done}] {fn}", flush=True)
-        good, why = _sup().land_match(Path("."), fn, body=body)
+        good, why = _sup().land_match(
+            Path("."), fn, body=body, rec_id=f"us:{ovl.upper()}:{fn}")
         if good:
             results.append((fn, "MATCHED", why[:70]))
             landed |= (_dirty_files() - landed)
@@ -1016,7 +1633,7 @@ def self_test() -> int:
     # contains the pattern it is looking for, so a whole-file search matches
     # the test rather than the code. FOURTH time today. The rule is simple --
     # a test that greps source text must first cut out its own text.
-    ck("find_stub(fn)" in body_fn and "find_stub(base)" not in body_fn,
+    ck("find_stub(fn" in body_fn and "find_stub(base" not in body_fn,
        "find_stub gets the full name")
 
     print("\nUPSTREAM IS NOT A RUNTIME DEPENDENCY of this mechanism")
@@ -1059,6 +1676,101 @@ def self_test() -> int:
     # mis-anchor; the guard is a non-word, non-dot lookaround.
     nb, _ = apply_map("x = 0x91; y = 0x910;", ["0x91=0x5F"])
     ck(nb == "x = 0x5F; y = 0x910;", f"0x910 is not touched by 0x91 ({nb})")
+
+    print("\nordinal enum mapping requires matching entity-update evidence")
+    import tempfile as _tempfile
+    with _tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        src_dir, dst_dir = root / "rno3", root / "rno0"
+        src_dir.mkdir()
+        dst_dir.mkdir()
+        src_h, dst_h = src_dir / "rno3.h", dst_dir / "rno0.h"
+        src_h.write_text(
+            "enum EntityID {\n"
+            "    E_NONE, // EntityNone\n"
+            "    E_NOVA_PULSE, // EntityNovaLaserPulse\n"
+            "};\n", encoding="utf-8")
+        dst_h.write_text(
+            "enum EntityID {\n"
+            "    E_NONE, // EntityNone\n"
+            "    E_CORPSEWEED_PROJECTILE, // EntityCorpseweedProjectile\n"
+            "};\n", encoding="utf-8")
+        (src_dir / "e_init.c").write_text(
+            "PfnEntityUpdate EntityUpdates[] = {\n"
+            "    EntityNovaLaserPulse,\n"
+            "};\n", encoding="utf-8")
+        (dst_dir / "e_init.c").write_text(
+            "PfnEntityUpdate EntityUpdates[] = {\n"
+            "    EntityCorpseweedProjectile,\n"
+            "};\n", encoding="utf-8")
+        em, en = enum_map("void f(void) { E_NOVA_PULSE; }", src_h, dst_h)
+        ck(em == {},
+           f"same ordinal but different entity is rejected ({em})")
+        ck(any("left alone" in n or "rejected" in n for n in en),
+           f"the rejected guess is reported ({en})")
+        ck(any("EntityNovaLaserPulse != EntityCorpseweedProjectile" in n
+               for n in en),
+           f"the proof reads the entityId-minus-one dispatch slot ({en})")
+        src_h.write_text(
+            "enum EntityID {\n"
+            "    E_NONE,\n"
+            "    E_ID_16,\n"
+            "};\n", encoding="utf-8")
+        dst_h.write_text(
+            "enum EntityID {\n"
+            "    E_NONE,\n"
+            "    E_UNK_16,\n"
+            "};\n", encoding="utf-8")
+        (src_dir / "e_init.c").write_text(
+            "PfnEntityUpdate EntityUpdates[] = {\n"
+            "    func_us_801CC8F8,\n"
+            "};\n", encoding="utf-8")
+        (dst_dir / "e_init.c").write_text(
+            "PfnEntityUpdate EntityUpdates[] = {\n"
+            "    func_us_801CC8F8_from_no0,\n"
+            "};\n", encoding="utf-8")
+        proven, _ = enum_map("void f(void) { E_ID_16; }", src_h, dst_h)
+        ck(proven == {"E_ID_16": "E_UNK_16"},
+           f"matching dispatch functions prove the ordinal rename ({proven})")
+        suppressed, sn = enum_map(
+            "void f(void) { E_ID_16; }", src_h, dst_h, allow_apply=False)
+        ck(suppressed == {} and any("suppressed" in n for n in sn),
+           f"even a proven enum rename is diagnostic-only for near twins "
+           f"({suppressed}, {sn})")
+
+        print("\nentity-update proof reads only the US conditional branch")
+        (src_dir / "e_init.c").write_text(
+            "#ifdef VERSION_PSP\n"
+            "PfnEntityUpdate EntityUpdates[] = { PspOnlySource };\n"
+            "#else\n"
+            "PfnEntityUpdate EntityUpdates[] = { func_us_801CC8F8 };\n"
+            "#endif\n", encoding="utf-8")
+        (dst_dir / "e_init.c").write_text(
+            "#if defined(VERSION_PSP)\n"
+            "PfnEntityUpdate EntityUpdates[] = { PspOnlyDestination };\n"
+            "#else\n"
+            "PfnEntityUpdate EntityUpdates[] = { func_us_801CC8F8_from_no0 };\n"
+            "#endif\n", encoding="utf-8")
+        ck(_entity_updates(src_h) == ["func_us_801CC8F8"],
+           f"the PSP table is excluded ({_entity_updates(src_h)})")
+        visible = _us_visible_source(
+            "#ifdef VERSION_PSP\nint psp;\n#else\nint us;\n#endif\n")
+        ck("int us;" in visible and "int psp;" not in visible,
+           f"only the US declaration survives ({visible!r})")
+        ck(not any(line.lstrip().startswith("#")
+                   for line in visible.splitlines()),
+           f"no orphan conditional directives survive ({visible!r})")
+
+    print("\nAPI surface adaptation follows target relocation evidence")
+    api_body, api_notes = adapt_api_surfaces(
+        "g_api.AllocPrimitives(3, 6); g_api.PlaySfx(1);",
+        {"g_api_AllocPrimitives"})
+    ck("g_api_AllocPrimitives(3, 6)" in api_body,
+       f"the target-proven standalone pointer is selected ({api_body})")
+    ck("g_api.PlaySfx(1)" in api_body,
+       "an API member without target evidence is left alone")
+    ck(any("target-proven" in note for note in api_notes),
+       f"the evidence-based rewrite is reported ({api_notes})")
 
     print("\nmissing declarations are DERIVED from the definition")
     import tempfile
@@ -1117,6 +1829,11 @@ def self_test() -> int:
         d8, n8 = auto_decls("void f(void){ g_NotExported; }", dest)
         ck(not any("#define" in x for x in d8),
            f"and NOT invented when the overlay does not export it ({d8})")
+        d9, n9 = auto_decls(
+            "void f(void){ DRAW_COLORS; PL_W_HOLYWATER_FLAMES; }", dest)
+        ck(d9 == [] and not any("NO DECLARATION" in x for x in n9),
+           f"shared uppercase macros and enum members are not false blockers "
+           f"({d9}, {n9})")
         # OVL_EXPORT spelling and declaration-only sources: the two misses
         # that each cost a build.
         (ov / "e_init.c").write_text(
@@ -1132,6 +1849,104 @@ def self_test() -> int:
         ck(any("func_us_801CC8F8_from_no0(Entity* self);" in x for x in d4),
            f"a declaration-only symbol still yields a prototype ({d4})")
 
+        print("\nadaptable drafts derive donor-local compile dependencies")
+        resolver = globals().get("donor_scope_decls")
+        ck(resolver is not None,
+           "the donor-scope dependency resolver is available")
+        if resolver is not None:
+            donor_dir = ov / "donor"
+            target_dir = ov / "target"
+            donor_dir.mkdir()
+            target_dir.mkdir()
+            donor = donor_dir / "donor.c"
+            (donor_dir / "donor.h").write_text(
+                "#define DONOR_COUNT 4\n"
+                "extern EInit g_HeaderOnly;\n"
+                "extern char* donor_label;\n"
+                "extern char donor_label[];\n"
+                "enum { E_NONE, E_GREY_PUFF };\n",
+                encoding="utf-8")
+            donor.write_text(
+                '#include "donor.h"\n'
+                "extern EInit g_EInitNova;\n"
+                "#ifdef VERSION_PSP\n"
+                "extern s32 E_ID(GREY_PUFF);\n"
+                "extern u16 conditional_values[];\n"
+                "#else\n"
+                "static u16 conditional_values[] = {1, 2};\n"
+                "#endif\n"
+                "static s16 sensors2[] = {0, 20, 12, 0};\n"
+                "static s16 sized_by_init[] = {1, 2, 3};\n"
+                "static s8 unused[] = {1, 2};\n"
+                "typedef enum {\n"
+                "    NOVA_INIT,\n"
+                "    NOVA_IDLE,\n"
+                "    NOVA_CHARGE,\n"
+                "} NovaSteps;\n"
+                "static void donor_fn(void) {\n"
+                "    enum LocalStep { LOCAL_ZERO = 0 };\n"
+                "    s32 unused = UnkCollisionFunc2(&sensors2);\n"
+                "    InitializeEntity(g_EInitNova);\n"
+                "    InitializeEntity(g_HeaderOnly);\n"
+                "    SetStep(NOVA_CHARGE);\n"
+                "    SetStep(DONOR_COUNT);\n"
+                "    use(donor_label, conditional_values, sized_by_init, "
+                "E_ID(GREY_PUFF), LOCAL_ZERO);\n"
+                "}\n", encoding="utf-8")
+            score_dest = target_dir / "target.c"
+            score_dest.write_text('#include "target.h"\n', encoding="utf-8")
+            donor_decls, donor_notes = resolver(
+                "static void target(void) {\n"
+                "    enum LocalStep { LOCAL_ZERO = 0 };\n"
+                "    s32 unused = UnkCollisionFunc2(&sensors2);\n"
+                "    InitializeEntity(g_EInitNova);\n"
+                "    InitializeEntity(g_HeaderOnly);\n"
+                "    SetStep(NOVA_CHARGE);\n"
+                "    SetStep(DONOR_COUNT);\n"
+                "    use(donor_label, conditional_values, sized_by_init, "
+                "E_ID(GREY_PUFF), LOCAL_ZERO);\n"
+                "}\n", donor, score_dest)
+            ck("extern s16 sensors2[4];" in donor_decls,
+               f"a referenced donor-local array gets its exact type ({donor_decls})")
+            ck("extern EInit g_EInitNova;" in donor_decls,
+               f"an existing donor extern is carried into the draft ({donor_decls})")
+            ck("#define NOVA_CHARGE 2" in donor_decls,
+               f"an implicit enum value is derived numerically ({donor_decls})")
+            ck("#define DONOR_COUNT 4" in donor_decls,
+               f"a referenced object-like macro is carried exactly ({donor_decls})")
+            ck("extern EInit g_HeaderOnly;" in donor_decls,
+               f"direct local includes participate in dependency lookup ({donor_decls})")
+            ck(sum("donor_label" in item for item in donor_decls) == 1,
+               f"conditional declaration shapes cannot conflict ({donor_decls})")
+            ck(not any("E_ID(GREY_PUFF)" in item for item in donor_decls),
+               f"an inactive VERSION_PSP declaration is ignored ({donor_decls})")
+            ck("#define E_GREY_PUFF 1" in donor_decls,
+               f"a US E_ID call carries its donor enum value for scoring "
+               f"({donor_decls})")
+            ck(not any("LOCAL_ZERO" in item for item in donor_decls),
+               f"a function-local enum member is not emitted as a macro "
+               f"({donor_decls})")
+            ck("extern u16 conditional_values[2];" in donor_decls,
+               f"the active US branch supplies an array extent ({donor_decls})")
+            ck("extern s16 sized_by_init[3];" in donor_decls,
+               f"a braced initializer supplies an exact compile-only extent "
+               f"({donor_decls})")
+            ck(not any(re.search(r"\bunused\b", item)
+                       for item in donor_decls),
+               f"a function-local variable is never promoted to extern ({donor_decls})")
+            ck(any("score-only" in item for item in donor_notes),
+               f"the declaration boundary is explicit ({donor_notes})")
+
+    print("\nqueue identity disambiguates repeated function names")
+    bo6_shaft = _sup().find_stub("EntityShaft", "BOSS/BO6")
+    rcen_shaft = _sup().find_stub("EntityShaft", "ST/RCEN")
+    ck(bo6_shaft is not None and "/boss/bo6/" in
+       bo6_shaft[0].as_posix().lower(),
+       f"the BO6 queue record selects its own stub ({bo6_shaft})")
+    ck(rcen_shaft is not None and "/st/rcen/" in
+       rcen_shaft[0].as_posix().lower(),
+       f"the RCEN queue record selects its own stub ({rcen_shaft})")
+
     print("\nthe scan classifies on evidence, and writes nothing")
     # By CALLS, not by text: the scan prints a hint containing "--apply", and
     # a text search matched its own help string. Fifth time today.
@@ -1146,9 +1961,45 @@ def self_test() -> int:
     ck("land_match" not in _scalls,
        f"the scan never calls land_match ({sorted(_scalls)[:6]})")
     ck("run" not in _scalls, "and never calls run()")
-    for k in ("ready", "needs-defs", "needs-maps", "not-twin", "no-twin",
-              "error"):
+    exact_calls = []
+    real_harv = globals()["_harv"]
+    real_sup = globals()["_sup"]
+    real_preflight = globals()["preflight"]
+    class _FakeHarvester:
+        @staticmethod
+        def unmatched_records():
+            return [
+                ("us:BOSS/BO6:EntityShaft", "BOSS/BO6", "EntityShaft"),
+                ("us:ST/RCEN:EntityShaft", "ST/RCEN", "EntityShaft"),
+            ]
+    class _FakeSupervisor:
+        @staticmethod
+        def require_clean_src():
+            return ""
+    def _fake_preflight(fn, _mapping, **kwargs):
+        exact_calls.append((fn, kwargs.get("stub_overlay")))
+        return False, "", "scan-class: no-twin\nfixture"
+    try:
+        globals()["_harv"] = lambda: _FakeHarvester()
+        globals()["_sup"] = lambda: _FakeSupervisor()
+        globals()["preflight"] = _fake_preflight
+        exact_scan_rc = scan()
+    finally:
+        globals()["_harv"] = real_harv
+        globals()["_sup"] = real_sup
+        globals()["preflight"] = real_preflight
+    ck(exact_scan_rc == 0 and exact_calls == [
+           ("EntityShaft", "BOSS/BO6"),
+           ("EntityShaft", "ST/RCEN"),
+       ],
+       f"ordinary scan carries each duplicate's queue overlay ({exact_calls})")
+    for k in ("ready", "needs-defs", "adaptable", "needs-maps", "not-twin",
+              "no-twin", "error"):
         ck(f'"{k}"' in scan_src, f"the {k} class exists")
+    ck(scan_failure_bucket(
+        "scan-class: adaptable\nno usable twin; structural near")
+       == "adaptable",
+       "a structurally close donor is kept as an adaptable draft route")
     ck(scan_failure_bucket(
         "scan-class: not-twin\nno usable twin; candidate is not a twin")
        == "not-twin",
@@ -1172,11 +2023,32 @@ def self_test() -> int:
     ck(aggregate_candidate_failures(["not-twin", "needs-maps"])
        == "needs-maps",
        "mixed candidate evidence keeps the unresolved manual-map route")
+    ck(aggregate_candidate_failures(["not-twin", "adaptable"])
+       == "adaptable",
+       "a viable structural draft outranks a disproved donor")
     ck(aggregate_candidate_failures(["no-definition", "error"])
        == "error",
        "an errored candidate is not collapsed into no-twin")
     ck(aggregate_candidate_failures(["no-definition"]) == "no-twin",
        "no-twin is reserved for candidates with no local definition")
+
+    print("\nscore scans retain every exact record and fail on tool errors")
+    ck(score_scan_preflight_status(
+           False, "scan-class: not-twin\nstructural mismatch") == "not-twin",
+       "a structural not-twin is rendered instead of silently skipped")
+    ck(score_scan_preflight_status(True, "ready: clean twin")
+       == "ready-unscored",
+       "a clean twin remains visible even though it needs no isolated score")
+    ck(not score_scan_failed([
+           {"status": "scored", "score": 0},
+           {"status": "not-twin", "score": None},
+       ]),
+       "honest scored and structural outcomes make a successful scan")
+    ck(score_scan_failed([
+           {"status": "scored", "score": 10},
+           {"status": "debug-failed", "score": None},
+       ]),
+       "one tool failure cannot hide behind another record's numeric score")
 
     print("\na constant the C reaches through a MACRO is rewritten as an arg")
     # ANIMSET_OVL(x) is `(x) | 0x8000`, so ANIMSET_OVL(1) assembles to -0x7FFF.
@@ -1222,6 +2094,76 @@ def self_test() -> int:
     ck("if not body:" in sup,
        "and the permuter path still works when it is omitted")
 
+    print("\nadaptable drafts have an isolated score path")
+    definitions = {node.name for node in tree.body
+                   if isinstance(node, _ast.FunctionDef)}
+    ck("score_draft" in definitions,
+       "a draft can be compiled and scored without a game build")
+    parser_flags = {
+        node.args[0].value
+        for node in _ast.walk(tree)
+        if (isinstance(node, _ast.Call)
+            and isinstance(node.func, _ast.Attribute)
+            and node.func.attr == "add_argument"
+            and node.args and isinstance(node.args[0], _ast.Constant)
+            and isinstance(node.args[0].value, str))
+    }
+    ck("--score" in parser_flags,
+       "the score path is reachable through the existing connector surface")
+    ck(_sup().parse_debug_score("base score = 60\n") == 60,
+       "the debug receipt yields its numeric score")
+    ck(_sup().parse_debug_score("compile failed") is None,
+       "a compile failure cannot masquerade as score zero")
+    class _FakeScoreSupervisor:
+        def __init__(self):
+            self.calls = []
+
+        def score_body_draft(self, fn, body, detail, **kwargs):
+            self.calls.append((fn, body, detail, kwargs))
+            if len(self.calls) == 1:
+                return {
+                    "function": fn, "score": 10, "status": "scored",
+                    "archive": "nonmatchings/.adapt-scores/first/target",
+                    "relocation_aliases": {"sensors2": "D_us_80181FAC"},
+                }
+            return {
+                "function": fn, "score": 0, "status": "scored",
+                "archive": "nonmatchings/.adapt-scores/second/target",
+                "relocation_aliases": {},
+            }
+
+    fake_score = _FakeScoreSupervisor()
+    real_sup_factory = globals()["_sup"]
+    globals()["_sup"] = lambda: fake_score
+    try:
+        rescored = score_draft(
+            "target", body=("extern s16 sensors2[];\n"
+                            "void target(void) { use(sensors2); }\n"),
+            detail="fixture")
+    finally:
+        globals()["_sup"] = real_sup_factory
+    ck(rescored.get("score") == 0 and len(fake_score.calls) == 2,
+       "a relocation-only residue is automatically re-scored once")
+    if len(fake_score.calls) == 2:
+        second_body = fake_score.calls[1][1]
+        ck("D_us_80181FAC" in second_body and "sensors2" not in second_body,
+           "the re-score uses the debug-proven target label in C")
+        ck(fake_score.calls[1][3].get("context", {}).get("prior_score") == 10,
+           "the second receipt links back to its unnormalized score evidence")
+    score_node = next((node for node in tree.body
+                       if isinstance(node, _ast.FunctionDef)
+                       and node.name == "score_draft"), None)
+    score_calls = set()
+    if score_node is not None:
+        for node in _ast.walk(score_node):
+            if isinstance(node, _ast.Call):
+                score_calls.add(node.func.attr if isinstance(
+                    node.func, _ast.Attribute) else getattr(node.func, "id", ""))
+    for danger in ("land_match", "build_and_check", "make_build",
+                   "queue_report", "report"):
+        ck(danger not in score_calls,
+           f"isolated scoring never calls {danger} ({sorted(score_calls)})")
+
     print()
     if fails:
         print(f"{len(fails)} FAILED:")
@@ -1259,12 +2201,28 @@ def main() -> int:
     ap.add_argument("--auto", action="store_true",
                     help="derive every substitution from the asm diff and the "
                          "destination enum; no hand-supplied map")
+    ap.add_argument("--adapt", action="store_true",
+                    help="emit a target-informed draft from a structural-near "
+                         "or schedule-only donor; implies --auto")
+    ap.add_argument("--score", action="store_true",
+                    help="debug-score an adaptable draft without a game build; "
+                         "use with --function or --scan")
     ap.add_argument("--apply", action="store_true",
                     help="actually apply, build, verify and revert on failure")
     ap.add_argument("--self-test", action="store_true")
     a = ap.parse_args()
     if a.self_test:
         return self_test()
+    pairs = list(a.map)
+    for chunk in a.maps:
+        pairs += [x for x in chunk.split("/") if x.strip()]
+    if a.score:
+        if a.function:
+            return score_one(a.function, pairs, a.overlay)
+        if a.scan:
+            return score_scan(a.limit, a.overlay)
+        print("--score requires --function NAME or --scan", file=sys.stderr)
+        return 2
     if a.list:
         return list_all()
     if a.scan:
@@ -1272,10 +2230,7 @@ def main() -> int:
     if a.batch:
         return batch(a.limit, a.overlay)
     if a.function:
-        pairs = list(a.map)
-        for chunk in a.maps:
-            pairs += [x for x in chunk.split("/") if x.strip()]
-        return run(a.function, a.apply, pairs, a.auto)
+        return run(a.function, a.apply, pairs, a.auto, a.adapt, a.overlay)
     ap.print_help()
     return 0
 
