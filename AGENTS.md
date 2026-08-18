@@ -109,6 +109,20 @@ git_add <explicit path>  ->  git_commit  ->  git_push
 
 `verify_build` hashes what is on disk, so build immediately before verifying.
 
+### Making a checkpoint
+
+```
+queue_snapshot                        the queue is NOT in the repo
+git_add automation/queue/snapshots/<the file it printed>
+git_commit
+git_checkout_branch("backup-<short hash>", create=True)  ->  git_push
+git_checkout_branch("master")
+```
+
+A branch alone protects `src/` and the docs and **not** the queue, which lives
+outside the repo on purpose. Skipping the snapshot gives you a checkpoint that
+restores the code without the record of how it was produced.
+
 ### The order to try things
 
 Cheapest first. Every step below is free or nearly free compared to the one

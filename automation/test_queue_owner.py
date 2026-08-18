@@ -111,13 +111,28 @@ def test_every_mutating_command_is_covered() -> None:
     readonly = declared - guarded
     check(declared, f"found subcommands: {sorted(declared)}")
     # Anything that writes must be guarded. These are the only safe readers.
-    expected_readonly = {"list", "stats", "verify", "show"}
+    #
+    # `snapshot` is on this list and `restore` is deliberately NOT. snapshot
+    # borrows the writer's exclusive lock so a running fleet cannot be caught
+    # mid-write, but it returns the records unchanged; the queue's content is
+    # identical afterwards. Guarding it would be actively wrong: the guard fires
+    # when SOTN_QUEUE points at a read-only migrated copy, and taking a BACKUP
+    # of a copy you are worried about is exactly the moment you want the tool to
+    # work. restore replaces every record and is guarded.
+    #
+    # This check caught snapshot the moment it was added, on 2026-08-17, which
+    # is the whole point of asserting a name list against the real subparsers.
+    expected_readonly = {"list", "stats", "verify", "show", "snapshot"}
     surprises = readonly - expected_readonly
     check(not surprises,
           f"no unguarded command outside the known readers (surprises: "
           f"{sorted(surprises)})")
     check("report" in guarded and "next" in guarded,
           "report and next are guarded")
+    check("restore" in guarded,
+          "restore is guarded: it replaces every record")
+    check("snapshot" not in guarded,
+          "snapshot is not, so a backup still works on a queue you distrust")
 
 
 def main() -> int:

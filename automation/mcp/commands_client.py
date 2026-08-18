@@ -995,6 +995,24 @@ REGISTRY = {
     "queue_prune": lambda pattern, apply=False: (
         [PYTHON, "automation/scheduler.py", "prune", "--pattern", _pattern(pattern)]
         + (["--apply"] if apply else [])),
+    # QUEUE BACKUP. The live queue is outside the repo (see scheduler.py's
+    # _DEFAULT_QUEUE: a cloud sync daemon destroyed the in-repo one in 2026-07),
+    # and until 2026-08-17 that meant it had no backup at all. A git checkpoint
+    # protected the source and not the record of how it was produced.
+    #
+    # snapshot is read-only with respect to the queue and takes the writer's
+    # lock, so it cannot catch a running fleet mid-write. `out` is validated as
+    # an in-repo path: a snapshot that lands outside the repo cannot be
+    # committed, which defeats the entire point.
+    "queue_snapshot": lambda out="": (
+        [PYTHON, "automation/scheduler.py", "snapshot"]
+        + (["--out", _inrepo(out, must_exist=False)] if out else [])),
+    # restore is the most destructive action in this file: it replaces every
+    # record. Hence confirm, and hence scheduler.py snapshotting what it is
+    # about to replace before replacing it.
+    "queue_restore": lambda from_file, confirm=False: (
+        [PYTHON, "automation/scheduler.py", "restore",
+         "--from", _inrepo(from_file)] + (["--confirm"] if confirm else [])),
     # queue visibility (read-only): lets the orchestrator poll in one call
     "queue_stats": lambda: [PYTHON, "automation/scheduler.py", "stats"],
     "queue_list":  lambda status="": ([PYTHON, "automation/scheduler.py", "list"]

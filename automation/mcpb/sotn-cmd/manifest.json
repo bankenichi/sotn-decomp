@@ -54,6 +54,8 @@
     { "name": "queue_report", "description": "Set a record's status/score/notes. proof is REQUIRED for matched." },
     { "name": "queue_annotate", "description": "Attach twin candidates to records. Writes only the twin field." },
     { "name": "queue_prune", "description": "Remove records that are not real functions" },
+    { "name": "queue_snapshot", "description": "Copy the live queue into the repo so a git checkpoint can hold it. Call before any checkpoint." },
+    { "name": "queue_restore", "description": "Replace the live queue with a snapshot. Requires confirm; snapshots what it replaces first." },
     { "name": "mcpb_info", "description": "Inspect an .mcpb bundle" },
     { "name": "mcpb_validate", "description": "Validate a bundle manifest against the schema" },
     { "name": "mcpb_pack", "description": "Pack a bundle directory into an .mcpb" },

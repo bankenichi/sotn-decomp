@@ -973,7 +973,7 @@ Status: **done**, **open**, **partial**, **void** (turned out unnecessary),
 | 120 | done | `e_armor_lord.h` adopted across 3 overlays, 4 matched |
 | 121 | done | Both rename debts cleared. 907 lines of duplicate deleted |
 
-## Documentation and portability pass, 2026-08-17 (#122 to #128)
+## Documentation and portability pass, 2026-08-17 (#122 to #129)
 
 | # | status | task and outcome |
 |---|---|---|
@@ -983,4 +983,5 @@ Status: **done**, **open**, **partial**, **void** (turned out unnecessary),
 | 125 | done | `AGENTS.md` rewritten from a stub into the entry point: framing, the nine standing constraints, where every other doc is, the cheapest-first work order, and the requirement to keep this ledger current |
 | 126 | done | This ledger. All 128 tasks, completed and pending |
 | 127 | done | Verified the docs against the code. `test_connector_surfaces.py` now checks the MCPB manifest against the callable surface (it listed 21 of 73), that the docs name only real tools, and that every repo path in the new docs resolves. **It also found a live defect in itself**: the test hardcoded `src/st/rno0/unk_4A320.c`, which #121 had renamed, so it reported a guard failure where there was none. The anchor is now discovered rather than named |
+| 129 | done | **The queue had no backup, and a backup branch did not reveal it.** Making a checkpoint branch on 2026-08-17 exposed the gap: the queue lives at `~/sotn-work/queue.jsonl`, outside the repo, so a branch protects `src/` and the docs and not the record of how any of it was produced. That location is correct and stays (a cloud sync daemon destroyed the in-repo queue in 2026-07 and took 438 records with it), but it answered *where the hot file lives* and never answered *what backs it up*. Built `queue_snapshot` and `queue_restore`: the hot file stays on WSL-native storage, a point-in-time copy lands in `automation/queue/snapshots/` on demand and is never rewritten, so no daemon has a race to lose. snapshot borrows the writer's lock and is deliberately NOT guarded by the queue-owner check, because backing up a queue you distrust is exactly when you need it to work; restore is guarded, validates every line before touching anything, and snapshots what it is about to replace |
 | 128 | done | Two matches by hand derivation. `EntityClockRoomController`: a declaration-order problem plus `u16` where the asm's `sll 16` + `bnez` demands `s16`. `func_us_801B6998`: **retracts the 2026-08-16 diagnosis** of a delay-slot nop at +21. The real cause was switch dispatch form: four live cases compile to a compare chain, and the jump table's own extent named the two empty cases needed to restore it |

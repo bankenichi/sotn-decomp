@@ -97,6 +97,29 @@ invisible to the harness".
 | `queue_annotate` | attach twin candidates from `automation/twins.us.json` | writes only the `twin` field, never status; re-running is a no-op |
 | `queue_init` | seed a fresh queue from a seed file | destructive to ordering; not a routine action |
 | `queue_prune` | drop records that are not real functions | **no record is ever removed from scope**; this is only for string labels and similar non-functions |
+| `queue_snapshot` | **before any checkpoint or branch.** Copies the queue into `automation/queue/snapshots/` so git can hold it | expecting it to be automatic; it is deliberate and on demand |
+| `queue_restore` | recovering from a corrupted or wrongly-rewritten queue | with the fleet running; it replaces the records workers hold claims on |
+
+### The queue has no backup unless you take one
+
+A git checkpoint protects `src/` and the docs. It does **not** protect the
+queue, because the queue is not in the repo, and that is deliberate: a cloud
+sync daemon lost a race against the hot file in 2026-07, renamed it to
+`queue (# Name clash ... #).jsonl`, left a zero-byte `queue.jsonl`, and all 438
+records vanished from the harness's view. Moving it to WSL-native storage
+removed the daemon from the picture.
+
+That decision answered *where the hot file lives* and not *what backs it up*,
+and until 2026-08-17 the answer to the second question was nothing. The queue
+holds every derivation, retraction and proof string behind the matched records,
+in one place, on one disk, with no history.
+
+`queue_snapshot` closes it without reopening the sync race: the hot file stays
+where it is, and a point-in-time copy is written into the repo once, on demand,
+and never rewritten. **Take one before every checkpoint and commit it with the
+branch.** `queue_restore` reads one back, refuses without `confirm=True`,
+validates every line before touching anything, and snapshots what it is about
+to replace so the restore itself is reversible.
 
 `queue_report` **replaces `notes` wholesale** unless you pass `keep_note`. That
 is how 35 matched records lost the record of how they were solved and became

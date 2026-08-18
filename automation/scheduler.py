@@ -114,7 +114,13 @@ def _migrate_legacy_queue() -> None:
 
 # Commands that write. Everything else may run against a migrated snapshot,
 # because a stale read is recoverable and a stale write is not.
-_MUTATING = {"init", "seed", "next", "report", "reclaim", "annotate", "prune"}
+# `restore` belongs here and `snapshot` does not. restore replaces the queue
+# wholesale, which is the most destructive thing in this file; snapshot only
+# reads (it borrows the writer's lock so a running fleet cannot be caught
+# mid-write, but it leaves the content identical). Taking a backup of a
+# read-only migrated copy is harmless and occasionally exactly what you want.
+_MUTATING = {"init", "seed", "next", "report", "reclaim", "annotate", "prune",
+             "restore"}
 
 
 def _require_queue_owner(cmd: str) -> None:
@@ -776,6 +782,133 @@ def cmd_stats(_args):
         print(f"  {s:>9}: {c.get(s, 0)}")
 
 
+SNAPSHOT_DIR = REPO / "automation" / "queue" / "snapshots"
+
+
+def _sha256(path: Path) -> str:
+    import hashlib
+    h = hashlib.sha256()
+    with path.open("rb") as f:
+        for chunk in iter(lambda: f.read(65536), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def _head_short() -> str:
+    try:
+        return _git("rev-parse", "--short=7", "HEAD")
+    except Exception:                                       # noqa: BLE001
+        return "nogit"
+
+
+def cmd_snapshot(args):
+    """Copy the live queue INTO the repo so a git checkpoint can hold it.
+
+    WHY THIS EXISTS, and why the copy is deliberate rather than continuous.
+
+    The live queue is at ~/sotn-work/queue.jsonl, outside the repo, and that is
+    not negotiable: see _DEFAULT_QUEUE. Every transaction rewrites it through
+    os.replace, hundreds of times per fleet session, and on 2026-07-20 a cloud
+    sync daemon lost that race, renamed the live file to
+    "queue (# Name clash ... #).jsonl" and left a zero-byte queue.jsonl. All 438
+    records vanished from the harness's view. Moving it to WSL-native storage
+    removed the daemon from the picture.
+
+    But that decision answered "where should the hot file live" and never
+    answered "what backs it up", so until 2026-08-17 the answer was nothing.
+    The repo carried 259 matched records' worth of derivations and provenance
+    notes that existed in exactly one place, on one disk, with no history. A
+    backup branch protected the source and not the record of how it got there.
+
+    A snapshot is the resolution: the hot file stays on WSL-native storage, and
+    a POINT-IN-TIME COPY lands in the repo only when someone asks for one. It is
+    written once, never rewritten, so no daemon can lose a race against it.
+
+    Taken under the same exclusive lock as every other transaction, so a running
+    fleet cannot be caught mid-write. Read-only with respect to the queue.
+    """
+    q = Queue()
+    SNAPSHOT_DIR.mkdir(parents=True, exist_ok=True)
+    stamp = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%d-%H%M%S")
+    out = Path(args.out) if args.out else \
+        SNAPSHOT_DIR / f"queue.{stamp}.{_head_short()}.jsonl"
+
+    def fn(records):
+        # Return the records unchanged: this is a reader borrowing the writer's
+        # lock, not a mutation. _write still runs and rewrites the queue with
+        # identical content, which is harmless and keeps one code path.
+        return records, records
+
+    records = q.transaction(fn)
+    with out.open("w", encoding="utf-8") as f:
+        for r in records:
+            f.write(json.dumps(r, ensure_ascii=False) + "\n")
+
+    from collections import Counter
+    c = Counter(r["status"] for r in records)
+    print(f"snapshot: {out}")
+    print(f"source:   {q.path}")
+    print(f"records:  {len(records)}")
+    print(f"sha256:   {_sha256(out)}")
+    print("  " + "  ".join(f"{s}={c.get(s, 0)}" for s in sorted(VALID_STATUS)))
+    print("\nCommit it explicitly. It is a checkpoint, not a live file, and it\n"
+          "will be stale the moment the next report lands.")
+
+
+def cmd_restore(args):
+    """Replace the live queue with a snapshot. Destructive, hence --confirm.
+
+    Takes a snapshot of the CURRENT queue first, unconditionally. A restore that
+    destroys the state you were about to compare against is not a recovery tool,
+    it is a second incident, and the one thing you always want after an
+    unexpected restore is the ability to undo it.
+    """
+    src = Path(args.from_file)
+    if not src.is_file():
+        sys.exit(f"no such snapshot: {src}")
+
+    records = []
+    for n, line in enumerate(src.read_text(encoding="utf-8").splitlines(), 1):
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            rec = json.loads(line)
+        except json.JSONDecodeError as e:
+            sys.exit(f"{src}:{n}: not valid JSON ({e}). Refusing to restore a "
+                     f"file this tool cannot fully parse.")
+        for field in ("id", "status"):
+            if field not in rec:
+                sys.exit(f"{src}:{n}: record has no '{field}'. This does not "
+                         f"look like a queue snapshot.")
+        if rec["status"] not in VALID_STATUS:
+            sys.exit(f"{src}:{n}: unknown status {rec['status']!r}. "
+                     f"Valid: {sorted(VALID_STATUS)}")
+        records.append(rec)
+
+    q = Queue()
+    live = q._read()
+    if not args.confirm:
+        sys.exit(
+            f"refusing to restore without --confirm.\n"
+            f"  from: {src} ({len(records)} records)\n"
+            f"  onto: {q.path} ({len(live)} records, which would be REPLACED)\n"
+            f"The current queue would be snapshotted first, so this is\n"
+            f"reversible, but it is still a wholesale replacement.")
+
+    # Snapshot what is about to be replaced, before replacing it.
+    SNAPSHOT_DIR.mkdir(parents=True, exist_ok=True)
+    stamp = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%d-%H%M%S")
+    pre = SNAPSHOT_DIR / f"queue.{stamp}.pre-restore.jsonl"
+    with pre.open("w", encoding="utf-8") as f:
+        for r in live:
+            f.write(json.dumps(r, ensure_ascii=False) + "\n")
+
+    q.transaction(lambda _old: (records, None))
+    print(f"restored {len(records)} records from {src}")
+    print(f"the {len(live)} records it replaced are at {pre}")
+
+
 def cmd_reclaim(args):
     q = Queue()
     cutoff = dt.datetime.now(dt.timezone.utc) - dt.timedelta(minutes=args.older_than_min)
@@ -869,6 +1002,22 @@ def main():
 
     prc = sub.add_parser("reclaim"); prc.add_argument("--older-than-min", type=int, default=60)
     prc.set_defaults(func=cmd_reclaim)
+
+    psn = sub.add_parser("snapshot",
+                         help="copy the live queue into the repo so a git "
+                              "checkpoint can hold it")
+    psn.add_argument("--out", default=None,
+                     help="destination path; defaults to "
+                          "automation/queue/snapshots/queue.<stamp>.<head>.jsonl")
+    psn.set_defaults(func=cmd_snapshot)
+
+    prs = sub.add_parser("restore",
+                         help="replace the live queue with a snapshot")
+    prs.add_argument("--from", dest="from_file", required=True)
+    prs.add_argument("--confirm", action="store_true",
+                     help="required. Without it this prints what it would "
+                          "replace and exits")
+    prs.set_defaults(func=cmd_restore)
 
     args = p.parse_args()
     # Before anything writes. sys.argv[1] is the subcommand name; argparse has

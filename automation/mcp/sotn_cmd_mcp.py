@@ -691,6 +691,58 @@ def queue_annotate(from_file: str = "automation/twins.us.json",
                   from_file=from_file, apply=apply)
 
 
+@mcp.tool()
+def queue_snapshot(out: str = "", timeout: int = 300) -> dict:
+    """Copy the live queue INTO the repo so a git checkpoint can hold it.
+
+    CALL THIS BEFORE ANY CHECKPOINT. A backup branch protects `src/` and the
+    docs; it does not protect the queue, because the queue is not in the repo.
+    That is deliberate -- see scheduler.py's `_DEFAULT_QUEUE`: a cloud sync
+    daemon lost a race against the hot file in 2026-07, renamed it to
+    "queue (# Name clash ... #).jsonl" and left a zero-byte queue.jsonl, and all
+    438 records vanished. Moving it to WSL-native storage fixed that.
+
+    What it did NOT fix was backup, and nobody noticed until 2026-08-17. The
+    queue holds every derivation, every retraction and every proof string for
+    259 matched records, and it existed in exactly one place with no history.
+
+    A snapshot resolves it without reopening the sync race: the hot file stays
+    where it is, and a point-in-time copy is written into the repo once, on
+    demand, never rewritten. Commit it with the checkpoint.
+
+    Read-only with respect to the queue. It borrows the writer's exclusive lock
+    so a running fleet cannot be caught mid-write, but leaves content identical.
+
+    `out` must be an in-repo path. A snapshot outside the repo cannot be
+    committed, which defeats the point. Default:
+        automation/queue/snapshots/queue.<UTC stamp>.<HEAD short>.jsonl
+
+    Restore with queue_restore."""
+    return cc.run("queue_snapshot", timeout=timeout, out=out)
+
+
+@mcp.tool()
+def queue_restore(from_file: str, confirm: bool = False,
+                  timeout: int = 300) -> dict:
+    """Replace the live queue with a snapshot. THE MOST DESTRUCTIVE ACTION HERE.
+
+    Every record is replaced, so `confirm=True` is required; without it this
+    prints what it would replace, with both counts, and exits.
+
+    scheduler.py snapshots the CURRENT queue before overwriting it, always, and
+    prints where it put it. A restore that destroys the state you were about to
+    compare against is not a recovery tool, it is a second incident.
+
+    The snapshot is validated before anything is touched: every line must parse,
+    carry `id` and `status`, and hold a status this scheduler recognises. A
+    partially-parseable file is refused rather than half-applied.
+
+    Stop the fleet first. Restoring under running workers replaces the records
+    they hold claims on."""
+    return cc.run("queue_restore", timeout=timeout,
+                  from_file=from_file, confirm=confirm)
+
+
 # ---- scoped in-repo filesystem (edit the WSL2 tree through the connector) ----
 
 @mcp.tool()

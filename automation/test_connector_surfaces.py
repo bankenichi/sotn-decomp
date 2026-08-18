@@ -1011,6 +1011,62 @@ def main() -> int:
           "moving onto an existing file is refused")
 
     # ------------------------------------------------------------------
+    # QUEUE BACKUP.
+    #
+    # The live queue is outside the repo because a cloud sync daemon destroyed
+    # the in-repo one in 2026-07. That was the right call and it left a gap
+    # nobody looked at for a month: a git checkpoint protected src/ and the docs
+    # and not the queue, so the record of HOW 259 matches were produced existed
+    # in one place with no history.
+    #
+    # These checks are about the shape of the fix, not the copy itself: the
+    # destination must be in-repo or it cannot be committed, and restore must
+    # not be able to fire by accident.
+    # ------------------------------------------------------------------
+    print("\nthe queue can be snapshotted into the repo and restored")
+    check("queue_snapshot" in registry, "queue_snapshot is in REGISTRY")
+    check("queue_snapshot" in tools, "queue_snapshot is callable (@mcp.tool)")
+    check("queue_restore" in registry, "queue_restore is in REGISTRY")
+    check("queue_restore" in tools, "queue_restore is callable (@mcp.tool)")
+
+    _snap = _cc_mod.build_argv("queue_snapshot")
+    check(_snap[-1] == "snapshot" and "scheduler.py" in " ".join(_snap),
+          f"queue_snapshot runs scheduler.py snapshot ({_snap[-2:]})")
+    # A snapshot outside the repo cannot be committed, which is the whole point.
+    _out_escape = None
+    try:
+        _cc_mod.build_argv("queue_snapshot", out="../queue-escape.jsonl")
+    except Exception as e:                                      # Rejected
+        _out_escape = str(e)
+    check(_out_escape is not None,
+          "a snapshot destination outside the repo is refused")
+    _in = _cc_mod.build_argv(
+        "queue_snapshot", out="automation/queue/snapshots/probe.jsonl")
+    check(_in[-1].endswith("automation/queue/snapshots/probe.jsonl"),
+          "an in-repo destination that does not exist yet is accepted")
+
+    # restore replaces every record, so it must be inert without confirm.
+    _res = _cc_mod.build_argv(
+        "queue_restore", from_file="automation/scheduler.py")
+    check("--confirm" not in _res,
+          "queue_restore omits --confirm by default, so it cannot fire by accident")
+    _res_ok = _cc_mod.build_argv(
+        "queue_restore", from_file="automation/scheduler.py", confirm=True)
+    check("--confirm" in _res_ok, "and confirm=True passes it through")
+
+    _sched = (REPO / "automation" / "scheduler.py").read_text(encoding="utf-8")
+    check('"restore"' in _sched.split("_MUTATING")[1].split("}")[0],
+          "scheduler counts restore as MUTATING, so the queue-owner guard covers it")
+    check('"snapshot"' not in _sched.split("_MUTATING")[1].split("}")[0],
+          "and snapshot as non-mutating, so a read-only copy is never blocked")
+    check("pre-restore" in _sched,
+          "restore snapshots what it is about to replace, so it is reversible")
+    check("q.transaction(fn)" in _sched.split("def cmd_snapshot")[1]
+          .split("def cmd_restore")[0],
+          "snapshot borrows the writer's lock, so a running fleet cannot be "
+          "caught mid-write")
+
+    # ------------------------------------------------------------------
     # THE THIRD SURFACE: the MCPB bundle manifest.
     #
     # REGISTRY and @mcp.tool() were the two surfaces this file was written for.
