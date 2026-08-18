@@ -96,7 +96,7 @@ def main():
         write_queue(q, [rec("us:ST/RDAI:loop_fn", "todo", claims=i)])
 
     print("\nthe breaker trips at the ceiling and parks the record")
-    prior_note = "TIER_HANDOFF_TOO_LARGE: real prior note " + ("Z" * 1600)
+    prior_note = "  TIER_HANDOFF_TOO_LARGE: real prior note " + ("Z" * 1600) + "  \n"
     write_queue(q, [rec("us:ST/RDAI:loop_fn", "todo", claims=11,
                         notes=prior_note)])
     r = sched(q, "next", "--worker", "t")

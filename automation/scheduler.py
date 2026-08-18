@@ -418,7 +418,7 @@ def cmd_next(args):
         for r in burned:
             r["status"] = "escalated"
             r["updated_at"] = _now()
-            was = (r.get("notes") or "").strip()
+            was = r.get("notes") or ""
             r["notes"] = (
                 f"CLAIM_LIMIT: claimed {r['claims']} times without ever "
                 f"reaching a verdict; the fleet is looping on this record, not "

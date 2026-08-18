@@ -105,6 +105,20 @@ def direct_worker_transport(long_note: str, long_proof: str) -> None:
     check(module._CURRENT_CLAIM == record_id,
           "a failed report retains the claim for the release handler")
 
+    module._CURRENT_CLAIM_FROM = "deferred"
+    module._CURRENT_SEED = "automation/candidates/demo.c"
+    module.release_claim_if_held()
+    check(module._CURRENT_CLAIM == record_id and
+          module._CURRENT_CLAIM_FROM == "deferred" and
+          module._CURRENT_SEED == "automation/candidates/demo.c",
+          "a failed release retains every field needed for a retry")
+
+    module.wsl = fake_wsl
+    module.release_claim_if_held()
+    check(module._CURRENT_CLAIM is None and
+          module._CURRENT_CLAIM_FROM is None and not module._CURRENT_SEED,
+          "a successful release clears the retained claim state")
+
 
 def legacy_worker_transport(long_note: str, long_proof: str) -> None:
     print("\nworker_win keeps evidence off the command line")

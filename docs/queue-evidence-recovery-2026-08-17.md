@@ -3,9 +3,10 @@
 ## Status
 
 The writer defect is fixed and covered by tests. The two known damaged live
-records still require repair after the `sotn-cmd` connector restarts and loads
-the fixed client. Do not use the pre-restart `queue_report`: that process still
-has the truncating module in memory.
+records were repaired on 2026-08-18 after the `sotn-cmd` connector restarted
+and loaded the fixed client. A fresh build verified 81/81 immediately before
+both replacement reports, and a matched-record readback confirmed that each
+note ends with its intended final sentence.
 
 The missing trailing prose cannot be recovered byte-for-byte. It was discarded
 before the scheduler received it, so neither the live queue nor any snapshot
@@ -74,6 +75,9 @@ MATCHED 2026-08-17 by hand-derivation from asm/us/boss/bo6/nonmatchings/richter/
 ```
 
 ## Safe live repair after restart
+
+The following procedure was executed successfully on 2026-08-18 and is kept
+here as the recovery record:
 
 1. Wait for any active build or main-thread mutation to finish.
 2. Run `make_build` through a background job, then require `verify_build` to
