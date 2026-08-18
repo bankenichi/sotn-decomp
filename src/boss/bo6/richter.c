@@ -858,10 +858,7 @@ void BO6_RicStepRun(void) {
             }
             return;
         }
-        if (RIC.step_s != 0) {
-            if (RIC.step_s) {
-            }
-        } else {
+        if (RIC.step_s == 0) {
             BO6_RicSetSpeedX(FIX(2.25));
         }
     }
