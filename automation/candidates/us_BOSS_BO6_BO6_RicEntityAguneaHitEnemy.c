@@ -1,11 +1,11 @@
 /* PERMUTER SEED -- deterministic isolated-score candidate.
-   record : us:BOSS/BO6:BO6_RicEntityAguneaLightning
-   score  : 15
-   receipt: nonmatchings/.adapt-scores/20260818-214654-95525-753414/BO6_RicEntityAguneaLightning-2/adapt-score.json
+   record : us:BOSS/BO6:BO6_RicEntityAguneaHitEnemy
+   score  : 30
+   receipt: nonmatchings/.adapt-scores/20260818-214644-95525-920888/BO6_RicEntityAguneaHitEnemy/adapt-score.json
    producer: compiled-donor transplant, no model
    content: WHOLE FILE (isolated adaptable draft)
    origin : src/boss/bo6/us_3E79C.c
-   asm    : asm/us/boss/bo6/nonmatchings/us_3E79C/BO6_RicEntityAguneaLightning.s
+   asm    : asm/us/boss/bo6/nonmatchings/us_3E79C/BO6_RicEntityAguneaHitEnemy.s
    verdict: the exact target function compiled under the project
             compiler and flags but did not score zero. A full game
             build was intentionally not run. Import and search via
@@ -17,10 +17,11 @@
    PERMUTER, so these same-file stubs lose their only mention and the
    permuter's typemap raises KeyError on every mutation touching them. */
 /* Declared by the tree: */
-extern s16 (*g_api_AllocPrimitives)(PrimitiveType type, s32 count);
 void DestroyEntity(Entity*);
+extern s16 (*g_api_AllocPrimitives)(PrimitiveType type, s32 count);
 extern int rand(void);
-extern void srand(unsigned int);
+int abs(int x);
+long ratan2(long y, long x);
 int rcos(int a);
 int rsin(int a);
 
@@ -1625,7 +1626,204 @@ u8 BO6_PrimDecreaseBrightness(Primitive2* prim, u8 amount) {
 
 INCLUDE_ASM("boss/bo6/nonmatchings/us_3E79C", BO6_RicEntitySubwpnAgunea);
 
-INCLUDE_ASM("boss/bo6/nonmatchings/us_3E79C", BO6_RicEntityAguneaHitEnemy);
+u8 PrimDecreaseBrightness(Primitive* prim, u8 amount);
+
+void BO6_RicEntityAguneaHitEnemy(Entity* self) {
+    Entity* parent;
+    Primitive* prim;
+    Primitive* temp_s3;
+    Primitive* var_a0;
+    s16 arctan;
+    s16 angle;
+    s16 xOffset;
+    s16 yOffset;
+    s16 temp_s2;
+    u8 var_s3;
+    s32 i;
+    u8 var_s8;
+
+    parent = self->ext.et_801291C4.parent;
+    self->posX.i.hi = PLAYER.posX.i.hi;
+    self->posY.i.hi = (PLAYER.posY.i.hi + PLAYER.hitboxOffY) - 8;
+    if (self->ext.et_801291C4.parent->entityId != 0x2C) {
+        switch (self->step) {
+        case 0:
+            DestroyEntity(self);
+            return;
+        case 1:
+        case 2:
+        case 4:
+            self->step = 3;
+        }
+    }
+    switch (self->step) {
+    case 0:
+        self->primIndex = g_api_AllocPrimitives(PRIM_GT4, 0x28);
+        if (self->primIndex == -1) {
+            DestroyEntity(self);
+            break;
+        }
+        self->flags = FLAG_KEEP_ALIVE_OFFCAMERA | FLAG_HAS_PRIMS;
+        self->facingLeft = PLAYER.facingLeft;
+        self->ext.et_801291C4.unk84 = (rand() & 0x3FF) - 0x200;
+        if (self->facingLeft) {
+             
+            self->ext.et_801291C4.unk84 + 0x800;
+        }
+        self->ext.et_801291C4.unk84 &= 0xFFF;
+        self->ext.et_801291C4.unk90 = (self->params >> 8) & 0xFF;
+        prim = &g_PrimBuf[self->primIndex];
+        self->ext.et_801291C4.prim1 = prim;
+        self->ext.et_801291C4.prim2 = prim;
+        for (i = 0; prim != NULL;) {
+            prim->tpage = 0x1A;
+            prim->clut = PAL_UNK_194;
+            prim->u0 = prim->u1 = i * 0x10 + 0x90;
+            prim->u2 = prim->u3 = prim->u0 + 0x10;
+            prim->v0 = prim->v2 = 0xD0;
+            prim->v1 = prim->v3 = 0xC0;
+            prim->x0 = self->posX.i.hi;
+            prim->y0 = self->posY.i.hi;
+            prim->x2 = self->posX.i.hi;
+            prim->y2 = self->posX.i.hi;
+            prim->r0 = prim->g0 = prim->b0 = 0xF0;
+            LOW(prim->r1) = LOW(prim->r0);
+            LOW(prim->r2) = LOW(prim->r0);
+            LOW(prim->r3) = LOW(prim->r0);
+            prim->priority = self->zPriority;
+            prim->drawMode = DRAW_HIDE;
+            prim = prim->next;
+            i++;
+            if (i > 5) {
+                i = 0;
+            }
+        }
+        prim = self->ext.et_801291C4.prim1;
+        prim->x0 = self->posX.i.hi;
+        prim->y0 = self->posY.i.hi;
+        prim->x1 = prim->x0;
+        prim->y1 = prim->y1 - 0x10;
+        prim->x2 = self->posX.i.hi;
+        prim->y2 = self->posY.i.hi;
+        prim->x3 = prim->x2;
+        prim->y3 = prim->y2 - 0x10;
+        self->ext.et_801291C4.prim2 = prim;
+        while (prim != NULL) {
+            prim->clut = PAL_UNK_194;
+            prim->r0 = prim->g0 = prim->b0 = 0x80;
+            LOW(prim->r1) = LOW(prim->r0);
+            LOW(prim->r2) = LOW(prim->r0);
+            LOW(prim->r3) = LOW(prim->r0);
+            prim->priority = self->zPriority;
+            prim->drawMode = DRAW_HIDE;
+            prim = prim->next;
+        }
+        self->ext.et_801291C4.unk88 = 0;
+        self->step++;
+        break;
+    case 1:
+        for (i = 0; i < 2; i++) {
+            prim = self->ext.et_801291C4.prim2;
+            temp_s2 = self->ext.et_801291C4.unk84;
+            xOffset = parent->posX.i.hi - prim->x2;
+            yOffset = parent->posY.i.hi - prim->y2;
+            if (abs(xOffset) < 8 && abs(yOffset) < 8) {
+                self->step++;
+                break;
+            }
+            if (abs(xOffset) < 0x40 && abs(yOffset) < 0x40) {
+                var_s3 = 1;
+            } else {
+                var_s3 = 0;
+            }
+            if (!self->ext.et_801291C4.unk88) {
+                self->ext.et_801291C4.unk88 = 4;
+                if (var_s3) {
+                    self->ext.et_801291C4.unk88 = 2;
+                }
+                arctan = ratan2(-yOffset, xOffset);
+                angle = arctan - temp_s2;
+                if (angle > 0x800) {
+                    angle = 0x1000 - angle;
+                }
+                if (angle < -0x800) {
+                    angle = 0x1000 + angle;
+                }
+                if (!var_s3) {
+                    angle /= 4;
+                } else {
+                    angle /= 2;
+                }
+                self->ext.et_801291C4.unk86 = angle;
+            }
+            temp_s2 += self->ext.et_801291C4.unk86;
+            if (!var_s3) {
+                temp_s2 += 0x180 - ((rand() & 3) << 8);
+            }
+            temp_s2 &= 0xFFF;
+            temp_s3 = prim->next;
+            if (temp_s3 == NULL) {
+                self->step++;
+                return;
+            }
+            LOW(temp_s3->x0) = LOW(prim->x2);
+            LOW(temp_s3->x1) = LOW(prim->x3);
+            self->ext.et_801291C4.unk84 = temp_s2;
+            self->ext.et_801291C4.prim2 = temp_s3;
+            xOffset = (rcos(temp_s2) * 0xC) >> 0xC;
+            yOffset = -((rsin(temp_s2) * 0xC) >> 0xC);
+            temp_s3->x2 = temp_s3->x0 + xOffset;
+            temp_s3->y2 = temp_s3->y0 + yOffset;
+            angle = temp_s2 - 0x400;
+            var_s8 = 0x10 - (self->params * 4);
+            xOffset = (var_s8 * rcos(angle)) >> 0xC;
+            yOffset = -((var_s8 * rsin(angle)) >> 0xC);
+            temp_s3->x3 = temp_s3->x2 + xOffset;
+            temp_s3->y3 = temp_s3->y2 + yOffset;
+            temp_s3->drawMode = DRAW_COLORS | DRAW_UNK02;
+            self->ext.et_801291C4.unk88--;
+        }
+        break;
+    case 2:
+        if (!self->step_s) {
+            prim = self->ext.et_801291C4.prim1;
+            while (prim != NULL) {
+                prim->clut = PAL_FILL_WHITE;
+                prim = prim->next;
+            }
+            self->step_s++;
+            return;
+        }
+        prim = self->ext.et_801291C4.prim1;
+        while (prim != NULL) {
+            prim->clut = PAL_UNK_194;
+            prim->r0 = prim->g0 = prim->b0 = 0x60;
+            LOW(prim->r1) = LOW(prim->r0);
+            LOW(prim->r2) = LOW(prim->r0);
+            LOW(prim->r3) = LOW(prim->r0);
+            prim = prim->next;
+        }
+        self->step_s = 0;
+        self->step++;
+        break;
+    case 3:
+        var_s8 = 1;
+        prim = self->ext.et_801291C4.prim1;
+        while (prim != NULL) {
+            var_s8 &= !PrimDecreaseBrightness(prim, 4);
+            prim = prim->next;
+        }
+        if (var_s8) {
+            prim = self->ext.et_801291C4.prim1;
+            while (prim != NULL) {
+                prim->drawMode = DRAW_HIDE;
+                prim = prim->next;
+            }
+            DestroyEntity(self);
+        }
+        break;
+    }
+}
 
 extern AnimationFrame D_us_801829D4[];
 
@@ -2006,139 +2204,7 @@ void BO6_AguneaShuffleParams(s32 bufSize, s32* buf) {
     }
 }
 
-s16 GetAguneaLightningAngle(s16* arg0, s16 arg1, s16 arg2, s16* arg3);
-
-void BO6_RicEntityAguneaLightning(Entity* self) {
-    s16 sp20;
-    s16 angle;
-    s16 sp18;
-    s32 randomSeed;
-    s16 sp10[4];
-    s16 xCoord;
-    s16 yCoord;
-    s16 psp_s6;
-    s16 psp_s5;
-    s32 psp_s4;
-    s32 psp_s3;
-    s32 i;
-    Primitive* prim;
-
-    switch (self->step) {
-    case 0:
-        self->primIndex = g_api_AllocPrimitives(PRIM_GT4, 0xF);
-        if (self->primIndex == -1) {
-            DestroyEntity(self);
-            return;
-        }
-        self->flags =
-            FLAG_KEEP_ALIVE_OFFCAMERA | FLAG_HAS_PRIMS | FLAG_POS_PLAYER_LOCKED;
-        prim = &g_PrimBuf[self->primIndex];
-        for (i = 0; i < 15; i++) {
-            prim->tpage = 0x1A;
-            prim->clut = PAL_UNK_194;
-            xCoord = (rand() % 5) * 0x10;
-            prim->u0 = prim->u2 = xCoord + 0x90;
-            prim->u1 = prim->u3 = xCoord + 0xB0;
-            if (rand() % 2) {
-                prim->v0 = prim->v1 = 0xD0;
-                prim->v2 = prim->v3 = 0xE0;
-            } else {
-                prim->v0 = prim->v1 = 0xE0;
-                prim->v2 = prim->v3 = 0xD0;
-            }
-            prim->r0 = prim->g0 = prim->b0 = prim->r1 = prim->g1 = prim->b1 =
-                prim->r2 = prim->g2 = prim->b2 = prim->r3 = prim->g3 =
-                    prim->b3 = 0x80;
-            prim->priority = 0xC1;
-            prim->drawMode = DRAW_UNK_200 | DRAW_HIDE | DRAW_COLORS;
-            prim = prim->next;
-        }
-        prim = &g_PrimBuf[self->primIndex];
-        sp20 = ((self->params & 0xFF00) >> 8) * 0x200;
-        sp20 += rand() % 0x200 - 0x100;
-        randomSeed = rand() & PSP_RANDMASK;
-        for (i = 0; i < 15; i++) {
-            srand(randomSeed);
-            sp10[1] = self->posX.i.hi;
-            sp10[3] = self->posY.i.hi;
-            angle = GetAguneaLightningAngle(sp10, sp20, i, &sp18);
-            xCoord = sp10[0];
-            yCoord = sp10[2];
-            psp_s6 = !i ? 2 : 8;
-            psp_s5 = (i < 7) ? 8 : 2;
-
-            psp_s4 = rcos(angle);
-            psp_s3 = rsin(angle);
-            prim->x0 = xCoord + (-(psp_s3 * -psp_s6) >> 0xC);
-            prim->y0 = yCoord + ((psp_s4 * -psp_s6) >> 0xC);
-            prim->x1 = xCoord + ((psp_s4 * sp18 - (psp_s3 * -psp_s5)) >> 0xC);
-            prim->y1 = yCoord + ((psp_s3 * sp18 + (psp_s4 * -psp_s5)) >> 0xC);
-            prim->x2 = xCoord + (-(psp_s3 * psp_s6) >> 0xC);
-            prim->y2 = yCoord + ((psp_s4 * psp_s6) >> 0xC);
-            prim->x3 = xCoord + ((psp_s4 * sp18 - (psp_s3 * psp_s5)) >> 0xC);
-            prim->y3 = yCoord + ((psp_s3 * sp18 + (psp_s4 * psp_s5)) >> 0xC);
-            prim = prim->next;
-        }
-        self->ext.et_8017091C.unk7E = 1;
-        self->step++;
-        break;
-    case 1:
-        prim = &g_PrimBuf[self->primIndex];
-        for (i = 0; i < 15; i++) {
-            prim->drawMode &= ~DRAW_HIDE;
-            prim = prim->next;
-        }
-        self->step++;
-    case 2:
-        self->ext.et_8017091C.unk7C++;
-        if (self->ext.et_8017091C.unk7C > 4) {
-            prim = &g_PrimBuf[self->primIndex];
-            for (i = 0; i < 15; i++) {
-                prim->v0 = prim->v1 = prim->v0 - 0x10;
-                prim->v2 = prim->v3 = prim->v2 - 0x10;
-                prim->clut = PAL_FILL_WHITE;
-                prim->r0 = prim->g0 = prim->b0 = prim->r1 = prim->g1 =
-                    prim->b1 = prim->r2 = prim->g2 = prim->b2 = prim->r3 =
-                        prim->g3 = prim->b3 = 0xFF;
-                prim = prim->next;
-            }
-            self->ext.et_8017091C.unk7C = 0;
-            self->step++;
-        }
-        break;
-    case 3:
-    case 5:
-        prim = &g_PrimBuf[self->primIndex];
-        for (i = 0; i < 15; i++) {
-            prim->clut = PAL_UNK_194;
-            prim = prim->next;
-        }
-        self->step++;
-        break;
-    case 4:
-        prim = &g_PrimBuf[self->primIndex];
-        for (i = 0; i < 15; i++) {
-            prim->clut = PAL_FILL_WHITE;
-            prim = prim->next;
-        }
-        self->step++;
-        break;
-    case 6:
-        prim = &g_PrimBuf[self->primIndex];
-        for (i = 0; i < 15; i++) {
-            prim->r0 = prim->g0 = prim->b0 = prim->r1 = prim->g1 = prim->b1 =
-                prim->r2 = prim->g2 = prim->b2 = prim->r3 = prim->g3 =
-                    prim->b3 = 0x60 - (self->ext.et_8017091C.unk7C * 4);
-            prim = prim->next;
-        }
-        self->ext.et_8017091C.unk7C++;
-        if (self->ext.et_8017091C.unk7C > 15) {
-            DestroyEntity(self);
-            return;
-        }
-        break;
-    }
-}
+INCLUDE_ASM("boss/bo6/nonmatchings/us_3E79C", BO6_RicEntityAguneaLightning);
 
 INCLUDE_ASM("boss/bo6/nonmatchings/us_3E79C", BO6_RicEntityAguneaCircle);
 
