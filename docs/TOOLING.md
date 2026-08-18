@@ -265,7 +265,7 @@ supports `--help` and most support `--self-test`.
 | `matched_audit.py` | is every record marked matched actually present in the tree |
 | `match_provenance.py` | which mechanism produced each match; `--no-git` is much faster |
 | `provenance_check.py` | how close a body is to upstream's |
-| `quality_audit.py` | fake symbols, magic numbers, raw byte casts, duplicates |
+| `quality_audit.py` | fake symbols, magic numbers, raw byte casts, duplicates, and unexplained empty control bodies |
 | `review_checks.py` | the gate the worker runs before building |
 | `decomp_fidelity.py` | callee recall and constant coverage against the asm |
 | `escalation_triage.py` | why each escalated record failed |
