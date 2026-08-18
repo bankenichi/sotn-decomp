@@ -322,7 +322,33 @@ void BO6_RicSetInvincibilityFrames(s32 kind, s16 invincibilityFrames) {
     }
 }
 
-INCLUDE_ASM("boss/bo6/nonmatchings/us_39144", BO6_DisableAfterImage);
+/**
+ * Disables Richter's stage-owned afterimage entities. This is the same shape
+ * as DisableAfterImage in src/ric/pl_utils.c, except BO6 keeps the player and
+ * its three afterimages in entity slots 0x40 through 0x43. The target addresses
+ * identify slots E_ID_41 through E_ID_43, and g_Ric + 0x34E identifies timer
+ * PL_T_AFTERIMAGE_DISABLE. RIC's US-only debug print is absent from this copy.
+ */
+void BO6_DisableAfterImage(s32 resetAnims, s32 arg1) {
+    Primitive* prim;
+
+    if (resetAnims) {
+        g_Entities[E_ID_41].ext.disableAfterImage.resetFlag = 1;
+        g_Entities[E_ID_41].animCurFrame =
+            g_Entities[E_ID_42].animCurFrame =
+                g_Entities[E_ID_43].animCurFrame = 0;
+        prim = &g_PrimBuf[g_Entities[E_ID_41].primIndex];
+        while (prim) {
+            prim->x1 = 0;
+            prim = prim->next;
+        }
+    }
+    g_Entities[E_ID_41].ext.disableAfterImage.disableFlag = 1;
+    g_Entities[E_ID_41].ext.disableAfterImage.index = MaxAfterImageIndex;
+    if (arg1) {
+        g_Ric.timers[PL_T_AFTERIMAGE_DISABLE] = 4;
+    }
+}
 
 // Richter (BO6): reset the afterimage effect state.
 // Same idiom as src/boss/bo4/unk_45354.c and src/boss/rbo5/unk_44954.c.
