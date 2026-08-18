@@ -1094,7 +1094,69 @@ void BO6_RicStepSlide(void) {
     }
 }
 
-INCLUDE_ASM("boss/bo6/nonmatchings/richter", BO6_RicStepSlideKick);
+extern AnimationFrame D_us_801820E4[];
+extern AnimationFrame D_us_80182310[];
+
+// Richter (BO6): slide-kick collision and rebound. This is the RIC twin with
+// two target-visible differences: the enemy bounce assigns -3.5 directly and
+// there is no separate wall-contact block that zeros horizontal velocity.
+void BO6_RicStepSlideKick(void) {
+    if ((g_Ric.padPressed & PAD_SQUARE) && (g_Ric.unk44 & 0x80)) {
+        RIC.step = PL_S_JUMP;
+        BO6_RicSetAnimation(D_us_801820E4);
+        BO6_RicSetSpeedX(FIX(-1.5));
+        RIC.velocityY = FIX(-3.5);
+        g_Ric.unk44 |= 10;
+        g_Ric.unk44 &= ~4;
+        RIC.step_s = 2;
+        return;
+    }
+
+    DecelerateX(FIX(0.0625));
+    RIC.velocityY += 0x1000;
+
+    if (g_Ric.vram_flag & TOUCHING_GROUND) {
+        g_CurrentEntity->velocityX /= 2;
+        BO6_RicCreateEntFactoryFromEntity(g_CurrentEntity, 0, 0);
+        RIC.facingLeft++;
+        RIC.facingLeft &= 1;
+        BO6_RicSetCrouch(3, RIC.velocityX);
+        g_api_PlaySfx(0x64B);
+        return;
+    }
+
+    if (RIC.velocityX < 0) {
+        if (g_Ric.padPressed & PAD_RIGHT) {
+            DecelerateX(FIX(0.125));
+        }
+        if ((RIC.velocityX > FIX(-3)) ||
+            (g_Ric.vram_flag & TOUCHING_L_WALL)) {
+            RIC.facingLeft++;
+            RIC.facingLeft &= 1;
+            RIC.velocityX /= 2;
+            BO6_RicSetAnimation(D_us_80182310);
+            g_Ric.unk44 = 10;
+            RIC.step_s = 2;
+            RIC.step = PL_S_JUMP;
+        }
+    }
+
+    if (RIC.velocityX > 0) {
+        if (g_Ric.padPressed & PAD_LEFT) {
+            DecelerateX(FIX(0.125));
+        }
+        if ((RIC.velocityX < FIX(3)) ||
+            (g_Ric.vram_flag & TOUCHING_R_WALL)) {
+            RIC.facingLeft++;
+            RIC.facingLeft &= 1;
+            RIC.velocityX /= 2;
+            BO6_RicSetAnimation(D_us_80182310);
+            g_Ric.unk44 = 10;
+            RIC.step_s = 2;
+            RIC.step = PL_S_JUMP;
+        }
+    }
+}
 
 #include "bo6.h"
 
