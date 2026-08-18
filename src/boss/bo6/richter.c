@@ -835,7 +835,37 @@ void BO6_RicStepWalk(void) {
     }
 }
 
-INCLUDE_ASM("boss/bo6/nonmatchings/richter", BO6_RicStepRun);
+extern AnimationFrame D_us_80181F24[];
+
+// Richter (BO6) run step. This is RicStepRun without RIC's US-only unk7A
+// early exit; the target begins directly with the two timer reloads.
+void BO6_RicStepRun(void) {
+    g_Ric.timers[PL_T_8] = 8;
+    g_Ric.timers[PL_T_CURSE] = 8;
+    if (!BO6_RicCheckInput(0x305C)) {
+        DecelerateX(FIX(0.125));
+        if (BO6_RicCheckFacing() == 0) {
+            BO6_RicSetStand(0);
+            if (g_Ric.timers[PL_T_RUN] == 0) {
+                if (!(g_Ric.vram_flag &
+                      (TOUCHING_L_WALL | TOUCHING_R_WALL))) {
+                    BO6_RicSetAnimation(D_us_80181F24);
+                    BO6_RicCreateEntFactoryFromEntity(
+                        g_CurrentEntity, BP_SKID_SMOKE, 0);
+                }
+            } else {
+                RIC.velocityX = 0;
+            }
+            return;
+        }
+        if (RIC.step_s != 0) {
+            if (RIC.step_s) {
+            }
+        } else {
+            BO6_RicSetSpeedX(FIX(2.25));
+        }
+    }
+}
 
 INCLUDE_ASM("boss/bo6/nonmatchings/richter", BO6_RicStepJump);
 
