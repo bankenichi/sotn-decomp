@@ -233,9 +233,12 @@ why further permuter work is exhausted or structurally inapplicable.
 ## P2b: Exhaust BO6's remaining `src/ric` twins  *(open, no blockers)*
 
 The original scan found 65 BO6 stubs with same-named `src/ric` functions. That
-is a historical opening count, not the remaining workload. A fresh 2026-08-18
-scan reports 49 BO6 stubs with any twin candidate; #110 owns the surviving named
-RIC subset. The ported cases continue to validate the method.
+is a historical opening count, not the remaining workload. A complete live
+reconciliation on 2026-08-18 examined all 45 unmatched BO6 records. Thirty are
+genuine `src/ric` candidates: 17 are adaptable, 7 still need map or declaration
+evidence, and 6 are proven structural non-twins. Nine records have no twin and
+six carry unrelated false candidates, so those fifteen are outside #110. The
+ported cases continue to validate the method.
 
 `BO6_RicStepSlide` matched on 2026-08-18 from `src/ric/pl_steps.c`. Its live
 body was instruction-identical after the BO6 object swap, but the compiler
@@ -287,9 +290,10 @@ table, and the target-visible `flags |= 0` preserves its running-origin
 fallthrough load/store. BO6 does not propagate `FLAG_UNK_10000` to children.
 `BO6_RicEntityCrashBibleBeam` compiled from `src/ric/319C4.c` and reached a
 linked score of 60. The remaining delta is one zero-store scheduled two
-instructions later than the target before the allocator call. Its exact source
-is preserved as an immutable whole-file seed and routed to the permuter rather
-than being manually tuned further.
+instructions later than the target before the allocator call. #174 then ran
+about 8,980 targeted iterations with no improvement or errors. Its exact source
+remains an immutable whole-file seed and the queue record is deferred with the
+complete exhausted-search evidence.
 
 These are NOT shimmable and must not be treated as such. RIC's copies read
 `g_Player` and `PLAYER`; BO6's read `g_Ric` and `RIC`, which are different
@@ -1039,12 +1043,12 @@ Status: **done**, **open**, **partial**, **void** (turned out unnecessary),
 | 102 | done | m2c-only runs. The size wall is gone; the Entity naming wall is behind it |
 | 103 | done | The derivation plus 1 of 5. The other 4 each needed real work and were split out to #105 |
 | 104 | done | `grep -E`: alternation went from 0 to 8 matches, a bad regex now errors, the engine is reported |
-| 105 | partial | One of the four remaining twins is now matched. `BO6_RicEntitySubwpnBible` was an exact RIC twin adaptation once BO6's flag, API, SFX, factory-call and player-object differences were reconciled. Its isolated score 40 was only equivalent relocation labels; the final link verified 81/81. `EntityRelicOrb`, `EntityGaibon`, and `BO6_RicEntityAguneaLightning` remain |
+| 105 | partial | Reconciled against the live queue and current compiled-donor scorer. `BO6_RicEntitySubwpnBible` remains matched with 81/81 proof. `EntityRelicOrb` advanced from its exhausted 31525 seed to an honest isolated score 10, and `BO6_RicEntityAguneaLightning` advanced from 5105 to 15; both exact score receipts and bodies are preserved under their owned `.adapt-scores` directories and remain deferred until immutable publication under #187. `EntityGaibon` is not a mechanical twin: the available NP3 donor is 1108 instructions against the target's 1281 with only 62.7% alignment, so it remains deferred for structural derivation or advanced-context work. All three live notes retain the older evidence and the new disposition |
 | 106 | done | The supervisor stamps `SEED_CURRENT`. The loop is closed |
 | 107 | done | README status tables AND prose are generated |
 | 108 | done | Auto-commit remains deliberately rejected. The worker now writes a durable verified landing snapshot before reporting `matched`, while root review, explicit staging, commit and push remain the only Git authority |
 | 109 | done | Closed: no `Ext` field was missing. The m2c-only path could not name them |
-| 110 | partial | P4 twin exhaustion is in progress. Thirteen current-campaign twins are matched: `BO6_RicEntitySubwpnBible`, `BO6_RicStepSlide`, `BO6_RicStepSlideKick`, `BO6_RicEntityArmBrandishWhip`, `BO6_RicEntityHitByDark`, `BO6_RicDoCrash`, `BO6_RicEntityHitByHoly`, `BO6_RicDoAttack`, `BO6_RicStepCrouch`, `BO6_RicEntitySubwpnHolyWaterBreakGlass`, `BO6_RicEntitySubwpnCrashCross`, `BO6_RicStepJump`, and `BO6_RicEntityFactory`. `BO6_RicCheckSubweapon` has a specific false-twin disposition. `BO6_RicEntityCrashBibleBeam` is a compiling score-60 near with its immutable seed preserved for #174. All target-visible differences and derivations are retained in their queue records; the remaining named RIC twins must still match or receive the same evidence-backed disposition before model calls |
+| 110 | partial | Reconciled against a complete live BO6 scan. Thirteen current-campaign twins are matched: `BO6_RicEntitySubwpnBible`, `BO6_RicStepSlide`, `BO6_RicStepSlideKick`, `BO6_RicEntityArmBrandishWhip`, `BO6_RicEntityHitByDark`, `BO6_RicDoCrash`, `BO6_RicEntityHitByHoly`, `BO6_RicDoAttack`, `BO6_RicStepCrouch`, `BO6_RicEntitySubwpnHolyWaterBreakGlass`, `BO6_RicEntitySubwpnCrashCross`, `BO6_RicStepJump`, and `BO6_RicEntityFactory`. Of the 45 unmatched BO6 records, exactly 30 have genuine `src/ric` candidates: 17 adaptable, 7 needing map or declaration evidence, and 6 structural non-twins. Nine no-twin records and six unrelated false candidates are excluded. `BO6_RicCheckSubweapon` retains its specific false-twin disposition, and #174 completed `BO6_RicEntityCrashBibleBeam` as an exhausted score-60 deferred seed. The remaining adaptable and unresolved records still need a match or evidence-backed queue disposition |
 | 111 | **open** | A/B reasoning: the per-worker effort knob landed and is ready to run |
 | 112 | partial | The doc drift check exists and covers three invariants. The rest is still human |
 | 113 | done | Handoff is tier-gated, with a claim breaker behind it |
@@ -1070,7 +1074,7 @@ Status: **done**, **open**, **partial**, **void** (turned out unnecessary),
 | 129 | done | **The queue had no backup, and a backup branch did not reveal it.** Making a checkpoint branch on 2026-08-17 exposed the gap: the queue lives at `~/sotn-work/queue.jsonl`, outside the repo, so a branch protects `src/` and the docs and not the record of how any of it was produced. That location is correct and stays (a cloud sync daemon destroyed the in-repo queue in 2026-07 and took 438 records with it), but it answered *where the hot file lives* and never answered *what backs it up*. Built `queue_snapshot` and `queue_restore`: the hot file stays on WSL-native storage, a point-in-time copy lands in `automation/queue/snapshots/` on demand and is never rewritten, so no daemon has a race to lose. snapshot borrows the writer's lock and is deliberately NOT guarded by the queue-owner check, because backing up a queue you distrust is exactly when you need it to work; restore is guarded, validates every line before touching anything, and snapshots what it is about to replace |
 | 128 | done | Two matches by hand derivation. `EntityClockRoomController`: a declaration-order problem plus `u16` where the asm's `sll 16` + `bnez` demands `s16`. `func_us_801B6998`: **retracts the 2026-08-16 diagnosis** of a delay-slot nop at +21. The real cause was switch dispatch form: four live cases compile to a compare chain, and the jump table's own extent named the two empty cases needed to restore it |
 
-## Codex transition and dependency audit, 2026-08-18 (#130 to #192)
+## Codex transition and dependency audit, 2026-08-18 (#130 to #194)
 
 | # | status | task and outcome |
 |---|---|---|
@@ -1137,3 +1141,5 @@ Status: **done**, **open**, **partial**, **void** (turned out unnecessary),
 | 190 | done | Hardened automatic map proof. A donor symbol or literal that aligns to more than one target value now makes the pair structural-near and suppresses every automatic edit instead of retaining the last proposal. Entity-update enum proof filters inactive PSP tables before reading ordinals and removes all conditional directive lines, so a PSP-only dispatch table cannot authorize a US rename |
 | 191 | done | Made compiled-donor freshness dependency-complete. `asm_delta.py` reads Ninja's compiler dependency database for each consumer object and rejects the object if any direct or transitive header is missing or newer. A focused regression changes an included header while leaving the C source older and proves the stale object is refused; the live shared-header `EntityRelicOrb` path still resolves through a current consumer object |
 | 192 | done | Made the programmatic score pass account for every exact record it examines. Clean ready twins and structural not-twins are rendered instead of silently skipped, `--limit` counts actual isolated scores rather than unrelated classifications, and any import, debug, archive, restoration or instrument error makes the command fail even when another record produced a numeric score. Focused `asm_delta`, `transplant` and `permuter_supervisor` gates pass; final build job `make_build-143051-67032` succeeded and the US oracle returned 81/81 |
+| 193 | done | Reconciled #105 against the live queue and current compiled-donor scorer without discarding earlier attempts. `EntityRelicOrb` now has an honest isolated score 10 body, `BO6_RicEntityAguneaLightning` has score 15, and `EntityGaibon` is a measured structural non-twin rather than merely a model-size deferral. Complete new evidence was appended to all three queue records with prior notes preserved |
+| 194 | done | Reconciled #110 against every unmatched BO6 record. The surviving `src/ric` scope is exactly 30 records: 17 adaptable, 7 needing maps or declarations, and 6 structural non-twins. The old line that left CrashBibleBeam pending under #174 was stale; #174 already exhausted it at score 60 and deferred it with its immutable seed |
