@@ -1557,7 +1557,48 @@ void func_us_801C8618(Entity* self) {
 INCLUDE_ASM(
     "boss/bo6/nonmatchings/us_3E79C", BO6_RicEntityCrashReboundStoneExplosion);
 
-INCLUDE_ASM("boss/bo6/nonmatchings/us_3E79C", BO6_RicEntityCrashReboundStone);
+// Richter (BO6): sequence the rebound-stone crash bursts and final explosion.
+// This twin differs from playable RIC only in its BO6 factory entry point and
+// the single flag retained by the target.
+void BO6_RicEntityCrashReboundStone(Entity* self) {
+    switch (self->step) {
+    case 0:
+        self->flags = FLAG_UNK_10000000;
+        self->step++;
+        self->ext.timer.t = 0x14;
+        // fallthrough
+    case 1:
+        if (--self->ext.timer.t) {
+            break;
+        }
+    case 3:
+    case 5:
+        BO6_RicCreateEntFactoryFromEntity(self, BP_57, 0);
+        self->step++;
+    case 2:
+    case 4:
+    case 6:
+        self->ext.timer.t++;
+        if (self->ext.timer.t > 10) {
+            self->ext.timer.t = 0;
+            self->posX.val = FIX(128);
+            self->posY.val = 0;
+            BO6_RicCreateEntFactoryFromEntity(
+                self, FACTORY(BP_EMBERS, 1), 0);
+            self->step++;
+        }
+        break;
+    case 7:
+        self->ext.timer.t++;
+        if (self->ext.timer.t > 15) {
+            DestroyEntity(self);
+            g_Ric.unk4E = 1;
+            BO6_RicCreateEntFactoryFromEntity(
+                self, BP_CRASH_REBOUND_STONE_EXPLOSION, 0);
+        }
+        break;
+    }
+}
 
 INCLUDE_ASM("boss/bo6/nonmatchings/us_3E79C", BO6_RicEntityCrashBibleBeam);
 
