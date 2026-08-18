@@ -70,28 +70,47 @@ Model assignments are provisional until benchmarked on this project.
 
 ### Luna
 
-Candidate role: fast corpus search, consistency checks, mechanical
-classification, and narrow evidence extraction.
+Status: restricted to root-gated `xhigh` support.
 
-Use only when the question is bounded and its answer can be checked from named
-files. Do not ask Luna for compiler-quirk conclusions until the benchmark shows
-that it can distinguish evidence from plausible invention.
+Benchmarked 2026-08-18 across `low`, `medium`, `high`, `xhigh`, and `max`.
+`xhigh` was the only setting that passed the process gate and produced a useful
+candidate. That candidate compiled and left its overlay one instruction short.
+Both `xhigh` and `max` missed the same hidden GCC switch and scheduling answer,
+and `max` produced no compensating quality gain for its longer run.
+
+Approved root-gated support role at `xhigh`: corpus search, consistency checks,
+declaration extraction, mechanical classification, and bounded candidate
+drafting. This is not fleet authority. Every answer must remain checkable from
+named files, and the root independently owns the build and verdict.
+
+Do not assign Luna autonomous fleet process ownership or compiler-quirk
+last-mile decisions. If Luna is evaluated as a cheaper generation backend, put
+it behind deterministic worker mechanics rather than asking it to remember the
+stateful process. See
+`docs/benchmarks/luna/2026-08-18-effort-benchmark.md`.
 
 ### Terra
+
+Status: benchmark pending.
 
 Candidate role: codebase exploration, twin comparison, candidate review, and
 ordinary static C or assembly reasoning.
 
-Use for questions that require several files but no stateful execution. The root
-agent turns Terra's findings into edits and owns verification.
+Benchmark pending. Until Terra passes the fixed cases, use it only for explicitly
+unscored, read-only advice whose claims the root rechecks. Do not assign it a
+production role. The root agent turns any accepted finding into edits and owns
+verification.
 
 ### Sol
+
+Status: benchmark pending.
 
 Candidate role: hard compiler reasoning, architecture, adversarial review, and
 the final static-analysis pass before root execution.
 
-Use when a finding affects shared structures, data layout, connector security,
-or several downstream functions. Sol advises; the root agent decides and acts.
+Benchmark pending. Until Sol passes the fixed cases, use it only for explicitly
+unscored, read-only advice whose claims the root rechecks. Do not assign it a
+production role. Sol advises; the root agent decides and acts.
 
 ## 5. Capability benchmark
 
@@ -113,6 +132,11 @@ Do not provide the historical answer. Score each response on:
 Record the result in `ROADMAP.md` and a benchmark note under `docs/`. Assign a
 model only to work it demonstrated it can do reliably. Re-test after material
 model revisions.
+
+Luna result: the effort sweep is recorded in
+`docs/benchmarks/luna/2026-08-18-effort-benchmark.md`. No setting passed every
+case. `xhigh` is approved only for bounded read-only investigation and candidate
+drafting; autonomous fleet replacement is not approved.
 
 ## 6. Dispatch rules
 
@@ -168,4 +192,3 @@ Before landing automation changes:
 5. review the diff
 6. stage each intended path individually
 7. commit and push to `origin`
-
