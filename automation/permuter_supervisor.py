@@ -354,6 +354,28 @@ def seed_from_notes(notes: str) -> str:
     return m.group(1) if m else ""
 
 
+def immutable_seed_for_current(current: Path) -> str:
+    """The immutable history path represented by a stable current seed."""
+    stable = current.relative_to(REPO).as_posix()
+    history = current.parent / "history"
+    if not history.is_dir():
+        return stable
+    pattern = re.compile(
+        rf"^{re.escape(current.stem)}\.v[0-9]+{re.escape(current.suffix)}$")
+    try:
+        data = current.read_bytes()
+        versions = sorted(
+            (item for item in history.iterdir()
+             if item.is_file() and pattern.fullmatch(item.name)),
+            reverse=True)
+        for version in versions:
+            if version.read_bytes() == data:
+                return version.relative_to(REPO).as_posix()
+    except OSError:
+        pass
+    return stable
+
+
 def _build_lock():
     """A factory for the SAME lock the fleet workers use.
 
@@ -1653,6 +1675,24 @@ def self_test() -> int:
         w3, msg3 = import_workdir("fn_q", "nope.c", lock=nolock)
         ck(w3 is None and "seed not found" in msg3,
            "a missing seed is reported clearly")
+
+        print("\nreconciliation points at the immutable current generation")
+        candidate_dir = t / "automation" / "candidates"
+        history_dir = candidate_dir / "history"
+        history_dir.mkdir(parents=True)
+        current_seed = candidate_dir / "us_TEST_fn_q.c"
+        current_seed.write_text("current generation\n")
+        old_version = history_dir / "us_TEST_fn_q.v0001.c"
+        old_version.write_text("old generation\n")
+        exact_version = history_dir / "us_TEST_fn_q.v0002.c"
+        exact_version.write_text("current generation\n")
+        ck(immutable_seed_for_current(current_seed)
+           == "automation/candidates/history/us_TEST_fn_q.v0002.c",
+           "a stable current seed resolves to its exact immutable version")
+        exact_version.write_text("different generation\n")
+        ck(immutable_seed_for_current(current_seed)
+           == "automation/candidates/us_TEST_fn_q.c",
+           "a legacy current seed falls back to its stable path")
         REPO = old_repo
 
         print("\nempty queue")
@@ -2082,9 +2122,10 @@ def reconcile_seeds(apply: bool = False) -> int:
         return 0
     n = 0
     for rid, st, f in orphans:
+        seed_rel = immutable_seed_for_current(f)
         out = report(rid, "near",
                      f"seed exists but record was {st}; filed near by "
-                     f"reconcile_seeds. seed=automation/candidates/{f.name}")
+                     f"reconcile_seeds. seed={seed_rel}")
         ok = "FAILED" not in out
         print(f"  {'ok  ' if ok else 'FAIL'} {rid} -> near")
         n += ok

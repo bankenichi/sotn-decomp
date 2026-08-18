@@ -166,6 +166,30 @@ def main():
               "and a warning that it is not a permuter seed")
         check("REJECTED BEFORE THE BUILD" in body or "did NOT compile" in body,
               "and the header says which of the two it was")
+
+        first_path = os.path.join(tmp, got.replace("/", os.sep))
+        first_bytes = open(first_path, "rb").read()
+        got2 = wd.save_rejected(
+            rec, "void f(void) { different_bad_c }", 4,
+            "BUILD FAILED: a different complete diagnostic",
+            {"src_rel": "src/st/rcen/unk_1F0D8.c"})
+        second_path = os.path.join(tmp, got2.replace("/", os.sep))
+        current_path = wd.rejected_path(rec)
+        check("/history/" in got.replace("\\", "/")
+              and "/history/" in got2.replace("\\", "/"),
+              "queue notes receive immutable rejection paths")
+        check(got2 != got and os.path.isfile(second_path),
+              "a later rejection receives a distinct immutable path")
+        check(open(first_path, "rb").read() == first_bytes,
+              "the first rejection remains byte-identical")
+        current_body = open(current_path, encoding="utf-8").read()
+        check("different_bad_c" in current_body,
+              "the stable rejected path contains the newest generation")
+        versions = [name for name in os.listdir(
+            os.path.join(os.path.dirname(current_path), "history"))
+                    if name.endswith(".c")]
+        check(len(versions) == 2,
+              f"both rejection generations survive ({len(versions)})")
     finally:
         wd.WIN_REPO = real_repo
         shutil.rmtree(tmp, ignore_errors=True)

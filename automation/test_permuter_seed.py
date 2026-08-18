@@ -34,7 +34,9 @@ from __future__ import annotations
 
 import importlib.util
 import re
+import shutil
 import sys
+import tempfile
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
@@ -62,8 +64,10 @@ def main() -> int:
     check("ctx" in src[i:src.find(")", i) + 1], "save_candidate accepts ctx")
     check("virtual_apply(ctx" in body,
           "it builds the payload with virtual_apply")
-    check("f.write(payload)" in body,
-          "it writes the substituted payload, not the bare body")
+    check("+ payload" in body,
+          "it publishes the substituted payload, not the bare body")
+    check("_publish_versioned_artifact" in body,
+          "the writer routes through immutable artifact publication")
     check("_archive_verdict(detail)" in body,
           "the banner keeps the complete verdict without raw build status")
     check("except Exception" in body,
@@ -71,6 +75,67 @@ def main() -> int:
           "the seed")
     check("save_candidate(rec, code, attempt, detail, ctx)" in src,
           "the call site actually passes ctx")
+
+    print("\nevery saved seed has an immutable queue path and stable current view")
+    temp_root = Path(tempfile.mkdtemp())
+    real_repo = wd.WIN_REPO
+    try:
+        wd.WIN_REPO = str(temp_root)
+        rec = {"id": "us:ST/TEST:VersionedSeed",
+               "function": "VersionedSeed", "build": "us",
+               "overlay": "ST/TEST"}
+        current = Path(wd.candidate_path(rec))
+        current.parent.mkdir(parents=True, exist_ok=True)
+        legacy = b"/* legacy current seed */\nvoid VersionedSeed(void) {}\n"
+        current.write_bytes(legacy)
+
+        first = wd.save_candidate(
+            rec, "void VersionedSeed(void) { g_CurrentEntity->step = 1; }\n",
+            1, "BUILT, CHECKSUM MISMATCH", None)
+        first_path = temp_root / first
+        versions = sorted((current.parent / "history").glob("*.c"))
+        check("/history/" in first.replace("\\", "/"),
+              f"the queue path is immutable ({first})")
+        check(first_path.is_file(), "the first immutable version exists")
+        check(any(item.read_bytes() == legacy for item in versions),
+              "a legacy stable seed is archived byte-for-byte before replacement")
+        check(len(versions) == 2,
+              f"legacy plus first generation are retained ({len(versions)})")
+        first_bytes = first_path.read_bytes()
+
+        second = wd.save_candidate(
+            rec, "void VersionedSeed(void) { g_CurrentEntity->step = 2; }\n",
+            2, "BUILT, CHECKSUM MISMATCH after feedback", None)
+        second_path = temp_root / second
+        check(second != first and second_path.is_file(),
+              f"a later attempt gets a distinct immutable path ({second})")
+        check(first_path.read_bytes() == first_bytes,
+              "the first generated version remains byte-identical")
+        check("step = 2" in current.read_text(encoding="utf-8"),
+              "the stable top-level seed is the newest generation")
+        top_level = sorted(current.parent.glob("*.c"))
+        check(top_level == [current],
+              "the supervisor's non-recursive scan still sees one current seed")
+
+        real_replace = wd.os.replace
+        try:
+            def reject_refresh(_src, _dst):
+                raise OSError("simulated stable refresh failure")
+            wd.os.replace = reject_refresh
+            third = wd.save_candidate(
+                rec,
+                "void VersionedSeed(void) { g_CurrentEntity->step = 3; }\n",
+                3, "BUILT, CHECKSUM MISMATCH with publish failure", None)
+        finally:
+            wd.os.replace = real_replace
+        check("/history/" in third.replace("\\", "/")
+              and (temp_root / third).is_file(),
+              "a stable-refresh failure still returns the preserved generation")
+        check("step = 2" in current.read_text(encoding="utf-8"),
+              "a failed refresh leaves the prior stable view intact")
+    finally:
+        wd.WIN_REPO = real_repo
+        shutil.rmtree(temp_root, ignore_errors=True)
 
     print("\nthe seed is self-contained for a real repo file")
     # A real file with a real stub, so the substitution is exercised against

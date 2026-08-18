@@ -327,10 +327,17 @@ It must NOT live under `automation/logs/` — that directory is gitignored and
 periodically archived, which is why all four `near` records had zero surviving
 seeds when the permuter finally needed them.
 
-`save_candidate()` currently overwrites earlier compiling attempts. That
-behavior predates the archive-before-replacement rule and is tracked as #161.
-Production fleet work remains blocked on that task. Until it closes, archive an
-existing seed before any targeted retry that could replace it.
+`save_candidate()` publishes every compiling attempt to an immutable
+`automation/candidates/history/<record>.vNNNN.c` path and returns that exact
+path for the queue's `seed=` field. Only after the immutable version exists
+does it atomically refresh the stable top-level current file. A legacy current
+file is copied byte-for-byte into history before its first replacement.
+
+The supervisor continues to scan top-level `automation/candidates/*.c`
+non-recursively, so history cannot create duplicate work. Direct imports follow
+the immutable queue path. Reconciliation resolves a stable current file to its
+byte-identical immutable generation when possible. `save_rejected()` uses the
+same publisher under its own directory and returns an exact `rejected=` path.
 
 ### Verified landing snapshots
 

@@ -47,6 +47,7 @@ import signal
 import socket
 import subprocess
 import sys
+import tempfile
 import threading
 # Only for review_gate: review_checks.py takes a pathlib.Path and does
 # .relative_to(REPO) on it, so a plain string will not do.
@@ -1387,6 +1388,100 @@ def _archive_verdict(detail: str) -> str:
     return "\n".join(kept).strip() or "no verdict detail"
 
 
+def _artifact_history_versions(path: str) -> list[str]:
+    """Immutable versions for one stable candidate or rejection path."""
+    directory = os.path.join(os.path.dirname(path), "history")
+    if not os.path.isdir(directory):
+        return []
+    stem, ext = os.path.splitext(os.path.basename(path))
+    pattern = re.compile(
+        rf"^{re.escape(stem)}\.v([0-9]+){re.escape(ext)}$")
+    versions: list[tuple[int, str]] = []
+    for name in os.listdir(directory):
+        match = pattern.fullmatch(name)
+        if match:
+            versions.append((int(match.group(1)),
+                             os.path.join(directory, name)))
+    return [item[1] for item in sorted(versions)]
+
+
+def _write_history_version(path: str, data: bytes) -> str:
+    """Write one immutable version and return its absolute path."""
+    directory = os.path.join(os.path.dirname(path), "history")
+    os.makedirs(directory, exist_ok=True)
+    stem, ext = os.path.splitext(os.path.basename(path))
+    existing = _artifact_history_versions(path)
+    version = 1
+    if existing:
+        match = re.search(r"\.v([0-9]+)" + re.escape(ext) + r"$",
+                          existing[-1])
+        if match:
+            version = int(match.group(1)) + 1
+    while True:
+        candidate = os.path.join(
+            directory, f"{stem}.v{version:04d}{ext}")
+        try:
+            with open(candidate, "xb") as f:
+                f.write(data)
+            return candidate
+        except FileExistsError:
+            version += 1
+
+
+def _publish_versioned_artifact(path: str, text: str, label: str) -> str:
+    """Preserve an immutable generation, then refresh the stable current view.
+
+    The returned path names the immutable generation. Queue evidence therefore
+    identifies exactly what was measured, while the stable top-level file keeps
+    non-recursive discovery compatible with the existing supervisor.
+    """
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    data = text.encode("utf-8")
+    versions = _artifact_history_versions(path)
+    archived = ""
+    if os.path.isfile(path):
+        with open(path, "rb") as f:
+            current = f.read()
+        represented = False
+        for version_path in versions:
+            with open(version_path, "rb") as f:
+                if f.read() == current:
+                    represented = True
+                    break
+        if not represented:
+            archived = _write_history_version(path, current)
+
+    version_path = _write_history_version(path, data)
+
+    try:
+        fd, temp_path = tempfile.mkstemp(
+            prefix=f".{os.path.basename(path)}.", suffix=".tmp",
+            dir=os.path.dirname(path))
+    except OSError as e:
+        print(f"  !! {label} version saved but stable view was not refreshed: "
+              f"{e}", flush=True)
+        return os.path.relpath(version_path, WIN_REPO).replace("\\", "/")
+    try:
+        with os.fdopen(fd, "wb") as f:
+            f.write(data)
+        os.replace(temp_path, path)
+        temp_path = ""
+    except OSError as e:
+        print(f"  !! {label} version saved but stable view was not refreshed: "
+              f"{e}", flush=True)
+    finally:
+        if temp_path:
+            try:
+                os.unlink(temp_path)
+            except OSError:
+                pass
+
+    if archived:
+        rel = os.path.relpath(archived, WIN_REPO).replace("\\", "/")
+        print(f"  -> prior {label} archived: {rel}", flush=True)
+    return os.path.relpath(version_path, WIN_REPO).replace("\\", "/")
+
+
 def save_rejected(rec: dict, code: str, attempt: int, detail: str,
                   ctx: dict | None = None, origin: str = "") -> str:
     """Keep the C that failed to build, instead of throwing it away.
@@ -1438,30 +1533,30 @@ def save_rejected(rec: dict, code: str, attempt: int, detail: str,
         verdict_line = ("was REJECTED BEFORE THE BUILD" if never_built
                         else "did NOT compile")
         verdict = _archive_verdict(detail)
-        with open(path, "w", encoding="utf-8") as f:
-            f.write(
-                f"/* REJECTED CANDIDATE -- {verdict_line}. Kept on purpose.\n"
-                f"   record : {rec['id']}\n"
-                f"   attempt: {attempt}/{MAX_ATTEMPTS}\n"
-                f"   from   : {model}\n"
-                f"   origin : {ctx.get('src_rel', '?') if ctx else '?'}\n"
-                f"   verdict: {verdict}\n"
-                f"\n"
-                f"   This is NOT a permuter seed and must never be treated as\n"
-                f"   one: it has never built. automation/candidates/ is for\n"
-                f"   code that builds and merely misses on bytes.\n"
-                f"\n"
-                f"   Why it is kept: the escalation path used to record only\n"
-                f"   the compiler's message, so a record like `g_EInitCommon\n"
-                f"   undeclared` described code nobody could look at any more.\n"
-                f"   Twelve such records were assumed to be one extern away\n"
-                f"   from building, and turned out to need a full re-attempt\n"
-                f"   because the candidate had been discarded.\n"
-                f"\n"
-                f"   Do NOT apply this to the tree. Read it, fix what the\n"
-                f"   verdict names, and re-attempt. */\n")
-            f.write(code)
-        return os.path.relpath(path, WIN_REPO).replace("\\", "/")
+        artifact = (
+            f"/* REJECTED CANDIDATE -- {verdict_line}. Kept on purpose.\n"
+            f"   record : {rec['id']}\n"
+            f"   attempt: {attempt}/{MAX_ATTEMPTS}\n"
+            f"   from   : {model}\n"
+            f"   origin : {ctx.get('src_rel', '?') if ctx else '?'}\n"
+            f"   verdict: {verdict}\n"
+            f"\n"
+            f"   This is NOT a permuter seed and must never be treated as\n"
+            f"   one: it has never built. automation/candidates/ is for\n"
+            f"   code that builds and merely misses on bytes.\n"
+            f"\n"
+            f"   Why it is kept: the escalation path used to record only\n"
+            f"   the compiler's message, so a record like `g_EInitCommon\n"
+            f"   undeclared` described code nobody could look at any more.\n"
+            f"   Twelve such records were assumed to be one extern away\n"
+            f"   from building, and turned out to need a full re-attempt\n"
+            f"   because the candidate had been discarded.\n"
+            f"\n"
+            f"   Do NOT apply this to the tree. Read it, fix what the\n"
+            f"   verdict names, and re-attempt. */\n"
+            + code)
+        return _publish_versioned_artifact(
+            path, artifact, "rejected candidate")
     except OSError as e:
         print(f"  !! could not archive rejected candidate: {e}", flush=True)
         return ""
@@ -1699,44 +1794,44 @@ def save_candidate(rec: dict, code: str, attempt: int, detail: str,
             except Exception as e:                       # never lose the seed
                 print(f"  !! seed fell back to the bare body: {e}", flush=True)
         verdict = _archive_verdict(detail)
-        with open(path, "w", encoding="utf-8") as f:
-            f.write(f"/* PERMUTER SEED -- compiled and linked, bytes differ.\n"
-                    f"   record : {rec['id']}\n"
-                    f"   attempt: {attempt}/{MAX_ATTEMPTS}\n"
-                    f"   model  : {model}\n"
-                    f"   verdict: {verdict}\n"
-                    f"   content: {kind}\n"
-                    f"   origin : {ctx.get('src_rel', '?') if ctx else '?'}\n"
-                    f"   asm    : {asm_rel_path(rec, ctx.get('asm_rel', '')) if ctx else '<asm>'}\n"
-                    f"\n"
-                    f"   IMPORT VIA THE SUPERVISOR, NOT DIRECTLY:\n"
-                    f"       permuter_supervisor.py --import-seeds\n"
-                    f"\n"
-                    f"   This banner used to say `import.py <this file> <asm>`,\n"
-                    f"   and that ADVICE CANNOT WORK. The seed is the whole\n"
-                    f"   source file, so it starts with quoted includes like\n"
-                    f"   #include \"bo0.h\" -- and cpp resolves a quoted include\n"
-                    f"   relative to the DIRECTORY OF THE FILE. From\n"
-                    f"   automation/candidates/ there is no bo0.h, so the import\n"
-                    f"   dies with `fatal error: bo0.h: No such file or\n"
-                    f"   directory` before it ever looks at the C.\n"
-                    f"\n"
-                    f"   The supervisor gets this right: it writes the body back\n"
-                    f"   into `origin` above, imports from there so the includes\n"
-                    f"   resolve, and restores the file afterwards (journalled,\n"
-                    f"   so a kill cannot leave the edit behind).\n"
-                    f"\n"
-                    f"   Six BOSS/BO0 records were deferred as `seed-bug` with a\n"
-                    f"   note blaming a missing `extern func_us_801B171C`. That\n"
-                    f"   diagnosis was wrong; the seeds were fine and the import\n"
-                    f"   command in this banner was not. Verified 2026-08-10 by\n"
-                    f"   running the import and reading the actual error.\n"
-                    f"\n"
-                    f"   Do NOT apply this to the tree as-is; it does not match.\n"
-                    f"   It exists so the permuter has a compiling starting"
-                    f" point. */\n")
-            f.write(payload)
-        return os.path.relpath(path, WIN_REPO).replace("\\", "/")
+        artifact = (
+            f"/* PERMUTER SEED -- compiled and linked, bytes differ.\n"
+            f"   record : {rec['id']}\n"
+            f"   attempt: {attempt}/{MAX_ATTEMPTS}\n"
+            f"   model  : {model}\n"
+            f"   verdict: {verdict}\n"
+            f"   content: {kind}\n"
+            f"   origin : {ctx.get('src_rel', '?') if ctx else '?'}\n"
+            f"   asm    : {asm_rel_path(rec, ctx.get('asm_rel', '')) if ctx else '<asm>'}\n"
+            f"\n"
+            f"   IMPORT VIA THE SUPERVISOR, NOT DIRECTLY:\n"
+            f"       permuter_supervisor.py --import-seeds\n"
+            f"\n"
+            f"   This banner used to say `import.py <this file> <asm>`,\n"
+            f"   and that ADVICE CANNOT WORK. The seed is the whole\n"
+            f"   source file, so it starts with quoted includes like\n"
+            f"   #include \"bo0.h\" -- and cpp resolves a quoted include\n"
+            f"   relative to the DIRECTORY OF THE FILE. From\n"
+            f"   automation/candidates/ there is no bo0.h, so the import\n"
+            f"   dies with `fatal error: bo0.h: No such file or\n"
+            f"   directory` before it ever looks at the C.\n"
+            f"\n"
+            f"   The supervisor gets this right: it writes the body back\n"
+            f"   into `origin` above, imports from there so the includes\n"
+            f"   resolve, and restores the file afterwards (journalled,\n"
+            f"   so a kill cannot leave the edit behind).\n"
+            f"\n"
+            f"   Six BOSS/BO0 records were deferred as `seed-bug` with a\n"
+            f"   note blaming a missing `extern func_us_801B171C`. That\n"
+            f"   diagnosis was wrong; the seeds were fine and the import\n"
+            f"   command in this banner was not. Verified 2026-08-10 by\n"
+            f"   running the import and reading the actual error.\n"
+            f"\n"
+            f"   Do NOT apply this to the tree as-is; it does not match.\n"
+            f"   It exists so the permuter has a compiling starting"
+            f" point. */\n"
+            + payload)
+        return _publish_versioned_artifact(path, artifact, "permuter seed")
     except OSError as e:
         print(f"  !! could not save permuter seed: {e}", flush=True)
         return ""
@@ -5231,9 +5326,9 @@ def process_one(dry: bool = False, only: str | None = None) -> bool:
                 # that can time out or be killed, and losing the seed to a
                 # feedback step that is only advisory would be absurd.
                 #
-                # A later compiling attempt overwrites an earlier one on
-                # purpose: retries carry asm-differ feedback the first attempt
-                # never had, so the last one to compile is the closest.
+                # Every compiling attempt gets an immutable history version.
+                # The stable top-level file still tracks the latest attempt for
+                # reconciliation, while the queue names the exact version.
                 seed_path = save_candidate(rec, code, attempt, detail, ctx) or seed_path
                 if seed_path:
                     print(f"  -> permuter seed saved: {seed_path}", flush=True)

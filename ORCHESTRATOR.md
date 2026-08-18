@@ -167,8 +167,10 @@ finding's task.
 
 Files under `automation/candidates/`, `automation/rejected/` and
 `automation/landings/` are durable evidence, not disposable worker output.
+This includes immutable `history/` generations and their stable current views.
 A root session that creates one must report its queue disposition and explicitly
-stage the file in the same work batch. For a verified worker landing, stage both
+stage every generated evidence path in the same work batch. For a verified
+worker landing, stage both
 the named `src/` path and its unique landing snapshot as explicit paths. Do not
 leave generated evidence as a permanent untracked backlog.
 
