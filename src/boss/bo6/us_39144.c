@@ -367,7 +367,32 @@ void func_us_801B9C3C(void) {
     BO6_RicSetStep(PL_S_DEBUG);
 }
 
-INCLUDE_ASM("boss/bo6/nonmatchings/us_39144", BO6_RicSetCrouch);
+// BO6 animation tables corresponding, in order, to RIC's crouch-from-stand2,
+// crouch, land-from-air-run, and crouch-from-stand tables.
+extern AnimationFrame D_us_80182038[];
+extern AnimationFrame D_us_80182048[];
+extern AnimationFrame D_us_80182050[];
+extern AnimationFrame D_us_80182058[];
+
+// Richter (BO6): enter crouch using the same state variants as RicSetCrouch.
+void BO6_RicSetCrouch(s32 kind, s32 velocityX) {
+    BO6_RicSetStep(PL_S_CROUCH);
+    BO6_RicSetAnimation(D_us_80182048);
+    RIC.velocityX = velocityX;
+    RIC.velocityY = 0;
+    if (kind == 1) {
+        RIC.anim = D_us_80182038;
+        RIC.step_s = 4;
+    }
+    if (kind == 2) {
+        RIC.anim = D_us_80182058;
+        RIC.step_s = 1;
+    }
+    if (kind == 3) {
+        RIC.anim = D_us_80182050;
+        RIC.step_s = 4;
+    }
+}
 
 extern s32 RIC_velocityY;
 extern AnimationFrame ric_anim_stand[];
