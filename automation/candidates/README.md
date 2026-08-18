@@ -14,6 +14,14 @@ When reconciliation finds a stable current seed, it records the byte-identical
 immutable generation when one exists and otherwise retains the legacy stable
 path.
 
+The supervisor imports `content: WHOLE FILE` generations by temporarily
+staging the complete payload at its source path under the shared journal and
+lock, then restoring the source unconditionally. Legacy standalone versions
+with relative includes are materialized at the stable candidate-directory
+depth, so moving the durable copy under `history/` cannot change include
+resolution. Maintenance repairs create another immutable version and print the
+new exact `seed=` path; they never rewrite the stable view alone.
+
 On the first versioned save, any legacy top-level candidate is copied
 byte-for-byte into history before replacement. The root agent stages both the
 new immutable generation and the changed stable view by explicit path in the

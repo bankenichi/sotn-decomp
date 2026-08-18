@@ -289,8 +289,8 @@ supports `--help` and most support `--self-test`.
 | script | answers |
 |---|---|
 | `run_selftests.py` | runs every `test_*.py` and prints one table |
-| `fix_seed_declarations.py` | retrofit missing declarations into permuter seeds |
-| `permuter_supervisor.py` | the auto-queueing permuter driver. **Use `job_start`** |
+| `fix_seed_declarations.py` | retrofit missing declarations into permuter seeds; `--apply` publishes an immutable version and prints its exact `seed=` path |
+| `permuter_supervisor.py` | the auto-queueing permuter driver, legacy-seed migrator and focused importer. **Use `job_start`** for searches |
 | `test_connector_surfaces.py` | REGISTRY vs decorators vs manifest, plus portability and doc checks |
 
 The remaining `test_*.py` scripts are all callable through `run_analysis` and

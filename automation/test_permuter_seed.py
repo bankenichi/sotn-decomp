@@ -56,6 +56,7 @@ def main() -> int:
     wd = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(wd)
     wd.WIN_REPO = str(REPO)
+    import permuter_supervisor as ps
 
     print("\nsave_candidate takes ctx and uses virtual_apply")
     src = (REPO / "automation" / "win" / "worker_direct.py").read_text()
@@ -175,9 +176,12 @@ def main() -> int:
     print("\nthe existing seeds on disk")
     seeds = sorted((REPO / "automation" / "candidates").glob("*.c"))
     bare = [p.name for p in seeds
-            if "#include" not in p.read_text(errors="ignore")]
-    check(True, f"{len(seeds)} seed(s) present, {len(bare)} written before the "
-                f"fix and still body-only")
+            if not ps.seed_has_include_context(p.read_text(errors="ignore"))]
+    check(not bare, f"{len(seeds)} seed(s) present and all are self-contained",
+          f"body-only: {', '.join(bare)}")
+    check(not ps.seed_has_include_context(
+              "/* banner mentions #include */\nvoid f(void) {}\n"),
+          "banner prose cannot hide a body-only payload")
     if bare:
         print(f"       these need re-saving or manual staging to import: "
               f"{', '.join(bare[:6])}")
@@ -191,7 +195,6 @@ def main() -> int:
     # Second time this shape has bitten: the same function's docstring records
     # KeyError: 'overlay' costing a real match on 2026-08-03.
     import inspect
-    import permuter_supervisor as ps
     lm = inspect.getsource(ps.land_match)
     rec_line = [l for l in lm.splitlines() if l.strip().startswith("rec = {")]
     check(bool(rec_line), "land_match builds a rec dict")

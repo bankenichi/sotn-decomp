@@ -27,6 +27,7 @@ import argparse
 import os
 import re
 import sys
+import tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "win"))
@@ -58,6 +59,11 @@ def fix_one(text: str) -> tuple[str, list[str]]:
     added = [l.strip() for l in new_body.splitlines()
              if l.strip().startswith("extern") and l not in body.splitlines()]
     return banner + new_body, added
+
+
+def publish_fixed_seed(path: str, text: str) -> str:
+    """Publish a declaration repair without overwriting prior evidence."""
+    return wd._publish_versioned_artifact(path, text, "permuter seed")
 
 
 def main() -> int:
@@ -99,8 +105,8 @@ def main() -> int:
             print(f"      + {a}")
         if args.apply:
             try:
-                with open(p, "w", encoding="utf-8") as f:
-                    f.write(new)
+                published = publish_fixed_seed(p, new)
+                print(f"      seed={published}")
             except OSError as e:
                 print(f"      !! could not write: {e}")
 
@@ -108,8 +114,8 @@ def main() -> int:
     if not changed:
         print("no seed needs a declaration added")
     elif args.apply:
-        print(f"{changed} seed(s) rewritten. Set the matching records back to "
-              f"`near` so the supervisor re-imports them.")
+        print(f"{changed} seed(s) versioned. Add each printed immutable seed= "
+              f"path to its queue record before re-importing.")
     else:
         print(f"{changed} seed(s) WOULD be rewritten. Nothing was written; "
               f"re-run with --apply.")
@@ -165,6 +171,32 @@ def self_test() -> int:
         ck(add4 == ["extern int func_us_801B171C();"],
            "declaration still added")
         ck(not out4.startswith("extern"), "and not before the include")
+
+        print("\napplying a fix versions evidence instead of overwriting it")
+        old_repo = wd.WIN_REPO
+        try:
+            with tempfile.TemporaryDirectory() as td:
+                wd.WIN_REPO = td
+                path = os.path.join(td, "automation", "candidates", "us_X.c")
+                os.makedirs(os.path.dirname(path), exist_ok=True)
+                original = b"/* original seed */\nvoid f(void) {}\n"
+                with open(path, "wb") as handle:
+                    handle.write(original)
+                published = publish_fixed_seed(
+                    path, "/* repaired seed */\nvoid f(void) { helper(); }\n")
+                versions = wd._artifact_history_versions(path)
+                ck("/history/" in published.replace("\\", "/"),
+                   "the returned queue path is immutable")
+                retained = []
+                for item in versions:
+                    with open(item, "rb") as handle:
+                        retained.append(handle.read())
+                ck(original in retained,
+                   "the prior stable seed survives byte-identical in history")
+                ck(len(versions) == 2,
+                   "the original and repaired versions both exist")
+        finally:
+            wd.WIN_REPO = old_repo
     finally:
         wd.lookup_declarations = real
 

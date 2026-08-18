@@ -47,6 +47,8 @@ Usage:
     python3 automation/permuter_supervisor.py --status        # one JSON blob
     python3 automation/permuter_supervisor.py --run --no-apply # find, do not land
     python3 automation/permuter_supervisor.py --import-seeds   # import only
+    python3 automation/permuter_supervisor.py --import-one FUNCTION
+    python3 automation/permuter_supervisor.py --migrate-legacy-seeds
     python3 automation/permuter_supervisor.py --stop          # cancel everything
     python3 automation/permuter_supervisor.py --self-test
 """
@@ -58,6 +60,7 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 
@@ -376,6 +379,77 @@ def immutable_seed_for_current(current: Path) -> str:
     return stable
 
 
+_SEED_BANNER_RX = re.compile(r"\A\s*/\*.*?\*/\s*", re.S)
+
+
+def split_seed_banner(text: str) -> tuple[str, str]:
+    """Return a saved seed's leading evidence banner and its C payload."""
+    match = _SEED_BANNER_RX.match(text)
+    if match is None:
+        return "", text
+    return match.group(0), text[match.end():]
+
+
+def seed_field(text: str, name: str) -> str:
+    """One field from the leading evidence banner, or an empty string."""
+    banner, _payload = split_seed_banner(text)
+    match = re.search(
+        rf"^\s*\*?\s*{re.escape(name)}\s*:\s*(.*?)\s*$", banner, re.M)
+    return match.group(1) if match else ""
+
+
+def whole_file_seed(text: str) -> bool:
+    """Whether a candidate payload is a complete source translation unit."""
+    return seed_field(text, "content").upper().startswith("WHOLE FILE")
+
+
+def seed_has_include_context(text: str) -> bool:
+    """Whether the C payload, excluding evidence prose, carries an include."""
+    _banner, payload = split_seed_banner(text)
+    return "#include" in payload
+
+
+def _history_current_path(seed: Path) -> Path | None:
+    """Stable top-level path corresponding to one immutable history path."""
+    if seed.parent.name != "history":
+        return None
+    match = re.fullmatch(r"(.+)\.v[0-9]+(\.[^.]+)", seed.name)
+    if match is None:
+        return None
+    return seed.parent.parent / f"{match.group(1)}{match.group(2)}"
+
+
+def standalone_import_copy(seed: Path) -> tuple[Path, Path | None]:
+    """Import an immutable standalone seed at the stable directory depth.
+
+    Relative includes in legacy standalone seeds were authored from
+    automation/candidates/, while immutable versions live one directory deeper.
+    Reuse a byte-identical stable view when possible; otherwise materialize a
+    temporary sibling and return it for unconditional cleanup by the caller.
+    """
+    stable = _history_current_path(seed)
+    if stable is None:
+        return seed, None
+    data = seed.read_bytes()
+    try:
+        if stable.is_file() and stable.read_bytes() == data:
+            return stable, None
+    except OSError:
+        pass
+    stable.parent.mkdir(parents=True, exist_ok=True)
+    fd, raw_path = tempfile.mkstemp(
+        prefix=f".{stable.stem}.import-", suffix=stable.suffix,
+        dir=stable.parent)
+    temp_path = Path(raw_path)
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(data)
+    except Exception:
+        temp_path.unlink(missing_ok=True)
+        raise
+    return temp_path, temp_path
+
+
 def _build_lock():
     """A factory for the SAME lock the fleet workers use.
 
@@ -392,10 +466,11 @@ def _build_lock():
 def import_workdir(fn: str, seed_rel: str, lock=None) -> tuple[Path | None, str]:
     """Create a permuter work dir for `fn` by staging its seed into src/.
 
-    permuter_import compiles the file it is given, so the function has to be
-    real C in its real source file with its real includes. The seed on disk is
-    only a body. This stages the body over the INCLUDE_ASM stub, imports, and
-    then puts the file back.
+    permuter_import compiles the file it is given. A current worker seed is a
+    complete source translation unit, so it temporarily replaces the source
+    file at its recorded include depth. A legacy body-only seed is substituted
+    over the INCLUDE_ASM stub. A standalone seed is imported from the stable
+    candidate-directory depth so its relative includes keep their meaning.
 
     The restore is in a finally and reads from an in-memory copy taken before
     any write, so an exception, a failed import or a crash mid-import all leave
@@ -456,12 +531,17 @@ def import_workdir(fn: str, seed_rel: str, lock=None) -> tuple[Path | None, str]
 
     path, original, m = target
     asm_rel = m.group(1)
-    body = seed.read_text(errors="ignore")
-    # Strip any banner the candidate saver added; it is prose, not C.
+    seed_text = seed.read_text(errors="ignore")
+    _banner, body = split_seed_banner(seed_text)
+    # Strip promotion markers; they are evidence already retained in the
+    # immutable seed and are not part of the translation unit.
     body = "\n".join(l for l in body.splitlines()
                      if not l.startswith("// ==="))
 
     import commands_client as cc
+
+    if not whole_file_seed(seed_text) and "#include" in body:
+        return _import_standalone(seed, asm_rel, fn, cc)
 
     # TAKE THE BUILD LOCK. This function writes to a real src/ file, and fleet
     # workers do the same under automation/.build.lock (worker_direct.py:3228)
@@ -479,11 +559,48 @@ def import_workdir(fn: str, seed_rel: str, lock=None) -> tuple[Path | None, str]
     # Same lock, same path, so we serialise against every worker rather than
     # inventing a second, weaker exclusion.
     with (lock or _build_lock())():
-        return _import_locked(path, original, m, body, asm_rel, fn, cc)
+        return _import_locked(
+            path, original, m, body, asm_rel, fn, cc,
+            replace_whole_file=whole_file_seed(seed_text))
+
+
+def _import_standalone(seed: Path, asm_rel: str, fn: str, cc
+                       ) -> tuple[Path | None, str]:
+    """Import a self-contained seed without changing src/."""
+    sys.path.insert(0, str(Path(__file__).resolve().parent / "win"))
+    import worker_direct as wd                              # type: ignore
+    import_path = cleanup = None
+    try:
+        import_path, cleanup = standalone_import_copy(seed)
+        result = cc.run(
+            "permuter_import", timeout=300,
+            c_file=str(import_path.relative_to(REPO)),
+            asm_file=f"{wd.asm_dir(asm_rel)}/{fn}.s")
+        ok = result.get("returncode") == 0
+        detail = (result.get("stdout") or result.get("stderr") or "")[-300:]
+    except Exception as exc:                              # noqa: BLE001
+        ok, detail = False, f"{type(exc).__name__}: {exc}"
+    finally:
+        if cleanup is not None:
+            cleanup.unlink(missing_ok=True)
+
+    work = workdir_for(fn)
+    if work is None:
+        return None, f"import did not produce a work dir: {detail}"
+    return work, ("imported" if ok else f"imported with warnings: {detail}")
+
+
+def staged_seed_source(original: str, match, body: str,
+                       replace_whole_file: bool) -> str:
+    """Exact source text permuter_import receives for either seed format."""
+    if replace_whole_file:
+        return body
+    return original[:match.start()] + body + original[match.end():]
 
 
 def _import_locked(path: Path, original: str, m, body: str, asm_rel: str,
-                   fn: str, cc) -> tuple[Path | None, str]:
+                   fn: str, cc, replace_whole_file: bool = False
+                   ) -> tuple[Path | None, str]:
     """The staged import itself. Split out so the lock scope is obvious.
 
     JOURNAL BEFORE THE WRITE. The `finally` below restores from an in-memory
@@ -503,7 +620,8 @@ def _import_locked(path: Path, original: str, m, body: str, asm_rel: str,
     src_rel = str(path.relative_to(REPO))
     try:
         wd.journal_write(src_rel, original)
-        path.write_text(original[:m.start()] + body + original[m.end():])
+        staged = staged_seed_source(original, m, body, replace_whole_file)
+        path.write_text(staged)
         # wd.asm_dir, not a second copy of the rule: src/st/mad/D8C8.c uses
         # the INCLUDE_ASM_OLD form whose FOLDER already carries `asm/us/`,
         # and hardcoding the prefix here asked for asm/us/asm/us/...
@@ -1570,6 +1688,155 @@ def show_status() -> int:
     return 0
 
 
+# ------------------------------------------------ legacy candidate migration
+
+def _record_parts(record_id: str) -> tuple[str, str, str]:
+    parts = record_id.split(":", 2)
+    if len(parts) != 3 or not all(parts):
+        raise ValueError(f"invalid record id {record_id!r}")
+    return parts[0], parts[1], parts[2]
+
+
+def _legacy_seed_context(record_id: str) -> tuple[Path, Path, str]:
+    """Return the source file, asm file, and asm directory for a record."""
+    build, overlay, fn = _record_parts(record_id)
+    overlay_parts = [part.lower() for part in overlay.split("/")]
+    source_root = REPO / "src" / Path(*overlay_parts)
+    asm_root = REPO / "asm" / build / Path(*overlay_parts)
+    if not source_root.is_dir():
+        raise ValueError(f"source overlay does not exist: {source_root}")
+
+    stub_rx = re.compile(
+        rf'INCLUDE_ASM\(\s*"([^"]+)"\s*,\s*{re.escape(fn)}\s*\)\s*;')
+    stubs: list[Path] = []
+    definitions: list[Path] = []
+    for path in source_root.rglob("*.c"):
+        source = path.read_text(encoding="utf-8", errors="ignore")
+        if stub_rx.search(source):
+            stubs.append(path)
+        elif extract_function(source, fn):
+            definitions.append(path)
+    owners = stubs or definitions
+    if len(owners) != 1:
+        names = ", ".join(item.relative_to(REPO).as_posix()
+                          for item in owners) or "none"
+        raise ValueError(f"expected one source owner for {fn}, found {names}")
+
+    asm_files = sorted(asm_root.rglob(f"{fn}.s"))
+    if len(asm_files) != 1:
+        names = ", ".join(item.relative_to(REPO).as_posix()
+                          for item in asm_files) or "none"
+        raise ValueError(f"expected one asm file for {fn}, found {names}")
+    asm_file = asm_files[0]
+    asm_rel = asm_file.parent.relative_to(REPO / "asm" / build).as_posix()
+    return owners[0], asm_file, asm_rel
+
+
+def reconstruct_legacy_seed(seed_text: str, source: str, record_id: str,
+                            origin_rel: str, asm_rel: str) -> str:
+    """Embed one legacy body in its current translation-unit context."""
+    _build, _overlay, fn = _record_parts(record_id)
+    _old_banner, payload = split_seed_banner(seed_text)
+    legacy_function = extract_function(payload, fn)
+    if not legacy_function:
+        raise ValueError(f"legacy seed does not define {fn}")
+
+    stub_rx = re.compile(
+        rf'INCLUDE_ASM\(\s*"[^"]+"\s*,\s*{re.escape(fn)}\s*\)\s*;')
+    stub = stub_rx.search(source)
+    if stub is not None:
+        merged = source[:stub.start()] + payload + source[stub.end():]
+    else:
+        current_function = extract_function(source, fn)
+        if not current_function:
+            raise ValueError(f"current source does not own {fn}")
+        start = source.find(current_function)
+        merged = (source[:start] + payload
+                  + source[start + len(current_function):])
+
+    if "#include" not in merged:
+        raise ValueError("reconstructed seed has no include context")
+    if extract_function(merged, fn) != legacy_function:
+        raise ValueError(f"reconstruction changed the {fn} function bytes")
+
+    banner = (
+        "/* PERMUTER SEED -- legacy compiling body reconstructed as a whole file.\n"
+        f"   record : {record_id}\n"
+        "   migration: ROADMAP #163; original bytes are immutable history\n"
+        "   content: WHOLE FILE (legacy body reconstructed)\n"
+        f"   origin : {origin_rel}\n"
+        f"   asm    : {asm_rel}\n"
+        "   verdict: migration only; the original generation retains the\n"
+        "            measured compiler and checksum evidence\n\n"
+        "   Import through permuter_supervisor.py so quoted includes resolve at\n"
+        "   the recorded source depth. Do not apply this seed as a match. */\n")
+    return banner + merged
+
+
+def migrate_legacy_seeds(apply: bool = False) -> int:
+    """Version and reconstruct every top-level body-only candidate seed."""
+    candidate_dir = REPO / "automation" / "candidates"
+    seeds = sorted(path for path in candidate_dir.glob("*.c")
+                   if not seed_has_include_context(path.read_text(
+                       encoding="utf-8", errors="ignore")))
+    if not seeds:
+        print("no body-only candidate seeds remain")
+        return 0
+
+    print(f"{len(seeds)} body-only candidate seed(s)")
+    prepared: list[tuple[Path, bytes, str]] = []
+    failed = 0
+    for seed in seeds:
+        try:
+            original_bytes = seed.read_bytes()
+            seed_text = original_bytes.decode("utf-8", errors="replace")
+            record_id = seed_field(seed_text, "record")
+            if not record_id:
+                raise ValueError("seed banner has no record field")
+            source_path, asm_file, asm_rel = _legacy_seed_context(record_id)
+            origin_rel = source_path.relative_to(REPO).as_posix()
+            source = source_path.read_text(encoding="utf-8", errors="ignore")
+            rebuilt = reconstruct_legacy_seed(
+                seed_text, source, record_id, origin_rel, asm_rel)
+            prepared.append((seed, original_bytes, rebuilt))
+            print(f"  ok   {record_id}: {origin_rel}; "
+                  f"{asm_file.relative_to(REPO).as_posix()}")
+        except (OSError, ValueError) as exc:
+            failed += 1
+            print(f"  FAIL {seed.name}: {exc}")
+
+    if failed:
+        print(f"\nREFUSING migration: {failed} seed(s) could not be reconstructed")
+        return 1
+    if not apply:
+        print("\nread-only. Re-run with --apply-migration to publish versions.")
+        return 0
+
+    sys.path.insert(0, str(Path(__file__).resolve().parent / "win"))
+    import worker_direct as wd                              # type: ignore
+    old_repo = wd.WIN_REPO
+    wd.WIN_REPO = str(REPO)
+    try:
+        for seed, original_bytes, rebuilt in prepared:
+            new_rel = wd._publish_versioned_artifact(
+                str(seed), rebuilt, "permuter seed")
+            legacy_rel = ""
+            for version in wd._artifact_history_versions(str(seed)):
+                if Path(version).read_bytes() == original_bytes:
+                    legacy_rel = Path(version).relative_to(REPO).as_posix()
+                    break
+            if not legacy_rel:
+                raise OSError(f"legacy bytes not found in history for {seed.name}")
+            record_id = seed_field(rebuilt, "record")
+            print(f"  migrated {record_id}: legacy={legacy_rel} seed={new_rel}")
+    except OSError as exc:
+        print(f"  FAIL migration publish: {exc}")
+        return 1
+    finally:
+        wd.WIN_REPO = old_repo
+    return 0
+
+
 # ------------------------------------------------------------------- tests
 
 def self_test() -> int:
@@ -1639,6 +1906,14 @@ def self_test() -> int:
            == "automation/candidates/us_X.c", "pulls seed= out of a real note")
         ck(seed_from_notes("no seed here") == "", "absent seed yields empty")
         ck(seed_from_notes(None) == "", "a None note does not raise")
+        ck(seed_field("/*\n * record: us:ST/TEST:fn_q\n */\n", "record")
+           == "us:ST/TEST:fn_q",
+           "star-prefixed evidence banners expose their record field")
+        banner_only_include = (
+            "/* This banner discusses #include but the payload is bare. */\n"
+            "void fn_q(void) {}\n")
+        ck(not seed_has_include_context(banner_only_include),
+           "banner prose cannot disguise a body-only payload")
 
         print("\nstatus filter refuses what the permuter cannot use")
         ck(check_statuses(("near",)) == "", "near is accepted")
@@ -1676,10 +1951,60 @@ def self_test() -> int:
         ck(w3 is None and "seed not found" in msg3,
            "a missing seed is reported clearly")
 
-        print("\nreconciliation points at the immutable current generation")
+        print("\nwhole-file and body-only seeds stage different source shapes")
+        stub_match = re.search(
+            r'INCLUDE_ASM\("boss/bo6/nonmatchings/x", fn_q\);', before)
+        whole = '#include "x.h"\nvoid fn_q(void) { use_whole(); }\n'
+        ck(staged_seed_source(before, stub_match, whole, True) == whole,
+           "a whole-file seed replaces the translation unit exactly")
+        legacy_body = "void fn_q(void) { use_body(); }"
+        ck(staged_seed_source(before, stub_match, legacy_body, False)
+           == legacy_body + "\n",
+           "a legacy body replaces only its INCLUDE_ASM stub")
+
+        print("\nimmutable standalone imports keep the stable include depth")
         candidate_dir = t / "automation" / "candidates"
         history_dir = candidate_dir / "history"
         history_dir.mkdir(parents=True)
+        stable_standalone = candidate_dir / "us_TEST_fn_q.c"
+        version_standalone = history_dir / "us_TEST_fn_q.v0001.c"
+        standalone_bytes = b'#include "../../src/x.h"\nvoid fn_q(void) {}\n'
+        stable_standalone.write_bytes(standalone_bytes)
+        version_standalone.write_bytes(standalone_bytes)
+        chosen, cleanup = standalone_import_copy(version_standalone)
+        ck(chosen == stable_standalone and cleanup is None,
+           "a byte-identical stable view is reused")
+        stable_standalone.write_text("newer stable generation\n")
+        chosen2, cleanup2 = standalone_import_copy(version_standalone)
+        ck(chosen2.parent == candidate_dir and chosen2.read_bytes() == standalone_bytes,
+           "an older immutable version gets an exact temporary sibling")
+        cleanup2.unlink(missing_ok=True)
+        ck(not chosen2.exists(), "the temporary sibling can be removed cleanly")
+
+        print("\nlegacy reconstruction preserves the target function exactly")
+        legacy_seed = (
+            "/* old evidence\n   record : us:ST/TEST:fn_q */\n"
+            "extern int helper(void);\n"
+            "void fn_q(void) { helper(); }\n")
+        source_with_stub = (
+            '#include "x.h"\n'
+            'INCLUDE_ASM("st/test/nonmatchings/x", fn_q);\n')
+        rebuilt = reconstruct_legacy_seed(
+            legacy_seed, source_with_stub, "us:ST/TEST:fn_q",
+            "src/st/test/x.c", "st/test/nonmatchings/x")
+        legacy_fn = extract_function(split_seed_banner(legacy_seed)[1], "fn_q")
+        ck(whole_file_seed(rebuilt), "the reconstruction declares its format")
+        ck(extract_function(rebuilt, "fn_q") == legacy_fn,
+           "stub reconstruction keeps the legacy function byte-identical")
+        source_with_definition = (
+            '#include "x.h"\nvoid fn_q(void) { current(); }\n')
+        rebuilt2 = reconstruct_legacy_seed(
+            legacy_seed, source_with_definition, "us:ST/TEST:fn_q",
+            "src/st/test/x.c", "st/test/nonmatchings/x")
+        ck(extract_function(rebuilt2, "fn_q") == legacy_fn,
+           "landed-function reconstruction also keeps the legacy function")
+
+        print("\nreconciliation points at the immutable current generation")
         current_seed = candidate_dir / "us_TEST_fn_q.c"
         current_seed.write_text("current generation\n")
         old_version = history_dir / "us_TEST_fn_q.v0001.c"
@@ -1845,7 +2170,7 @@ def self_test() -> int:
     print("\na killed run cannot leave an edit in src/ undetected")
     il = src_sup[src_sup.index("def _import_locked"):]
     il = il[:il.index("\n# Notes markers")]
-    ck(il.index("wd.journal_write") < il.index("path.write_text(original[:"),
+    ck(il.index("wd.journal_write") < il.index("path.write_text(staged)"),
        "the seed is journalled BEFORE it is staged, so SIGKILL between the two "
        "is recoverable; a finally alone is not, which is how func_801CE2CC was "
        "left in src/st/rno0/unk_4A320.c")
@@ -1968,7 +2293,7 @@ def self_test() -> int:
 
     print("\nthe re-import moves the old dir aside rather than deleting it")
     _iw = src_sup[src_sup.index("def import_workdir"):]
-    _iw = _iw[:_iw.index("\ndef _import_locked")]
+    _iw = _iw[:_iw.index("\ndef _import_standalone")]
     ck("existing.rename(aside)" in _iw, "it renames")
     ck("rmtree" not in _iw and "unlink" not in _iw,
        "and never deletes: the old dir holds promoted seeds and every "
@@ -2147,9 +2472,17 @@ def main() -> int:
                          "(read-only unless --apply-reconcile)")
     ap.add_argument("--apply-reconcile", action="store_true",
                     help="with --reconcile-seeds, actually file them")
+    ap.add_argument("--migrate-legacy-seeds", action="store_true",
+                    help="reconstruct body-only candidates as whole-file seeds "
+                         "(read-only unless --apply-migration)")
+    ap.add_argument("--apply-migration", action="store_true",
+                    help="with --migrate-legacy-seeds, publish immutable versions")
     ap.add_argument("--import-seeds", action="store_true",
                     help="import work dirs for candidates that lack one, "
                          "then stop; starts no jobs")
+    ap.add_argument("--import-one", metavar="FUNCTION",
+                    help="import exactly one queue seed regardless of its "
+                         "current status; starts no job")
     ap.add_argument("--sync-phantoms", action="store_true",
                     help="mark records already landed and committed in src/ "
                          "as matched; verifies the tree first")
@@ -2182,8 +2515,28 @@ def main() -> int:
 
     if a.reconcile_seeds:
         return reconcile_seeds(apply=a.apply_reconcile)
+    if a.migrate_legacy_seeds:
+        return migrate_legacy_seeds(apply=a.apply_migration)
     if a.self_test:
         return self_test()
+    if a.import_one:
+        records = [record for record in load_queue()
+                   if record.get("function") == a.import_one]
+        if len(records) != 1:
+            print(f"REFUSING: expected one queue record for {a.import_one}, "
+                  f"found {len(records)}")
+            return 2
+        seed = seed_from_notes(records[0].get("notes", ""))
+        if not seed:
+            print(f"REFUSING: {a.import_one} has no seed= in its queue notes")
+            return 2
+        unclean = require_clean_src()
+        if unclean:
+            print("REFUSING: " + unclean)
+            return 2
+        work, msg = import_workdir(a.import_one, seed)
+        print(f"[import] {a.import_one}: {msg}")
+        return 0 if work is not None else 1
     if a.import_seeds:
         statuses = tuple(x.strip() for x in a.status_filter.split(",")
                          if x.strip())

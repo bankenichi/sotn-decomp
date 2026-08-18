@@ -320,8 +320,8 @@ including the verbatim log tail that was misclassified.
 ### Permuter seeds
 
 A candidate that compiles but misses is the most valuable artifact short of a
-match, and it used to be discarded. `save_candidate()` writes it to
-`automation/candidates/<record>.c` and the queue note names the file.
+match, and it used to be discarded. `save_candidate()` preserves both an exact
+immutable generation and a stable current view.
 
 It must NOT live under `automation/logs/` — that directory is gitignored and
 periodically archived, which is why all four `near` records had zero surviving
@@ -338,6 +338,16 @@ non-recursively, so history cannot create duplicate work. Direct imports follow
 the immutable queue path. Reconciliation resolves a stable current file to its
 byte-identical immutable generation when possible. `save_rejected()` uses the
 same publisher under its own directory and returns an exact `rejected=` path.
+
+Import follows the format declared in the evidence banner. For `content: WHOLE
+FILE`, the supervisor journals the source, stages the complete translation unit
+at its recorded source depth, imports, restores the original bytes, and only
+then clears the journal. It does not paste a complete source file inside the old
+stub. A legacy body-only seed still substitutes only the stub. A standalone
+immutable seed that depends on relative includes is imported from a temporary
+byte-identical sibling at the stable candidate-directory depth, then that
+temporary file is removed unconditionally. `--import-one FUNCTION` exercises
+this path without starting a search.
 
 ### Verified landing snapshots
 
