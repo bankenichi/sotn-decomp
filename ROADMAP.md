@@ -16,23 +16,23 @@ mistake impossible twice.
 | | |
 |---|---|
 | Oracle | **81/81** |
-| Queue | **277 matched**, 63 todo, 95 escalated, 36 deferred, 0 near (471 total) |
-| Tree | **97.0% of functions decompiled** overall, 6367/6561 |
+| Queue | **278 matched**, 62 todo, 95 escalated, 36 deferred, 0 near (471 total) |
+| Tree | **97.1% of functions decompiled** overall, 6368/6561 |
 | Automation | 59 analysis scripts, 30 test suites, **77 connector tools**, 37 dashboard diagnostics |
-| Provenance | shim-header 60, upstream-harvest 44, shim-segment 40, model-fleet 31, twin-port 36, permuter 10, transplant 8, hand 4, **unknown 44 (16%)** |
+| Provenance | shim-header 60, upstream-harvest 44, shim-segment 40, model-fleet 31, twin-port 37, permuter 10, transplant 8, hand 4, **unknown 44 (16%)** |
 | Fleet backend | `zen` on `mimo-v2.5-free` |
-| Audit | 277 present, 0 uncommitted, 0 LOST |
+| Audit | 278 present, 0 uncommitted, 0 LOST |
 
 Where the remaining work sits, by overlay completion:
 
 ```
-BOSS/BO6  69.8%  180/237      ST/RDAI   72.6%  112/130
+BOSS/BO6  70.2%  181/237      ST/RDAI   72.6%  112/130
 BOSS/BO0  73.1%  132/186      ST/RNO0   82.0%  153/193
 ST/RCHI   86.9%   95/108      ST/RCEN   88.4%  102/118
 SLUS      98.3%  515/517
 ```
 
-Everything else is at 100%. BO6, BO0, RNO0 and RDAI hold 169 of the 200
+Everything else is at 100%. BO6, BO0, RNO0 and RDAI hold 168 of the 199
 functions left (85%). BO6 is now the largest pool; RNO0 still carries the most
 structural debt.
 
@@ -245,6 +245,11 @@ and primitive animator substituted by address. `BO6_RicDoAttack` matched from
 `src/ric/pl_setstep.c` after adapting the boss voice bank, entity cleanup
 window, factory table and three local animations. Its isolated residue was only
 equivalent relocation names for the RIC entity members and jump table.
+`BO6_RicStepCrouch` matched the reduced `RicStepCrouch` state machine after its
+playable-only branches were removed. Its body was instruction-identical, but
+the linked build exposed a four-byte jump-table alignment shift and collapsed
+stack frame that the isolated scorer normalises. `ALIGNED4` computed dispatch
+and a no-instruction volatile frame pad restored both target properties.
 
 These are NOT shimmable and must not be treated as such. RIC's copies read
 `g_Player` and `PLAYER`; BO6's read `g_Ric` and `RIC`, which are different
@@ -987,7 +992,7 @@ Status: **done**, **open**, **partial**, **void** (turned out unnecessary),
 
 | # | status | task and outcome |
 |---|---|---|
-| 98 | **open** | Re-baseline Stage 6 against the live queue before execution; the 2026-08-10 counts no longer describe the 63 todo and 95 escalated records |
+| 98 | **open** | Re-baseline Stage 6 against the live queue before execution; the 2026-08-10 counts no longer describe the 62 todo and 95 escalated records |
 | 99 | superseded | Merged into #101: Stage 4 is one third of the single fleet run |
 | 100 | done | `77217a2` is shared-header extraction. 4 of the 11 already have twins |
 | 101 | **open** | One controlled production fleet pass after deterministic prep and a fresh eligible-pool measurement; preserve and disposition every generated artifact |
@@ -999,7 +1004,7 @@ Status: **done**, **open**, **partial**, **void** (turned out unnecessary),
 | 107 | done | README status tables AND prose are generated |
 | 108 | done | Auto-commit remains deliberately rejected. The worker now writes a durable verified landing snapshot before reporting `matched`, while root review, explicit staging, commit and push remain the only Git authority |
 | 109 | done | Closed: no `Ext` field was missing. The m2c-only path could not name them |
-| 110 | partial | P4 twin exhaustion is in progress. Eight current-campaign twins are matched: `BO6_RicEntitySubwpnBible`, `BO6_RicStepSlide`, `BO6_RicStepSlideKick`, `BO6_RicEntityArmBrandishWhip`, `BO6_RicEntityHitByDark`, `BO6_RicDoCrash`, `BO6_RicEntityHitByHoly`, and `BO6_RicDoAttack`. `BO6_RicCheckSubweapon` has a specific false-twin disposition. All target-visible differences and derivations are retained in their queue records; the remaining named RIC twins must still match or receive the same evidence-backed disposition before model calls |
+| 110 | partial | P4 twin exhaustion is in progress. Nine current-campaign twins are matched: `BO6_RicEntitySubwpnBible`, `BO6_RicStepSlide`, `BO6_RicStepSlideKick`, `BO6_RicEntityArmBrandishWhip`, `BO6_RicEntityHitByDark`, `BO6_RicDoCrash`, `BO6_RicEntityHitByHoly`, `BO6_RicDoAttack`, and `BO6_RicStepCrouch`. `BO6_RicCheckSubweapon` has a specific false-twin disposition. All target-visible differences and derivations are retained in their queue records; the remaining named RIC twins must still match or receive the same evidence-backed disposition before model calls |
 | 111 | **open** | A/B reasoning: the per-worker effort knob landed and is ready to run |
 | 112 | partial | The doc drift check exists and covers three invariants. The rest is still human |
 | 113 | done | Handoff is tier-gated, with a claim breaker behind it |

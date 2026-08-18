@@ -1187,3 +1187,24 @@ updated and was not, and it cost a restart to find out.
 
 When adding an action, update both, and confirm by CALLING it rather than by
 listing it. That is what the guard now checks automatically.
+
+## 22. An isolated function score does not prove stack or jump-table placement
+
+`BO6_RicStepCrouch` compiled instruction-for-instruction against its isolated
+target with zero reported stack differences. The full link still failed. Two
+properties had been normalised away by the scorer:
+
+- the target reserves a 0x40-byte frame, while the candidate reserved 0x18;
+- the target jump table begins at `0x801A6AC4`, but a normal C `switch` aligned
+  the generated table to `0x801A6AC8` and shifted every later BO6 symbol.
+
+The linked `asm_diff` exposed both immediately. A static computed-goto table
+marked `ALIGNED4` emitted the same dispatch instructions while preserving the
+four-byte table boundary. A volatile ten-word local restored the frame without
+emitting runtime instructions. The resulting build verified 81/81.
+
+Treat an isolated score of zero, or a score containing only relocation aliases,
+as permission to build, never as proof of a match. For a function with a jump
+table or an unexpectedly large frame, inspect the linked diff on failure before
+changing the body. Section alignment and concrete stack immediates are outside
+the isolated scorer's guarantee.

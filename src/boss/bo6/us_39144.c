@@ -435,7 +435,7 @@ void func_us_801B9D74(void);
 // Richter (BO6): if the dash timer is still running, defer to the dash handler;
 // otherwise begin the dash - arm timers[1] and timers[8], clear unk44, and set
 // step 2 with the dash animation and speed.
-void func_us_801B9DE4(void) {
+void func_us_801B9DE4(s32 unused) {
     if (g_Ric.timers[8] != 0) {
         func_us_801B9D74();
         return;
