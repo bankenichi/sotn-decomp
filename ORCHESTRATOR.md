@@ -73,7 +73,9 @@ batch (see `automation/queue/snapshots/README.md`):
 
 ## 4. Codex model roles
 
-Model assignments are provisional until benchmarked on this project.
+Routine worker assignments are provisional until benchmarked on this project.
+Sol's root capability is already established; its exclusion from ordinary fleet
+work is an economics decision, not an unresolved capability question.
 
 ### Luna
 
@@ -110,19 +112,20 @@ verification.
 
 ### Sol
 
-Status: benchmark pending.
+Status: root orchestrator, designer and maintainer; not a routine worker.
 
-Candidate role: hard compiler reasoning, architecture, adversarial review, and
-the final static-analysis pass before root execution.
+Established role: hard compiler reasoning, architecture, adversarial review,
+maintenance, and the final static-analysis pass before root execution.
 
-Benchmark pending. Until Sol passes the fixed cases, use it only for explicitly
-unscored, read-only advice whose claims the root rechecks. Do not assign it a
-production role. Sol advises; the root agent decides and acts.
+Do not spend a Sol worker on the fixed capability cases or routine fleet work.
+This project's root work already establishes that capability, and the cost is
+too high for an ordinary worker tier. The root Sol agent remains the authority
+for stateful decisions, implementation, build verdicts and final maintenance.
 
 ## 5. Capability benchmark
 
-Before productive delegation, run the same fixed read-only cases through Sol,
-Terra, and Luna:
+Before productive worker delegation, run the same fixed read-only cases through
+Terra and any proposed Luna configuration:
 
 1. a saved rejected candidate with a known struct-layout failure
 2. a solved switch-dispatch mismatch with a recorded compiler explanation
@@ -139,6 +142,10 @@ Do not provide the historical answer. Score each response on:
 Record the result in `ROADMAP.md` and a benchmark note under `docs/`. Assign a
 model only to work it demonstrated it can do reliably. Re-test after material
 model revisions.
+
+Sol is intentionally not part of this worker comparison. Its capability is
+already demonstrated by the root work, while its cost rules it out as a regular
+fleet worker.
 
 Luna result: the effort sweep is recorded in
 `docs/benchmarks/luna/2026-08-18-effort-benchmark.md`. No setting passed every

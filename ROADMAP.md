@@ -16,32 +16,32 @@ mistake impossible twice.
 | | |
 |---|---|
 | Oracle | **81/81** |
-| Queue | **282 matched**, 57 todo, 95 escalated, 37 deferred, 0 near (471 total) |
-| Tree | **97.1% of functions decompiled** overall, 6372/6561 |
-| Automation | 80 Python modules, 28 test suites plus 32 module self-tests, **87 connector tools**, 64 diagnostics |
-| Provenance | upstream-harvest 44, shim-segment 9, shim-header 55, transplant 9, twin-port 29, permuter 13, model-fleet 54, hand 4, **unknown 65 (23%)** |
+| Queue | **291 matched**, 38 todo, 100 escalated, 42 deferred, 0 near (471 total) |
+| Tree | **96.9% of code decompiled**, 6378/6558 functions |
+| Automation | 80 Python modules, 28 test suites plus 31 module self-tests, **87 connector tools**, 64 diagnostics |
+| Provenance | upstream-harvest 44, shim-segment 9, shim-header 55, transplant 18, twin-port 29, permuter 13, model-fleet 54, hand 4, **unknown 65 (22%)** |
 | Fleet backend | `zen` on `mimo-v2.5-free` |
-| Audit | 282 present, 0 uncommitted, 0 LOST |
+| Audit | 291 present, 0 uncommitted, 0 LOST |
 
 Where the remaining work sits, by overlay completion:
 
 ```
-BOSS/BO6  74.2%  192/237      ST/RDAI   72.6%  112/130
-BOSS/BO0  73.1%  132/186      ST/RNO0   82.0%  153/193
-ST/RCHI   86.9%   95/108      ST/RCEN   88.4%  102/118
+BOSS/BO6  74.4%  193/237      ST/RDAI   72.6%  112/130
+BOSS/BO0  73.1%  132/186      ST/RNO0   82.8%  156/191
+ST/RCHI   88.0%   97/107      ST/RCEN   88.4%  102/118
 SLUS      98.3%  515/517
 ```
 
-Everything else is at 100%. BO6, BO0, RNO0 and RDAI hold 157 of the 189
-functions left (83%). BO6 is now the largest pool; RNO0 still carries the most
-structural debt.
+Everything else is at 100%. BO6, BO0, RNO0 and RDAI hold 151 of the 180
+functions left (84%). BO0 is the largest remaining pool; RNO0 still carries the
+most structural debt.
 
-**The 23% unattributed is a finding, not noise.** 65 of 282 matches still lack
+**The 22% unattributed is a finding, not noise.** 65 of 291 matches still lack
 enough evidence for a primary method. Three were overwritten outright by a
 build receipt; the other 62 carry no method evidence the generator will accept.
 Source and history evidence can still classify some of those records. Current
 writers preserve notes and proofs losslessly. Counted as *contributors* rather
-than sole author, the model fleet touched 126 of 282.
+than sole author, the model fleet touched 133 of 291.
 
 ### Snapshot as of 2026-08-09 (superseded, kept for the trend)
 
@@ -171,7 +171,7 @@ it. Everything downstream inherits that blind spot.
 **Done when:** `queue_stats` totals match the index, and RCHI/RDAI functions
 appear in `queue_list`.
 
-## P2: Run the permuter against the compiling pool  *(reopened 2026-08-18 for a new `near`)*
+## P2: Run the permuter against the compiling pool  *(resolved 2026-08-18)*
 
 **The premise is wrong, measured 2026-08-03.** The permuter needs an
 ALREADY-COMPILING function, and `escalated` is mostly code that does not
@@ -184,7 +184,7 @@ First real run: 16,630 iterations on `func_us_8019AA04`, 0 errors, score floor
 restructure control flow, so a persistent floor suggests the seed is the wrong
 shape rather than nearly right.
 
-Final live-pool disposition, 2026-08-18: all seven `near` records were exhausted
+First live-pool disposition, 2026-08-18: all seven `near` records were exhausted
 or reclassified with preserved evidence. `func_us_801CFD70` has an isolated
 score of 0 but still changes the full overlay and is escalated for overlay-level
 diagnosis. The expression-search floors were 1695 for `func_us_801D2264`, 1150
@@ -210,7 +210,14 @@ iteration stall policy. It was stopped, the immutable seed remains preserved,
 the source stub was never changed, and the queue record is deferred with the
 full evidence.
 
-**The pool is now 12, not 34** (2026-08-02): 11 records were requeued as false
+The adaptable-score pass later created a second pool of thirteen low-score or
+linked-miss candidates. #187 published every exact body, stopped the three
+orphaned searches with terminal evidence, exhausted the remaining applicable
+searches, and routed the structural and link-context misses without discarding
+them. The live queue now has zero `near` and zero `claimed` records.
+
+**Historical pool correction, 2026-08-02: 12, not 34.** Eleven records were
+requeued as false
 escalations — nine quoting build failures in overlays they never touched, two
 claiming a missing `INCLUDE_ASM` that clang-format had merely wrapped onto two
 lines. The worker now reports `BUILD DIRTY` rather than escalating when no
@@ -226,19 +233,19 @@ byte-exact variant of an **already-compiling** function. It cannot fix a wrong
 parameter type or a missing shared implementation, because neither is a search
 problem. Exhaust the structural and type causes first, then permute the residue.
 
-**Done when:** every live `near` record has either matched or carries a complete
-note identifying the preserved seed, the search attempted, its best score, and
-why further permuter work is exhausted or structurally inapplicable.
+**Completed:** every live `near` record either matched or carries a complete note
+identifying the preserved seed, the search attempted, its best score, and why
+further permuter work is exhausted or structurally inapplicable.
 
-## P2b: Exhaust BO6's remaining `src/ric` twins  *(open, no blockers)*
+## P2b: Exhaust BO6's remaining `src/ric` twins  *(resolved 2026-08-18)*
 
 The original scan found 65 BO6 stubs with same-named `src/ric` functions. That
-is a historical opening count, not the remaining workload. A complete live
-reconciliation on 2026-08-18 examined all 45 unmatched BO6 records. Thirty are
-genuine `src/ric` candidates: 17 are adaptable, 7 still need map or declaration
-evidence, and 6 are proven structural non-twins. Nine records have no twin and
-six carry unrelated false candidates, so those fifteen are outside #110. The
-ported cases continue to validate the method.
+is a historical opening count, not the remaining workload. The final live scan
+on 2026-08-18 examined all 44 unmatched BO6 records. Twenty-one were adaptable,
+one still needed map evidence, thirteen were structural non-twins, and nine had
+no twin. Six of the thirteen not-twin rows were unrelated false candidates, so
+the final genuine `src/ric` scope was the 29 unmatched records from #110 plus
+`BO6_RicEntitySubwpnStopwatchCircle`, which #186 matched at 81/81.
 
 `BO6_RicStepSlide` matched on 2026-08-18 from `src/ric/pl_steps.c`. Its live
 body was instruction-identical after the BO6 object swap, but the compiler
@@ -295,6 +302,17 @@ about 8,980 targeted iterations with no improvement or errors. Its exact source
 remains an immutable whole-file seed and the queue record is deferred with the
 complete exhausted-search evidence.
 
+The remaining 29 records now have explicit terminal routing. Five adaptable
+bodies are preserved as exhausted deferred seeds: `BO6_RicEntityAguneaHitEnemy`,
+`BO6_RicEntityAguneaLightning`, `BO6_RicEntityShrinkingPowerUpRing`,
+`BO6_RicEntitySubwpnCrashCrossParticles`, and
+`BO6_RicEntityCrashBibleBeam`. Sixteen higher-score adaptable bodies are
+escalated with their exact compiled receipts and penalty vectors because their
+residue is structural rather than an honest expression-only permuter problem.
+`BO6_RicStepStand` is deferred with its score-230 seed and the remaining map
+boundary. The seven genuine structural non-twins are escalated with their donor
+and scan evidence. No #110 record remains unaccounted for.
+
 These are NOT shimmable and must not be treated as such. RIC's copies read
 `g_Player` and `PLAYER`; BO6's read `g_Ric` and `RIC`, which are different
 objects at different addresses. The port is mechanical but not blind:
@@ -313,8 +331,8 @@ this section's. rchi's 15 point at sibling stage overlays; `e_bat` and
 `e_breakable` there were already investigated and rejected upstream, and the
 rejection notes are in `src/st/rchi_psp/`.
 
-**Done when:** every BO6 stub with a `src/ric` twin has either matched or
-carries a note saying what the twin could not explain.
+**Completed:** every BO6 stub with a `src/ric` twin has either matched or carries
+a queue note saying what the twin could not explain and where it is routed.
 
 ## P3 — (resolved 2026-08-01) rno0's `.bss` is segmented; four files shimmed
 
@@ -1043,12 +1061,12 @@ Status: **done**, **open**, **partial**, **void** (turned out unnecessary),
 | 102 | done | m2c-only runs. The size wall is gone; the Entity naming wall is behind it |
 | 103 | done | The derivation plus 1 of 5. The other 4 each needed real work and were split out to #105 |
 | 104 | done | `grep -E`: alternation went from 0 to 8 matches, a bad regex now errors, the engine is reported |
-| 105 | partial | Reconciled against the live queue and current compiled-donor scorer. `BO6_RicEntitySubwpnBible` remains matched with 81/81 proof. `EntityRelicOrb` advanced from its exhausted 31525 seed to an honest isolated score 10, and `BO6_RicEntityAguneaLightning` advanced from 5105 to 15; both exact score receipts and bodies are preserved under their owned `.adapt-scores` directories and remain deferred until immutable publication under #187. `EntityGaibon` is not a mechanical twin: the available NP3 donor is 1108 instructions against the target's 1281 with only 62.7% alignment, so it remains deferred for structural derivation or advanced-context work. All three live notes retain the older evidence and the new disposition |
+| 105 | done | Closed all four split records without discarding earlier attempts. `BO6_RicEntitySubwpnBible` is matched with 81/81 proof. `EntityRelicOrb` is published as repaired seed v0006, remained at score 10 through 9,535 controlled iterations, and is deferred. `BO6_RicEntityAguneaLightning` is published as repaired seed v0006, remained at score 15 through 16,197 iterations, and is deferred. `EntityGaibon` remains deferred as a measured structural non-twin: its NP3 donor is 1,108 instructions against the target's 1,281 with 62.7% alignment. Every live note preserves the prior evidence and final route |
 | 106 | done | The supervisor stamps `SEED_CURRENT`. The loop is closed |
 | 107 | done | README status tables AND prose are generated |
 | 108 | done | Auto-commit remains deliberately rejected. The worker now writes a durable verified landing snapshot before reporting `matched`, while root review, explicit staging, commit and push remain the only Git authority |
 | 109 | done | Closed: no `Ext` field was missing. The m2c-only path could not name them |
-| 110 | partial | Reconciled against a complete live BO6 scan. Thirteen current-campaign twins are matched: `BO6_RicEntitySubwpnBible`, `BO6_RicStepSlide`, `BO6_RicStepSlideKick`, `BO6_RicEntityArmBrandishWhip`, `BO6_RicEntityHitByDark`, `BO6_RicDoCrash`, `BO6_RicEntityHitByHoly`, `BO6_RicDoAttack`, `BO6_RicStepCrouch`, `BO6_RicEntitySubwpnHolyWaterBreakGlass`, `BO6_RicEntitySubwpnCrashCross`, `BO6_RicStepJump`, and `BO6_RicEntityFactory`. Of the 45 unmatched BO6 records, exactly 30 have genuine `src/ric` candidates: 17 adaptable, 7 needing map or declaration evidence, and 6 structural non-twins. Nine no-twin records and six unrelated false candidates are excluded. `BO6_RicCheckSubweapon` retains its specific false-twin disposition, and #174 completed `BO6_RicEntityCrashBibleBeam` as an exhausted score-60 deferred seed. The remaining adaptable and unresolved records still need a match or evidence-backed queue disposition |
+| 110 | done | Closed the complete genuine BO6/RIC scope. The thirteen earlier current-campaign twins remain matched. Of the final 30 records, #186 matched `BO6_RicEntitySubwpnStopwatchCircle`; five adaptable bodies are published and deferred after exhausted searches; sixteen higher-score adaptable bodies are escalated with exact compiled receipts and penalty vectors; `BO6_RicStepStand` is deferred with its score-230 seed and unresolved map boundary; and seven structural non-twins are escalated with donor evidence. Nine no-twin records and six unrelated false candidates remain explicitly outside this scope. Every one of the 30 has a match or evidence-backed queue disposition |
 | 111 | **open** | A/B reasoning: the per-worker effort knob landed and is ready to run |
 | 112 | done | The drift gate now covers four machine-grounded invariants: oracle hash claims, live queue path claims, documented analysis-component availability, and exact freshness of all three generated README blocks. `readme_status.py --write` owns status, provenance and detailed completion replacement; duplicate, missing or reversed markers are refused. Connector documentation is checked for exact callable-tool coverage, documented-script existence and callability, and focused-test callability. Remaining prose stays a human review unless it gains a single machine-readable ground truth |
 | 113 | done | Handoff is tier-gated, with a claim breaker behind it |
@@ -1078,9 +1096,9 @@ Status: **done**, **open**, **partial**, **void** (turned out unnecessary),
 
 | # | status | task and outcome |
 |---|---|---|
-| 130 | done | Archived the Claude orchestrator and both Opus/Sonnet/Haiku prompt bodies under `docs/archive/claude-orchestration/`; the active `ORCHESTRATOR.md` now keeps every stateful operation in the root Codex agent and treats Sol, Terra and Luna roles as hypotheses until benchmarked |
+| 130 | done | Archived the Claude orchestrator and both Opus/Sonnet/Haiku prompt bodies under `docs/archive/claude-orchestration/`; the active `ORCHESTRATOR.md` now keeps every stateful operation in the root Codex agent. This task initially treated Sol, Terra and Luna worker roles as hypotheses; #132 records the later correction that Sol capability is already established and only its routine-worker economics are out of scope |
 | 131 | done | Added `git_submodule_state` and `git_submodule_diff`, restricted to exact `.gitmodules` paths, with decorator, manifest, documentation and rejection tests. An independent Sol review found that canonical aliases such as `tools/psyz/.` still passed the first version; raw-string membership and three regression cases closed that gap. Post-restart inspection proved both dirty submodules contain zero content changes: `tools/psyz` has executable-bit flips on two C files, and `tools/saturn-splitter` has executable-bit flips on `.gitignore` and one Rust file. They remain untouched as mount/file-mode noise, not vendored divergence |
-| 132 | partial | Luna effort sweep complete; Sol and Terra remain. No Luna setting passed every fixed case. `xhigh` alone passed the Stage A process gate and produced a candidate worth building, but both `xhigh` and `max` missed the hidden GCC switch and scheduling answer. The `xhigh` candidate compiled at 80/81 with BO6 exactly one instruction short, then the root restored and verified 81/81. **Preservation correction:** restoring before saving was wrong; the exact patch was recovered from the Codex transcript, saved at `automation/candidates/us_BOSS_BO6_BO6_RicStepStand.c`, reported `near`, and included in a queue snapshot. Luna `xhigh` remains limited to bounded read-only investigation and candidate drafting; it does not replace Zen as an autonomous worker. Full evidence is in `docs/benchmarks/luna/2026-08-18-effort-benchmark.md` |
+| 132 | partial | Luna effort sweep complete; Terra remains. Sol is explicitly excluded from regular-worker benchmarking: the root agent has already demonstrated Sol-level hand matching, compiler reasoning, design and maintenance capability, while its cost makes it unsuitable as a routine fleet worker. No Luna setting passed every fixed case. `xhigh` alone passed the Stage A process gate and produced a candidate worth building, but both `xhigh` and `max` missed the hidden GCC switch and scheduling answer. The `xhigh` candidate compiled at 80/81 with BO6 exactly one instruction short, then the root restored and verified 81/81. **Preservation correction:** restoring before saving was wrong; the exact patch was recovered from the Codex transcript, saved at `automation/candidates/us_BOSS_BO6_BO6_RicStepStand.c`, reported `near`, and included in a queue snapshot. Luna `xhigh` remains limited to bounded read-only investigation and candidate drafting; it does not replace Zen as an autonomous worker. Full evidence is in `docs/benchmarks/luna/2026-08-18-effort-benchmark.md` |
 | 133 | done | Root cause fixed and regression-covered: `commands_client.py` no longer falls back to bare `python3`; child actions select the root repository venv, preserve an explicit override, and use the current interpreter only when the venv is absent. Post-restart `asm_diff` and `permuter_import` both launched through `.venv/bin/python` and returned successfully. The BO6 seed imported cleanly after adding its original standalone context, and `permuter --debug` compiled it at base score 605 |
 | 134 | done | `queue_report` exposed no `keep_note` argument even though the scheduler supports it and `AGENTS.md` requires it. The MCP and command layers now expose and forward the flag with preservation as the default. Four regression checks prove the default and opt-out behavior, the scheduler flag, and the MCP forwarding path |
 | 135 | **open** | Run with the #111 A/B fleet test: compare Luna `xhigh` and Terra on a fixed, stratified sample of `escalated` and `deferred` records that already carry candidates, compiler feedback, or detailed notes. Measure whether advanced context changes their useful-candidate yield, classification accuracy, process fidelity, wall time, and cost against Zen. The root and deterministic harness retain every stateful operation, and every compiling result is saved and routed `near` before restoration |
@@ -1099,7 +1117,7 @@ Status: **done**, **open**, **partial**, **void** (turned out unnecessary),
 | 148 | done | Subagent quality-audit coverage finding: the initial self-test omitted most acceptance cases and rejected multiline `CODEGEN:` explanations. The discovered self-test now covers all control forms, null and nonbraced bodies, do-while terminators, waiver boundaries, multiline comments, literals, logical directives, diff-line filtering and upstream suppression |
 | 149 | done | Subagent status and landing finding: #137 was stale and its documentation paths also carried independent work. #137 now records the completed audit, the RicStepRun simplification and 81/81 proof; code, audit documentation and queue documentation were landed in explicit coherent commits |
 | 150 | done | Subagent HighJump boundary finding: `richter.c` also carried an unrelated `BO6_RicStepRun` simplification. The changes were separated into `68f2b4f39` for RicStepRun and `0c89ed389` for HighJump, preserving the archived scaffold and the HighJump candidate while keeping each path commit intentional; both landed with 81/81 proof |
-| 151 | done | Subagent Luna benchmark findings: removed unsupported speed language; kept Terra and Sol benchmark-pending with only benchmark or root-rechecked read-only use; defined Luna `xhigh` as a separate root-gated support tier without fleet authority; and recorded that raw prompt and response bytes were not durably captured instead of claiming they were preserved |
+| 151 | done | Subagent Luna benchmark findings: removed unsupported speed language; defined Luna `xhigh` as a separate root-gated support tier without fleet authority; and recorded that raw prompt and response bytes were not durably captured instead of claiming they were preserved. Its prior recommendation to keep Sol benchmark-pending is retracted by the corrected #132 disposition: Sol capability is established, but it is too expensive for routine worker use. Terra remains benchmark-pending |
 | 152 | done | Subagent transplant finding: mixed donor failures and exceptional failures could become false `not-twin` or `no-twin` evidence. Per-candidate outcomes now aggregate conservatively, unresolved map work outranks a disproved donor, unknown failures use `error`, and `no-twin` requires actual absence of a local definition |
 | 153 | done | Subagent twin-corpus finding: generated candidate lists contained duplicates and logical self-pairs. The producer deduplicates every candidate class and excludes self-pairs without dropping orphaned donor assembly; regeneration and 2,612 focused assertions validate the resulting corpus |
 | 154 | done | Subagent candidate-preservation finding: the RDAI `func_us_801C4B2C` header mislabeled an exhausted original model seed, contained forbidden build-tail symbols, and recommended a raw Python import. The preserved file now records the exhausted score and provenance, distinguishes the seed from promoted output, and routes import through the connector |
@@ -1134,8 +1152,8 @@ Status: **done**, **open**, **partial**, **void** (turned out unnecessary),
 | 183 | done | Retracted four false adaptable scores and fixed the compiler-result boundary. A pipeline without `pipefail` allowed `cc1-psx` to diagnose undeclared symbols while the final assembler returned zero and left a scoreable object. The original 500, 1400, 1260, and 1200 receipts remain archived as evidence; any compiler output now rejects the object even on zero exit, while a silent zero-exit control still succeeds |
 | 184 | done | Added isolated adaptable-draft scoring under the existing journaled BuildLock. Each run restores source before debug, archives the complete work directory and linked receipt under `.adapt-scores`, survives Windows rename failures through a verified-copy fallback, derives donor-local extern, enum, macro and array context, and performs one target-map relocation normalization pass only after structural penalties reach zero. The exact-overlay sweep classified 48 candidate records: 42 received honest scores, 10 reached score 0, and six repeated-name records were proven not-twins for their own targets. The score-zero set is `BO6_RicEntitySubwpnStopwatchCircle`, `DrawLaserRing`, `EntityJackOBonesDeathParts`, `EntityNovaLaserPulse`, `EntitySlograSpear`, `EntitySmallGaibonProjectile`, `TryShoot`, `TryThrow`, `UpdateFallingPebble`, and `func_us_801D289C`. No game build, source landing, or queue write was part of the sweep |
 | 185 | done | Closed every failure exposed by the adaptable sweep without hand-deriving a candidate. The resolver now follows local donor headers, ignores inactive PSP-only declarations for a US score, derives exact extents for unsized arrays with braced initializers, carries `E_ID` donor enum values, and never emits a macro for a function-local enum member. Import receipts preserve both stdout and stderr. Repeated function names are resolved by the queue overlay instead of skipped or guessed. The five genuine failures now score 340, 3020, 15, 2170 and 10; the six formerly ambiguous records now carry structural not-twin evidence. The final discovered automation gate passed 59/59, the US build completed, and `verify_build` returned 81/81 |
-| 186 | **open** | Run the 10 score-zero bodies through controlled full-build landings, one exact queue record at a time. A zero is only permission to build. Preserve every nonmatching body as an immutable candidate, record the linked isolated receipt and build result with `keep_note=True`, and verify 81/81 before calling any function matched |
-| 187 | **open** | Publish and route the low-score adaptable bodies after #186, starting with score 5 to 35. Use the preserved isolated receipts to separate relocation cleanup from real expression or scheduling work, then send only honest residual source-shape differences to the permuter |
+| 186 | done | Ran all ten exact score-zero receipt bodies through the controlled full-build landing path. Nine matched and were committed in `342c79c78`: `BO6_RicEntitySubwpnStopwatchCircle`, `EntitySlograSpear`, `EntitySmallGaibonProjectile`, `UpdateFallingPebble`, `EntityJackOBonesDeathParts`, `EntityNovaLaserPulse`, `TryShoot`, `TryThrow`, and `func_us_801D289C`. Each was reported with its receipt, artifact hash and 81/81 proof. `DrawLaserRing` compiled and linked but changed RNO0, so the source was restored, 81/81 was re-established, and its exact body was preserved rather than called matched. Final batch build `make_build-171139-67032` succeeded and the oracle returned 81/81 |
+| 187 | done | Published and terminally routed every low-score adaptable body. Three orphaned searches were stopped with their exact terminal iteration and error counts; the remaining exhausted searches retain their best scores and immutable seeds. Repaired `DrawLaserRing` compiled at isolated score 0 but remained a proven linked miss, while repaired `EntityRelicOrb` stayed at score 10 through 9,535 controlled iterations. Every candidate is now matched, escalated or deferred with `keep_note=True`; the live queue has 0 claimed and 0 near records |
 | 188 | done | Closed the isolated-score ownership and recovery boundary found in final review. Every same-name score holds a cross-process lock through import, debug and archive; the importer names the exact directory it created in its success receipt, and scoring trusts only that path rather than a global directory set difference. An ordinary import can no longer be captured or archived as another invocation's evidence. A source-restoration mismatch remains a hard stop but still writes and archives its complete receipt instead of stranding an unmarked live work directory |
 | 189 | done | Carried exact queue identity through every public transplant and landing route. Ordinary scan, scored scan, single apply, batch apply and live supervisor landing all pass the record overlay or full record ID. Bare duplicate names are refused. Behavioral regressions drive both `BOSS/BO6:EntityShaft` and `ST/RCEN:EntityShaft` through ordinary scan and prove a score-zero live slot forwards its exact ID before landing |
 | 190 | done | Hardened automatic map proof. A donor symbol or literal that aligns to more than one target value now makes the pair structural-near and suppresses every automatic edit instead of retaining the last proposal. Entity-update enum proof filters inactive PSP tables before reading ordinals and removes all conditional directive lines, so a PSP-only dispatch table cannot authorize a US rename |
@@ -1147,3 +1165,6 @@ Status: **done**, **open**, **partial**, **void** (turned out unnecessary),
 | 196 | done | Subagent documentation-surface finding: membership in `ANALYSIS_SCRIPTS` did not prove a documented script still existed. The connector regression now separately checks every documented `.py` row for a real `automation/` file and allowlist membership, while retaining exact callable-tool and top-level focused-test coverage |
 | 197 | done | Subagent generated-block finding: the first marker pair could hide a duplicate stale block, and `--write` would leave that duplicate behind. Both drift comparison and replacement now require exactly one ordered begin/end pair. Regressions cover duplicate blocks, duplicate individual markers, one-sided loss and reversed order |
 | 198 | done | Subagent documentation wording finding: ownership text still told readers to regenerate completion through `progress_table.py --markdown`. The docs now state the actual boundary: `progress_table.markdown()` renders the block and `readme_status.py --write` owns README replacement |
+| 199 | done | Fixed the permuter seed declaration boundary exposed while closing #187. Declaration lookup now parses complete C spans instead of physical lines, recognizes storage-qualified and static definitions, and recovers multiline SDK prototypes such as `RotTransPers4` and `LoadTPage` instead of inventing conflicting implicit-int declarations. Generated blocks carry an end sentinel; the repair tool safely replaces both current and legacy writer-owned blocks while preserving every prior generation. Focused regressions failed on the old behavior and now pass. The two blocking seeds plus 17 additional current corpus seeds were republished as immutable versions, with all older evidence retained |
+| 200 | done | The final gate exposed two live-tree tests that still named `BO6_RicEntitySubwpnStopwatchCircle` after #186 matched and removed its stub. This was fixture staleness, not a production locator failure: the locator's supported repository-wide scan still found all 180 stubs in its scope. The supervisor and locator tests now use current wrapped BO6 stubs, retain the original historical explanation, and both focused suites pass |
+| 201 | done | The same gate exposed a generated inventory mismatch: README discovery counted any file containing the text `--self-test`, recursively and including the runner itself, while `run_selftests.py` executes only top-level modules with a real argparse registration and excludes itself. `readme_status.py` now calls the runner's discovery functions directly, its self-test asserts that single authority, and regeneration corrected the documented module-self-test count from 32 to 31. The final consolidated automation gate passed 59/59 |

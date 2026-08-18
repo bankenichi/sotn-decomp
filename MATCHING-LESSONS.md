@@ -1355,3 +1355,34 @@ dropping ready twins and structural not-twins forces the operator to reconstruct
 the missing accounting by hand. It must also return failure when any import,
 debug, archive or restoration step fails; one numeric score elsewhere cannot
 turn an incomplete sweep into a successful one.
+
+## 25. Declaration recovery must parse C, not physical lines
+
+The first low-score publication pass exposed two distinct false declarations.
+`DrawLaserRing` already had a `static void` definition in its seed, but the
+writer recognized only a one-token same-line declaration and added
+`extern int DrawLaserRing();`. The real SDK declaration of `RotTransPers4` spans
+several lines, so line-oriented grep missed it and added
+`extern int RotTransPers4();`. `EntityRelicOrb` repeated the same failure with
+its static `BlinkItem` definition and the multiline `LoadTPage` prototype.
+
+These were not candidate failures. They were evidence-construction failures.
+Declaration lookup now uses grep only to identify candidate files, then parses
+complete declaration spans in Python. The recognizer accepts storage qualifiers,
+multiword and pointer return types, balanced multiline arguments, static
+definitions and multiline externs while rejecting call expressions.
+
+A repair tool also needs an ownership boundary. Adding missing declarations to
+an old generated block cannot remove a conflicting line already inside it.
+Current blocks therefore carry an explicit end sentinel. The retrofit recognizes
+that format and the older blank-delimited writer format, removes only the
+writer-owned prelude, and regenerates it from the clean body. If the old boundary
+is ambiguous it refuses to guess. The repaired seed becomes a new immutable
+generation; the old bytes remain in history as the evidence for the defect.
+
+After that repair, `DrawLaserRing` compiled at isolated score 0 and still changed
+the linked RNO0 checksum. That is the useful final separation: the declaration
+defect was fixed, and the preserved candidate was then proven to have a distinct
+link-context mismatch. Rebuilding the same body again would add no information.
+Restore 81/81, preserve the linked miss, record its terminal disposition, and
+move on to a different method or a later advanced-worker sample.

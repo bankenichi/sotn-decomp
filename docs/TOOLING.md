@@ -146,6 +146,22 @@ non-score outcomes. `--limit` counts isolated score attempts. Any tool failure
 makes the pass nonzero even if a different record received a numeric score. A
 final score of zero is a build candidate, never a match verdict.
 
+`transplant.py --publish-low-scores --score-min N --score-max N` lists the
+newest receipt-owned isolated bodies in the requested range. Add `--apply` to
+publish those exact bodies through the immutable candidate writer. The command
+does not regenerate a draft from current source, and it never overwrites a prior
+generation. Use `--overlay` and `--limit` to bound a batch. Run a large corpus
+publication through `job_start(action="run_analysis", script="transplant.py",
+args="...")`; a synchronous transport timeout does not mean the append-only
+publication stopped.
+
+`transplant.py --land-score-zeros` lists the newest exact score-zero receipts.
+Add `--apply` to pass each preserved body sequentially through the journaled
+full-build landing path. The path refuses unrelated `src/` dirt, preserves every
+compile or link miss, restores the source after a miss, and reports a match only
+after the full artifact oracle passes. A score of zero authorizes this path; it
+does not bypass it.
+
 `Reorderings: 1` means the exact project compiler emitted the same instruction
 shape in a different local position. It is not evidence that a different
 compiler binary ran. Check alias visibility, API member versus standalone
@@ -352,7 +368,7 @@ supports `--help` and most support `--self-test`.
 | script | answers |
 |---|---|
 | `run_selftests.py` | runs every `test_*.py` and prints one table |
-| `fix_seed_declarations.py` | retrofit missing declarations into permuter seeds; `--apply` publishes an immutable version and prints its exact `seed=` path |
+| `fix_seed_declarations.py` | repair missing or stale writer-owned declarations in permuter seeds; `--apply` publishes an immutable version and prints its exact `seed=` path |
 | `permuter_supervisor.py` | the auto-queueing permuter driver, legacy-seed migrator and focused importer. **Use `job_start`** for searches |
 | `test_connector_surfaces.py` | REGISTRY vs decorators vs manifest, plus portability and doc checks |
 
@@ -360,6 +376,15 @@ The remaining `test_*.py` scripts are all callable through `run_analysis` and
 each explains itself when run. `test_connector_surfaces.py` enforces that
 blanket claim and exact coverage of every callable connector tool.
 `run_selftests.py` is the one to reach for.
+
+The seed writer parses complete declaration spans rather than physical lines.
+It recognizes storage qualifiers, multiword and pointer return types, static
+definitions, balanced multiline prototypes, and complete multiline externs.
+Generated declaration blocks carry an explicit end sentinel. The retrofit tool
+can also identify the older blank-delimited block format, remove only that
+writer-owned prelude, and regenerate it from the clean preserved body. If the
+legacy boundary is ambiguous it refuses to guess. Every applied repair creates
+a new immutable history generation; older seeds remain evidence.
 
 `progress_table.py` uses `.NON_MATCHING`, configured whole-file assembly and
 the shared path-aware live `INCLUDE_ASM` index. A retained individual `.s` file
