@@ -153,10 +153,10 @@ def _restorable(path: str, confirm_orphan: bool = False) -> str:
       - not under src/          -> not our concern; automation/ churns
                                    constantly and its edits are disposable.
       - unmodified              -> nothing to lose.
-      - a crash journal covers it -> this is normal recovery of an
-                                   in-flight apply. The journal holds the
-                                   original and the worker or the replay will
-                                   deal with it. Allowed, unchanged.
+      - a crash journal covers it -> REFUSE raw Git restore. The journal's
+                                     original may itself contain uncommitted
+                                     work predating the apply. Journal replay,
+                                     not checkout, preserves that baseline.
       - modified, under src/,
         and NOTHING references it -> REFUSE. This is the exact shape of the
                                    near-miss: work whose only record is the
@@ -189,10 +189,18 @@ def _restorable(path: str, confirm_orphan: bool = False) -> str:
         for jf in pending.glob("*.json"):
             try:
                 with open(jf, encoding="utf-8") as f:
-                    if json.load(f).get("src_rel", "") == rel:
-                        return p          # in flight; normal recovery
+                    journal = json.load(f)
             except (OSError, ValueError, AttributeError):
                 continue
+            if journal.get("src_rel", "") == rel:
+                raise Rejected(
+                    f"refusing raw Git restore of {rel}: a crash "
+                    f"journal covers it, and the journal's original "
+                    f"may contain uncommitted work that predates the "
+                    f"worker apply. Use fleet_stop to replay pending "
+                    f"journals, or let the owning worker restore its "
+                    f"saved baseline. Pass confirm_orphan=True only "
+                    f"to discard both states deliberately.")
     except OSError:
         pass
 

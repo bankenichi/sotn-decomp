@@ -165,10 +165,12 @@ No finding may exist only in a chat transcript. A passing test suite does not
 override a concrete review finding; the missing regression becomes part of the
 finding's task.
 
-Files under `automation/candidates/` and `automation/rejected/` are durable
-evidence, not disposable worker output. A root session that creates one must
-report its queue disposition and explicitly stage the file in the same work
-batch. Do not leave generated evidence as a permanent untracked backlog.
+Files under `automation/candidates/`, `automation/rejected/` and
+`automation/landings/` are durable evidence, not disposable worker output.
+A root session that creates one must report its queue disposition and explicitly
+stage the file in the same work batch. For a verified worker landing, stage both
+the named `src/` path and its unique landing snapshot as explicit paths. Do not
+leave generated evidence as a permanent untracked backlog.
 
 Good delegated questions include:
 
@@ -208,6 +210,13 @@ Every completed task updates `ROADMAP.md`. Compiler or matching behavior goes in
 `MATCHING-LESSONS.md`; connector behavior goes beside the relevant tool in
 `docs/TOOLING.md` or `docs/CONNECTORS.md`; per-function reasoning stays in the
 queue note with proof preserved.
+
+A worker may keep an oracle-verified source edit only after it writes an
+append-only exact replacement snapshot under `automation/landings/`. The queue
+report must name that snapshot and must occur before the crash journal is
+cleared. If preservation or reporting fails, restore the pre-apply file while
+the build lock is still held and do not report `matched`. Git remains
+root-owned.
 
 Before landing automation changes:
 

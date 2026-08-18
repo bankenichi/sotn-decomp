@@ -940,7 +940,7 @@ Status: **done**, **open**, **partial**, **void** (turned out unnecessary),
 | 88 | superseded | Old audit dropped in favour of a fresh one |
 | 89 | done | 16 requeued to `near`, all 18 work dirs re-imported from fixed seeds |
 | 90 | done | Both bo6 files were genuine matches. Verified 81/81 and committed |
-| 91 | partial | Detection half done: `orphan_check.py` plus a guard on `git_restore`. Prevention still open |
+| 91 | done | Detection and prevention are complete. `orphan_check.py` identifies unexplained source edits; raw connector restores refuse both orphaned and journal-covered `src/` work; and verified worker matches are preserved before queue reporting through #160 and #162 |
 | 92 | done | The zero-count now self-explains. Two theories ruled out, the race is inherent |
 | 93 | done | `matched_audit.py` built |
 | 94 | done | Stage 0: 202 matched, 14 requeued, 5 bases recovered |
@@ -962,7 +962,7 @@ Status: **done**, **open**, **partial**, **void** (turned out unnecessary),
 | 105 | **open** | The 4 remaining twins, each blocked on a different named thing |
 | 106 | done | The supervisor stamps `SEED_CURRENT`. The loop is closed |
 | 107 | done | README status tables AND prose are generated |
-| 108 | partial | Detection wired at the risk moment. Auto-commit deliberately not built |
+| 108 | done | Auto-commit remains deliberately rejected. The worker now writes a durable verified landing snapshot before reporting `matched`, while root review, explicit staging, commit and push remain the only Git authority |
 | 109 | done | Closed: no `Ext` field was missing. The m2c-only path could not name them |
 | 110 | **open** | P4: exhaust the `src/ric` to BO6 twin pipeline before spending model calls |
 | 111 | **open** | A/B reasoning: the per-worker effort knob landed and is ready to run |
@@ -990,7 +990,7 @@ Status: **done**, **open**, **partial**, **void** (turned out unnecessary),
 | 129 | done | **The queue had no backup, and a backup branch did not reveal it.** Making a checkpoint branch on 2026-08-17 exposed the gap: the queue lives at `~/sotn-work/queue.jsonl`, outside the repo, so a branch protects `src/` and the docs and not the record of how any of it was produced. That location is correct and stays (a cloud sync daemon destroyed the in-repo queue in 2026-07 and took 438 records with it), but it answered *where the hot file lives* and never answered *what backs it up*. Built `queue_snapshot` and `queue_restore`: the hot file stays on WSL-native storage, a point-in-time copy lands in `automation/queue/snapshots/` on demand and is never rewritten, so no daemon has a race to lose. snapshot borrows the writer's lock and is deliberately NOT guarded by the queue-owner check, because backing up a queue you distrust is exactly when you need it to work; restore is guarded, validates every line before touching anything, and snapshots what it is about to replace |
 | 128 | done | Two matches by hand derivation. `EntityClockRoomController`: a declaration-order problem plus `u16` where the asm's `sll 16` + `bnez` demands `s16`. `func_us_801B6998`: **retracts the 2026-08-16 diagnosis** of a delay-slot nop at +21. The real cause was switch dispatch form: four live cases compile to a compare chain, and the jump table's own extent named the two empty cases needed to restore it |
 
-## Codex transition and dependency audit, 2026-08-18 (#130 to #160)
+## Codex transition and dependency audit, 2026-08-18 (#130 to #162)
 
 | # | status | task and outcome |
 |---|---|---|
@@ -1024,4 +1024,6 @@ Status: **done**, **open**, **partial**, **void** (turned out unnecessary),
 | 157 | done | Normalized generated-artifact ownership so routine Git status is useful. The 17 untracked compiling candidates and 55 rejected bodies are preserved as explicit tracked evidence with directory contracts; future root sessions must land each new artifact with its queue disposition. Only the two legacy root permuter debug files are ignored. The current OpenCode model catalog is recorded. Parent status suppresses the two known submodule mode-only worktrees, while exact-path submodule state still exposes all four mode flips whenever dependency work is in scope |
 | 158 | done | The artifact cleanup exposed another evidence cap: candidate and rejected headers sliced verdicts to 160 or 400 characters and copied noisy build tails containing forbidden symbols. A failing long-verdict regression proved the loss. Both writers now preserve the complete diagnostic portion, stop before disposable build-status output, and normalize forbidden punctuation; the preserved corpus was mechanically normalized without changing any C body |
 | 159 | done | Reconciled this roadmap against live generators before resuming work: queue 269/70/95/30/7, progress 6359/6561, match audit 269 present with zero lost, and provenance 44 unknown. Corrected the stale #56 and #65 partial statuses, re-baselined #98 and #101, and made P2 consistently describe the seven compiling `near` seeds rather than the noncompiling escalated pool |
-| 160 | **open** | Close #91 and #108 without worker-owned Git: save an append-only verified landing snapshot before a worker reports `matched`, fail closed if preservation fails, and keep root review, staging, commit and push as the only landing authority |
+| 160 | done | Closed #91 and #108 without worker-owned Git. Before reporting `matched`, the direct worker saves the exact verified stub replacement and complete normalized proof under `automation/landings/`; later results receive numeric suffixes, the queue note names the snapshot, and preservation or reporting failure restores the pre-apply source while `BuildLock` is held. `test_matched_landing.py`, the connector surface regression and all 57 automation suites pass; the restarted connector loaded the hardened policy |
+| 161 | **open** | **NEXT:** Enforce archive-before-replacement for `save_candidate()` and the rejected-candidate writer. Preserve prior record artifacts without confusing the supervisor's one-current-seed contract, update queue notes to the current path, and cover both artifact classes before any production fleet run |
+| 162 | done | Live-tree review of #91 found that a crash journal incorrectly authorized raw Git restore even though its saved original could itself be uncommitted work. `_restorable()` now refuses journal-covered source paths and directs recovery through `fleet_stop` journal replay; the regression preserves a long pre-apply baseline exactly, the connector surface passes, and post-restart tool metadata confirms the policy is live |

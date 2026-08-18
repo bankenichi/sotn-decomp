@@ -35,8 +35,10 @@ hour, or to stop bad candidates reaching it.
    scheduler.py                        worker_direct.py  x N
    (claim / report / stats)            (generate -> gate -> apply -> build -> verify)
         |                                    |
-        |                             automation/candidates/   <- permuter seeds
-        |                             automation/logs/gen/     <- every attempt (disposable)
+        |                             automation/candidates/   <- compiling misses
+        |                             automation/rejected/      <- noncompiling attempts
+        |                             automation/landings/      <- verified replacements
+        |                             automation/logs/gen/      <- every attempt (disposable)
         |                                    |
    commands_client.py  <---- allowlist ----  sotn_cmd_mcp.py   <- the MCP connector
         |                                            |
@@ -325,8 +327,27 @@ It must NOT live under `automation/logs/` — that directory is gitignored and
 periodically archived, which is why all four `near` records had zero surviving
 seeds when the permuter finally needed them.
 
-Later compiling attempts overwrite earlier ones on purpose: retries carry
-asm-differ feedback the first attempt never had.
+`save_candidate()` currently overwrites earlier compiling attempts. That
+behavior predates the archive-before-replacement rule and is tracked as #161.
+Production fleet work remains blocked on that task. Until it closes, archive an
+existing seed before any targeted retry that could replace it.
+
+### Verified landing snapshots
+
+A queue proof is not a copy of the C that produced it. After an applied body
+passes the artifact hash, and while `BuildLock` is still held,
+`save_matched()` writes the exact stub replacement and complete normalized
+proof to `automation/landings/<record>.c`. Existing snapshots are append-only;
+later results receive numeric suffixes.
+
+The worker then reports `matched` with the snapshot path in the queue note and
+only then clears the pre-apply crash journal. If either the snapshot write or
+the queue report fails, it restores the pre-apply source before releasing the
+lock and refuses the matched transaction. Root review remains the only Git
+authority and explicitly stages both the source path and snapshot.
+
+A landing snapshot is recovery evidence, not another build source. It remains
+tracked after the source is committed.
 
 ---
 

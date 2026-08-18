@@ -1358,6 +1358,19 @@ def rejected_path(rec: dict) -> str:
     return os.path.join(WIN_REPO, "automation", "rejected", f"{slug}.c")
 
 
+def landing_path(rec: dict) -> str:
+    """A new append-only path for one oracle-verified replacement block."""
+    slug = re.sub(r"[^A-Za-z0-9_.-]+", "_", rec["id"]).strip("_")
+    base = os.path.join(WIN_REPO, "automation", "landings", f"{slug}.c")
+    if not os.path.exists(base):
+        return base
+    stem, ext = os.path.splitext(base)
+    version = 2
+    while os.path.exists(f"{stem}.{version}{ext}"):
+        version += 1
+    return f"{stem}.{version}{ext}"
+
+
 _ARCHIVE_TEXT_TRANSLATION = str.maketrans({
     "\u2014": "-", "\u2013": "-", "\u2705": "", "\u274c": "",
     "\U0001f6ab": "", "\u26a0": "", "\ufe0f": "",
@@ -1727,6 +1740,58 @@ def save_candidate(rec: dict, code: str, attempt: int, detail: str,
     except OSError as e:
         print(f"  !! could not save permuter seed: {e}", flush=True)
         return ""
+
+
+def save_matched(rec: dict, code: str, attempt: int, detail: str,
+                 ctx: dict, original: str) -> str:
+    """Preserve the exact verified stub replacement before queue reporting.
+
+    The queue proof is not the C that produced it. Five verified matches were
+    lost because their bodies never reached Git and existed only in src/. This
+    append-only snapshot closes that gap without giving a worker Git authority.
+    """
+    try:
+        path = landing_path(rec)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        model = OPENCODE_MODEL if MODEL_BACKEND == "cli" else _active_model()
+        replacement = _declare_used_symbols(original, code, ctx["src_rel"]) + code
+        newline = "\r\n" if "\r\n" in original else "\n"
+        replacement = replacement.replace("\r\n", "\n").replace("\n", newline)
+        verdict = _archive_verdict(detail)
+        # JSON quoting keeps the complete normalized proof on one logical field.
+        # Escape a block-comment closer without losing its recoverable value:
+        # JSON accepts \/ as the same slash.
+        proof_json = json.dumps(verdict, ensure_ascii=True).replace("*/", "*\\/")
+        with open(path, "w", encoding="utf-8", newline="") as f:
+            f.write(
+                f"/* VERIFIED LANDING SNAPSHOT. Kept on purpose.\n"
+                f"   record : {rec['id']}\n"
+                f"   attempt: {attempt}/{MAX_ATTEMPTS}\n"
+                f"   model  : {model}\n"
+                f"   origin : {ctx.get('src_rel', '?')}\n"
+                f"   asm    : {ctx.get('asm_rel', '?')}\n"
+                f"   proof  : {proof_json}\n"
+                f"   content: exact stub replacement block\n"
+                f"\n"
+                f"   This file is recovery evidence, not another build source.\n"
+                f"   Replace the named INCLUDE_ASM stub with the block below\n"
+                f"   only when recovering the verified landing. Never overwrite\n"
+                f"   this snapshot; a later result gets a numeric suffix. */\n")
+            f.write(replacement)
+        return os.path.relpath(path, WIN_REPO).replace("\\", "/")
+    except OSError as e:
+        print(f"  !! could not save verified landing: {e}", flush=True)
+        return ""
+
+
+def require_matched_landing(rec: dict, code: str, attempt: int, detail: str,
+                            ctx: dict, original: str) -> str:
+    """Fail closed when a verified body cannot be preserved."""
+    path = save_matched(rec, code, attempt, detail, ctx, original)
+    if not path:
+        raise RuntimeError(
+            "verified body could not be archived; refusing matched report")
+    return path
 
 
 def asm_dir(asm_rel: str, build: str = "us") -> str:
@@ -5102,9 +5167,23 @@ def process_one(dry: bool = False, only: str | None = None) -> bool:
                     original = None
                 else:
                     print(f"[worker] MATCHED {fn}")
-                    sched("report", "--id", rec["id"], "--status", "matched",
-                          "--score", "100", "--tier", "0",
-                          "--proof", detail, "--notes", detail)
+                    # Preserve the exact replacement before the queue can claim
+                    # it exists. If either preservation or reporting fails,
+                    # restore while still holding BuildLock so no other worker
+                    # can observe or build the unrecorded state.
+                    try:
+                        landing = require_matched_landing(
+                            rec, code, attempt, detail, ctx, original)
+                        print(f"  -> verified landing saved: {landing}",
+                              flush=True)
+                        sched("report", "--id", rec["id"], "--status", "matched",
+                              "--score", "100", "--tier", "0",
+                              "--proof", detail,
+                              "--notes", f"{detail} landing={landing}")
+                    except Exception:
+                        restore(ctx, original)
+                        original = None
+                        raise
                     matched = True
                     # DISCARD THE CRASH JOURNAL. This is not tidy-up; omitting
                     # it destroys the match.

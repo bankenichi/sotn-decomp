@@ -701,19 +701,30 @@ def main() -> int:
             "_orphan_guard_probe.c"),
             "confirm_orphan=True lets it through: a speed bump, not a veto")
 
-        # A journalled file is ordinary in-flight recovery and must NOT block,
-        # or every failed apply would need a confirmation flag.
+        # A journal's original can itself be valuable uncommitted work. Raw
+        # checkout would ignore that baseline, so only journal replay is safe.
         _pending.mkdir(parents=True, exist_ok=True)
+        _journal_original = "/* complete pre-apply uncommitted baseline */\n" + (
+            "preserve-me\n" * 200)
         _jf.write_text(_json.dumps({"src_rel": _victim_rel,
-                                    "original": ""}), encoding="utf-8")
-        _passed = None
+                                    "original": _journal_original}),
+                       encoding="utf-8")
+        _journal_blocked = None
         try:
-            _passed = _cc_mod._restorable(_victim_rel)
-        except Exception as e:                                  # noqa: BLE001
-            _passed = None
-            check(False, f"a journalled file should not be blocked ({e})")
-        check(bool(_passed),
-              "a file covered by a crash journal restores without friction")
+            _cc_mod._restorable(_victim_rel)
+        except Exception as e:                                  # Rejected
+            _journal_blocked = str(e)
+        check(_journal_blocked is not None,
+              "raw restore refuses a journal-covered source file")
+        if _journal_blocked:
+            check("fleet_stop" in _journal_blocked,
+                  "the refusal directs recovery through journal replay")
+        _journal_after = _json.loads(_jf.read_text(encoding="utf-8"))
+        check(_journal_after.get("original") == _journal_original,
+              "the complete pre-apply baseline remains available for replay")
+        check(_cc_mod._restorable(_victim_rel, True).endswith(
+            "_orphan_guard_probe.c"),
+            "the explicit destructive override still permits raw restore")
     finally:
         _jf.unlink(missing_ok=True)
         _sp.run(["git", "rm", "--cached", "-q", "--", _victim_rel],

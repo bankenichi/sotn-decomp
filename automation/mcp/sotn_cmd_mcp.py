@@ -605,13 +605,13 @@ def git_restore(path: str, timeout: int = 120,
     not report the expected N/N, restore the file and rebuild so the tree is
     never left in a half-changed state.
 
-    REFUSES ON ORPHANED src/ WORK. A file under src/ that is modified and has
-    no crash journal covering it is work whose only record is the file itself.
-    On 2026-08-10 two such files held three genuine matches (the tree verified
-    81/81 with them applied) and this command would have destroyed them
-    without comment. Run `run_analysis orphan_check.py --build` to find out
-    what you have; pass confirm_orphan=True to discard it anyway. A journalled
-    file is normal in-flight recovery and is not blocked.
+    REFUSES ON ORPHANED OR JOURNAL-COVERED src/ WORK. An orphaned edit may be
+    a verified match whose only record is the file. A journal is also not
+    permission for raw checkout: its saved pre-apply original may itself be
+    uncommitted work, so checkout could discard both states. Run
+    `run_analysis orphan_check.py --build` for an orphan. Use `fleet_stop`
+    to replay a journal. confirm_orphan=True is the deliberate destructive
+    override for either case.
 
     Run it HERE, not from a sandbox shell. The Cowork sandbox tears down its PID
     namespace when a bash call ends or hits its 45s cap. Doing this there once
