@@ -37,8 +37,11 @@ Three properties make a server portable in practice, and all three hold here:
    startup with the traceback buried in that client's log. Two lines remove the
    whole class.
 2. **No required environment.** `SOTN_REPO` falls back to two directories above
-   `commands_client.py`; `SOTN_PYTHON` falls back to `python3`. A client that can
-   supply only `command` and `args` still gets a correct server.
+   `commands_client.py`; `SOTN_PYTHON` selects the root repository `.venv`
+   interpreter, then the current interpreter if that venv is absent. The MCP
+   server has a separate small venv for its own protocol dependencies; using it
+   for asm-differ or the permuter omits modules those child tools require. A
+   client that can supply only `command` and `args` still gets a correct server.
 3. **Safety fails closed.** `SOTN_CMD_DRYRUN` unset or empty means dry-run. You
    cannot get a live server by forgetting a variable, only by setting it to `0`
    deliberately.

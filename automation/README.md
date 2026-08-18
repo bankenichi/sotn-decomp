@@ -205,7 +205,8 @@ to see the full capability set and the dry-run state.
 
 Safety default: the config snippet ships with `SOTN_CMD_DRYRUN=1`, so every tool
 returns the exact argv it WOULD run without executing it. Review that, then set
-`SOTN_CMD_DRYRUN=0` (or remove it) to actually run commands.
+`SOTN_CMD_DRYRUN=0` to actually run commands. Removing it leaves dry-run on,
+because the connector fails closed.
 
 ### Install and preview
 
@@ -218,8 +219,9 @@ returns the exact argv it WOULD run without executing it. Review that, then set
 
 Merge `mcp/claude_desktop_config.cmd.snippet.json` into your Claude Desktop
 config alongside `sotn-local`, then restart. Call `list_allowed` first to see the
-exact allowlist and confirm the dry-run state. Set `SOTN_PYTHON` to the repo
-`.venv` python so asm-differ and the permuter have their dependencies.
+exact allowlist and confirm the dry-run state. Child Python actions select the
+root repository `.venv` automatically. Set `SOTN_PYTHON` only to override that
+discovery deliberately.
 
 This is the scoped version of the "run my local CLI" connector discussed in
 Section 5: allowlisted actions only, not an open shell.

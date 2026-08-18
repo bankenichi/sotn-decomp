@@ -590,6 +590,14 @@ The fix tracks whether any attempt compiled (`compiled_once`) and picks the
 status from that. Note the asymmetry: ONE attempt compiling is enough to make it
 `near`, because that proves the function is reachable in C.
 
+Preserve the body before restoring the source. Write the exact applied C to
+`automation/candidates/`, report the record as `near` with the seed path and
+build evidence, then snapshot the queue. On 2026-08-18 the Luna shadow run
+compiled `BO6_RicStepStand` at 80/81 and localized it to `-0x4`, but the root
+restored the stub before saving the body. The exact patch was recoverable from
+the Codex task transcript and was saved later. That recovery was luck. A green
+restored tree does not excuse losing the only compiling form.
+
 General form: when a pipeline records outcomes, a single "failed" bucket
 collapses distinctions the downstream router needs. If two failures have
 different owners, they need different statuses.

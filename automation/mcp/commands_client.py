@@ -18,11 +18,19 @@ import shutil
 import re
 import shlex
 import subprocess
+import sys
 import time
 from pathlib import Path
 
 REPO = Path(os.environ.get("SOTN_REPO", Path(__file__).resolve().parents[2]))
-PYTHON = os.environ.get("SOTN_PYTHON", "python3")
+# The MCP server runs from automation/mcp/.venv, which intentionally carries
+# only the connector dependencies. Child tools such as asm-differ and the
+# permuter use the root repo venv. Falling back to bare `python3` crosses that
+# boundary and fails later on imports such as watchdog or toml.
+_VENV_PYTHON = REPO / ".venv" / (
+    "Scripts/python.exe" if os.name == "nt" else "bin/python")
+PYTHON = os.environ.get("SOTN_PYTHON") or (
+    str(_VENV_PYTHON) if _VENV_PYTHON.is_file() else sys.executable)
 # Fail CLOSED. If the variable is missing or empty we assume dry-run, because
 # an unset safety flag must never mean "execute for real". This bit us once:
 # MCP `env` entries are set on the Windows wsl.exe process and do NOT propagate
@@ -1671,7 +1679,8 @@ def verify_build(version: str = "us") -> dict:
 
 
 def queue_report(function_id: str, status: str, proof: str = "",
-                 score: str = "", notes: str = "") -> dict:
+                 score: str = "", notes: str = "",
+                 keep_note: bool = True) -> dict:
     """Record an outcome through scheduler.py, the single queue writer.
 
     Without this the orchestrator can verify a match but has no sanctioned way
@@ -1692,6 +1701,8 @@ def queue_report(function_id: str, status: str, proof: str = "",
         argv += ["--score", score]
     if notes:
         argv += ["--notes", notes[:250]]
+    if keep_note:
+        argv.append("--keep-note")
     if DRYRUN:
         return {"action": "queue_report", "argv": argv, "dry_run": True}
     p = subprocess.run(argv, cwd=str(REPO), capture_output=True, text=True,

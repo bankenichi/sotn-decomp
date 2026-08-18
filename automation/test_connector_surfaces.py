@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import re
 import sys
+import tempfile
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
@@ -1044,6 +1045,33 @@ def main() -> int:
     # destination must be in-repo or it cannot be committed, and restore must
     # not be able to fire by accident.
     # ------------------------------------------------------------------
+    print("\nqueue reports preserve the existing derivation note by default")
+    _saved_dryrun = cc.DRYRUN
+    cc.DRYRUN = True
+    try:
+        try:
+            _report_plan = cc.queue_report(
+                "us:BOSS/BO6:BO6_RicStepStand", "near",
+                notes="new evidence")
+            _replace_plan = cc.queue_report(
+                "us:BOSS/BO6:BO6_RicStepStand", "near",
+                notes="superseding evidence", keep_note=False)
+        except TypeError:
+            _report_plan = {}
+            _replace_plan = {}
+    finally:
+        cc.DRYRUN = _saved_dryrun
+    check("--keep-note" in _report_plan.get("argv", []),
+          "commands_client preserves notes when keep_note is omitted")
+    check("--keep-note" not in _replace_plan.get("argv", []),
+          "commands_client permits an explicit note replacement")
+    _mcp_queue_src = (MCP / "sotn_cmd_mcp.py").read_text(encoding="utf-8")
+    check(re.search(r"def queue_report\([^)]*keep_note\s*:\s*bool\s*=\s*True",
+                    _mcp_queue_src, re.S) is not None,
+          "the MCP queue_report schema defaults keep_note to True")
+    check("keep_note=keep_note" in _mcp_queue_src,
+          "the MCP wrapper forwards keep_note rather than accepting it cosmetically")
+
     print("\nthe queue can be snapshotted into the repo and restored")
     check("queue_snapshot" in registry, "queue_snapshot is in REGISTRY")
     check("queue_snapshot" in tools, "queue_snapshot is callable (@mcp.tool)")
@@ -1177,6 +1205,49 @@ def main() -> int:
     finally:
         if _saved is not None:
             _os.environ["SOTN_REPO"] = _saved
+        _il.reload(cc)
+
+    # The MCP server has its own small venv, while asm-differ and the permuter
+    # depend on the root repository venv. A bare `python3` fallback silently
+    # crosses that environment boundary and fails only when the child imports a
+    # module such as watchdog or toml.
+    print("\nchild Python defaults to the repository tool venv")
+    _saved_repo = _os.environ.get("SOTN_REPO")
+    _saved_python = _os.environ.pop("SOTN_PYTHON", None)
+    try:
+        with tempfile.TemporaryDirectory() as _td:
+            _fake_repo = Path(_td)
+            _suffix = Path("Scripts/python.exe") if _os.name == "nt" else Path("bin/python")
+            _fake_python = _fake_repo / ".venv" / _suffix
+            _fake_python.parent.mkdir(parents=True)
+            _fake_python.touch()
+            _os.environ["SOTN_REPO"] = str(_fake_repo)
+            _il.reload(cc)
+            check(Path(cc.PYTHON) == _fake_python,
+                  "with SOTN_PYTHON unset child tools select the root repo venv")
+
+            _override = str(_fake_repo / "explicit-python")
+            _os.environ["SOTN_PYTHON"] = _override
+            _il.reload(cc)
+            check(cc.PYTHON == _override,
+                  "an explicit SOTN_PYTHON still overrides the discovered venv")
+
+            _os.environ.pop("SOTN_PYTHON", None)
+            _repo_without_venv = _fake_repo / "without-venv"
+            _repo_without_venv.mkdir()
+            _os.environ["SOTN_REPO"] = str(_repo_without_venv)
+            _il.reload(cc)
+            check(cc.PYTHON == sys.executable,
+                  "without a root repo venv child tools retain the current interpreter")
+    finally:
+        if _saved_repo is None:
+            _os.environ.pop("SOTN_REPO", None)
+        else:
+            _os.environ["SOTN_REPO"] = _saved_repo
+        if _saved_python is None:
+            _os.environ.pop("SOTN_PYTHON", None)
+        else:
+            _os.environ["SOTN_PYTHON"] = _saved_python
         _il.reload(cc)
 
     print("\nnon-Anthropic clients have a registration to copy")

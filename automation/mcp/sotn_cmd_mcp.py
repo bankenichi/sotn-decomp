@@ -19,8 +19,8 @@ truncated. See automation/mcp/commands_client.py for the allowlist and validatio
 
 Environment:
   SOTN_REPO        repo root (default: two levels up from this file)
-  SOTN_PYTHON      python used for asm-differ/permuter (default: python3;
-                   set to the repo .venv python, e.g. .venv/bin/python)
+  SOTN_PYTHON      python used for asm-differ/permuter (default: the root repo
+                   .venv python, then this interpreter if that venv is absent)
   SOTN_CMD_DRYRUN  set to 1 to return the argv WITHOUT executing (safe preview)
   SOTN_CMD_MAXOUT  max stdout/stderr chars returned (default 20000)
 
@@ -391,14 +391,17 @@ def verify_build(version: str = "us") -> dict:
 
 @mcp.tool()
 def queue_report(function_id: str, status: str, proof: str = "",
-                 score: str = "", notes: str = "") -> dict:
+                 score: str = "", notes: str = "",
+                 keep_note: bool = True) -> dict:
     """Record an outcome in the work queue via scheduler.py (the single writer).
 
     status: todo|claimed|near|matched|escalated|deferred.
     'matched' is REFUSED unless proof is supplied: pass the verify_build
-    verdict plus the artifact hash. Never hand-edit work/queue.jsonl."""
+    verdict plus the artifact hash. Existing derivation notes are preserved by
+    default; pass keep_note=False only when the new note explicitly supersedes
+    them. Never hand-edit work/queue.jsonl."""
     return cc.queue_report(function_id, status, proof=proof, score=score,
-                           notes=notes)
+                           notes=notes, keep_note=keep_note)
 
 
 @mcp.tool()

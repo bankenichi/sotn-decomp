@@ -154,8 +154,19 @@ The root evaluated the `xhigh` Stage A candidate against the real tree:
    remained `-0x4`, so no further guesses were made without a working diff.
 7. The root restored the original stub, rebuilt, and verified 81/81.
 
-No queue status changed, no candidate was claimed as matched, and no source
-change from the shadow run remains. The target is still `todo`.
+At the end of the shadow run, no queue status had changed, no candidate was
+claimed as matched, and no source change remained. The target was still `todo`.
+That handling was incomplete: compiled nonmatching C is a `near` seed and must
+be preserved before the source is restored.
+
+### Preservation correction
+
+The exact applied patch was recovered from the Codex task transcript and saved
+at `automation/candidates/us_BOSS_BO6_BO6_RicStepStand.c`. The queue record is
+now `near` at score 50 with the 80/81 and `-0x4` proof, and the updated 471-record
+queue was snapshotted at
+`automation/queue/snapshots/queue.20260818-032759.37a5d1b.jsonl`. The source
+still holds the original stub and the tree remains 81/81.
 
 This is useful candidate yield. It is not sufficient replacement evidence:
 Stage C covered one record, not the mixed multi-record sample required by the
@@ -181,17 +192,19 @@ default.
 The failed `asm_diff` was an infrastructure failure, not evidence about the
 candidate:
 
-- `automation/mcp/commands_client.py` selects child Python from `SOTN_PYTHON`
-  and otherwise uses bare `python3`
+- `automation/mcp/commands_client.py` selected child Python from `SOTN_PYTHON`
+  and otherwise used bare `python3`
 - `automation/mcp/clients/codex.config.toml` leaves `SOTN_PYTHON` unset
 - the repository virtual environment contains the required modules
-- bare Python failed `asm_diff` with missing `watchdog`
-- `permuter_import` independently failed with missing `toml`
+- `asm_diff` selected bare Python and failed with missing `watchdog`
+- `permuter_import` independently used it and failed with missing `toml`
 
-The Codex connector therefore has a portability defect affecting at least these
-two Python-backed actions. It needs a tested repository-venv selection, recorded
-separately in `ROADMAP.md`, before further shadow matching work depends on
-asm-differ or the permuter.
+The Codex connector therefore had a portability defect affecting at least these
+two Python-backed actions. `commands_client.py` now selects the root repository
+venv by default, retains an explicit `SOTN_PYTHON` override, and falls back to
+the current interpreter only if the root venv is absent. The regression failed
+before the change and passes after it. Live asm-differ and permuter verification
+still require a connector restart.
 
 ## Root-gated support assignment
 
@@ -218,10 +231,10 @@ compare useful candidate yield before changing the production default.
 ## Record limitation
 
 The prompt requirements and fixtures, scored assertions, material candidate
-outcome, and root verification evidence are preserved here. The application
-collaboration layer kept the exact dispatch prompts and verbatim agent finals in
-the Codex task transcript but exposed no durable response-export primitive to
-the root. Complete byte-for-byte prompts and response bodies are therefore not
-in the repository. Future benchmark dispatch should capture each dispatch and
-final into a repository artifact when it arrives; treating a UI transcript as
-the only raw record is a harness gap.
+outcome, and root verification evidence are preserved here. The exact applied
+candidate was later recovered from the task transcript and is now a repository
+seed. The application collaboration layer still exposed no durable export for
+the complete dispatch prompts and verbatim agent finals, so those byte-for-byte
+bodies are not in the repository. Future benchmark dispatch should capture each
+dispatch and final into a repository artifact when it arrives; treating a UI
+transcript as the only raw record is a harness gap.

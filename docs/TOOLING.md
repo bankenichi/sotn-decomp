@@ -93,7 +93,7 @@ invisible to the harness".
 |---|---|---|
 | `queue_stats` | start of a session, to see the shape | counts by status |
 | `queue_list` | find records; filter by `status` | output is long, filter it |
-| `queue_report` | record an outcome | `proof` is **required** for `matched`. Pass `keep_note=True` or you overwrite the method note |
+| `queue_report` | record an outcome | `proof` is **required** for `matched`. Existing method notes are preserved by default |
 | `queue_annotate` | attach twin candidates from `automation/twins.us.json` | writes only the `twin` field, never status; re-running is a no-op |
 | `queue_init` | seed a fresh queue from a seed file | destructive to ordering; not a routine action |
 | `queue_prune` | drop records that are not real functions | **no record is ever removed from scope**; this is only for string labels and similar non-functions |
@@ -121,10 +121,12 @@ branch.** `queue_restore` reads one back, refuses without `confirm=True`,
 validates every line before touching anything, and snapshots what it is about
 to replace so the restore itself is reversible.
 
-`queue_report` **replaces `notes` wholesale** unless you pass `keep_note`. That
-is how 35 matched records lost the record of how they were solved and became
-part of the 24% that `match_provenance.py` reports as unattributed. Not
-recoverable for those records. Always pass the flag.
+The scheduler's raw `report` command replaces `notes` wholesale unless it gets
+`--keep-note`. That is how 35 matched records lost the record of how they were
+solved and became part of the 24% that `match_provenance.py` reports as
+unattributed. Not recoverable for those records. The connector now exposes
+`keep_note` and defaults it to `True`; pass `False` only when the new note really
+supersedes the old derivation.
 
 Status vocabulary: `todo`, `claimed`, `near` (compiles, bytes differ), `matched`,
 `escalated` (a model produced something unusable), `deferred` (too large for the

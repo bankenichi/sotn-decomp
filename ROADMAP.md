@@ -11,14 +11,14 @@ mistake impossible twice.
 
 ---
 
-## Where things actually stand (2026-08-17)
+## Where things actually stand (2026-08-18)
 
 | | |
 |---|---|
 | Oracle | **81/81** |
-| Queue | **259 matched**, 76 todo, 100 escalated, 30 deferred, 6 near (471 total) |
+| Queue | **259 matched**, 75 todo, 100 escalated, 30 deferred, 7 near (471 total) |
 | Tree | **94.7% of functions decompiled** overall, 6249/6561 |
-| Automation | 59 analysis scripts, 30 test suites, **73 connector tools**, 37 dashboard diagnostics |
+| Automation | 59 analysis scripts, 30 test suites, **77 connector tools**, 37 dashboard diagnostics |
 | Provenance | shim-header 55, model-fleet 54, upstream-harvest 44, twin-port 14, permuter 9, shim-segment 9, transplant 8, hand 4, **unknown 62 (24%)** |
 | Fleet backend | `zen` on `mimo-v2.5-free` |
 | Audit | 259 present, 0 uncommitted, 0 LOST |
@@ -986,11 +986,13 @@ Status: **done**, **open**, **partial**, **void** (turned out unnecessary),
 | 129 | done | **The queue had no backup, and a backup branch did not reveal it.** Making a checkpoint branch on 2026-08-17 exposed the gap: the queue lives at `~/sotn-work/queue.jsonl`, outside the repo, so a branch protects `src/` and the docs and not the record of how any of it was produced. That location is correct and stays (a cloud sync daemon destroyed the in-repo queue in 2026-07 and took 438 records with it), but it answered *where the hot file lives* and never answered *what backs it up*. Built `queue_snapshot` and `queue_restore`: the hot file stays on WSL-native storage, a point-in-time copy lands in `automation/queue/snapshots/` on demand and is never rewritten, so no daemon has a race to lose. snapshot borrows the writer's lock and is deliberately NOT guarded by the queue-owner check, because backing up a queue you distrust is exactly when you need it to work; restore is guarded, validates every line before touching anything, and snapshots what it is about to replace |
 | 128 | done | Two matches by hand derivation. `EntityClockRoomController`: a declaration-order problem plus `u16` where the asm's `sll 16` + `bnez` demands `s16`. `func_us_801B6998`: **retracts the 2026-08-16 diagnosis** of a delay-slot nop at +21. The real cause was switch dispatch form: four live cases compile to a compare chain, and the jump table's own extent named the two empty cases needed to restore it |
 
-## Codex transition and dependency audit, 2026-08-18 (#130 to #133)
+## Codex transition and dependency audit, 2026-08-18 (#130 to #135)
 
 | # | status | task and outcome |
 |---|---|---|
 | 130 | done | Archived the Claude orchestrator and both Opus/Sonnet/Haiku prompt bodies under `docs/archive/claude-orchestration/`; the active `ORCHESTRATOR.md` now keeps every stateful operation in the root Codex agent and treats Sol, Terra and Luna roles as hypotheses until benchmarked |
 | 131 | partial | Added `git_submodule_state` and `git_submodule_diff`, restricted to exact `.gitmodules` paths, with decorator, manifest, documentation and rejection tests. An independent Sol review found that canonical aliases such as `tools/psyz/.` still passed the first version; raw-string membership and three regression cases now close that gap. Connector surfaces and all 54 automation suites pass. The running MCP process predates the new decorators, so inspection of the two dirty submodules waits for the post-commit connector restart |
-| 132 | partial | Luna effort sweep complete; Sol and Terra remain. No Luna setting passed every fixed case. `xhigh` alone passed the Stage A process gate and produced a candidate worth building, but both `xhigh` and `max` missed the hidden GCC switch and scheduling answer. The `xhigh` candidate compiled at 80/81 with BO6 exactly one instruction short, then the root restored and verified 81/81. Luna `xhigh` is limited to bounded read-only investigation and candidate drafting; it does not replace Zen as an autonomous worker. Full evidence is in `docs/benchmarks/luna/2026-08-18-effort-benchmark.md`. The collaboration layer also exposed no durable raw-response export, so future benchmark dispatch must capture finals as they arrive |
-| 133 | **open** | Repair the Codex connector child-Python selection before more shadow matching. `commands_client.py` falls back to bare `python3` because the Codex registration leaves `SOTN_PYTHON` unset. `asm_diff` then fails on missing `watchdog`, and `permuter_import` independently fails on missing `toml`, while the repository virtual environment has both. Add a portable repository-venv selection and connector regression coverage |
+| 132 | partial | Luna effort sweep complete; Sol and Terra remain. No Luna setting passed every fixed case. `xhigh` alone passed the Stage A process gate and produced a candidate worth building, but both `xhigh` and `max` missed the hidden GCC switch and scheduling answer. The `xhigh` candidate compiled at 80/81 with BO6 exactly one instruction short, then the root restored and verified 81/81. **Preservation correction:** restoring before saving was wrong; the exact patch was recovered from the Codex transcript, saved at `automation/candidates/us_BOSS_BO6_BO6_RicStepStand.c`, reported `near`, and included in a queue snapshot. Luna `xhigh` remains limited to bounded read-only investigation and candidate drafting; it does not replace Zen as an autonomous worker. Full evidence is in `docs/benchmarks/luna/2026-08-18-effort-benchmark.md` |
+| 133 | partial | Root cause fixed and regression-covered: `commands_client.py` no longer falls back to bare `python3`; child actions select the root repository venv, preserve an explicit override, and use the current interpreter only when the venv is absent. The connector surface test failed before the change and now passes. The running MCP process predates the module change, so live `asm_diff` and `permuter_import` validation waits for one restart |
+| 134 | done | `queue_report` exposed no `keep_note` argument even though the scheduler supports it and `AGENTS.md` requires it. The MCP and command layers now expose and forward the flag with preservation as the default. Four regression checks prove the default and opt-out behavior, the scheduler flag, and the MCP forwarding path |
+| 135 | **open** | Run with the #111 A/B fleet test: compare Luna `xhigh` and Terra on a fixed, stratified sample of `escalated` and `deferred` records that already carry candidates, compiler feedback, or detailed notes. Measure whether advanced context changes their useful-candidate yield, classification accuracy, process fidelity, wall time, and cost against Zen. The root and deterministic harness retain every stateful operation, and every compiling result is saved and routed `near` before restoration |
