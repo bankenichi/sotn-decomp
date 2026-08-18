@@ -42,6 +42,7 @@ import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
+SCORE_ROOT = REPO / "nonmatchings" / ".adapt-scores"
 sys.path.insert(0, str(REPO / "automation"))
 
 
@@ -1371,6 +1372,228 @@ def score_scan(limit: int = 0, overlay: str = "") -> int:
     return 1 if score_scan_failed(ranked) else 0
 
 
+def _score_receipt_identity(data: dict) -> tuple[str, str, str]:
+    """Return (queue id, overlay, function) from one isolated-score receipt."""
+    fn = str(data.get("function") or "").strip()
+    asm_rel = str(data.get("asm") or "").replace("\\", "/").strip("/")
+    source = str(data.get("source") or "").replace("\\", "/").strip("/")
+    match = re.match(r"^(.+?)/nonmatchings/", asm_rel)
+    if not fn or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", fn):
+        raise ValueError("receipt has no valid function")
+    if match is None:
+        raise ValueError(f"receipt has no exact overlay asm path: {asm_rel}")
+    if not source.startswith("src/"):
+        raise ValueError(f"receipt has no in-tree source path: {source}")
+    overlay = match.group(1).strip("/")
+    return f"us:{overlay.upper()}:{fn}", overlay, fn
+
+
+def _load_score_receipt(path: Path, root: Path = SCORE_ROOT,
+                        repo: Path = REPO) -> dict:
+    """Validate and load one receipt together with its exact scored body."""
+    resolved = path.resolve()
+    try:
+        resolved.relative_to(root.resolve())
+    except ValueError as exc:
+        raise ValueError(f"receipt escapes score root: {path}") from exc
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if data.get("status") != "scored" or not isinstance(data.get("score"), int):
+        raise ValueError(f"receipt is not a completed numeric score: {path}")
+    record_id, overlay, fn = _score_receipt_identity(data)
+    expected_archive = path.parent.resolve().relative_to(
+        repo.resolve()).as_posix()
+    if data.get("archive") != expected_archive:
+        raise ValueError(
+            f"receipt archive ownership mismatch: {data.get('archive')} != "
+            f"{expected_archive}")
+    body_path = path.parent / "transplant-body.c"
+    if not body_path.is_file():
+        raise ValueError(f"receipt has no transplant-body.c: {path}")
+    body = body_path.read_text(encoding="utf-8")
+    if not re.search(rf"\b{re.escape(fn)}\s*\(", body):
+        raise ValueError(f"scored body does not contain {fn}: {body_path}")
+    asm_rel = str(data["asm"]).replace("\\", "/")
+    expected_leaf = f"/{fn}.s"
+    if not asm_rel.endswith(expected_leaf):
+        raise ValueError(f"receipt asm does not end in {fn}.s: {asm_rel}")
+    return {
+        "record_id": record_id,
+        "overlay": overlay,
+        "function": fn,
+        "score": data["score"],
+        "source": str(data["source"]).replace("\\", "/"),
+        "asm": asm_rel,
+        "stub_asm": asm_rel[:-len(expected_leaf)],
+        "receipt": path.resolve().relative_to(repo.resolve()).as_posix(),
+        "body_path": body_path,
+        "body": body,
+    }
+
+
+def latest_score_receipts(root: Path = SCORE_ROOT,
+                          repo: Path = REPO) -> list[dict]:
+    """Newest valid scored body per exact queue record."""
+    latest: dict[str, tuple[tuple[int, str], Path]] = {}
+    if not root.is_dir():
+        return []
+    for path in root.glob("*/*/adapt-score.json"):
+        # Older pre-archive receipts may be incomplete. They still participate
+        # in recency selection, but only the newest receipt for a record must
+        # satisfy the strict ownership and body checks below. Validating every
+        # historical attempt first would let one superseded receipt block the
+        # complete current generation.
+        data = json.loads(path.read_text(encoding="utf-8"))
+        if data.get("status") != "scored" or not isinstance(
+                data.get("score"), int):
+            continue
+        record_id, _overlay, _fn = _score_receipt_identity(data)
+        order = (path.stat().st_mtime_ns, path.as_posix())
+        prior = latest.get(record_id)
+        if prior is None or order > prior[0]:
+            latest[record_id] = (order, path)
+    rows = [_load_score_receipt(item[1], root=root, repo=repo)
+            for item in latest.values()]
+    return sorted(rows, key=lambda row: row["record_id"])
+
+
+def _selected_score_receipts(min_score: int, max_score: int,
+                             overlay: str = "", limit: int = 0) -> list[dict]:
+    rows = [row for row in latest_score_receipts()
+            if min_score <= row["score"] <= max_score]
+    if overlay:
+        rows = [row for row in rows
+                if overlay.lower() in row["overlay"].lower()]
+    rows.sort(key=lambda row: (row["score"], row["record_id"]))
+    return rows[:limit] if limit else rows
+
+
+def _validate_receipt_target(row: dict) -> tuple[bool, str]:
+    """Prove the receipt still names the exact live stub it measured."""
+    found = _sup().find_stub(row["function"], row["overlay"])
+    if found is None:
+        return False, "no exact live INCLUDE_ASM stub"
+    source_path, asm_rel, _stub = found
+    source = source_path.resolve().relative_to(REPO.resolve()).as_posix()
+    if source != row["source"] or asm_rel != row["stub_asm"]:
+        return False, (f"stale receipt target: source={row['source']} "
+                       f"asm={row['stub_asm']}; live source={source} "
+                       f"asm={asm_rel}")
+    return True, "exact live target"
+
+
+def _isolated_seed_artifact(row: dict) -> tuple[str, str]:
+    """Build a versioned whole-file permuter seed from an isolated receipt."""
+    sys.path.insert(0, str(REPO / "automation" / "win"))
+    import worker_direct as wd                              # type: ignore
+
+    ctx = {"src_rel": row["source"], "asm_rel": row["stub_asm"]}
+    whole = wd.virtual_apply(ctx, row["function"], row["body"])
+    if not whole:
+        raise ValueError("receipt body no longer replaces its exact live stub")
+    whole = wd._declare_stub_siblings(whole, row["body"])
+    artifact = (
+        "/* PERMUTER SEED -- deterministic isolated-score candidate.\n"
+        f"   record : {row['record_id']}\n"
+        f"   score  : {row['score']}\n"
+        f"   receipt: {row['receipt']}\n"
+        "   producer: compiled-donor transplant, no model\n"
+        "   content: WHOLE FILE (isolated adaptable draft)\n"
+        f"   origin : {row['source']}\n"
+        f"   asm    : asm/us/{row['asm']}\n"
+        "   verdict: the exact target function compiled under the project\n"
+        "            compiler and flags but did not score zero. A full game\n"
+        "            build was intentionally not run. Import and search via\n"
+        "            permuter_supervisor.py; never treat this as a match. */\n"
+        + whole)
+    rec = {"id": row["record_id"], "function": row["function"]}
+    seed = wd._publish_versioned_artifact(
+        wd.candidate_path(rec), artifact, "isolated-score candidate")
+    return seed, artifact
+
+
+def publish_low_scores(apply: bool, min_score: int = 1, max_score: int = 35,
+                       overlay: str = "", limit: int = 0) -> int:
+    """Publish the latest low isolated scores as immutable whole-file seeds."""
+    rows = _selected_score_receipts(min_score, max_score, overlay, limit)
+    if not rows:
+        print("no current isolated-score receipts in the requested range")
+        return 0
+    print(f"{len(rows)} exact receipt(s), scores {min_score}..{max_score}")
+    if not apply:
+        for row in rows:
+            print(f"  {row['score']:5}  {row['record_id']}  {row['receipt']}")
+        print("\nDRY RUN. Nothing published. Re-run with --apply.")
+        return 0
+
+    failed = 0
+    for row in rows:
+        valid, why = _validate_receipt_target(row)
+        if not valid:
+            print(f"REFUSED {row['record_id']}: {why}")
+            failed += 1
+            continue
+        try:
+            seed, _artifact = _isolated_seed_artifact(row)
+        except (OSError, ValueError) as exc:
+            print(f"FAILED {row['record_id']}: {type(exc).__name__}: {exc}")
+            failed += 1
+            continue
+        print(f"PUBLISHED {row['record_id']} score={row['score']} "
+              f"seed={seed} receipt={row['receipt']}")
+    return 1 if failed else 0
+
+
+def land_score_zeros(apply: bool, overlay: str = "", limit: int = 0) -> int:
+    """Full-build the exact newest score-zero bodies, sequentially."""
+    rows = _selected_score_receipts(0, 0, overlay, limit)
+    if not rows:
+        print("no current score-zero receipts")
+        return 0
+    print(f"{len(rows)} exact score-zero receipt(s)")
+    if not apply:
+        for row in rows:
+            print(f"  {row['record_id']}  {row['receipt']}")
+        print("\nDRY RUN. Nothing built. Re-run with --apply.")
+        return 0
+
+    start_dirty = _dirty_files()
+    if start_dirty:
+        print(f"src/ is not clean to begin with: {sorted(start_dirty)}")
+        return 1
+    landed: set[str] = set()
+    failed = 0
+    for index, row in enumerate(rows, 1):
+        unexpected = _dirty_files() - landed
+        if unexpected:
+            print(f"STOPPING: unexpected src/ change in {sorted(unexpected)}")
+            return 1
+        valid, why = _validate_receipt_target(row)
+        if not valid:
+            print(f"REFUSED {row['record_id']}: {why}")
+            return 1
+        print(f"\n[{index}/{len(rows)}] {row['record_id']}\n"
+              f"  receipt: {row['receipt']}", flush=True)
+        good, verdict = _sup().land_match(
+            Path("."), row["function"], body=row["body"],
+            rec_id=row["record_id"])
+        if good:
+            landed |= (_dirty_files() - landed)
+            result = "MATCHED"
+        else:
+            result = "NOT_MATCHED"
+            if (verdict.startswith("INTERNAL ERROR")
+                    or verdict.startswith("TREE ALREADY BROKEN")
+                    or "seed=NONE" in verdict
+                    or "rejected=NONE" in verdict):
+                failed += 1
+        print(f"RESULT {row['record_id']} {result} "
+              f"receipt={row['receipt']} verdict={verdict}", flush=True)
+        if failed:
+            print("STOPPING after an unpreserved or unattributable outcome")
+            break
+    return 1 if failed else 0
+
+
 def list_all() -> int:
     rows = candidates()
     if not rows:
@@ -2050,6 +2273,48 @@ def self_test() -> int:
        ]),
        "one tool failure cannot hide behind another record's numeric score")
 
+    print("\nreceipt-driven landing consumes only current owned evidence")
+    with tempfile.TemporaryDirectory() as td:
+        fake_repo = Path(td)
+        fake_root = fake_repo / "nonmatchings" / ".adapt-scores"
+        for stamp, score, archive_ok, marker in [
+                ("20260818-010000-1-1", 20, False, "old"),
+                ("20260818-020000-1-1", 0, True, "new")]:
+            receipt_dir = fake_root / stamp / "FixtureFunction"
+            receipt_dir.mkdir(parents=True)
+            archive = receipt_dir.relative_to(fake_repo).as_posix()
+            (receipt_dir / "adapt-score.json").write_text(json.dumps({
+                "archive": archive if archive_ok else "",
+                "asm": "st/test/nonmatchings/file/FixtureFunction.s",
+                "function": "FixtureFunction",
+                "score": score,
+                "source": "src/st/test/file.c",
+                "status": "scored",
+            }), encoding="utf-8")
+            (receipt_dir / "transplant-body.c").write_text(
+                f"void FixtureFunction(void) {{ /* {marker} */ }}\n",
+                encoding="utf-8")
+        receipt_rows = latest_score_receipts(fake_root, fake_repo)
+        ck(len(receipt_rows) == 1 and receipt_rows[0]["score"] == 0,
+           "a superseded incomplete receipt cannot block the newest one")
+        ck("new" in receipt_rows[0]["body"]
+           and "old" not in receipt_rows[0]["body"],
+           "the selected body is byte-for-byte from the newest receipt")
+        ck(receipt_rows[0]["record_id"]
+           == "us:ST/TEST:FixtureFunction",
+           "the queue id is derived from the exact receipt overlay")
+    landing_src = src[src.index("def land_score_zeros"):
+                      src.index("\ndef list_all")]
+    ck('body=row["body"]' in landing_src,
+       "landing passes the archived body directly to land_match")
+    ck("score_draft" not in landing_src and "preflight(" not in landing_src,
+       "landing never regenerates the body it is meant to prove")
+    publishing_src = src[src.index("def _isolated_seed_artifact"):
+                         src.index("\ndef publish_low_scores")]
+    ck("_publish_versioned_artifact" in publishing_src
+       and "content: WHOLE FILE" in publishing_src,
+       "low scores publish an immutable whole-file supervisor seed")
+
     print("\na constant the C reaches through a MACRO is rewritten as an arg")
     # ANIMSET_OVL(x) is `(x) | 0x8000`, so ANIMSET_OVL(1) assembles to -0x7FFF.
     # Searching the body for the literal finds nothing, the substitution is
@@ -2207,6 +2472,12 @@ def main() -> int:
     ap.add_argument("--score", action="store_true",
                     help="debug-score an adaptable draft without a game build; "
                          "use with --function or --scan")
+    ap.add_argument("--publish-low-scores", action="store_true",
+                    help="publish newest isolated scores as immutable seeds")
+    ap.add_argument("--land-score-zeros", action="store_true",
+                    help="full-build newest exact score-zero receipt bodies")
+    ap.add_argument("--score-min", type=int, default=1)
+    ap.add_argument("--score-max", type=int, default=35)
     ap.add_argument("--apply", action="store_true",
                     help="actually apply, build, verify and revert on failure")
     ap.add_argument("--self-test", action="store_true")
@@ -2223,6 +2494,11 @@ def main() -> int:
             return score_scan(a.limit, a.overlay)
         print("--score requires --function NAME or --scan", file=sys.stderr)
         return 2
+    if a.publish_low_scores:
+        return publish_low_scores(
+            a.apply, a.score_min, a.score_max, a.overlay, a.limit)
+    if a.land_score_zeros:
+        return land_score_zeros(a.apply, a.overlay, a.limit)
     if a.list:
         return list_all()
     if a.scan:

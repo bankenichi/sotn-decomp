@@ -1351,6 +1351,14 @@ def land_match(work: Path, fn: str, build: str = "us",
                     verdict += f" seed={seed}"
                 else:
                     verdict += " seed=NONE(save failed)"
+            elif verdict.startswith("COMPILE ERROR"):
+                rejected = wd.save_rejected(
+                    rec, body, 1, detail, ctx,
+                    origin="deterministic transplant")
+                if rejected:
+                    verdict += f" rejected={rejected}"
+                else:
+                    verdict += " rejected=NONE(save failed)"
             return False, verdict
         except Exception as e:                              # noqa: BLE001
             if original is not None:
@@ -2602,6 +2610,8 @@ def self_test() -> int:
        "a dirty build is not a verdict about the function")
     ck(classify_build_failure("something else").startswith("UNKNOWN"),
        "an unrecognised failure is not silently treated as a mismatch")
+    ck("save_rejected" in lm,
+       "an attributable full-build compile failure preserves its exact body")
 
     print("\na pre-existing broken tree is not blamed on the seed")
     lm2 = src_sup[src_sup.index("def land_match"):]
