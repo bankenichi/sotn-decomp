@@ -731,7 +731,49 @@ INCLUDE_ASM("boss/bo6/nonmatchings/us_39144", func_us_801BB5BC);
 
 INCLUDE_ASM("boss/bo6/nonmatchings/us_39144", BO6_RicEntityHitByHoly);
 
-INCLUDE_ASM("boss/bo6/nonmatchings/us_39144", BO6_RicEntityHitByDark);
+extern s32 D_us_801D084C;
+extern AnimationFrame D_us_80181554[];
+
+// BO6 twin of RicEntityHitByDark. This overlay uses the camera-locked effect
+// flags, Richter's local z priority, animation data, and alternating counter.
+void BO6_RicEntityHitByDark(Entity* entity) {
+    switch (entity->step) {
+    case 0:
+        entity->flags = FLAG_UNK_20000000 | FLAG_POS_CAMERA_LOCKED;
+        entity->unk5A = 0x79;
+        entity->animSet = ANIMSET_DRA(14);
+        entity->zPriority = RIC.zPriority + 2;
+        entity->palette = PAL_FLAG(PAL_UNK_19F);
+        if (D_us_801D084C & 1) {
+            entity->blendMode = BLEND_TRANSP | BLEND_QUARTER;
+        } else {
+            entity->blendMode = BLEND_TRANSP;
+        }
+        D_us_801D084C++;
+        entity->opacity = 0xFF;
+        entity->drawFlags =
+            ENTITY_SCALEX | ENTITY_SCALEY | ENTITY_MASK_R | ENTITY_MASK_G;
+        entity->scaleX = entity->scaleY = 0x40;
+        entity->anim = D_us_80181554;
+        entity->posY.i.hi += (rand() % 35) - 15;
+        entity->posX.i.hi += (rand() % 20) - 10;
+        entity->velocityY = -0x6000 - (rand() & 0x3FFF);
+        entity->step++;
+        break;
+
+    case 1:
+        if (entity->opacity > 16) {
+            entity->opacity -= 8;
+        }
+        entity->posY.val += entity->velocityY;
+        entity->scaleX += 8;
+        entity->scaleY += 8;
+        if (entity->poseTimer < 0) {
+            DestroyEntity(entity);
+        }
+        break;
+    }
+}
 
 // Empty stub
 void func_us_801BBBC0(void) {}
