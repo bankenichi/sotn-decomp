@@ -51,6 +51,48 @@ void EntityGaibonLeg(Entity *self)
   }
 }
 
-INCLUDE_ASM("st/rchi/nonmatchings/e_gaibon", EntitySmallGaibonProjectile);
+/* Declarations injected by the worker: used by the candidate
+   below and absent from this file. Copied verbatim from the
+   tree, same overlay or a shared header, never another
+   overlay's. */
+extern EInit D_us_80180624;
+
+#define ENTITY_DEFAULT 0
+#define ENTITY_ROTATE 4
+#define ENTITY_SCALEX 1
+#define FLAG_DEAD 256
+#define PAL_UNK_1B6 438
+extern u8 D_us_80181748[];
+extern EInit D_us_80180624;
+extern struct Entity;
+
+void EntitySmallGaibonProjectile(Entity* self) {
+    if (self->flags & FLAG_DEAD) {
+        self->drawFlags = ENTITY_DEFAULT;
+        self->step = 0;
+        self->pfnUpdate = EntityExplosion;
+        self->entityId = 2;
+        self->params = 0;
+        return;
+    }
+
+    switch (self->step) {
+    case 0:
+        InitializeEntity(D_us_80180624);
+        self->animSet = ANIMSET_DRA(2);
+        self->animCurFrame = 1;
+        self->drawFlags = ENTITY_SCALEX | ENTITY_ROTATE;
+        self->scaleX = 0xC0;
+        self->velocityX = (rcos(self->rotate) * FIX(2.5)) >> 0xC;
+        self->velocityY = (rsin(self->rotate) * FIX(2.5)) >> 0xC;
+        self->rotate -= 0x400;
+        self->palette = PAL_FLAG(PAL_UNK_1B6);
+
+    case 1:
+        MoveEntity();
+        AnimateEntity(D_us_80181748, self);
+        break;
+    }
+}
 
 INCLUDE_ASM("st/rchi/nonmatchings/e_gaibon", EntityLargeGaibonProjectile);
