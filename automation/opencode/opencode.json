@@ -19,23 +19,17 @@
         "mimo-v2.5-free": {
           "name": "MiMo V2.5 (free)"
         },
-        "north-mini-code-free": {
-          "name": "North Mini Code (free)"
-        },
         "nemotron-3-ultra-free": {
           "name": "Nemotron 3 Ultra (free)"
         },
         "laguna-s-2.1-free": {
           "name": "laguna-s-2.1-free"
         },
-        "ling-3.0-flash-free": {
-          "name": "ling-3.0-flash-free"
+        "hy3-free": {
+          "name": "hy3-free"
         },
-        "ling-3.0-tiny-free": {
-          "name": "ling-3.0-tiny-free"
-        },
-        "longcat-2.0-free": {
-          "name": "longcat-2.0-free"
+        "nemotron-3.5-lightning-free": {
+          "name": "nemotron-3.5-lightning-free"
         }
       }
     },
