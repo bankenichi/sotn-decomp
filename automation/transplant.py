@@ -570,6 +570,29 @@ def detail_head(fn: str, path: str, stub: str, base: str) -> str:
     return f"twin {path}; stub {stub}"
 
 
+def candidate_probe_failure_class(reason: str) -> str:
+    """Turn one asm-delta failure into stable scan evidence."""
+    if "no distinct twin asm" in reason:
+        return "needs-maps"
+    if "not a twin" in reason:
+        return "not-twin"
+    return "error"
+
+
+def aggregate_candidate_failures(classes: list[str]) -> str:
+    """Classify all attempted donors without discarding unresolved evidence."""
+    kinds = set(classes)
+    if "needs-maps" in kinds:
+        return "needs-maps"
+    if "error" in kinds or not kinds:
+        return "error"
+    if "not-twin" in kinds:
+        return "not-twin"
+    if kinds == {"no-definition"}:
+        return "no-twin"
+    return "error"
+
+
 def preflight(fn: str, mapping: list[str] | None = None,
               auto: bool = False, skip_clean: bool = False
               ) -> tuple[bool, str, str]:
@@ -615,12 +638,12 @@ def preflight(fn: str, mapping: list[str] | None = None,
     # EVERY candidate twin, best evidence first: the naming convention, then
     # asm_twin_finder's shape and token matches. The first is a narrow subset
     # -- it found 12 candidates where the similarity index knows many more.
-    tried: list[str] = []
+    tried: list[tuple[str, str, str]] = []
     body = path = src_kind = ""
     for cand in (twin_sources(fn) or [base]):
         b, pth = local_twin(cand, exclude=Path(stub_path).name)
         if not b:
-            tried.append(f"{cand}: no extractable definition")
+            tried.append((cand, "no-definition", "no extractable definition"))
             continue
         # The twin must actually BE a twin. asm_twin_finder matches on shape
         # and tokens, which is a similarity score, not a proof; asm_delta is
@@ -637,13 +660,19 @@ def preflight(fn: str, mapping: list[str] | None = None,
                                     overlay=ad.src_overlay(stub_path),
                                     twin_overlay=ad.src_overlay(pth))
             if not probe["ok"]:
-                tried.append(f"{cand}: {probe['reason']}")
+                reason = probe["reason"]
+                tried.append((cand, candidate_probe_failure_class(reason),
+                              reason))
                 continue
         body, path, src_kind, base = b, pth, "local twin", cand
         break
     if not body:
-        return False, "", ("no usable twin in this tree; tried "
-                           + ("; ".join(tried) if tried else "nothing"))
+        scan_class = aggregate_candidate_failures([kind for _, kind, _ in tried])
+        rendered = "; ".join(f"{cand}: {reason}"
+                             for cand, _kind, reason in tried)
+        return False, "", (f"scan-class: {scan_class}\n"
+                           "no usable twin in this tree; tried "
+                           + (rendered if rendered else "nothing"))
     body = rename_function(body, base, fn)
 
     pairs = list(mapping or [])
@@ -750,6 +779,14 @@ def list_all() -> int:
     return 0
 
 
+def scan_failure_bucket(detail: str) -> str:
+    """Classify one unsuccessful automatic twin preflight."""
+    marker = re.search(
+        r"(?m)^scan-class:\s*(needs-maps|not-twin|no-twin|error)\s*$",
+        detail)
+    return marker.group(1) if marker else "error"
+
+
 def scan(limit: int = 0, overlay: str = "") -> int:
     """Classify EVERY unmatched record, unsupervised, writing nothing.
 
@@ -765,15 +802,22 @@ def scan(limit: int = 0, overlay: str = "") -> int:
                   every symbol is declarable in the destination. Worth a
                   build.
       needs-defs  a clean twin that references file-scope statics or symbols
-                  the destination overlay does not have. func_us_801CC9B4
-                  needs two `static s16` arrays that live in no0/4C750.c and
-                  do not travel with a function body. Actionable, but not by
-                  copying one function.
+                   the destination overlay does not have. func_us_801CC9B4
+                   needs two `static s16` arrays that live in no0/4C750.c and
+                   do not travel with a function body. Actionable, but not by
+                   copying one function.
+      needs-maps  a local donor exists, but its assembly disappeared when it
+                   was decompiled. Automatic delta proof is unavailable, so
+                   derive explicit maps from the target assembly before a
+                   dry-run preflight.
       not-twin    the assembly genuinely differs: different length, or a
-                  different instruction. No amount of renaming fixes that,
+                   different instruction. No amount of renaming fixes that,
                   and saying so is more useful than a failed build.
       no-twin     nothing in the tree defines this function under another
-                  name.
+                   name.
+      error       the scan could not classify the evidence honestly. This is
+                  an instrument or unsupported-preflight failure, not proof
+                  that no donor exists.
     """
     uh = _harv()
     recs = uh.unmatched_records()
@@ -783,7 +827,8 @@ def scan(limit: int = 0, overlay: str = "") -> int:
         recs = recs[:limit]
 
     buckets: dict[str, list] = {"ready": [], "needs-defs": [],
-                                "not-twin": [], "no-twin": []}
+                                "needs-maps": [], "not-twin": [],
+                                "no-twin": [], "error": []}
     dirty = _sup().require_clean_src()
     if dirty:
         print(f"src/ is not clean: {dirty}\n")
@@ -793,11 +838,11 @@ def scan(limit: int = 0, overlay: str = "") -> int:
             ok, _body, detail = preflight(fn, None, auto=True,
                                           skip_clean=True)
         except Exception as e:                                # noqa: BLE001
-            buckets["no-twin"].append((fn, ovl, f"error: {type(e).__name__}"))
+            buckets["error"].append((fn, ovl, f"error: {type(e).__name__}"))
             continue
         if not ok:
             why = detail.splitlines()[-1].strip()
-            key = "not-twin" if "not a twin" in why else "no-twin"
+            key = scan_failure_bucket(detail)
             buckets[key].append((fn, ovl, why[:88]))
             continue
         missing = [l.split("for ", 1)[1].split(";")[0]
@@ -818,9 +863,10 @@ def scan(limit: int = 0, overlay: str = "") -> int:
 
     total = sum(len(v) for v in buckets.values())
     print(f"{total} unmatched record(s) examined, nothing written\n")
-    for k in ("ready", "needs-defs", "not-twin", "no-twin"):
+    for k in ("ready", "needs-defs", "needs-maps", "not-twin", "no-twin",
+              "error"):
         print(f"  {k:12} {len(buckets[k])}")
-    for k in ("ready", "needs-defs", "not-twin"):
+    for k in ("ready", "needs-defs", "needs-maps", "not-twin", "error"):
         if not buckets[k]:
             continue
         print(f"\n=== {k} ===")
@@ -1100,10 +1146,37 @@ def self_test() -> int:
     ck("land_match" not in _scalls,
        f"the scan never calls land_match ({sorted(_scalls)[:6]})")
     ck("run" not in _scalls, "and never calls run()")
-    for k in ("ready", "needs-defs", "not-twin", "no-twin"):
+    for k in ("ready", "needs-defs", "needs-maps", "not-twin", "no-twin",
+              "error"):
         ck(f'"{k}"' in scan_src, f"the {k} class exists")
-    ck("not a twin" in scan_src,
+    ck(scan_failure_bucket(
+        "scan-class: not-twin\nno usable twin; candidate is not a twin")
+       == "not-twin",
        "a structural mismatch is separated from a missing twin")
+    ck(scan_failure_bucket(
+        "scan-class: needs-maps\n"
+        "no usable twin; tried RicStepStand: no distinct twin asm")
+       == "needs-maps",
+       "a decompiled donor without a retained asm listing needs manual maps")
+    ck(scan_failure_bucket(
+        "scan-class: needs-maps\n"
+        "no usable twin; tried RicStepStand: no distinct twin asm; "
+        "RicStepRun: candidate is not a twin") == "needs-maps",
+       "an unproven donor outranks a different candidate disproved by asm")
+    ck(scan_failure_bucket(
+        "scan-class: error\nno usable twin; tried RicStepStand: parse error")
+       == "error",
+       "an instrument failure is not reported as evidence that no twin exists")
+    ck(scan_failure_bucket("unstructured preflight failure") == "error",
+       "unknown failure prose falls back to an honest error class")
+    ck(aggregate_candidate_failures(["not-twin", "needs-maps"])
+       == "needs-maps",
+       "mixed candidate evidence keeps the unresolved manual-map route")
+    ck(aggregate_candidate_failures(["no-definition", "error"])
+       == "error",
+       "an errored candidate is not collapsed into no-twin")
+    ck(aggregate_candidate_failures(["no-definition"]) == "no-twin",
+       "no-twin is reserved for candidates with no local definition")
 
     print("\na constant the C reaches through a MACRO is rewritten as an arg")
     # ANIMSET_OVL(x) is `(x) | 0x8000`, so ANIMSET_OVL(1) assembles to -0x7FFF.

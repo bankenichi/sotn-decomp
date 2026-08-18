@@ -378,13 +378,21 @@ def analyse(only: str = "") -> list[dict]:
 
         key = strip_overlay_prefix(stub.name).lower()
         if not _ADDRESS_NAME.match(stub.name):
+            seen_name: set[tuple[str, str]] = set()
             for i in by_name.get(key, []):
                 rel, fname, _ = cfuncs[i]
+                identity = (rel, fname)
+                if identity in seen_name:
+                    continue
+                seen_name.add(identity)
                 row["name_twins"].append({"file": rel, "function": fname})
 
+        seen_shape: set[tuple[str, str]] = set()
         for other in shape[tuple(stub.opcodes)]:
-            if other is stub:
+            identity = (other.overlay, other.name)
+            if identity == (stub.overlay, stub.name) or identity in seen_shape:
                 continue
+            seen_shape.add(identity)
             row["shape_twins"].append(
                 {
                     "symbol": other.name,
@@ -396,8 +404,13 @@ def analyse(only: str = "") -> list[dict]:
         if stub.tokens:
             scored = [p for p in index.score(stub.tokens) if p[0] >= MIN_TOKEN_SCORE]
             scored.sort(reverse=True)
+            seen_token: set[tuple[str, str]] = set()
             for s, i in scored[:MAX_TOKEN_HITS]:
                 rel, fname, _ = cfuncs[i]
+                identity = (rel, fname)
+                if identity in seen_token:
+                    continue
+                seen_token.add(identity)
                 row["token_twins"].append(
                     {"file": rel, "function": fname, "score": round(s, 3)}
                 )
@@ -498,7 +511,31 @@ def self_test() -> int:
             print(f"{sym:40} {'':32} FAIL: wrong twin {wrong}")
             failures += 1
 
-    total = len(MUST_RECOVER) + len(KNOWN_LIMIT)
+    print()
+    print("candidate lists identify distinct twins exactly once")
+    print("-" * 92)
+    candidate_checks = 0
+    for row in rows.values():
+        identity = (row["overlay"], row["symbol"])
+        shape_ids = [(t["overlay"], t["symbol"])
+                     for t in row["shape_twins"]]
+        if identity in shape_ids:
+            print(f"{row['symbol']:40} {'':32} FAIL: self shape twin")
+            failures += 1
+        candidate_checks += 1
+        if len(shape_ids) != len(set(shape_ids)):
+            print(f"{row['symbol']:40} {'':32} FAIL: duplicate shape twin")
+            failures += 1
+        candidate_checks += 1
+        for kind in ("name_twins", "token_twins"):
+            candidate_ids = [(t["file"], t["function"])
+                             for t in row[kind]]
+            if len(candidate_ids) != len(set(candidate_ids)):
+                print(f"{row['symbol']:40} {'':32} FAIL: duplicate {kind}")
+                failures += 1
+            candidate_checks += 1
+
+    total = len(MUST_RECOVER) + len(KNOWN_LIMIT) + candidate_checks
     print()
     if failures:
         print(f"{failures} of {total} checks failed.")
