@@ -499,9 +499,23 @@ INCLUDE_ASM(
 
 INCLUDE_ASM("boss/bo6/nonmatchings/us_3E79C", BO6_RicEntityCrashHydroStorm);
 
-INCLUDE_ASM("boss/bo6/nonmatchings/us_3E79C", BO6_DebugShowWaitInfo);
+// The timer remains in us_39144's extracted bss at g_OverlayBase + 0x5087C.
+extern s32 D_us_801D087C;
 
-extern void BO6_DebugShowWaitInfo(const char* msg);
+// Richter (BO6) debug display helper. The donor in src/ric/pl_collision.c uses
+// the same buffer flip, timer cadence, synchronization, and environment flush.
+void BO6_DebugShowWaitInfo(const char* msg) {
+    g_CurrentBuffer = g_CurrentBuffer->next;
+    FntPrint(msg);
+    if (D_us_801D087C++ & 4) {
+        FntPrint("\no\n");
+    }
+    DrawSync(0);
+    VSync(0);
+    PutDrawEnv(&g_CurrentBuffer->draw);
+    PutDispEnv(&g_CurrentBuffer->disp);
+    FntFlush(-1);
+}
 
 // Richter (BO6) debug helper: spin while pad held, then spin while pad released
 void BO6_DebugInputWait(const char* msg) {
