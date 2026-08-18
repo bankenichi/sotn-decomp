@@ -15,6 +15,9 @@ WHY THIS EXISTS
       4. Raw pointer casts instead of an existing struct. `*(u16*)(entry + 4)`
          should be `subwpn->attackElement` via `SubweaponDef*`.
       5. Copy-paste duplicates of functions that already exist elsewhere.
+      6. Empty control-flow bodies with no codegen explanation. An empty branch
+         is either dead code or a compiler-shaping constraint, and both must be
+         made explicit.
 
     Every one of these is mechanically detectable, so they should be caught by a
     tool before a human ever reads the diff.
@@ -26,6 +29,7 @@ Usage:
     python3 automation/quality_audit.py --since <commit>
     python3 automation/quality_audit.py --file src/boss/bo6/us_39144.c
     python3 automation/quality_audit.py --json report.json
+    python3 automation/quality_audit.py --self-test
 """
 from __future__ import annotations
 import argparse
@@ -33,6 +37,7 @@ import json
 import re
 import subprocess
 import sys
+import tempfile
 from collections import defaultdict
 from pathlib import Path
 
@@ -216,6 +221,160 @@ def scoped_constant(var: str, bit: int, groups: list[dict]) -> str | None:
     return None
 
 
+def _mask_c_comments_and_literals(source: str) -> str:
+    """Blank comments and literals while preserving offsets and newlines."""
+    out = list(source)
+    i = 0
+    while i < len(source):
+        if source.startswith("//", i):
+            end = source.find("\n", i + 2)
+            end = len(source) if end < 0 else end
+            for j in range(i, end):
+                out[j] = " "
+            i = end
+            continue
+        if source.startswith("/*", i):
+            end = source.find("*/", i + 2)
+            end = len(source) if end < 0 else end + 2
+            for j in range(i, end):
+                if out[j] != "\n":
+                    out[j] = " "
+            i = end
+            continue
+        if source[i] in ('"', "'"):
+            quote = source[i]
+            out[i] = " "
+            i += 1
+            while i < len(source):
+                if source[i] == "\\":
+                    out[i] = " "
+                    if i + 1 < len(source):
+                        if out[i + 1] != "\n":
+                            out[i + 1] = " "
+                        i += 2
+                    else:
+                        i += 1
+                    continue
+                char = source[i]
+                if char != "\n":
+                    out[i] = " "
+                i += 1
+                if char == quote:
+                    break
+            continue
+        i += 1
+    return "".join(out)
+
+
+def _skip_space(text: str, pos: int) -> int:
+    while pos < len(text) and text[pos].isspace():
+        pos += 1
+    return pos
+
+
+def _matching_delimiter(
+        text: str, start: int, opening: str, closing: str) -> int | None:
+    depth = 0
+    for pos in range(start, len(text)):
+        if text[pos] == opening:
+            depth += 1
+        elif text[pos] == closing:
+            depth -= 1
+            if depth == 0:
+                return pos
+    return None
+
+
+def _has_codegen_reason(comment_text: str) -> bool:
+    """Require CODEGEN plus an actual reason, not an empty waiver marker."""
+    for match in re.finditer(r"\bCODEGEN\s*:\s*([^\r\n]*)", comment_text,
+                             re.IGNORECASE):
+        reason = match.group(1).strip(" */\t")
+        if len(re.findall(r"[A-Za-z0-9_]+", reason)) >= 3:
+            return True
+    return False
+
+
+def find_undocumented_empty_control_bodies(source: str) -> list[tuple[int, str]]:
+    """Return (line, keyword) for empty branches and loops lacking a reason.
+
+    This is a lexical scan rather than a C parser because the audited sources
+    contain target-specific macros and conditional compilation. Comments and
+    literals are masked first, then delimiters are balanced explicitly.
+    """
+    masked = _mask_c_comments_and_literals(source)
+    findings: list[tuple[int, str]] = []
+
+    def is_preprocessor(pos: int) -> bool:
+        line_start = masked.rfind("\n", 0, pos) + 1
+        return masked[line_start:pos].lstrip().startswith("#")
+
+    # A do-while terminator ends with a required semicolon. Without recording
+    # those sites first, the generic `while (...);` check reports the same
+    # empty do body twice and even reports a documented do body once.
+    do_while_terminators: set[int] = set()
+    for match in re.finditer(r"\bdo\b", masked):
+        if is_preprocessor(match.start()):
+            continue
+        body_start = _skip_space(masked, match.end())
+        if body_start >= len(masked) or masked[body_start] != "{":
+            continue
+        body_end = _matching_delimiter(masked, body_start, "{", "}")
+        if body_end is None:
+            continue
+        terminator = _skip_space(masked, body_end + 1)
+        if re.match(r"while\b", masked[terminator:]):
+            do_while_terminators.add(terminator)
+
+    for match in re.finditer(r"\b(if|for|while|switch)\b", masked):
+        if is_preprocessor(match.start()):
+            continue
+        keyword = match.group(1)
+        if keyword == "while" and match.start() in do_while_terminators:
+            continue
+        pos = _skip_space(masked, match.end())
+        if pos >= len(masked) or masked[pos] != "(":
+            continue
+        cond_end = _matching_delimiter(masked, pos, "(", ")")
+        if cond_end is None:
+            continue
+        body_start = _skip_space(masked, cond_end + 1)
+        if body_start >= len(masked):
+            continue
+        line = source.count("\n", 0, match.start()) + 1
+        if masked[body_start] == ";":
+            line_end = source.find("\n", body_start)
+            line_end = len(source) if line_end < 0 else line_end
+            if not _has_codegen_reason(source[body_start + 1:line_end]):
+                findings.append((line, keyword))
+            continue
+        if masked[body_start] != "{":
+            continue
+        first = _skip_space(masked, body_start + 1)
+        if first < len(masked) and masked[first] == "}":
+            raw_body = source[body_start + 1:first]
+            if not _has_codegen_reason(raw_body):
+                findings.append((line, keyword))
+
+    for match in re.finditer(r"\b(else|do)\b", masked):
+        if is_preprocessor(match.start()):
+            continue
+        keyword = match.group(1)
+        body_start = _skip_space(masked, match.end())
+        if keyword == "else" and masked.startswith("if", body_start):
+            continue
+        if body_start >= len(masked) or masked[body_start] != "{":
+            continue
+        first = _skip_space(masked, body_start + 1)
+        if first < len(masked) and masked[first] == "}":
+            raw_body = source[body_start + 1:first]
+            if not _has_codegen_reason(raw_body):
+                line = source.count("\n", 0, match.start()) + 1
+                findings.append((line, keyword))
+
+    return sorted(set(findings))
+
+
 # --------------------------------------------------------------------------
 # checks
 # --------------------------------------------------------------------------
@@ -275,10 +434,14 @@ def check_file(path: Path, syms, layout, ent_size, ext_variants, bits,
     """Return a list of findings for one source file."""
     findings: list[dict] = []
     try:
-        lines = path.read_text(errors="ignore").splitlines()
+        source = path.read_text(errors="ignore")
+        lines = source.splitlines()
     except OSError:
         return findings
     rel = str(path.relative_to(REPO))
+    empty_controls: dict[int, list[str]] = defaultdict(list)
+    for line_no, keyword in find_undocumented_empty_control_bodies(source):
+        empty_controls[line_no].append(keyword)
 
     # Track the enclosing function so findings are actionable.
     cur_fn = "?"
@@ -293,6 +456,12 @@ def check_file(path: Path, syms, layout, ent_size, ext_variants, bits,
             findings.append({"file": rel, "line": i, "function": cur_fn,
                              "kind": kind, "detail": detail, "fix": fix,
                              "code": line.strip()[:120]})
+
+        for keyword in empty_controls.get(i, []):
+            add("empty_control_body",
+                f"empty `{keyword}` body has no codegen justification",
+                "write the direct condition, or put a `CODEGEN:` comment "
+                "inside the body explaining the required target shape")
 
         # A line that is only a comment cannot contain a defect, just a mention
         # of one. Without this, the comment explaining WHY a site is
@@ -517,6 +686,74 @@ def changed_lines_since(commit: str) -> dict[str, set[int]]:
     return out
 
 
+def self_test() -> int:
+    """Exercise quality shapes that previously escaped the audit."""
+    fixture = """\
+void BadEmptyBranch(void) {
+    if (step_s != 0) {
+        if (step_s) {
+        }
+    }
+}
+
+void ExplainedCodegenBranch(void) {
+    if (step_s) {
+        // CODEGEN: Preserve the target's second conditional branch.
+    }
+}
+
+void MissingCodegenReason(void) {
+    if (step_s) {
+        // CODEGEN:
+    }
+}
+
+void LegitimateEmptyFunction(void) {
+}
+
+void OrdinaryBranch(void) {
+    if (step_s) {
+        use_step(step_s);
+    }
+}
+
+void EmptyDoWhile(void) {
+    do {
+    } while (spin());
+}
+
+void ExplainedDoWhile(void) {
+    do {
+        // CODEGEN: Poll the hardware flag without changing the loop body.
+    } while (hardware_busy());
+}
+"""
+    tmp_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+                mode="w", suffix=".c", prefix="quality_audit_selftest_",
+                dir=REPO / "automation", delete=False) as tmp:
+            tmp.write(fixture)
+            tmp_path = Path(tmp.name)
+        findings = check_file(tmp_path, {}, {}, 0xBC, {}, [])
+    finally:
+        if tmp_path is not None:
+            tmp_path.unlink(missing_ok=True)
+
+    empty = [f for f in findings if f["kind"] == "empty_control_body"]
+    got = [(f["function"], f["line"]) for f in empty]
+    want = [
+        ("BadEmptyBranch", 3),
+        ("MissingCodegenReason", 15),
+        ("EmptyDoWhile", 30),
+    ]
+    if got != want:
+        print(f"FAIL empty-control fixture: expected {want}, got {got}")
+        return 1
+    print("quality_audit self-test: PASS")
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -526,7 +763,11 @@ def main() -> int:
     ap.add_argument("--all", action="store_true", help="audit all of src/, whole")
     ap.add_argument("--json", default="")
     ap.add_argument("--limit", type=int, default=40)
+    ap.add_argument("--self-test", action="store_true")
     a = ap.parse_args()
+
+    if a.self_test:
+        return self_test()
 
     idx = _index()
     addr_to_name = idx.get('symbols', {}).get('addr_to_name', {})
@@ -602,11 +843,13 @@ def main() -> int:
         "illegal_ext":  "ILLEGAL EXT      (named variant exists)",
         "magic_bitmask": "MAGIC BITMASK    (named constant exists)",
         "raw_cast":     "RAW CAST         (struct exists)",
+        "empty_control_body":
+                         "EMPTY CONTROL     (dead or unexplained codegen)",
         "duplicate":    "DUPLICATE        (already in tree)",
     }
     print(f"\n{'='*74}\nQUALITY AUDIT: {len(findings)} findings\n{'='*74}")
     for kind in ("fake_symbol", "duplicate", "illegal_ext", "raw_cast",
-                 "magic_bitmask"):
+                 "magic_bitmask", "empty_control_body"):
         items = by_kind.get(kind, [])
         if not items:
             continue
