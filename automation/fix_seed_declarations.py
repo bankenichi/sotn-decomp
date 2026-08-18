@@ -56,9 +56,36 @@ def fix_one(text: str) -> tuple[str, list[str]]:
     new_body = wd._declare_stub_siblings(body, body)
     if new_body == body:
         return text, []
-    added = [l.strip() for l in new_body.splitlines()
-             if l.strip().startswith("extern") and l not in body.splitlines()]
+    original_lines = set(body.splitlines())
+    added = [line.strip() for line in new_body.splitlines()
+             if line not in original_lines and line.strip().endswith(";")]
     return banner + new_body, added
+
+
+def _called_symbols(text: str) -> list[str]:
+    """Names the seed writer may need to declare for the permuter typemap."""
+    _banner, body = split_banner(text)
+    stubs = set(wd._RX_STUB_IN_FILE.findall(body))
+    called = sorted(
+        name for name in stubs
+        if re.search(rf"\b{re.escape(name)}\s*\(", body))
+    called += wd._undeclared_calls(body, body, skip=set(called))
+    return list(dict.fromkeys(called))
+
+
+def scan_seed_texts(items: list[tuple[str, str]]) -> list[tuple[str, str, list[str]]]:
+    """Return every repaired payload after one batched declaration lookup.
+
+    Calling fix_one independently once per seed made a corpus check run one
+    repository grep per seed. Prewarming worker_direct's declaration cache in
+    chunks keeps the check exact while reducing the scan to a few greps.
+    """
+    symbols = list(dict.fromkeys(
+        symbol for _name, text in items for symbol in _called_symbols(text)))
+    for start in range(0, len(symbols), 40):
+        chunk = symbols[start:start + 40]
+        wd.lookup_declarations(chunk, limit=len(chunk))
+    return [(name, *fix_one(text)) for name, text in items]
 
 
 def publish_fixed_seed(path: str, text: str) -> str:
@@ -71,6 +98,13 @@ def main() -> int:
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--apply", action="store_true",
                     help="write the changes (default is a dry run)")
+    ap.add_argument("--seed", action="append", default=[], metavar="NAME",
+                    help="operate on one exact candidates/ filename; repeatable")
+    ap.add_argument("--from-prior", action="store_true",
+                    help="rebuild named seeds from the version immediately "
+                         "before their current stable generation")
+    ap.add_argument("--from-back", type=int, default=0, metavar="N",
+                    help="rebuild named seeds from N preserved generations back")
     ap.add_argument("--self-test", action="store_true")
     args = ap.parse_args()
 
@@ -82,29 +116,62 @@ def main() -> int:
         return 0
 
     names = sorted(f for f in os.listdir(SEEDS) if f.endswith(".c"))
+    if args.seed:
+        requested = set(args.seed)
+        missing = sorted(requested - set(names))
+        if missing:
+            print("unknown seed(s): " + ", ".join(missing))
+            return 1
+        names = [name for name in names if name in requested]
+    if args.from_prior and args.from_back:
+        print("choose only one of --from-prior and --from-back")
+        return 1
+    history_back = 1 if args.from_prior else args.from_back
+    if history_back < 0:
+        print("--from-back must be positive")
+        return 1
+    if history_back and (not args.apply or not args.seed):
+        print("history rebuild requires --apply and at least one --seed")
+        return 1
     if not names:
         print(f"no seeds under {SEEDS}")
         return 0
 
     changed = 0
     print(f"{len(names)} seed(s) under automation/candidates/\n")
+    items = []
     for n in names:
         p = os.path.join(SEEDS, n)
         try:
-            with open(p, encoding="utf-8", errors="replace") as f:
-                text = f.read()
+            source = p
+            if history_back:
+                versions = wd._artifact_history_versions(p)
+                if len(versions) <= history_back:
+                    print(f"  !! {n}: only {len(versions)} preserved generation(s), "
+                          f"cannot go back {history_back}")
+                    continue
+                with open(p, "rb") as stable, open(versions[-1], "rb") as latest:
+                    if stable.read() != latest.read():
+                        print(f"  !! {n}: stable bytes do not match latest history")
+                        continue
+                source = versions[-1 - history_back]
+            with open(source, encoding="utf-8", errors="replace") as f:
+                items.append((n, f.read()))
         except OSError as e:
             print(f"  !! {n}: {e}")
-            continue
-        new, added = fix_one(text)
-        if not added:
+    for n, new, added in scan_seed_texts(items):
+        if not added and not history_back:
             continue
         changed += 1
         print(f"  {n}")
-        for a in added:
-            print(f"      + {a}")
+        if added:
+            for a in added:
+                print(f"      + {a}")
+        else:
+            print("      restored from prior generation; no declaration needed")
         if args.apply:
             try:
+                p = os.path.join(SEEDS, n)
                 published = publish_fixed_seed(p, new)
                 print(f"      seed={published}")
             except OSError as e:
@@ -199,6 +266,29 @@ def self_test() -> int:
             wd.WIN_REPO = old_repo
     finally:
         wd.lookup_declarations = real
+
+    print("\nordinary header prototypes win over an implicit-int fallback")
+    declarations = wd.lookup_declarations(
+        ["InitializeEntity", "rsin", "DestroyEntity"])
+    ck(any("void InitializeEntity(" in line for line in declarations),
+       f"InitializeEntity prototype found ({declarations})")
+    ck(any("int rsin(" in line for line in declarations),
+       f"rsin prototype found ({declarations})")
+    ck(any("void DestroyEntity(Entity*" in line for line in declarations),
+       f"US DestroyEntity prototype wins ({declarations})")
+    ck(not any("s32 DestroyEntity();" in line for line in declarations),
+       "the Saturn declaration is excluded")
+    typed_seed = ('#include "stage.h"\n'
+                  'void f(void) { InitializeEntity(0); rsin(0); }\n')
+    typed_out, typed_added = fix_one(typed_seed)
+    ck("void InitializeEntity(u16 arg0[]);" in typed_out,
+       "the real void prototype is inserted")
+    ck("int rsin(int a);" in typed_out,
+       "the SDK prototype is inserted")
+    ck("extern int InitializeEntity();" not in typed_out,
+       "no conflicting implicit-int declaration is invented")
+    ck(len(typed_added) == 2,
+       f"ordinary prototypes are reported as repairs ({typed_added})")
 
     print()
     if fails:

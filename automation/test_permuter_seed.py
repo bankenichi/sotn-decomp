@@ -175,8 +175,9 @@ def main() -> int:
 
     print("\nthe existing seeds on disk")
     seeds = sorted((REPO / "automation" / "candidates").glob("*.c"))
-    bare = [p.name for p in seeds
-            if not ps.seed_has_include_context(p.read_text(errors="ignore"))]
+    seed_texts = [(p.name, p.read_text(errors="ignore")) for p in seeds]
+    bare = [name for name, text in seed_texts
+            if not ps.seed_has_include_context(text)]
     check(not bare, f"{len(seeds)} seed(s) present and all are self-contained",
           f"body-only: {', '.join(bare)}")
     check(not ps.seed_has_include_context(
@@ -185,6 +186,18 @@ def main() -> int:
     if bare:
         print(f"       these need re-saving or manual staging to import: "
               f"{', '.join(bare[:6])}")
+
+    print("\nevery current seed has complete permuter typemap declarations")
+    import fix_seed_declarations as fsd
+    pending = {
+        name: added
+        for name, _new, added in fsd.scan_seed_texts(seed_texts)
+        if added
+    }
+    check(not pending,
+          "no current seed still needs fix_seed_declarations",
+          "; ".join(f"{name}: {', '.join(added)}"
+                    for name, added in pending.items()))
 
     print("\nland_match can actually CALL save_candidate")
     # On 2026-08-16 --land reached compiles-differs on func_us_801CFD70 -- the

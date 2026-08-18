@@ -692,7 +692,8 @@ def report(fn_id: str, status: str, notes: str, proof: str = "") -> str:
     # "refused: status 'matched' requires --proof", leaving the record at
     # `near` -- the work was done and the queue did not know.
     argv = [PYTHON, str(REPO / "automation" / "scheduler.py"), "report",
-            "--id", fn_id, "--status", status, "--notes", notes]
+            "--id", fn_id, "--status", status, "--notes", notes,
+            "--keep-note"]
     if proof:
         argv += ["--proof", proof]
     r = subprocess.run(argv, cwd=str(REPO), capture_output=True, text=True,
@@ -2244,6 +2245,26 @@ def self_test() -> int:
     ck(EXHAUSTED in src_sup and MATCH_PENDING in src_sup,
        "each carries a findable marker, so the decision can be undone "
        "selectively later")
+
+    print("\nsupervisor outcomes preserve prior queue evidence")
+    captured_report = []
+    real_subprocess_run = subprocess.run
+    try:
+        def fake_report_run(argv, **_kwargs):
+            captured_report.append(argv)
+            return subprocess.CompletedProcess(argv, 0, "updated\n", "")
+        subprocess.run = fake_report_run
+        report_result = report(
+            "us:TEST:Evidence", "deferred", "new outcome evidence")
+    finally:
+        subprocess.run = real_subprocess_run
+    ck(report_result == "updated", "the behavioral report fixture succeeds")
+    ck(bool(captured_report) and "--keep-note" in captured_report[0],
+       "scheduler.py receives --keep-note on every supervisor report")
+    ck(bool(captured_report)
+       and captured_report[0][captured_report[0].index("--notes") + 1]
+           == "new outcome evidence",
+       "the complete new note is still forwarded")
 
     print("\na solved-but-unbuilt function is not re-searched")
     ck(_why_skip({"notes": f"x {MATCH_PENDING} y"}, Path(".")) != "",

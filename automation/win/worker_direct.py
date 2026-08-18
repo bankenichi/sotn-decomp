@@ -1248,22 +1248,53 @@ def lookup_declarations(symbols: list[str], limit: int = 40) -> list[str]:
         # One grep for all of them: per-symbol greps over src/ and include/ cost
         # seconds each and this runs before every attempt.
         alt = "|".join(re.escape(s) for s in wanted)
-        pat = rf"^[[:space:]]*extern[^;]*\b({alt})\b[^;]*;"
+        # A declaration is not required to spell `extern`. Public headers use
+        # ordinary prototypes such as `void InitializeEntity(u16 arg0[]);` and
+        # `int rsin(int a);`. Missing those and falling back to implicit int
+        # creates a conflicting declaration in the seed. Keep the extern arm
+        # for data and function-pointer globals, and add a prototype arm whose
+        # leading type token prevents an ordinary call statement from matching.
+        extern_decl = rf"extern[^;]*\b({alt})\b[^;]*;"
+        prototype = (
+            rf"[A-Za-z_]\w*[^;{{}}=]*\b({alt})[[:space:]]*"
+            rf"\([^;{{}}]*\)[[:space:]]*;")
+        pat = rf"^[[:space:]]*({extern_decl}|{prototype})"
         rc, out = wsl(
             f"grep -rhoE {shlex.quote(pat)} src include "
-            f"--include='*.c' --include='*.h' 2>/dev/null | sort -u",
+            f"--include='*.c' --include='*.h' "
+            f"--exclude='*_psp.c' --exclude='*_psp.h' "
+            f"--exclude-dir='saturn' --exclude-dir='psp' "
+            f"--exclude-dir='pspsdk' 2>/dev/null | sort -u",
             timeout=120)
         found: dict[str, str] = {}
         if rc == 0:
             for line in out.splitlines():
                 line = line.strip()
                 for s in wanted:
+                    if not re.search(rf"\b{re.escape(s)}\b", line):
+                        continue
+                    # The grep arm is intentionally broad enough to accept
+                    # repository typedefs as return types. Reject call
+                    # statements here: a prototype has a nonempty type prefix
+                    # with no expression punctuation or control keyword.
+                    if not line.startswith("extern"):
+                        match = re.match(
+                            rf"(?P<prefix>.*?)\b{re.escape(s)}\s*"
+                            rf"\([^;{{}}]*\)\s*;$", line)
+                        prefix = (match.group("prefix").strip()
+                                  if match else "")
+                        first = prefix.split(None, 1)[0] if prefix else ""
+                        if (not prefix
+                                or any(mark in prefix
+                                       for mark in ("=", "(", ")", ".", "->"))
+                                or first in {"return", "if", "for", "while",
+                                             "switch", "case"}):
+                            continue
                     # Bind each declaration to its symbol, shortest wins: the
                     # shortest matching line is the plain declaration rather
                     # than something that merely mentions the name.
-                    if re.search(rf"\b{re.escape(s)}\b", line):
-                        if s not in found or len(line) < len(found[s]):
-                            found[s] = line
+                    if s not in found or len(line) < len(found[s]):
+                        found[s] = line
         for s in wanted:
             _DECL_CACHE[s] = found.get(s, "")
     return [_DECL_CACHE[s] for s in symbols
