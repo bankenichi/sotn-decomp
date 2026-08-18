@@ -872,7 +872,128 @@ void OVL_EXPORT(RicEntitySubwpnHolyWater)(Entity* self) {
 INCLUDE_ASM(
     "boss/bo6/nonmatchings/us_3E79C", BO6_RicEntitySubwpnHolyWaterFlame);
 
-INCLUDE_ASM("boss/bo6/nonmatchings/us_3E79C", BO6_RicEntitySubwpnCrashCross);
+extern EInit D_us_8018049C;
+extern u16 D_us_80182908[];
+extern RECT D_us_80182968;
+
+// BO6 twin of RicEntitySubwpnCrashCross. BO6 uses its local initialization and
+// image data, and drives the boss's Richter state instead of playable Richter.
+void BO6_RicEntitySubwpnCrashCross(Entity* self) {
+    s16 psp_s4;
+    s16 psp_s3;
+    s16 right;
+    s16 left;
+    Primitive* prim;
+
+    psp_s4 = 3;
+    psp_s3 = 1;
+    self->posY.i.hi = 0x78;
+    self->posX.i.hi = RIC.posX.i.hi;
+    switch (self->step) {
+    case 0:
+        self->ext.crashcross.subweaponId = PL_W_CRASH_CROSS;
+        InitializeEntity(D_us_8018049C);
+        self->primIndex = g_api_AllocPrimitives(PRIM_GT4, 1);
+        if (self->primIndex == -1) {
+            DestroyEntity(self);
+            return;
+        }
+        self->flags = FLAG_UNK_10000000 | FLAG_HAS_PRIMS;
+        self->ext.crashcross.unk80 = 1;
+        self->zPriority = 0xC2;
+        LoadImage(&D_us_80182968, (u_long*)D_us_80182908);
+        g_api_PlaySfx(SFX_CRASH_CROSS);
+        g_api_PlaySfx(SFX_TELEPORT_BANG_B);
+        self->step = 1;
+        break;
+
+    case 1:
+        self->ext.crashcross.unk7E.val += psp_s4;
+        self->ext.crashcross.unk82 += psp_s4 * 2;
+        if (self->ext.crashcross.unk7E.i.lo >= 0x70) {
+            BO6_RicCreateEntFactoryFromEntity(
+                self, BP_CRASH_CROSSES_ONLY, 0);
+            BO6_RicCreateEntFactoryFromEntity(
+                self, BP_CRASH_CROSS_PARTICLES, 0);
+            self->step++;
+        }
+        break;
+
+    case 2:
+        if (g_Timer & 1) {
+            self->ext.crashcross.unk7C += psp_s3;
+            self->ext.crashcross.unk80 += psp_s3 * 2;
+            if (self->ext.crashcross.unk80 >= 0x2C) {
+                self->step++;
+                self->ext.crashcross.unk84 = 0x80;
+            }
+        }
+        break;
+
+    case 3:
+        if (--self->ext.crashcross.unk84 == 0) {
+            g_api.SetFadeMode(FADE_NONE);
+            left = self->posX.i.hi - self->ext.crashcross.unk7C;
+            if (left < 0) {
+                left = 0;
+            }
+            right = self->posX.i.hi + self->ext.crashcross.unk7C;
+            if (right > 0xFF) {
+                right = 0xFF;
+            }
+            g_api_PlaySfx(SFX_WEAPON_APPEAR);
+            self->step++;
+        }
+        break;
+
+    case 4:
+        psp_s3 *= 3;
+        left = abs(self->posX.i.hi - 0x80);
+        psp_s3 = psp_s3 * (left + 0x80) / 112;
+        self->ext.crashcross.unk7C += psp_s3;
+
+        left = self->posX.i.hi - self->ext.crashcross.unk7C;
+        if (left < 0) {
+            left = 0;
+        }
+        right = self->posX.i.hi + self->ext.crashcross.unk7C;
+        if (right > 0xFF) {
+            right = 0xFF;
+        }
+        if (right - left > 0xF8) {
+            g_Ric.unk4E = 1;
+            DestroyEntity(self);
+            return;
+        }
+        break;
+    }
+
+    self->hitboxOffY = 0;
+    self->hitboxHeight = self->ext.crashcross.unk7E.val;
+    if (self->step == 4) {
+        self->hitboxWidth = (right - left) >> 1;
+        self->hitboxOffX = ((left + right) >> 1) - self->posX.i.hi;
+    } else {
+        self->hitboxWidth = self->ext.crashcross.unk7C;
+        self->hitboxOffX = 0;
+    }
+    prim = &g_PrimBuf[self->primIndex];
+    prim->x0 = prim->x2 = self->posX.i.hi - self->ext.crashcross.unk7C;
+    prim->y1 = prim->y0 = self->posY.i.hi - self->ext.crashcross.unk7E.val;
+    prim->x1 = prim->x3 = prim->x0 + self->ext.crashcross.unk80;
+    prim->y2 = prim->y3 = prim->y0 + self->ext.crashcross.unk82;
+    prim->u0 = prim->u2 = 1;
+    prim->u1 = prim->u3 = 0x30;
+    prim->v0 = prim->v1 = prim->v2 = prim->v3 = 0xF8;
+    prim->tpage = 0x11C;
+    if (self->step == 4) {
+        prim->x0 = prim->x2 = left;
+        prim->x1 = prim->x3 = right;
+    }
+    prim->drawMode = DRAW_TPAGE2 | DRAW_TPAGE | DRAW_TRANSP;
+    prim->priority = self->zPriority;
+    g_Ric.timers[PL_T_3] = 2;
+}
 
 extern EInit D_us_80180454;
 extern s16 D_us_801D10C8;
