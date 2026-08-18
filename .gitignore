@@ -65,3 +65,9 @@ automation/logs/
 # Machine-specific companion to ORCHESTRATOR.md: absolute paths, usernames,
 # local endpoints. Never commit. See ORCHESTRATOR.md section 0.
 ORCHESTRATOR.local.md
+
+# Legacy root outputs from upstream decomp-permuter debug mode. The connector
+# now writes each debug run under its owned work directory, but these two
+# historical scratch paths may still exist locally and are not evidence.
+/debug_source.c
+/debug_compiled_object.o

@@ -7,6 +7,7 @@
 [submodule "tools/saturn-splitter"]
 	path = tools/saturn-splitter
 	url = https://github.com/sozud/saturn-splitter.git
+	ignore = dirty
 [submodule "tools/maspsx"]
 	path = tools/maspsx
 	url = https://github.com/mkst/maspsx.git
@@ -22,6 +23,7 @@
 [submodule "tools/psyz"]
 	path = tools/psyz
 	url = https://github.com/Xeeynamo/psyz
+	ignore = dirty
 [submodule "tools/saturn/sound-player"]
 	path = tools/saturn/sound-player
 	url = https://github.com/sozud/saturn-sound-player.git
