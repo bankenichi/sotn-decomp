@@ -814,6 +814,8 @@ extern void DecelerateX(s32);
 extern s32 BO6_RicCheckFacing(void);
 extern void BO6_RicSetStand(s32);
 extern void BO6_RicSetSpeedX(s32);
+extern void BO6_RicSetAnimation(AnimationFrame*);
+extern void BO6_DisableAfterImage(s32, s32);
 
 /* Ric's walking step in BOSS/BO6: when no directional input is held,
  * decelerate and either stand still or resume walk speed while the
@@ -864,7 +866,140 @@ void BO6_RicStepRun(void) {
     }
 }
 
-INCLUDE_ASM("boss/bo6/nonmatchings/richter", BO6_RicStepJump);
+extern AnimationFrame D_us_801820B0[];
+extern AnimationFrame D_us_801820E4[];
+extern AnimationFrame D_us_801822C8[];
+
+// Richter (BO6): reduced RicStepJump state machine. The boss target omits
+// playable Richter's variable-height jump cut and unk72 velocity cancellation.
+void BO6_RicStepJump(void) {
+    s32 facing;
+
+    if ((g_Ric.vram_flag & TOUCHING_CEILING) &&
+        (RIC.velocityY < FIX(-1))) {
+        RIC.velocityY = FIX(-0.25);
+        g_Ric.unk44 |= 0x20;
+    }
+    if (BO6_RicCheckInput(0x11009)) {
+        return;
+    }
+
+    switch (RIC.step_s) {
+    case 0:
+        DecelerateX(FIX(0.0625));
+        facing = BO6_RicCheckFacing();
+        if (facing) {
+            if (g_Ric.unk44 & 0x10) {
+                BO6_RicSetSpeedX(FIX(2.25));
+            } else {
+                BO6_RicSetSpeedX(FIX(1.25));
+            }
+            g_Ric.unk44 &= ~4;
+        } else {
+            g_Ric.unk44 &= ~0x10;
+            if ((RIC.pose < 2) && !(g_Ric.unk44 & 8) &&
+                (g_Ric.unk44 & 4) && (g_Ric.padTapped & PAD_CROSS)) {
+                BO6_RicSetAnimation(D_us_801820E4);
+                BO6_RicSetSpeedX(FIX(-1.5));
+                RIC.velocityY = FIX(-2.625);
+                g_Ric.unk44 |= 0xA;
+                g_Ric.unk44 &= ~4;
+                RIC.step_s = 2;
+            }
+        }
+        break;
+
+    case 2:
+        break;
+
+    case 0x40:
+        BO6_DisableAfterImage(1, 1);
+        if (RIC.pose < 3) {
+            facing = BO6_RicCheckFacing();
+            if (facing) {
+                if (g_Ric.unk44 & 0x10) {
+                    BO6_RicSetSpeedX(FIX(2.25));
+                } else {
+                    BO6_RicSetSpeedX(FIX(1.25));
+                }
+                g_Ric.unk44 &= ~4;
+            } else {
+                g_Ric.unk44 &= ~0x10;
+            }
+        } else {
+            if (((g_Ric.padPressed & PAD_RIGHT) && !RIC.facingLeft) ||
+                ((g_Ric.padPressed & PAD_LEFT) && RIC.facingLeft)) {
+                if (g_Ric.unk44 & 0x10) {
+                    BO6_RicSetSpeedX(FIX(2.25));
+                } else {
+                    BO6_RicSetSpeedX(FIX(1.25));
+                }
+                BO6_RicSetSpeedX(FIX(1.25));
+                g_Ric.unk44 &= ~4;
+            } else {
+                g_Ric.unk44 &= ~0x10;
+            }
+        }
+        if (RIC.poseTimer < 0) {
+            if (g_Ric.padPressed & PAD_SQUARE) {
+                RIC.step_s++;
+                g_Ric.unk46 = 2;
+                BO6_RicSetAnimation(D_us_801822C8);
+                BO6_RicCreateEntFactoryFromEntity(
+                    g_CurrentEntity, BP_ARM_BRANDISH_WHIP, 0);
+            } else {
+                g_Ric.unk46 = 0;
+                RIC.step_s = 0;
+                BO6_RicSetAnimation(D_us_801820B0);
+            }
+        }
+        break;
+
+    case 0x41:
+        BO6_DisableAfterImage(1, 1);
+        if (!(g_Ric.padPressed & PAD_SQUARE)) {
+            g_Ric.unk46 = 0;
+            RIC.step_s = 0;
+            BO6_RicSetAnimation(D_us_801820B0);
+        }
+        break;
+
+    case 0x42:
+        BO6_DisableAfterImage(1, 1);
+        if (RIC.pose < 3) {
+            facing = BO6_RicCheckFacing();
+            if (facing) {
+                if (g_Ric.unk44 & 0x10) {
+                    BO6_RicSetSpeedX(FIX(2.25));
+                } else {
+                    BO6_RicSetSpeedX(FIX(1.25));
+                }
+                g_Ric.unk44 &= ~4;
+            } else {
+                g_Ric.unk44 &= ~0x10;
+            }
+        } else {
+            if (((g_Ric.padPressed & PAD_RIGHT) && !RIC.facingLeft) ||
+                ((g_Ric.padPressed & PAD_LEFT) && RIC.facingLeft)) {
+                if (g_Ric.unk44 & 0x10) {
+                    BO6_RicSetSpeedX(FIX(2.25));
+                } else {
+                    BO6_RicSetSpeedX(FIX(1.25));
+                }
+                BO6_RicSetSpeedX(FIX(1.25));
+                g_Ric.unk44 &= ~4;
+            } else {
+                g_Ric.unk44 &= ~0x10;
+            }
+        }
+        if (RIC.poseTimer < 0) {
+            g_Ric.unk46 = 0;
+            RIC.step_s = 0;
+            BO6_RicSetAnimation(D_us_801820B0);
+        }
+        break;
+    }
+}
 
 extern void func_us_801B9E70(void);
 
@@ -895,7 +1030,6 @@ extern AnimationFrame D_us_80182048[];
 extern AnimationFrame D_us_80182068[];
 extern AnimationFrame D_us_80182110[];
 extern AnimationFrame D_us_801822C0[];
-extern void BO6_DisableAfterImage(s32, s32);
 extern void func_us_801B9DE4(s32);
 
 // Richter (BO6): crouch state machine adapted from RicStepCrouch. The boss
@@ -1053,9 +1187,7 @@ INCLUDE_ASM("boss/bo6/nonmatchings/richter", BO6_RicStepHit);
 INCLUDE_ASM("boss/bo6/nonmatchings/richter", BO6_RicStepDead);
 
 extern s32 RIC_velocityY;
-extern AnimationFrame D_us_801820B0[];
 extern void BO6_RicSetStep(s32);
-extern void BO6_RicSetAnimation(AnimationFrame*);
 
 // Richter (BO6): the "hang in the air" step. Twin of RicStepStandInAir in
 // src/ric/pl_steps.c, MINUS its trailing `if (g_Player.unk72) PLAYER.velocityY
@@ -1225,7 +1357,6 @@ void BO6_RicStepSlide(void) {
     }
 }
 
-extern AnimationFrame D_us_801820E4[];
 extern AnimationFrame D_us_80182310[];
 
 // Richter (BO6): slide-kick collision and rebound. This is the RIC twin with
