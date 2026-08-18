@@ -43,6 +43,12 @@ subagent session.
 All Git and build operations go through `sotn-cmd`. Stage one explicit path per
 `git_add` call. Never use `git_add_all`.
 
+`tools/psyz` and `tools/saturn-splitter` suppress submodule worktree dirt in
+parent status because Windows mount mode flips otherwise make every session
+look modified. Gitlink changes remain visible. Whenever dependency work is in
+scope, inspect each exact path with `git_submodule_state` and
+`git_submodule_diff`; parent status is not the dependency audit.
+
 ## 3. Session sequence
 
 Start every working session with:
@@ -144,6 +150,25 @@ drafting; autonomous fleet replacement is not approved.
 Delegate only a concrete, bounded, read-only question. Give the subagent the
 exact files, function, overlay, or evidence set it owns. State that other work
 may exist in the tree and that it must not propose destructive cleanup.
+
+A delegated task is not closed when its answer arrives. The root must disposition
+every reported finding before reusing that subagent or landing dependent work:
+
+1. verify the finding against the live tree
+2. add or update a numbered `ROADMAP.md` task for it
+3. mark it `done`, leave it explicitly open for immediate work, or retract it
+   with the evidence that made it inapplicable
+4. resolve every Critical or Important finding before landing the affected
+   batch
+
+No finding may exist only in a chat transcript. A passing test suite does not
+override a concrete review finding; the missing regression becomes part of the
+finding's task.
+
+Files under `automation/candidates/` and `automation/rejected/` are durable
+evidence, not disposable worker output. A root session that creates one must
+report its queue disposition and explicitly stage the file in the same work
+batch. Do not leave generated evidence as a permanent untracked backlog.
 
 Good delegated questions include:
 
