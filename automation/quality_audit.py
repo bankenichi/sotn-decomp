@@ -287,48 +287,145 @@ def _matching_delimiter(
 
 def _has_codegen_reason(comment_text: str) -> bool:
     """Require CODEGEN plus an actual reason, not an empty waiver marker."""
-    for match in re.finditer(r"\bCODEGEN\s*:\s*([^\r\n]*)", comment_text,
+    for match in re.finditer(r"\bCODEGEN\s*:\s*", comment_text,
                              re.IGNORECASE):
-        reason = match.group(1).strip(" */\t")
+        reason = comment_text[match.end():]
+        block_end = reason.find("*/")
+        if block_end >= 0:
+            reason = reason[:block_end]
+        reason = re.sub(r"(?m)^\s*(?://|\*)?\s*", " ", reason)
         if len(re.findall(r"[A-Za-z0-9_]+", reason)) >= 3:
             return True
     return False
 
 
-def find_undocumented_empty_control_bodies(source: str) -> list[tuple[int, str]]:
-    """Return (line, keyword) for empty branches and loops lacking a reason.
+def _mask_preprocessor_directives(text: str) -> str:
+    """Blank complete logical preprocessor directives, including continuations."""
+    out = list(text)
+    offset = 0
+    continued = False
+    for line in text.splitlines(keepends=True):
+        physical = line.rstrip("\r\n")
+        directive = continued or physical.lstrip().startswith("#")
+        if directive:
+            for pos in range(offset, offset + len(line)):
+                if out[pos] not in "\r\n":
+                    out[pos] = " "
+            continued = physical.rstrip().endswith("\\")
+        else:
+            continued = False
+        offset += len(line)
+    return "".join(out)
+
+
+def _keyword_at(text: str, pos: int, keyword: str) -> bool:
+    return bool(re.match(rf"{keyword}\b", text[pos:]))
+
+
+def _statement_end(text: str, start: int) -> int | None:
+    """Return the inclusive end of one C statement in masked source."""
+    pos = _skip_space(text, start)
+    if pos >= len(text):
+        return None
+    if text[pos] == "{":
+        return _matching_delimiter(text, pos, "{", "}")
+    if text[pos] == ";":
+        return pos
+
+    for keyword in ("if", "for", "while", "switch"):
+        if not _keyword_at(text, pos, keyword):
+            continue
+        cond_start = _skip_space(text, pos + len(keyword))
+        if cond_start >= len(text) or text[cond_start] != "(":
+            return None
+        cond_end = _matching_delimiter(text, cond_start, "(", ")")
+        if cond_end is None:
+            return None
+        body_end = _statement_end(text, cond_end + 1)
+        if body_end is None:
+            return None
+        if keyword == "if":
+            else_pos = _skip_space(text, body_end + 1)
+            if _keyword_at(text, else_pos, "else"):
+                else_end = _statement_end(text, else_pos + len("else"))
+                if else_end is not None:
+                    return else_end
+        return body_end
+
+    if _keyword_at(text, pos, "do"):
+        body_end = _statement_end(text, pos + len("do"))
+        if body_end is None:
+            return None
+        while_pos = _skip_space(text, body_end + 1)
+        if not _keyword_at(text, while_pos, "while"):
+            return body_end
+        cond_start = _skip_space(text, while_pos + len("while"))
+        if cond_start >= len(text) or text[cond_start] != "(":
+            return body_end
+        cond_end = _matching_delimiter(text, cond_start, "(", ")")
+        if cond_end is None:
+            return body_end
+        semicolon = _skip_space(text, cond_end + 1)
+        return semicolon if semicolon < len(text) and text[semicolon] == ";" else cond_end
+
+    parens = brackets = braces = 0
+    for end in range(pos, len(text)):
+        char = text[end]
+        if char == "(":
+            parens += 1
+        elif char == ")" and parens:
+            parens -= 1
+        elif char == "[":
+            brackets += 1
+        elif char == "]" and brackets:
+            brackets -= 1
+        elif char == "{":
+            braces += 1
+        elif char == "}" and braces:
+            braces -= 1
+        elif char == ";" and not (parens or brackets or braces):
+            return end
+    return None
+
+
+def find_undocumented_empty_control_bodies(
+        source: str) -> list[tuple[int, int, str]]:
+    """Return (start line, end line, keyword) for unexplained empty bodies.
 
     This is a lexical scan rather than a C parser because the audited sources
     contain target-specific macros and conditional compilation. Comments and
     literals are masked first, then delimiters are balanced explicitly.
     """
-    masked = _mask_c_comments_and_literals(source)
-    findings: list[tuple[int, str]] = []
+    masked = _mask_preprocessor_directives(
+        _mask_c_comments_and_literals(source))
+    findings: list[tuple[int, int, str]] = []
 
-    def is_preprocessor(pos: int) -> bool:
-        line_start = masked.rfind("\n", 0, pos) + 1
-        return masked[line_start:pos].lstrip().startswith("#")
+    def add(match_start: int, body_end: int, keyword: str) -> None:
+        start_line = source.count("\n", 0, match_start) + 1
+        end_line = source.count("\n", 0, body_end) + 1
+        findings.append((start_line, end_line, keyword))
 
     # A do-while terminator ends with a required semicolon. Without recording
     # those sites first, the generic `while (...);` check reports the same
     # empty do body twice and even reports a documented do body once.
     do_while_terminators: set[int] = set()
     for match in re.finditer(r"\bdo\b", masked):
-        if is_preprocessor(match.start()):
-            continue
         body_start = _skip_space(masked, match.end())
-        if body_start >= len(masked) or masked[body_start] != "{":
-            continue
-        body_end = _matching_delimiter(masked, body_start, "{", "}")
+        body_end = _statement_end(masked, body_start)
         if body_end is None:
             continue
         terminator = _skip_space(masked, body_end + 1)
-        if re.match(r"while\b", masked[terminator:]):
+        if _keyword_at(masked, terminator, "while"):
             do_while_terminators.add(terminator)
+        if masked[body_start] == ";":
+            add(match.start(), body_end, "do")
+        elif masked[body_start] == "{":
+            first = _skip_space(masked, body_start + 1)
+            if first == body_end and not _has_codegen_reason(
+                    source[body_start + 1:body_end]):
+                add(match.start(), body_end, "do")
 
     for match in re.finditer(r"\b(if|for|while|switch)\b", masked):
-        if is_preprocessor(match.start()):
-            continue
         keyword = match.group(1)
         if keyword == "while" and match.start() in do_while_terminators:
             continue
@@ -341,12 +438,10 @@ def find_undocumented_empty_control_bodies(source: str) -> list[tuple[int, str]]
         body_start = _skip_space(masked, cond_end + 1)
         if body_start >= len(masked):
             continue
-        line = source.count("\n", 0, match.start()) + 1
         if masked[body_start] == ";":
-            line_end = source.find("\n", body_start)
-            line_end = len(source) if line_end < 0 else line_end
-            if not _has_codegen_reason(source[body_start + 1:line_end]):
-                findings.append((line, keyword))
+            # A null statement has no interior. A trailing comment belongs
+            # outside it and cannot waive the finding; use braces for CODEGEN.
+            add(match.start(), body_start, keyword)
             continue
         if masked[body_start] != "{":
             continue
@@ -354,23 +449,27 @@ def find_undocumented_empty_control_bodies(source: str) -> list[tuple[int, str]]
         if first < len(masked) and masked[first] == "}":
             raw_body = source[body_start + 1:first]
             if not _has_codegen_reason(raw_body):
-                findings.append((line, keyword))
+                add(match.start(), first, keyword)
 
-    for match in re.finditer(r"\b(else|do)\b", masked):
-        if is_preprocessor(match.start()):
-            continue
-        keyword = match.group(1)
+    for match in re.finditer(r"\belse\b", masked):
         body_start = _skip_space(masked, match.end())
-        if keyword == "else" and masked.startswith("if", body_start):
+        if _keyword_at(masked, body_start, "if"):
             continue
-        if body_start >= len(masked) or masked[body_start] != "{":
+        if body_start >= len(masked):
+            continue
+        if masked[body_start] == ";":
+            add(match.start(), body_start, "else")
+            continue
+        if masked[body_start] != "{":
+            continue
+        body_end = _matching_delimiter(masked, body_start, "{", "}")
+        if body_end is None:
             continue
         first = _skip_space(masked, body_start + 1)
-        if first < len(masked) and masked[first] == "}":
-            raw_body = source[body_start + 1:first]
+        if first == body_end:
+            raw_body = source[body_start + 1:body_end]
             if not _has_codegen_reason(raw_body):
-                line = source.count("\n", 0, match.start()) + 1
-                findings.append((line, keyword))
+                add(match.start(), body_end, "else")
 
     return sorted(set(findings))
 
@@ -429,8 +528,9 @@ def resolve_fake_symbol(name: str, syms: dict[str, int],
 
 
 def check_file(path: Path, syms, layout, ent_size, ext_variants, bits,
-               only_lines: set[int] | None = None,
-               addr_to_name: dict | None = None) -> list[dict]:
+                only_lines: set[int] | None = None,
+                structural_lines: set[int] | None = None,
+                addr_to_name: dict | None = None) -> list[dict]:
     """Return a list of findings for one source file."""
     findings: list[dict] = []
     try:
@@ -439,9 +539,9 @@ def check_file(path: Path, syms, layout, ent_size, ext_variants, bits,
     except OSError:
         return findings
     rel = str(path.relative_to(REPO))
-    empty_controls: dict[int, list[str]] = defaultdict(list)
-    for line_no, keyword in find_undocumented_empty_control_bodies(source):
-        empty_controls[line_no].append(keyword)
+    empty_controls: dict[int, list[tuple[int, str]]] = defaultdict(list)
+    for line_no, end_line, keyword in find_undocumented_empty_control_bodies(source):
+        empty_controls[line_no].append((end_line, keyword))
 
     # Track the enclosing function so findings are actionable.
     cur_fn = "?"
@@ -449,19 +549,24 @@ def check_file(path: Path, syms, layout, ent_size, ext_variants, bits,
         fm = re.match(r"^[A-Za-z_][\w \*]*\s+([A-Za-z_]\w*)\s*\([^;]*\)\s*\{?\s*$", line)
         if fm:
             cur_fn = fm.group(1)
-        if only_lines is not None and i not in only_lines:
-            continue
 
         def add(kind, detail, fix):
             findings.append({"file": rel, "line": i, "function": cur_fn,
                              "kind": kind, "detail": detail, "fix": fix,
                              "code": line.strip()[:120]})
 
-        for keyword in empty_controls.get(i, []):
+        for end_line, keyword in empty_controls.get(i, []):
+            if (structural_lines is not None and not any(
+                    line_no in structural_lines
+                    for line_no in range(i, end_line + 1))):
+                continue
             add("empty_control_body",
                 f"empty `{keyword}` body has no codegen justification",
                 "write the direct condition, or put a `CODEGEN:` comment "
                 "inside the body explaining the required target shape")
+
+        if only_lines is not None and i not in only_lines:
+            continue
 
         # A line that is only a comment cannot contain a defect, just a mention
         # of one. Without this, the comment explaining WHY a site is
@@ -664,32 +769,63 @@ def inherited_from_upstream(findings: list[dict], ref: str) -> set[str]:
     return hit
 
 
-def changed_lines_since(commit: str) -> dict[str, set[int]]:
-    """file -> set of line numbers added since `commit`."""
-    try:
-        diff = subprocess.run(["git", "diff", "-U0", f"{commit}..HEAD", "--", "src/"],
-                              cwd=REPO, capture_output=True, text=True,
-                              timeout=120).stdout
-    except (subprocess.SubprocessError, OSError):
-        return {}
-    out: dict[str, set[int]] = defaultdict(set)
+def _parse_changed_line_scopes(
+        diff: str) -> tuple[dict[str, set[int]], dict[str, set[int]]]:
+    """Return added lines and structural hunk spans from a zero-context diff."""
+    added: dict[str, set[int]] = defaultdict(set)
+    structural: dict[str, set[int]] = defaultdict(set)
     cur = None
     for line in diff.splitlines():
         if line.startswith("+++ b/"):
             cur = line[6:]
         elif line.startswith("@@") and cur:
-            m = re.search(r"\+(\d+)(?:,(\d+))?", line)
-            if m:
-                start = int(m.group(1))
-                for n in range(start, start + int(m.group(2) or 1)):
-                    out[cur].add(n)
-    return out
+            match = re.search(r"\+(\d+)(?:,(\d+))?", line)
+            if not match:
+                continue
+            start = int(match.group(1))
+            count = int(match.group(2) or 1)
+            if count:
+                added[cur].update(range(start, start + count))
+                structural[cur].update(range(start, start + count))
+            # A deletion-only hunk has a zero-width new range. Keep both sides
+            # of every hunk so deleting the sole statement from an unchanged
+            # control body still intersects that body's current span.
+            structural[cur].add(max(1, start - 1))
+            structural[cur].add(max(1, start + count))
+    return added, structural
+
+
+def changed_line_scopes_since(
+        commit: str) -> tuple[dict[str, set[int]], dict[str, set[int]]]:
+    """Return ordinary added-line scope plus structural change boundaries."""
+    try:
+        diff = subprocess.run(["git", "diff", "-U0", f"{commit}..HEAD", "--", "src/"],
+                              cwd=REPO, capture_output=True, text=True,
+                              timeout=120).stdout
+    except (subprocess.SubprocessError, OSError):
+        return {}, {}
+    return _parse_changed_line_scopes(diff)
+
+
+def changed_lines_since(commit: str) -> dict[str, set[int]]:
+    """Compatibility wrapper returning only lines added since `commit`."""
+    return changed_line_scopes_since(commit)[0]
+
+
+def _suppress_inherited_findings(
+        findings: list[dict], inherited: set[str]) -> list[dict]:
+    """Line inheritance cannot suppress findings whose defect is structural."""
+    return [
+        finding for finding in findings
+        if finding["kind"] in ("duplicate", "empty_control_body")
+        or finding["code"].strip() not in inherited
+    ]
 
 
 def self_test() -> int:
     """Exercise quality shapes that previously escaped the audit."""
     fixture = """\
-void BadEmptyBranch(void) {
+void BadNestedIf(void) {
     if (step_s != 0) {
         if (step_s) {
         }
@@ -702,7 +838,7 @@ void ExplainedCodegenBranch(void) {
     }
 }
 
-void MissingCodegenReason(void) {
+void BadMissingCodegenReason(void) {
     if (step_s) {
         // CODEGEN:
     }
@@ -717,7 +853,24 @@ void OrdinaryBranch(void) {
     }
 }
 
-void EmptyDoWhile(void) {
+void BadEmptyElse(void) {
+    if (step_s) use_step(step_s); else;
+}
+
+void BadEmptyFor(void) {
+    for (;;);
+}
+
+void BadEmptyWhile(void) {
+    while (hardware_busy());
+}
+
+void BadEmptySwitch(void) {
+    switch (step_s) {
+    }
+}
+
+void BadEmptyDoWhile(void) {
     do {
     } while (spin());
 }
@@ -727,6 +880,36 @@ void ExplainedDoWhile(void) {
         // CODEGEN: Poll the hardware flag without changing the loop body.
     } while (hardware_busy());
 }
+
+void GoodNonbracedDoWhile(void) {
+    do use_step(step_s); while (spin());
+}
+
+void BadNullDoWhile(void) {
+    do; while (spin());
+}
+
+void BadTrailingWaiver(void) {
+    if (step_s); // CODEGEN: This comment is outside the null statement.
+}
+
+void ExplainedMultilineBranch(void) {
+    if (step_s) {
+        /* CODEGEN:
+         * Preserve the target's scheduled conditional branch.
+         */
+    }
+}
+
+void LiteralAndCommentNoise(void) {
+    const char* text = "if (step_s) {} else; do; while (spin())";
+    // if (step_s) { }
+    use_text(text);
+}
+
+#define EMPTY_BRANCH_MACRO(value) \\
+    if (value) { \\
+    }
 """
     tmp_path: Path | None = None
     try:
@@ -741,14 +924,62 @@ void ExplainedDoWhile(void) {
             tmp_path.unlink(missing_ok=True)
 
     empty = [f for f in findings if f["kind"] == "empty_control_body"]
-    got = [(f["function"], f["line"]) for f in empty]
-    want = [
-        ("BadEmptyBranch", 3),
-        ("MissingCodegenReason", 15),
-        ("EmptyDoWhile", 30),
-    ]
+    got = {(f["function"], f["detail"].split("`")[1]) for f in empty}
+    want = {
+        ("BadNestedIf", "if"),
+        ("BadMissingCodegenReason", "if"),
+        ("BadEmptyElse", "else"),
+        ("BadEmptyFor", "for"),
+        ("BadEmptyWhile", "while"),
+        ("BadEmptySwitch", "switch"),
+        ("BadEmptyDoWhile", "do"),
+        ("BadNullDoWhile", "do"),
+        ("BadTrailingWaiver", "if"),
+    }
     if got != want:
         print(f"FAIL empty-control fixture: expected {want}, got {got}")
+        return 1
+
+    spans = find_undocumented_empty_control_bodies(fixture)
+    nested_span = next(
+        (start, end) for start, end, keyword in spans
+        if keyword == "if" and fixture.splitlines()[start - 1].strip() ==
+        "if (step_s) {")
+    if tmp_path is None:
+        print("FAIL structural scope: fixture path was not created")
+        return 1
+    tmp_path.write_text(fixture, encoding="utf-8")
+    try:
+        structural = check_file(
+            tmp_path, {}, {}, 0xBC, {}, [], only_lines=set(),
+            structural_lines={nested_span[1]})
+    finally:
+        tmp_path.unlink(missing_ok=True)
+    if not any(f["function"] == "BadNestedIf" and
+               f["kind"] == "empty_control_body" for f in structural):
+        print("FAIL structural scope: body-only change did not retain finding")
+        return 1
+
+    deletion_diff = """\
+diff --git a/src/demo.c b/src/demo.c
+--- a/src/demo.c
++++ b/src/demo.c
+@@ -3 +3,0 @@
+-    use_step(step_s);
+"""
+    added, structural_lines = _parse_changed_line_scopes(deletion_diff)
+    if added.get("src/demo.c") or not {2, 3} <= structural_lines["src/demo.c"]:
+        print("FAIL deletion scope: zero-width hunk lost structural boundaries")
+        return 1
+
+    inherited = {"if (step_s) {", "D_80000000 = 1;"}
+    sample = [
+        {"kind": "empty_control_body", "code": "if (step_s) {"},
+        {"kind": "fake_symbol", "code": "D_80000000 = 1;"},
+    ]
+    kept = _suppress_inherited_findings(sample, inherited)
+    if kept != sample[:1]:
+        print("FAIL inheritance: structural finding was suppressed by header text")
         return 1
     print("quality_audit self-test: PASS")
     return 0
@@ -758,7 +989,7 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--since", default=UPSTREAM_DEFAULT,
-                    help="audit only lines added since this commit")
+                    help="audit code changed since this commit")
     ap.add_argument("--file", default="", help="audit one file, whole")
     ap.add_argument("--all", action="store_true", help="audit all of src/, whole")
     ap.add_argument("--json", default="")
@@ -795,15 +1026,16 @@ def main() -> int:
             findings += check_file(p, syms, layout, ent_size, ext_variants, bits,
                                    addr_to_name=addr_to_name)
     else:
-        changed = changed_lines_since(a.since)
+        changed, structural = changed_line_scopes_since(a.since)
         scope = []
-        for rel, lines in changed.items():
+        for rel in sorted(set(changed) | set(structural)):
             p = REPO / rel
             if not p.exists():
                 continue
             scope.append(p)
             findings += check_file(p, syms, layout, ent_size, ext_variants,
-                                   bits, only_lines=lines,
+                                   bits, only_lines=changed.get(rel, set()),
+                                   structural_lines=structural.get(rel, set()),
                                    addr_to_name=addr_to_name)
         print(f"scope: {len(scope)} files changed since {a.since}", file=sys.stderr)
 
@@ -825,12 +1057,11 @@ def main() -> int:
     # Drop anything upstream wrote verbatim; it is their convention, not our
     # defect. Duplicates are exempt: for those, existing upstream IS the point.
     inherited = inherited_from_upstream(
-        [f for f in findings if f["kind"] != "duplicate"], a.since)
+        [f for f in findings
+         if f["kind"] not in ("duplicate", "empty_control_body")], a.since)
     if inherited:
         before = len(findings)
-        findings = [f for f in findings
-                    if f["kind"] == "duplicate"
-                    or f["code"].strip() not in inherited]
+        findings = _suppress_inherited_findings(findings, inherited)
         print(f"suppressed {before - len(findings)} finding(s) whose exact line "
               f"exists in {a.since}", file=sys.stderr)
 
