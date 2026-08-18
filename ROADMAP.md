@@ -16,12 +16,12 @@ mistake impossible twice.
 | | |
 |---|---|
 | Oracle | **81/81** |
-| Queue | **269 matched**, 70 todo, 96 escalated, 36 deferred, 0 near (471 total) |
-| Tree | **96.8% of functions decompiled** overall, 6359/6561 |
+| Queue | **270 matched**, 70 todo, 95 escalated, 36 deferred, 0 near (471 total) |
+| Tree | **96.9% of functions decompiled** overall, 6360/6561 |
 | Automation | 59 analysis scripts, 30 test suites, **77 connector tools**, 37 dashboard diagnostics |
-| Provenance | shim-header 60, upstream-harvest 44, shim-segment 40, model-fleet 31, twin-port 28, permuter 10, transplant 8, hand 4, **unknown 44 (16%)** |
+| Provenance | shim-header 60, upstream-harvest 44, shim-segment 40, model-fleet 31, twin-port 29, permuter 10, transplant 8, hand 4, **unknown 44 (16%)** |
 | Fleet backend | `zen` on `mimo-v2.5-free` |
-| Audit | 269 present, 0 uncommitted, 0 LOST |
+| Audit | 270 present, 0 uncommitted, 0 LOST |
 
 Where the remaining work sits, by overlay completion:
 
@@ -969,12 +969,12 @@ Status: **done**, **open**, **partial**, **void** (turned out unnecessary),
 | 102 | done | m2c-only runs. The size wall is gone; the Entity naming wall is behind it |
 | 103 | done | The derivation plus 1 of 5. The other 4 each needed real work and were split out to #105 |
 | 104 | done | `grep -E`: alternation went from 0 to 8 matches, a bad regex now errors, the engine is reported |
-| 105 | **open** | The 4 remaining twins, each blocked on a different named thing |
+| 105 | partial | One of the four remaining twins is now matched. `BO6_RicEntitySubwpnBible` was an exact RIC twin adaptation once BO6's flag, API, SFX, factory-call and player-object differences were reconciled. Its isolated score 40 was only equivalent relocation labels; the final link verified 81/81. `EntityRelicOrb`, `EntityGaibon`, and `BO6_RicEntityAguneaLightning` remain |
 | 106 | done | The supervisor stamps `SEED_CURRENT`. The loop is closed |
 | 107 | done | README status tables AND prose are generated |
 | 108 | done | Auto-commit remains deliberately rejected. The worker now writes a durable verified landing snapshot before reporting `matched`, while root review, explicit staging, commit and push remain the only Git authority |
 | 109 | done | Closed: no `Ext` field was missing. The m2c-only path could not name them |
-| 110 | **open** | P4: exhaust the `src/ric` to BO6 twin pipeline before spending model calls |
+| 110 | partial | P4 twin exhaustion is in progress. `BO6_RicEntitySubwpnBible` matched from `src/ric/319C4.c` with the full derivation retained in its queue record; the remaining named RIC twins must still match or receive a specific twin-limit disposition before model calls |
 | 111 | **open** | A/B reasoning: the per-worker effort knob landed and is ready to run |
 | 112 | partial | The doc drift check exists and covers three invariants. The rest is still human |
 | 113 | done | Handoff is tier-gated, with a claim breaker behind it |
