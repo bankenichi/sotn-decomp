@@ -7,9 +7,9 @@ WHY THIS EXISTS RATHER THAN tools/progress.py
     uses 3.12-only f-string nesting, so it will not even parse on 3.10.
 
     This reads the same linker maps with the same library and the same rule,
-    prints a table, and talks to nothing. `--markdown` emits the block that
-    goes in README.md, so the README's numbers are generated rather than
-    typed, and cannot drift from the tree the way a hand-written figure does.
+    prints a table, and talks to nothing. `markdown()` owns the detailed block;
+    `readme_status.py --write` places it in README.md, and that tool's drift
+    check proves the checked-in block still equals this generator.
 
 WHAT "COMPLETE" MEANS HERE
     Code bytes whose function is compiled from C, over total code bytes in
@@ -226,27 +226,54 @@ def print_table(rows: list[Stats]) -> None:
         print(f"{r.pretty:<18}{r.code_pct:>7.1f}%"
               f"{f'{r.fn_done}/{r.fn_total}':>14}{dp:>7.1f}%")
     print("-" * 48)
-    cp, fp, fd, ft = totals(rows)
+    cp, _fp, fd, ft = totals(rows)
     print(f"{'OVERALL':<18}{cp:>7.1f}%{f'{fd}/{ft}':>14}")
 
 
-def print_markdown(rows: list[Stats]) -> None:
-    """The README block. Generated, so the README cannot drift from the tree."""
+README_NOTES = {
+    "ST/RCEN": "harness target",
+    "ST/RCHI": "harness target",
+    "ST/RNO0": "harness target",
+    "BOSS/BO6": "harness target",
+    "BOSS/BO0": "harness target",
+}
+
+
+def markdown(rows: list[Stats]) -> str:
+    """Return the complete generated README completion block."""
     cp, fp, fd, ft = totals(rows)
-    print(f"**Overall: {cp:.1f}% of code decompiled** "
-          f"({fd} of {ft} functions), across {len(rows)} built binaries.\n")
+    lines = [
+        f"**Overall: {cp:.1f}% of code decompiled** "
+        f"({fd} of {ft} functions), across {len(rows)} built binaries.",
+        "",
+    ]
     done = [r for r in rows if r.code_pct >= 99.95]
     part = [r for r in rows if r.code_pct < 99.95]
     if done:
-        print(f"{len(done)} at 100%: "
-              + ", ".join(f"`{r.pretty}`" for r in sorted(
-                  done, key=lambda r: r.pretty)) + "\n")
+        lines += [
+            f"**{len(done)} binaries are at 100%:** "
+            + ", ".join(f"`{r.pretty}`" for r in sorted(
+                done, key=lambda r: r.pretty)),
+            "",
+        ]
     if part:
-        print("| binary | code | functions |")
-        print("|---|---:|---:|")
+        lines += [
+            f"The {len(part)} that are not:",
+            "",
+            "| binary | code | functions | |",
+            "|---|---:|---:|---|",
+        ]
         for r in sorted(part, key=lambda r: -r.code_pct):
-            print(f"| `{r.pretty}` | {r.code_pct:.1f}% "
-                  f"| {r.fn_done}/{r.fn_total} |")
+            lines.append(
+                f"| `{r.pretty}` | {r.code_pct:.1f}% "
+                f"| {r.fn_done}/{r.fn_total} | {README_NOTES.get(r.pretty, '')} |"
+            )
+    return "\n".join(lines)
+
+
+def print_markdown(rows: list[Stats]) -> None:
+    """Print the README block owned by :func:`markdown`."""
+    print(markdown(rows))
 
 
 def self_test() -> int:

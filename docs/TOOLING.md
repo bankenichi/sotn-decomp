@@ -344,7 +344,7 @@ supports `--help` and most support `--self-test`.
 | `reasoning_audit.py` | reasoning-effort A/B results |
 | `quality_ab.py` | quality comparison between two configurations |
 | `progress_table.py` | per-overlay completion from the linker maps |
-| `readme_status.py` | regenerates the README status tables and prose |
+| `readme_status.py` | regenerates the three fenced README blocks; `--drift` compares them and the other machine-grounded documentation invariants against live sources |
 | `queue_coverage.py` | queue against tree |
 
 ### Maintenance and self-test
@@ -357,7 +357,9 @@ supports `--help` and most support `--self-test`.
 | `test_connector_surfaces.py` | REGISTRY vs decorators vs manifest, plus portability and doc checks |
 
 The remaining `test_*.py` scripts are all callable through `run_analysis` and
-each explains itself when run. `run_selftests.py` is the one to reach for.
+each explains itself when run. `test_connector_surfaces.py` enforces that
+blanket claim and exact coverage of every callable connector tool.
+`run_selftests.py` is the one to reach for.
 
 `progress_table.py` uses `.NON_MATCHING`, configured whole-file assembly and
 the shared path-aware live `INCLUDE_ASM` index. A retained individual `.s` file

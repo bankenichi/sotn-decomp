@@ -1439,8 +1439,11 @@ def main() -> int:
     check(_tooling.is_file(), "docs/TOOLING.md exists")
     if _tooling.is_file():
         _doc = _tooling.read_text(encoding="utf-8")
-        # Tool names are written as `name` in a leading table cell: | `name` |
-        _named = set(re.findall(r"^\|\s*`(\w+)`", _doc, re.M))
+        # Tool and script names are written in a leading table cell. The old
+        # `\w+` pattern silently ignored every `.py` row while claiming to
+        # validate scripts too.
+        _named = set(re.findall(
+            r"^\|\s*`([A-Za-z0-9_]+(?:\.py)?)`", _doc, re.M))
         _known = tools | set(cc.FS_ACTIONS if hasattr(cc, "FS_ACTIONS") else ())
         _known |= {"read_file", "write_file", "list_dir", "search_repo"}
         _known |= set(cc.ANALYSIS_SCRIPTS)
@@ -1448,9 +1451,33 @@ def main() -> int:
         _ghosts = sorted(n for n in _named if n not in _known)
         check(not _ghosts,
               f"no doc row names a tool or script that does not exist: {_ghosts}")
-        check(len(_named & tools) >= 60,
-              f"and the reference is not a token subset ({len(_named & tools)} "
-              f"of {len(tools)} tools documented)")
+        _doc_scripts = set(re.findall(
+            r"^\|\s*`([A-Za-z0-9_]+\.py)`", _doc, re.M))
+        _missing_script_files = sorted(
+            name for name in _doc_scripts
+            if not (REPO / "automation" / name).is_file()
+        )
+        check(not _missing_script_files,
+              f"every documented analysis script exists on disk: "
+              f"{_missing_script_files}")
+        _uncallable_doc_scripts = sorted(
+            _doc_scripts - set(cc.ANALYSIS_SCRIPTS)
+        )
+        check(not _uncallable_doc_scripts,
+              f"every documented analysis script is callable: "
+              f"{_uncallable_doc_scripts}")
+        _undocumented = sorted(tools - _named)
+        check(not _undocumented,
+              f"every callable tool has a reference row: {_undocumented}")
+
+        # TOOLING.md says every remaining top-level test is callable through
+        # run_analysis. That is a machine claim, so a threshold or spot check
+        # would merely postpone the next stale-doc failure.
+        _tests = {p.name for p in (REPO / "automation").glob("test_*.py")}
+        _uncallable_tests = sorted(_tests - set(cc.ANALYSIS_SCRIPTS))
+        check(not _uncallable_tests,
+              f"every focused test named by the blanket doc claim is callable: "
+              f"{_uncallable_tests}")
 
     print("\nAGENTS.md points at the roadmap and requires keeping it current")
     _agents = REPO / "AGENTS.md"
