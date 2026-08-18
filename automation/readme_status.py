@@ -50,6 +50,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import run_selftests as selftest_runner
+
 REPO = Path(__file__).resolve().parent.parent
 AUTO = REPO / "automation"
 README = REPO / "README.md"
@@ -161,17 +163,11 @@ def inventory() -> dict[str, int]:
     of five. Count them.
     """
     mods = [p for p in AUTO.rglob("*.py") if ".venv" not in p.parts]
-    suites = sorted(AUTO.glob("test_*.py"))
-    # Modules carrying their own --self-test, the way run_selftests finds them.
-    selftests = 0
-    for p in mods:
-        if p.name.startswith("test_"):
-            continue
-        try:
-            if "--self-test" in p.read_text(errors="ignore"):
-                selftests += 1
-        except OSError:
-            pass
+    # Use the runner's actual discovery functions. A second approximation here
+    # counted run_selftests.py itself and recursively scanned modules the runner
+    # never invokes, so the generated README claimed 32 while the gate ran 31.
+    suites = selftest_runner.suites()
+    selftests = len(selftest_runner.selftest_modules())
     tools = 0
     for name in ("sotn_cmd_mcp.py", "sotn_local_mcp.py"):
         f = AUTO / "mcp" / name
@@ -899,6 +895,10 @@ def self_test() -> int:
     inv = inventory()
     ck(inv["modules"] > 40, f"modules counted ({inv['modules']})")
     ck(inv["suites"] > 15, f"test suites counted ({inv['suites']})")
+    ck(inv["suites"] == len(selftest_runner.suites()),
+       "suite count comes from the gate's discovery authority")
+    ck(inv["selftests"] == len(selftest_runner.selftest_modules()),
+       "module self-test count comes from the gate's discovery authority")
     ck(inv["tools"] > 40, f"connector tools counted ({inv['tools']})")
     ck(inv["diagnostics"] > 40, f"diagnostics counted ({inv['diagnostics']})")
     src_self = Path(__file__).read_text(encoding="utf-8")

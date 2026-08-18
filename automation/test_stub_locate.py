@@ -53,9 +53,9 @@ def main() -> int:
     print("\nthe known wrapped stubs resolve")
     # Real, currently-wrapped stubs in the tree. If clang-format ever unwraps
     # them this test still passes; it asserts they are FOUND, not that they wrap.
-    for fn in ("BO6_RicEntitySubwpnStopwatchCircle",
-               "BO6_RicEntityCrashReboundStoneExplosion",
-               "BO6_RicEntitySubwpnHolyWaterFlame"):
+    for fn in ("BO6_RicEntityShrinkingPowerUpRing",
+                "BO6_RicEntityCrashReboundStoneExplosion",
+                "BO6_RicEntitySubwpnHolyWaterFlame"):
         got = wd.find_source(fn, "BOSS/BO6")
         check(got is not None, f"find_source resolves {fn}", repr(got))
         if got:

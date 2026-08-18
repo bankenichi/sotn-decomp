@@ -2775,7 +2775,10 @@ def self_test() -> int:
     real = REPO / "src" / "boss" / "bo6" / "us_3E79C.c"
     if real.is_file():
         txt = real.read_text(errors="ignore")
-        wrapped_fn = "BO6_RicEntitySubwpnStopwatchCircle"
+        # StopwatchCircle was the historical regression fixture, then #186
+        # matched it. Keep this a live-tree test by using another currently
+        # wrapped stub from the same translation unit.
+        wrapped_fn = "BO6_RicEntitySubwpnHolyWaterFlame"
         rx = re.compile(
             rf'INCLUDE_ASM\(\s*"([^"]+)"\s*,\s*{re.escape(wrapped_fn)}\s*\)\s*;')
         m = rx.search(txt)
