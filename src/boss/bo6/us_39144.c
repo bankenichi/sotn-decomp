@@ -414,7 +414,7 @@ extern void BO6_RicSetSpeedX(s32);
 extern Entity* g_CurrentEntity;
 extern s32 RIC_velocityY;
 extern AnimationFrame D_us_801821F8;
-extern void BO6_RicCreateEntFactoryFromEntity(Entity*, u32, s32);
+extern Entity* BO6_RicCreateEntFactoryFromEntity(Entity*, u32, s32);
 
 // Sets up Richter's initial state for the BO6 boss fight intro:
 // resets hitParams, sets step 0x1A, plays intro animation,
@@ -558,6 +558,7 @@ s32 BO6_RicCheckSubwpnChainLimit(s16 subwpnId, s16 limit) {
 
 extern AnimationFrame D_us_80182170[];
 extern AnimationFrame D_us_801821C0[];
+extern s32 BO6_RicCheckSubweapon(SubweaponDef*, s32, s32);
 
 // Richter (BO6): create the selected subweapon and move Richter into the
 // matching throw animation. Unlike playable RIC, this target performs one
@@ -608,7 +609,115 @@ s32 BO6_RicDoSubweapon(void) {
 
 INCLUDE_ASM("boss/bo6/nonmatchings/us_39144", BO6_RicDoAttack);
 
-INCLUDE_ASM("boss/bo6/nonmatchings/us_39144", BO6_RicDoCrash);
+extern AnimationFrame D_us_80182190[];
+extern AnimationFrame D_us_801821E0[];
+extern AnimationFrame D_us_80182334[];
+extern AnimationFrame D_us_8018246C[];
+
+// Richter (BO6): start the AI-selected subweapon crash. This follows the RIC
+// twin's factory and state transitions, but BO6 performs one selector call,
+// does not spend hearts, and uses the boss animation and voice banks.
+bool BO6_RicDoCrash(void) {
+    SubweaponDef subWpn;
+    Entity* subWpnEnt;
+    s16 subWpnID;
+
+    subWpnID = BO6_RicCheckSubweapon(&subWpn, true, false);
+    if (subWpnID == SUBWPN_HOLYWATER && g_Ric.timers[PL_T_3]) {
+        return false;
+    }
+
+    if (subWpn.blueprintNum) {
+        if (subWpnID == SUBWPN_DAGGER) {
+            subWpnEnt = BO6_RicCreateEntFactoryFromEntity(
+                g_CurrentEntity, FACTORY(subWpn.blueprintNum, 1), 0);
+        } else {
+            subWpnEnt = BO6_RicCreateEntFactoryFromEntity(
+                g_CurrentEntity, FACTORY(subWpn.blueprintNum, 0), 0);
+        }
+    }
+    // The target tests the register even when blueprintNum is zero. Preserve
+    // the original uninitialized local rather than inventing a default value.
+    if (subWpnEnt == NULL) {
+        return false;
+    }
+
+    g_Ric.unk46 = 4;
+    g_Ric.unk4E = 0;
+    RIC.velocityX = RIC.velocityY = 0;
+    switch (subWpnID) {
+    case SUBWPN_NONE:
+        BO6_RicSetStep(PL_S_FLAME_WHIP);
+        BO6_RicSetAnimation(D_us_801823C8);
+        BO6_RicCreateEntFactoryFromEntity(
+            g_CurrentEntity, FACTORY(E_ID_24, 1), 0);
+        break;
+
+    case SUBWPN_DAGGER:
+        BO6_RicSetStep(PL_S_THROW_DAGGERS);
+        BO6_RicSetAnimation(D_us_80182190);
+        g_api_PlaySfx(SFX_BOSS_RIC_ITEM_CRASH_ATTACK);
+        BO6_RicCreateEntFactoryFromEntity(
+            g_CurrentEntity, FACTORY(E_ID_21, 2), 0);
+        break;
+
+    case SUBWPN_AXE:
+        BO6_RicSetStep(PL_S_STAND_IN_AIR);
+        BO6_RicSetAnimation(D_us_801821E0);
+        RIC.velocityY = FIX(-4.6875);
+        func_us_801B9C14();
+        g_api_PlaySfx(SFX_BOSS_RIC_ITEM_CRASH_ATTACK);
+        BO6_RicCreateEntFactoryFromEntity(
+            g_CurrentEntity, FACTORY(E_ID_21, 2), 0);
+        break;
+
+    case SUBWPN_HOLYWATER:
+        BO6_RicSetStep(PL_S_HYDROSTORM);
+        BO6_RicSetAnimation(D_us_80182334);
+        BO6_RicCreateEntFactoryFromEntity(
+            g_CurrentEntity, FACTORY(E_ID_21, 0x40), 0);
+        BO6_RicCreateEntFactoryFromEntity(
+            g_CurrentEntity, FACTORY(E_ID_21, 0x47), 0);
+        g_api_PlaySfx(SFX_BOSS_RIC_HYDRO_STORM);
+        break;
+
+    case SUBWPN_REBNDSTONE:
+    case SUBWPN_VIBHUTI:
+    case SUBWPN_AGUNEA:
+        BO6_RicSetStep(PL_S_SUBWPN_CRASH);
+        BO6_RicSetAnimation(D_us_80182334);
+        BO6_RicCreateEntFactoryFromEntity(
+            g_CurrentEntity, FACTORY(E_ID_21, 0x40), 0);
+        BO6_RicCreateEntFactoryFromEntity(
+            g_CurrentEntity, FACTORY(E_ID_21, 0x47), 0);
+        g_api_PlaySfx(SFX_BOSS_RIC_ITEM_CRASH_ATTACK);
+        break;
+
+    case SUBWPN_BIBLE:
+    case SUBWPN_STOPWATCH:
+        BO6_RicSetStep(PL_S_SUBWPN_CRASH);
+        BO6_RicSetAnimation(D_us_8018246C);
+        BO6_RicCreateEntFactoryFromEntity(
+            g_CurrentEntity, FACTORY(E_ID_21, 0x40), 0);
+        BO6_RicCreateEntFactoryFromEntity(
+            g_CurrentEntity, FACTORY(E_ID_21, 0x47), 0);
+        g_api_PlaySfx(SFX_BOSS_RIC_ITEM_CRASH_ATTACK);
+        break;
+
+    case SUBWPN_CROSS:
+        BO6_RicSetStep(PL_S_STAND_IN_AIR);
+        BO6_RicSetAnimation(D_us_801821E0);
+        RIC.velocityY = FIX(-4.6875);
+        func_us_801B9C14();
+        g_api_PlaySfx(SFX_BOSS_RIC_HOLY_CROSS);
+        BO6_RicCreateEntFactoryFromEntity(
+            g_CurrentEntity, FACTORY(E_ID_21, 2), 0);
+        break;
+    }
+
+    g_Ric.timers[PL_T_12] = 4;
+    return true;
+}
 
 // Richter (BO6): set step to 0x17 (death prologue/dying state)
 void BO6_RicSetDeadPrologue(void) {
