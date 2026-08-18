@@ -16,7 +16,7 @@ mistake impossible twice.
 | | |
 |---|---|
 | Oracle | **81/81** |
-| Queue | **269 matched**, 70 todo, 95 escalated, 30 deferred, 7 near (471 total) |
+| Queue | **269 matched**, 70 todo, 96 escalated, 36 deferred, 0 near (471 total) |
 | Tree | **96.8% of functions decompiled** overall, 6359/6561 |
 | Automation | 59 analysis scripts, 30 test suites, **77 connector tools**, 37 dashboard diagnostics |
 | Provenance | shim-header 60, upstream-harvest 44, shim-segment 40, model-fleet 31, twin-port 28, permuter 10, transplant 8, hand 4, **unknown 44 (16%)** |
@@ -171,7 +171,7 @@ it. Everything downstream inherits that blind spot.
 **Done when:** `queue_stats` totals match the index, and RCHI/RDAI functions
 appear in `queue_list`.
 
-## P2 — Run the permuter against the escalated pool  *(open, but mis-scoped)*
+## P2 — Run the permuter against the escalated pool  *(done 2026-08-18 after correcting scope to `near`)*
 
 **The premise is wrong, measured 2026-08-03.** The permuter needs an
 ALREADY-COMPILING function, and `escalated` is mostly code that does not
@@ -183,6 +183,16 @@ First real run: 16,630 iterations on `func_us_8019AA04`, 0 errors, score floor
 1720 never beaten. No match. The permuter mutates expressions and cannot
 restructure control flow, so a persistent floor suggests the seed is the wrong
 shape rather than nearly right.
+
+Final live-pool disposition, 2026-08-18: all seven `near` records were exhausted
+or reclassified with preserved evidence. `func_us_801CFD70` has an isolated
+score of 0 but still changes the full overlay and is escalated for overlay-level
+diagnosis. The expression-search floors were 1695 for `func_us_801D2264`, 1150
+for `func_us_801CEEB4`, 270 for `func_us_801AD26C`, 5105 for
+`BO6_RicEntityAguneaLightning`, and 31525 for `EntityRelicOrb`.
+`BO6_RicStepStand` initially faulted because its seed lacked callable
+declarations; after #168 through #171 repaired and re-imported the preserved
+seed, it improved from 605 to 230 and then exhausted. No source was applied.
 
 **The pool is now 12, not 34** (2026-08-02): 11 records were requeued as false
 escalations — nine quoting build failures in overlays they never touched, two
@@ -1032,3 +1042,7 @@ Status: **done**, **open**, **partial**, **void** (turned out unnecessary),
 | 166 | done | `fix_seed_declarations.py --apply` now routes through immutable artifact publication and prints the exact new `seed=` path instead of overwriting the stable file. Its focused self-test proves the original bytes and repaired generation both survive |
 | 167 | done | Body-only detection now strips the leading evidence banner and inspects only the C payload. The shared supervisor helper drives both migration and the corpus regression; a banner that discusses `#include` over a bare function is explicitly caught, and the formerly informational corpus check now fails on any recurrence. The focused seed test passes with all 44 current seeds self-contained |
 | 162 | done | Live-tree review of #91 found that a crash journal incorrectly authorized raw Git restore even though its saved original could itself be uncommitted work. `_restorable()` now refuses journal-covered source paths and directs recovery through `fleet_stop` journal replay; the regression preserves a long pre-apply baseline exactly, the connector surface passes, and post-restart tool metadata confirms the policy is live |
+| 168 | done | Preserved and repaired `BO6_RicStepStand` through immutable generation v0004, re-imported it, and proved debug compilation at base score 605 with zero mutation `KeyError`s. The corpus regression now fails if any current seed still needs a declaration repair. The targeted search improved to 230 and then exhausted without applying source |
+| 169 | done | Declaration lookup now finds ordinary header prototypes as well as explicit `extern` declarations and rejects call statements that merely resemble prototypes. Conflicting-type regressions cover `InitializeEntity` and `rsin`; all 25 affected stable views were rebuilt from preserved clean generations, while both flawed intermediate generations remain immutable evidence |
+| 170 | done | Declaration lookup now excludes Saturn, PSP, and PSPSDK sources and headers. The regression proves the US `void DestroyEntity(Entity*)` prototype wins over Saturn's shorter `s32 DestroyEntity();`; the same 25 stable views were rebuilt from their clean pre-repair generations and all intermediate generations remain preserved |
+| 171 | done | Every supervisor report now passes `--keep-note`, with a behavioral argv regression proving the full new note is forwarded. The lost `BO6_RicStepStand` seed reference was reconstructed from immutable evidence, targeted re-import succeeded, and the subsequent exhausted-search report retained the reconstructed note and prior fault evidence |
