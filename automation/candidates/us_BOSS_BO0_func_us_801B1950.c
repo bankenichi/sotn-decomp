@@ -3,9 +3,6 @@
    attempt: 3/4
    model  : opencode/laguna-s-2.1-free
    verdict: BUILT, CHECKSUM MISMATCH (compiled and linked; bytes differ) - permuter candidate:
---- build tail ---
-  ✅ F_RBO0   ✅ RBO3     ✅ F_RBO3   ✅ RBO5     ✅ F_RBO5
-  ✅
    content: WHOLE FILE (directly importable)
    import : python3 tools/decomp-permuter/import.py <this file> asm/us/boss/bo0/nonmatchings/2D26C/func_us_801B1950.s
    Do NOT apply this to the tree as-is; it does not match.
@@ -81,7 +78,7 @@ INCLUDE_ASM("boss/bo0/nonmatchings/2D26C", func_us_801B1864);
 
 /* BOSS/BO0 overlay: per-frame state machine driver for the boss entity at arg0.
  * Reads the current phase from the zPriority byte (offset 0x24, which holds
- * either an animSet or a phase index depending on build config — here treated
+ * either an animSet or a phase index depending on build config - here treated
  * as a small non-negative phase tag). Based on the phase it loads a fixed
  * (start_velocity_x, target_x, param3) triple, calls the helper
  * func_us_801B171C to advance whatever motion/timer logic the phase needs,
@@ -95,15 +92,15 @@ INCLUDE_ASM("boss/bo0/nonmatchings/2D26C", func_us_801B1864);
  *
  * Note: although start_velocity_x is logically a signed displacement, the
  * asm loads the phase byte with `lbu` (unsigned), so the phase itself is
- * compared as an unsigned value — this preserves the irregular-switch
+ * compared as an unsigned value - this preserves the irregular-switch
  * structure (0 fallthrough, 1 explicit, 2 via the >=2 / ==2 path). */
 void func_us_801B1950(Entity *ent) {
-    u8 phase;          /* unk24 @ 0x24 — current sub-state of the boss AI */
+    u8 phase;          /* unk24 @ 0x24 - current sub-state of the boss AI */
     s32 startVelX;     /* a1: initial velocity X passed to the helper */
     s32 targetX;       /* a2: target X position / motion parameter */
     s32 param3;       /* a3: extra parameter (motion duration or scale) */
 
-    phase = (u8)ent->zPriority; /* lbu 0x24($s0) — unsigned phase tag */
+    phase = (u8)ent->zPriority; /* lbu 0x24($s0) - unsigned phase tag */
 
     /* Irregular switch: branch order is 1, then >=2, then ==0, matching the
      * asm layout `beq $v1,$t1,L1 ; slti $t1,$v1,2 ; beqz $t1,Lge2 ; beqz $v1,L0`.
@@ -129,7 +126,7 @@ void func_us_801B1950(Entity *ent) {
     }
 
     /* Always call the motion helper with the assembled args.
-     * `jal func_us_801B171C` — delay slot is `nop`. */
+     * `jal func_us_801B171C` - delay slot is `nop`. */
     if (func_us_801B171C(ent, startVelX, targetX, param3) != 0) {
         /* Helper reported forward progress; advance the phase tag.
          * `lbu $v0,0x24($s0) ; addiu $v0,$v0,1 ; sb $v0,0x24($s0)`.

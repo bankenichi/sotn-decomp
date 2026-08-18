@@ -139,8 +139,11 @@ def main():
     real_repo = wd.WIN_REPO
     try:
         wd.WIN_REPO = tmp
+        long_verdict = ("BUILD FAILED: `g_EInitCommon' undeclared "
+                        + ("complete-evidence-" * 80)
+                        + "\n--- build tail ---\n  \u2705 generated status")
         got = wd.save_rejected(rec, "void f(void) { bad_c }", 3,
-                               "BUILD FAILED: `g_EInitCommon' undeclared",
+                               long_verdict,
                                {"src_rel": "src/st/rcen/unk_1F0D8.c"})
         check(got.startswith("automation/rejected/"),
               f"returns a repo-relative path ({got})")
@@ -148,6 +151,10 @@ def main():
                     encoding="utf-8").read()
         check("void f(void) { bad_c }" in body, "the C itself is kept")
         check("g_EInitCommon" in body, "with the verdict that rejected it")
+        check(("complete-evidence-" * 80) in body,
+              "without clipping the durable verdict")
+        check("build tail" not in body and "\u2705" not in body,
+              "without copying disposable status output into C comments")
         check("us:ST/RCEN:func_us_8019F9C0" in body, "and the record id")
         check("src/st/rcen/unk_1F0D8.c" in body, "and where it belongs")
         # "never built", not "never compiled". A draft stopped by the

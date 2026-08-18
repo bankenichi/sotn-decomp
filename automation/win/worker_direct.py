@@ -1358,6 +1358,22 @@ def rejected_path(rec: dict) -> str:
     return os.path.join(WIN_REPO, "automation", "rejected", f"{slug}.c")
 
 
+_ARCHIVE_TEXT_TRANSLATION = str.maketrans({
+    "\u2014": "-", "\u2013": "-", "\u2705": "", "\u274c": "",
+    "\U0001f6ab": "", "\u26a0": "", "\ufe0f": "",
+})
+
+
+def _archive_verdict(detail: str) -> str:
+    """Keep complete diagnostic evidence without generated build-status noise."""
+    kept: list[str] = []
+    for line in str(detail or "").splitlines():
+        if line.strip() == "--- build tail ---":
+            break
+        kept.append(line.translate(_ARCHIVE_TEXT_TRANSLATION).rstrip())
+    return "\n".join(kept).strip() or "no verdict detail"
+
+
 def save_rejected(rec: dict, code: str, attempt: int, detail: str,
                   ctx: dict | None = None, origin: str = "") -> str:
     """Keep the C that failed to build, instead of throwing it away.
@@ -1408,6 +1424,7 @@ def save_rejected(rec: dict, code: str, attempt: int, detail: str,
         never_built = "BUILD FAILED" not in (detail or "")
         verdict_line = ("was REJECTED BEFORE THE BUILD" if never_built
                         else "did NOT compile")
+        verdict = _archive_verdict(detail)
         with open(path, "w", encoding="utf-8") as f:
             f.write(
                 f"/* REJECTED CANDIDATE -- {verdict_line}. Kept on purpose.\n"
@@ -1415,7 +1432,7 @@ def save_rejected(rec: dict, code: str, attempt: int, detail: str,
                 f"   attempt: {attempt}/{MAX_ATTEMPTS}\n"
                 f"   from   : {model}\n"
                 f"   origin : {ctx.get('src_rel', '?') if ctx else '?'}\n"
-                f"   verdict: {detail[:400]}\n"
+                f"   verdict: {verdict}\n"
                 f"\n"
                 f"   This is NOT a permuter seed and must never be treated as\n"
                 f"   one: it has never built. automation/candidates/ is for\n"
@@ -1668,12 +1685,13 @@ def save_candidate(rec: dict, code: str, attempt: int, detail: str,
                     payload, kind = whole, "WHOLE FILE (stubs declared)"
             except Exception as e:                       # never lose the seed
                 print(f"  !! seed fell back to the bare body: {e}", flush=True)
+        verdict = _archive_verdict(detail)
         with open(path, "w", encoding="utf-8") as f:
             f.write(f"/* PERMUTER SEED -- compiled and linked, bytes differ.\n"
                     f"   record : {rec['id']}\n"
                     f"   attempt: {attempt}/{MAX_ATTEMPTS}\n"
                     f"   model  : {model}\n"
-                    f"   verdict: {detail[:160]}\n"
+                    f"   verdict: {verdict}\n"
                     f"   content: {kind}\n"
                     f"   origin : {ctx.get('src_rel', '?') if ctx else '?'}\n"
                     f"   asm    : {asm_rel_path(rec, ctx.get('asm_rel', '')) if ctx else '<asm>'}\n"
@@ -4666,7 +4684,8 @@ def build_and_check(rec: dict) -> tuple[bool, str]:
         # `file.c:LINE: message` with NO `error:` keyword, e.g.
         #   src/boss/bo0/2D26C.c:133: structure has no member named `unk32'
         # so an `error:`-only grep matched nothing but make's own `Error 1`
-        # summary and the ✅/❌ overlay banner. Match the `file.(c|h):NN:` prefix
+        # summary and the success/failure overlay banner. Match the
+        # `file.(c|h):NN:` prefix
         # itself, which is what every real diagnostic carries, plus ninja's
         # `FAILED:` and linker `undefined reference`.
         rc, out = wsl(

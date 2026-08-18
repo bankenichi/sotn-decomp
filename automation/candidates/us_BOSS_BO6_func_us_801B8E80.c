@@ -3,9 +3,7 @@
    attempt: 4/4
    model  : opencode/nemotron-3-ultra-free
    verdict: BUILT, CHECKSUM MISMATCH (compiled and linked; bytes differ) - permuter candidate:
---- build tail ---
-  ✅ F_RBO0   ✅ RBO3     ✅ F_RBO3   ✅ RBO5     ✅ F_RBO5
-  ✅
+
    Do NOT apply this to the tree as-is; it does not match.
    It exists so the permuter has a compiling starting point. */
 extern void BO6_RicCreateEntFactoryFromEntity(Entity* entity, u32 arg1, s32 arg2);

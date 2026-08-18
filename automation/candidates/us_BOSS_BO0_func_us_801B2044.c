@@ -3,9 +3,6 @@
    attempt: 3/4
    model  : opencode/laguna-s-2.1-free
    verdict: BUILT, CHECKSUM MISMATCH (compiled and linked; bytes differ) - permuter candidate:
---- build tail ---
-  ✅ F_RBO0   ✅ RBO3     ✅ F_RBO3   ✅ RBO5     ✅ F_RBO5
-  ✅
    content: WHOLE FILE (directly importable)
    import : python3 tools/decomp-permuter/import.py <this file> asm/us/boss/bo0/nonmatchings/2D26C/func_us_801B2044.s
    Do NOT apply this to the tree as-is; it does not match.

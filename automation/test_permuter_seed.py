@@ -64,6 +64,8 @@ def main() -> int:
           "it builds the payload with virtual_apply")
     check("f.write(payload)" in body,
           "it writes the substituted payload, not the bare body")
+    check("_archive_verdict(detail)" in body,
+          "the banner keeps the complete verdict without raw build status")
     check("except Exception" in body,
           "a substitution failure degrades to the bare body rather than losing "
           "the seed")

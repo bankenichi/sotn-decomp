@@ -3,9 +3,7 @@
    attempt: 4/4
    model  : opencode/deepseek-v4-flash-free
    verdict: BUILT, CHECKSUM MISMATCH (compiled and linked; bytes differ) - permuter candidate:
---- build tail ---
-  ✅ F_RBO0   ✅ RBO3     ✅ F_RBO3   ✅ RBO5     ✅ F_RBO5
-  ✅
+
    Do NOT apply this to the tree as-is; it does not match.
    It exists so the permuter has a compiling starting point. */
 /* func_us_801C488C - BO6 boss warning shot: allocates a warning-beacon primitive,

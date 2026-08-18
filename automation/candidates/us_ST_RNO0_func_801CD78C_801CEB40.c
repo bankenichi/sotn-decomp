@@ -3,9 +3,6 @@
    attempt: 2/4
    model  : opencode/ling-3.0-flash-free
    verdict: BUILT, CHECKSUM MISMATCH (compiled and linked; bytes differ) - permuter candidate:
---- build tail ---
-  ✅ F_RBO0   ✅ RBO3     ✅ F_RBO3   ✅ RBO5     ✅ F_RBO5
-  ✅
    content: WHOLE FILE (directly importable)
    import : python3 tools/decomp-permuter/import.py <this file> asm/us/st/rno0/nonmatchings/e_gorgon/func_801CD78C_801CEB40.s
    Do NOT apply this to the tree as-is; it does not match.
