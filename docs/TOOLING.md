@@ -371,7 +371,7 @@ supports `--help` and most support `--self-test`.
 | `provenance_check.py` | how close a body is to upstream's |
 | `quality_audit.py` | fake symbols, magic numbers, raw byte casts, duplicates, and unexplained empty control bodies |
 | `post_match_lint.py` | advisory scan of uncommitted matched C for duplicate externs, shared-name macro shadows, suspicious wide scalars, stray null statements, missing fallthrough notes, trailing whitespace, and worker boilerplate; widen with `--since` or `--all` |
-| `model_codegen_audit.py` | joins queue provenance to matched source and reports model-contributed functions with strong unusual shapes but no substantive `CODEGEN:` explanation; a finding requests recovered reasoning, not a rewrite |
+| `model_codegen_audit.py` | joins queue provenance to matched source and reports model-contributed functions with strong unusual shapes but no substantive `CODEGEN:` explanation; it recognizes constant single-iteration loops, `volatile`, null control bodies, and genuine scalar self-assignment, but deliberately excludes semantic `goto` loops and member stores from same-named parameters; a finding requests recovered reasoning, not a rewrite |
 | `review_checks.py` | the gate the worker runs before building |
 | `decomp_fidelity.py` | callee recall and constant coverage against the asm |
 | `escalation_triage.py` | why each escalated record failed |

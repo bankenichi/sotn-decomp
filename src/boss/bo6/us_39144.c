@@ -1385,6 +1385,10 @@ void func_us_801BC3E0(Entity* entity) {
     }
     entity->posX.i.hi = RIC_posX_i_hi;
     new_var2 = entity->step;
+    // CODEGEN: This single-iteration wrapper is load-bearing. The isolated
+    // exact body scores 0; replacing only the wrapper with a straight store
+    // scores 405: 9 register differences, 1 reordering, 1 insertion, and
+    // 2 deletions.
     do {
         entity->posY.i.hi = RIC_posY_i_hi;
     } while (0);

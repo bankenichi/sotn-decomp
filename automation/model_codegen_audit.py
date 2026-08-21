@@ -136,9 +136,11 @@ def unusual_shapes(function_text: str) -> list[str]:
     # prevents a do-while terminator from being mislabeled as a null body.
     if re.search(r"\b(?:if|for)\s*\([^;{}]*\)\s*;|\belse\s*;", masked):
         shapes.append("null-control-body")
-    if re.search(r"\bgoto\s+[A-Za-z_]\w*\s*;", masked):
-        shapes.append("goto")
-    if re.search(r"\b([A-Za-z_]\w*)\s*=\s*\1\s*;", masked):
+    # A goto can directly express semantics, as in a retry loop, so its mere
+    # presence is not evidence of compiler shaping. A scalar `x = x` is much
+    # stronger, but member-to-parameter stores such as `self->step = step`
+    # must not be reduced to the final identifier on the left-hand side.
+    if re.search(r"(?<![\w.>*&])([A-Za-z_]\w*)\s*=\s*\1\s*;", masked):
         shapes.append("self-assignment")
     return shapes
 
@@ -294,9 +296,21 @@ done:
     alias_note = "// FireWavePrimHelper1 was func_us_801D1184_from_are\n"
     shared = (SRC / "st" / "shared.h", 1, plain)
     local_copy = (SRC / "st" / "sel" / "copy.c", 1, plain)
+    member_store = """void SetStep(s32 step) {
+    g_CurrentEntity->step = step;
+}
+"""
+    semantic_retry = """void Retry(void) {
+retry:
+    if (!ready()) {
+        goto retry;
+    }
+}
+"""
+    real_self_assignment = "void Shape(void) { value = value; }\n"
     checks = [
         (_function_span(plain, "Example") is not None, "definition is located"),
-        (unusual_shapes(plain) == ["volatile", "constant-do-while", "goto"],
+        (unusual_shapes(plain) == ["volatile", "constant-do-while"],
          "strong unusual shapes are classified"),
         (_has_codegen_reason(explained), "a substantive CODEGEN reason is accepted"),
         (not _has_codegen_reason(provenance_only),
@@ -310,6 +324,12 @@ done:
         (_choose_location({"overlay": "ST/RNO0"}, [shared, local_copy],
                           {shared[0].resolve()}) == shared,
          "the overlay include graph selects its shared implementation"),
+        (unusual_shapes(member_store) == [],
+         "a member store from a same-named parameter is not self-assignment"),
+        (unusual_shapes(semantic_retry) == [],
+         "a semantic retry loop is not presumed to be compiler shaping"),
+        (unusual_shapes(real_self_assignment) == ["self-assignment"],
+         "a genuine scalar self-assignment remains review-worthy"),
     ]
     failed = [label for ok, label in checks if not ok]
     for ok, label in checks:
