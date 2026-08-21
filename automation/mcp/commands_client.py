@@ -553,6 +553,7 @@ ANALYSIS_SCRIPTS = {
     "codebase_index.py",
     "queue_coverage.py",
     "quality_audit.py",
+    "post_match_lint.py",
     "provenance_check.py",
     "review_checks.py",
     "decl_coverage.py",
@@ -1374,6 +1375,77 @@ def build_lock_holder() -> dict | None:
     return {"held_by": body or "unknown", "age_seconds": round(age, 1)}
 
 
+def _managed_doc_paths() -> tuple[list[str], str]:
+    """Ask the existing generator which living documents it owns."""
+    try:
+        p = subprocess.run(
+            [PYTHON, "automation/readme_status.py", "--managed-paths"],
+            cwd=str(REPO), capture_output=True, text=True, timeout=120)
+    except (OSError, subprocess.SubprocessError) as exc:
+        return [], f"could not enumerate managed documents: {exc}"
+    if p.returncode != 0:
+        return [], (p.stderr or p.stdout or
+                    "readme_status.py --managed-paths failed").strip()
+    paths = [line.strip() for line in p.stdout.splitlines() if line.strip()]
+    if not paths:
+        return [], "readme_status.py returned no managed documents"
+    try:
+        checked = [_relpath(_inrepo(path)) for path in paths]
+    except Rejected as exc:
+        return [], f"managed document path was rejected: {exc}"
+    return checked, ""
+
+
+def _sync_managed_docs_for_commit() -> dict:
+    """Refresh and explicitly stage generated docs without sweeping prose."""
+    paths, error = _managed_doc_paths()
+    if error:
+        return {"ok": False, "error": error}
+    unstaged = subprocess.run(
+        ["git", "diff", "--name-only", "--", *paths], cwd=str(REPO),
+        capture_output=True, text=True, timeout=120)
+    if unstaged.returncode != 0:
+        return {"ok": False, "error": (unstaged.stderr or unstaged.stdout).strip()}
+    dirty = [line for line in unstaged.stdout.splitlines() if line.strip()]
+    if dirty:
+        return {
+            "ok": False,
+            "error": ("managed documents have unstaged edits; stage each intended "
+                      "path explicitly before commit so generated status cannot "
+                      "sweep unrelated prose into history"),
+            "unstaged_managed_documents": dirty,
+        }
+    sync = subprocess.run(
+        [PYTHON, "automation/readme_status.py", "--write"], cwd=str(REPO),
+        capture_output=True, text=True, timeout=600)
+    if sync.returncode != 0:
+        return {"ok": False, "error": (sync.stderr or sync.stdout).strip()}
+    staged = []
+    for path in paths:
+        add = subprocess.run(
+            ["git", "add", "--", path], cwd=str(REPO),
+            capture_output=True, text=True, timeout=120)
+        if add.returncode != 0:
+            return {"ok": False, "error": (add.stderr or add.stdout).strip(),
+                    "staged_before_failure": staged}
+        staged.append(path)
+    return {"ok": True, "managed_documents": paths,
+            "generator": sync.stdout.strip()}
+
+
+def _managed_doc_drift_gate() -> dict:
+    """Refuse a push when any generated living document is stale."""
+    try:
+        p = subprocess.run(
+            [PYTHON, "automation/readme_status.py", "--drift"], cwd=str(REPO),
+            capture_output=True, text=True, timeout=600)
+    except (OSError, subprocess.SubprocessError) as exc:
+        return {"ok": False, "error": f"documentation drift gate failed: {exc}"}
+    return {"ok": p.returncode == 0,
+            "report": (p.stdout or p.stderr).strip(),
+            "returncode": p.returncode}
+
+
 def run(action: str, timeout: float = 3600, **kwargs) -> dict:
     # LINE SLICING, for git_show_file only. Popped BEFORE build_argv, because
     # these are not git arguments: they post-filter git's output.
@@ -1448,6 +1520,25 @@ def run(action: str, timeout: float = 3600, **kwargs) -> dict:
     lock_note = None
     if argv and argv[0] == "git":
         lock_note = clear_stale_index_lock()
+    doc_gate = None
+    if action in {"git_commit", "git_commit_amend"}:
+        doc_gate = _sync_managed_docs_for_commit()
+        if not doc_gate.get("ok"):
+            out = {"action": action, "argv": argv, "dry_run": False,
+                   "refused": True, "documentation_sync": doc_gate,
+                   "error": "REFUSED: " + doc_gate.get("error", "documentation sync failed")}
+            if lock_note:
+                out["index_lock"] = lock_note
+            return out
+    elif action == "git_push":
+        doc_gate = _managed_doc_drift_gate()
+        if not doc_gate.get("ok"):
+            out = {"action": action, "argv": argv, "dry_run": False,
+                   "refused": True, "documentation_drift": doc_gate,
+                   "error": "REFUSED: generated living documents are stale"}
+            if lock_note:
+                out["index_lock"] = lock_note
+            return out
     try:
         p = subprocess.run(argv, cwd=str(run_cwd), capture_output=True, text=True,
                            timeout=timeout)
@@ -1476,6 +1567,9 @@ def run(action: str, timeout: float = 3600, **kwargs) -> dict:
         }
         if lock_note:
             out["index_lock"] = lock_note
+        if doc_gate is not None:
+            out["documentation_sync" if action != "git_push"
+                else "documentation_drift"] = doc_gate
         if _sliced:
             out["slice"] = _sliced
         if debug_output_dir is not None:

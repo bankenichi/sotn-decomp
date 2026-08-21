@@ -477,12 +477,6 @@ INCLUDE_ASM("boss/bo0/nonmatchings/3053C", func_us_801B2044);
 
 INCLUDE_ASM("boss/bo0/nonmatchings/3053C", func_us_801B20F4);
 
-/* Declarations injected by the worker: used by the candidate
-   below and absent from this file. Copied verbatim from the
-   tree, same overlay or a shared header, never another
-   overlay's. */
-extern Tilemap g_Tilemap;
-
 s16 func_us_801B2178(Entity* entity) {
     s16 tileY = g_Tilemap.scrollY.i.hi;
     s16 sum = tileY + entity->rotPivotY;

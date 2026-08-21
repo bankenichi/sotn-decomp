@@ -18,7 +18,6 @@ INCLUDE_ASM("st/rchi/nonmatchings/e_gaibon", EntityGaibon);
 void EntityGaibonLeg(Entity *self)
 {
   Entity *parent;
-  unsigned long parentAnimFrame;
   if (self->step == 0)
   {
     InitializeEntity(&g_EInitGaibon);
@@ -27,7 +26,6 @@ void EntityGaibonLeg(Entity *self)
   self->facingLeft = (self - 1)->facingLeft;
   parent = self - 1;
   self->palette = (self - 1)->palette;
-  ;
   self->animCurFrame = 0;
   self->posX.i.hi = (self - 1)->posX.i.hi;
   self->posY.i.hi = parent->posY.i.hi;
@@ -51,15 +49,9 @@ void EntityGaibonLeg(Entity *self)
   }
 }
 
-/* Declarations injected by the worker: used by the candidate
-   below and absent from this file. Copied verbatim from the
-   tree, same overlay or a shared header, never another
-   overlay's. */
 extern EInit D_us_80180624;
 
 extern u8 D_us_80181748[];
-extern EInit D_us_80180624;
-extern struct Entity;
 
 void EntitySmallGaibonProjectile(Entity* self) {
     if (self->flags & FLAG_DEAD) {
@@ -82,6 +74,7 @@ void EntitySmallGaibonProjectile(Entity* self) {
         self->velocityY = (rsin(self->rotate) * FIX(2.5)) >> 0xC;
         self->rotate -= 0x400;
         self->palette = PAL_FLAG(PAL_UNK_1B6);
+        // fallthrough
 
     case 1:
         MoveEntity();

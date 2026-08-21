@@ -21,6 +21,7 @@ Run: python3 automation/test_connector_surfaces.py
 from __future__ import annotations
 
 import re
+import subprocess
 import sys
 import tempfile
 from concurrent.futures import ThreadPoolExecutor
@@ -195,6 +196,39 @@ def main() -> int:
     sig = inspect.signature(cc.REGISTRY["git_push"])
     check(not sig.parameters,
           "git_push takes no arguments, so no caller can choose the remote")
+
+    print("\ncommit synchronizes living documents without sweeping prose")
+    from unittest.mock import patch as _patch
+    _cp = subprocess.CompletedProcess
+    with _patch.object(
+            cc, "_managed_doc_paths",
+            return_value=(["README.md", "ROADMAP.md"], "")), \
+            _patch.object(cc.subprocess, "run") as _run:
+        _run.return_value = _cp([], 0, "ROADMAP.md\n", "")
+        _dirty = cc._sync_managed_docs_for_commit()
+        check(not _dirty["ok"] and _run.call_count == 1,
+              "unstaged managed prose refuses before generation or staging")
+    with _patch.object(
+            cc, "_managed_doc_paths",
+            return_value=(["README.md", "ROADMAP.md"], "")), \
+            _patch.object(cc.subprocess, "run") as _run:
+        _run.side_effect = [
+            _cp([], 0, "", ""),
+            _cp([], 0, "updated 2 managed living documents\n", ""),
+            _cp([], 0, "", ""),
+            _cp([], 0, "", ""),
+        ]
+        _clean = cc._sync_managed_docs_for_commit()
+        _add_argv = [call.args[0] for call in _run.call_args_list[2:]]
+        check(_clean["ok"] and _add_argv == [
+            ["git", "add", "--", "README.md"],
+            ["git", "add", "--", "ROADMAP.md"],
+        ], "generated documents are staged one explicit path at a time")
+    with _patch.object(cc.subprocess, "run") as _run:
+        _run.return_value = _cp([], 1, "1 finding(s)\n", "")
+        _drift = cc._managed_doc_drift_gate()
+        check(not _drift["ok"] and _drift["returncode"] == 1,
+              "push gate propagates generated-document drift")
 
     print("\nevery git_* capability is on BOTH surfaces")
     # REGISTRY and @mcp.tool() are separate lists. A name in one but not the

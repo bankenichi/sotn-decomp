@@ -72,7 +72,7 @@ every one of them already had a generator that nobody was running.
 | Code decompiled | **96.9%** (6378 / 6558 functions) across 44 built binaries |
 | Queue | 471 records: **291 matched**, 38 todo, 100 escalated, 42 deferred |
 | `INCLUDE_ASM` stubs left in `src/` | 183 (98 `boss`, 80 `st`, 3 `servant`, 2 `main`) |
-| Automation | 80 Python modules, 28 test suites plus 31 modules with their own `--self-test`, 87 connector tools, 64 diagnostics |
+| Automation | 81 Python modules, 28 test suites plus 32 modules with their own `--self-test`, 87 connector tools, 65 diagnostics |
 
 The `matched` count is *our* work, across 6 overlays. The stub count is `us` only: it excludes `saturn` and the `_psp` trees, which the queue and the oracle also exclude. Counting every `.c` under `src/` instead gives 2651, most of it a Saturn port by an external team.
 <!-- STATUS:END -->

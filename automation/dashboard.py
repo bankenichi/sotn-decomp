@@ -642,6 +642,8 @@ DIAGNOSTICS = [
      "RUNS a battery over any model with no results yet (minutes, generates)"),
     ("Quality audit", "quality_audit.py", "",
      "ILLEGAL names, invented symbols, magic numbers, duplicates"),
+    ("Post-match lint", "post_match_lint.py", "",
+     "advisory generated-C residue: externs, shadows, fallthrough, whitespace"),
     ("Review checks", "review_checks.py", "",
      "what an upstream reviewer would reject"),
     ("Provenance check", "provenance_check.py", "",

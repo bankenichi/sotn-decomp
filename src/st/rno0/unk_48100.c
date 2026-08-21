@@ -25,13 +25,8 @@ static void TryThrow(void) {
 
 INCLUDE_ASM("st/rno0/nonmatchings/unk_48100", EntityJackOBones);
 
-/* Declarations injected by the worker: used by the candidate
-   below and absent from this file. Copied verbatim from the
-   tree, same overlay or a shared header, never another
-   overlay's. */
 extern EInit D_us_80180B40;
 
-extern EInit D_us_80180B40;
 extern u16 D_us_80181F00[];
 
 void EntityJackOBonesDeathParts(Entity* self) {
@@ -61,19 +56,13 @@ void EntityJackOBonesDeathParts(Entity* self) {
 
 INCLUDE_ASM("st/rno0/nonmatchings/unk_48100", EntityJackOBonesJack);
 
-/* Declarations injected by the worker: used by the candidate
-   below and absent from this file. Copied verbatim from the
-   tree, same overlay or a shared header, never another
-   overlay's. */
-extern Entity* g_CurrentEntity;
-
 #define NOVA_CHARGE 6
 extern s16 D_us_80181FAC[];
 
 static void TryShoot(void) {
-     
+
     s32 unused = UnkCollisionFunc2(&D_us_80181FAC);
-     
+
     if (!g_CurrentEntity->ext.nova.cooldown) {
         if (GetDistanceToPlayerX() >= 0x80) {
             return;
@@ -96,12 +85,6 @@ INCLUDE_ASM("st/rno0/nonmatchings/unk_48100", EntityBladeSoldierDeathParts);
 
 INCLUDE_ASM("st/rno0/nonmatchings/unk_48100", EntityNovaLaser);
 
-/* Declarations injected by the worker: used by the candidate
-   below and absent from this file. Copied verbatim from the
-   tree, same overlay or a shared header, never another
-   overlay's. */
-extern EInit D_us_80180B64;
-
 extern EInit D_us_80180B64;
 
 void EntityNovaLaserPulse(Entity* self) {
@@ -119,7 +102,8 @@ void EntityNovaLaserPulse(Entity* self) {
         } else {
             self->velocityX = FIX(-8.0);
         }
-         
+        // fallthrough
+
     case 1:
         MoveEntity();
         self->ext.nova.laserPulseDist += abs(self->velocityX);
@@ -138,8 +122,7 @@ void EntityNovaLaserPulse(Entity* self) {
             DestroyEntity(self);
             return;
         }
-         
-         
+
         temp_s0 >>= 0x10;
         temp_s0 <<= 3;
         if (temp_s0 > 0x100) {
