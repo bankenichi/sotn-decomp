@@ -121,6 +121,31 @@ set while being long since matched and shipped. A score alone cannot distinguish
 "nearly matched" from "matched a while ago", which is why the check reads the
 tree instead.
 
+### Ownership boundary
+
+The 3,200-line supervisor is large, but size alone is not an extraction rule.
+The three suspected boundaries were audited against their actual consumers:
+
+- Stale-workdir detection remains here. Only the supervisor decides whether a
+  snapshot is usable, archives it by rename, and re-imports it. Moving the mtime
+  predicate alone would separate policy from the only action it controls while
+  creating a one-consumer module.
+- Crash journaling is already shared rather than supervisor-owned.
+  `_import_locked` and match landing use `worker_direct`'s `BuildLock`, journal
+  writer, journal clear, and replay path. A second journal abstraction would
+  create two recovery protocols for the same source file.
+- Seed parsing, exact-workdir receipt validation, standalone import placement,
+  and legacy reconstruction remain together because they define one import
+  transaction. Immutable artifact history is a different boundary: several
+  modules previously called private `worker_direct` publication helpers. It now
+  lives in the public `artifact_store.py` module without moving import policy
+  out of the supervisor; compatibility wrappers keep older callers safe.
+
+No design file is superseded by this decision, so there is nothing to archive.
+The extraction trigger is a second consumer of workdir freshness or import
+policy; until then, focused tests protect the existing boundary more clearly
+than another forwarding module would.
+
 ---
 
 ## 4. Supporting tools

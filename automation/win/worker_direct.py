@@ -929,6 +929,7 @@ STREAM_IDLE_S = float(os.environ.get("STREAM_IDLE_S", "45"))
 CONTENT_CHECK_EVERY = int(os.environ.get("CONTENT_CHECK_EVERY", "120"))
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+import artifact_store as _artifact_store  # noqa: E402
 try:
     from degeneracy import degenerate as _content_degenerate
 except ImportError:                                          # pragma: no cover
@@ -1405,97 +1406,19 @@ def _archive_verdict(detail: str) -> str:
 
 
 def _artifact_history_versions(path: str) -> list[str]:
-    """Immutable versions for one stable candidate or rejection path."""
-    directory = os.path.join(os.path.dirname(path), "history")
-    if not os.path.isdir(directory):
-        return []
-    stem, ext = os.path.splitext(os.path.basename(path))
-    pattern = re.compile(
-        rf"^{re.escape(stem)}\.v([0-9]+){re.escape(ext)}$")
-    versions: list[tuple[int, str]] = []
-    for name in os.listdir(directory):
-        match = pattern.fullmatch(name)
-        if match:
-            versions.append((int(match.group(1)),
-                             os.path.join(directory, name)))
-    return [item[1] for item in sorted(versions)]
+    """Compatibility wrapper; new consumers import artifact_store directly."""
+    return [str(item) for item in _artifact_store.history_versions(path)]
 
 
 def _write_history_version(path: str, data: bytes) -> str:
-    """Write one immutable version and return its absolute path."""
-    directory = os.path.join(os.path.dirname(path), "history")
-    os.makedirs(directory, exist_ok=True)
-    stem, ext = os.path.splitext(os.path.basename(path))
-    existing = _artifact_history_versions(path)
-    version = 1
-    if existing:
-        match = re.search(r"\.v([0-9]+)" + re.escape(ext) + r"$",
-                          existing[-1])
-        if match:
-            version = int(match.group(1)) + 1
-    while True:
-        candidate = os.path.join(
-            directory, f"{stem}.v{version:04d}{ext}")
-        try:
-            with open(candidate, "xb") as f:
-                f.write(data)
-            return candidate
-        except FileExistsError:
-            version += 1
+    """Compatibility wrapper; immutable storage lives in artifact_store."""
+    return str(_artifact_store.write_history_version(path, data))
 
 
 def _publish_versioned_artifact(path: str, text: str, label: str) -> str:
-    """Preserve an immutable generation, then refresh the stable current view.
-
-    The returned path names the immutable generation. Queue evidence therefore
-    identifies exactly what was measured, while the stable top-level file keeps
-    non-recursive discovery compatible with the existing supervisor.
-    """
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    data = text.encode("utf-8")
-    versions = _artifact_history_versions(path)
-    archived = ""
-    if os.path.isfile(path):
-        with open(path, "rb") as f:
-            current = f.read()
-        represented = False
-        for version_path in versions:
-            with open(version_path, "rb") as f:
-                if f.read() == current:
-                    represented = True
-                    break
-        if not represented:
-            archived = _write_history_version(path, current)
-
-    version_path = _write_history_version(path, data)
-
-    try:
-        fd, temp_path = tempfile.mkstemp(
-            prefix=f".{os.path.basename(path)}.", suffix=".tmp",
-            dir=os.path.dirname(path))
-    except OSError as e:
-        print(f"  !! {label} version saved but stable view was not refreshed: "
-              f"{e}", flush=True)
-        return os.path.relpath(version_path, WIN_REPO).replace("\\", "/")
-    try:
-        with os.fdopen(fd, "wb") as f:
-            f.write(data)
-        os.replace(temp_path, path)
-        temp_path = ""
-    except OSError as e:
-        print(f"  !! {label} version saved but stable view was not refreshed: "
-              f"{e}", flush=True)
-    finally:
-        if temp_path:
-            try:
-                os.unlink(temp_path)
-            except OSError:
-                pass
-
-    if archived:
-        rel = os.path.relpath(archived, WIN_REPO).replace("\\", "/")
-        print(f"  -> prior {label} archived: {rel}", flush=True)
-    return os.path.relpath(version_path, WIN_REPO).replace("\\", "/")
+    """Compatibility wrapper for the shared immutable artifact store."""
+    return _artifact_store.publish_versioned_artifact(
+        path, text, label, WIN_REPO)
 
 
 def save_rejected(rec: dict, code: str, attempt: int, detail: str,

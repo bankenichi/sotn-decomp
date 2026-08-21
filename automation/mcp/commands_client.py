@@ -541,6 +541,7 @@ def _confirmed(confirm, what: str) -> None:
 # worse than no comment, because it is the thing a reviewer trusts instead of
 # checking.
 ANALYSIS_SCRIPTS = {
+    "artifact_store.py",
     "asm_twin_finder.py",
     "match_provenance.py",
     "fleet_forensics.py",
@@ -554,6 +555,7 @@ ANALYSIS_SCRIPTS = {
     "queue_coverage.py",
     "quality_audit.py",
     "post_match_lint.py",
+    "model_codegen_audit.py",
     "provenance_check.py",
     "review_checks.py",
     "decl_coverage.py",

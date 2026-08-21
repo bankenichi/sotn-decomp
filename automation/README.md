@@ -21,7 +21,7 @@ Coordination is files and git only, no app puppeting.
 | Decompiled | **96.9%**, 6378/6558 functions; 183 US `INCLUDE_ASM` stubs remain |
 | Queue | 471 records: 291 matched, 38 todo, 100 escalated, 42 deferred |
 | Provenance | upstream-harvest 44, shim-segment 9, shim-header 55, transplant 18, twin-port 29, permuter 13, claude-manual 4, model-fleet 54, unknown 65 |
-| Automation | 81 modules, 28 suites plus 32 module self-tests, 87 tools, 65 diagnostics |
+| Automation | 83 modules, 28 suites plus 34 module self-tests, 87 tools, 67 diagnostics |
 
 This block is regenerated from the same queue, checksum manifest, linker maps, provenance classifier, and connector inventory as `README.md`.
 <!-- LIVE-STATUS:END -->
@@ -86,7 +86,7 @@ fleet_stop()                    # ALWAYS. Releases claims, clears the lock, and
 | `degeneracy.py` | shared runaway detectors (one module so callers cannot drift) |
 | `deferred_triage.py` | why each deferred record was deferred, and whether it still holds |
 | `upstream_harvest.py` | what upstream has that we do not. Occasional, never a dependency |
-| `quality_audit.py`, `post_match_lint.py`, `review_checks.py`, `relocation_check.py`, `provenance_check.py` | review gates; post-match lint is advisory and read-only |
+| `quality_audit.py`, `post_match_lint.py`, `model_codegen_audit.py`, `review_checks.py`, `relocation_check.py`, `provenance_check.py` | review gates; both post-match audits are advisory and read-only |
 
 `match_provenance.py` runs its git pickaxes concurrently and caches by HEAD:
 420s sequential, 73s cold, 8s warm, measured on the live 198-record queue.

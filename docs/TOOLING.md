@@ -16,7 +16,7 @@ For the mechanisms that land matches, read `automation/README.md`.
 | Decompiled | **96.9%**, 6378/6558 functions; 183 US `INCLUDE_ASM` stubs remain |
 | Queue | 471 records: 291 matched, 38 todo, 100 escalated, 42 deferred |
 | Provenance | upstream-harvest 44, shim-segment 9, shim-header 55, transplant 18, twin-port 29, permuter 13, claude-manual 4, model-fleet 54, unknown 65 |
-| Automation | 81 modules, 28 suites plus 32 module self-tests, 87 tools, 65 diagnostics |
+| Automation | 83 modules, 28 suites plus 34 module self-tests, 87 tools, 67 diagnostics |
 
 This block is regenerated from the same queue, checksum manifest, linker maps, provenance classifier, and connector inventory as `README.md`.
 <!-- LIVE-STATUS:END -->
@@ -94,6 +94,9 @@ still needs the header and preceding flat extern context that made it compile in
 its source file. Keep the captured body exact and add that context around it.
 Import failure evidence joins stdout and stderr. Progress text on stdout must
 never hide the parser or compiler diagnostic written to stderr.
+After changing importer isolation or parser handling, run
+`run_analysis(script="test_permuter_import_parser.py")`; it pins both the
+unrelated-function retry and the selected-function hard failure.
 
 Upstream permuter debug mode writes fixed relative filenames. The connector
 runs each debug pass from a unique `debug-runs/` directory below its own work
@@ -368,6 +371,7 @@ supports `--help` and most support `--self-test`.
 | `provenance_check.py` | how close a body is to upstream's |
 | `quality_audit.py` | fake symbols, magic numbers, raw byte casts, duplicates, and unexplained empty control bodies |
 | `post_match_lint.py` | advisory scan of uncommitted matched C for duplicate externs, shared-name macro shadows, suspicious wide scalars, stray null statements, missing fallthrough notes, trailing whitespace, and worker boilerplate; widen with `--since` or `--all` |
+| `model_codegen_audit.py` | joins queue provenance to matched source and reports model-contributed functions with strong unusual shapes but no substantive `CODEGEN:` explanation; a finding requests recovered reasoning, not a rewrite |
 | `review_checks.py` | the gate the worker runs before building |
 | `decomp_fidelity.py` | callee recall and constant coverage against the asm |
 | `escalation_triage.py` | why each escalated record failed |
@@ -385,6 +389,7 @@ supports `--help` and most support `--self-test`.
 | script | answers |
 |---|---|
 | `run_selftests.py` | runs every `test_*.py` and prints one table |
+| `artifact_store.py` | public immutable-generation and atomic stable-view store shared by candidate, rejection, transplant, migration, and seed-repair writers |
 | `fix_seed_declarations.py` | repair missing or stale writer-owned declarations in permuter seeds; `--apply` publishes an immutable version and prints its exact `seed=` path |
 | `permuter_supervisor.py` | the auto-queueing permuter driver, legacy-seed migrator and focused importer. **Use `job_start`** for searches |
 | `test_connector_surfaces.py` | REGISTRY vs decorators vs manifest, plus portability and doc checks |
@@ -407,6 +412,9 @@ a new immutable history generation; older seeds remain evidence.
 the shared path-aware live `INCLUDE_ASM` index. A retained individual `.s` file
 does not make a landed C function undecompiled. `asm_twin_finder.py` uses the
 same index, so progress and twin discovery cannot drift on that boundary.
+After changing progress classification or `source_index.py`, run
+`run_analysis(script="test_progress_detection.py")`; it pins stale retained
+assembly, live stubs, path collisions, and whole-file assembly ownership.
 
 ## 7. Scoped filesystem
 

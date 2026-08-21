@@ -29,6 +29,8 @@ import re
 import sys
 import tempfile
 
+import artifact_store
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "win"))
 os.environ.setdefault("MODEL_BACKEND", "zen")
@@ -156,7 +158,8 @@ def scan_seed_texts(items: list[tuple[str, str]]) -> list[tuple[str, str, list[s
 
 def publish_fixed_seed(path: str, text: str) -> str:
     """Publish a declaration repair without overwriting prior evidence."""
-    return wd._publish_versioned_artifact(path, text, "permuter seed")
+    return artifact_store.publish_versioned_artifact(
+        path, text, "permuter seed", wd.WIN_REPO)
 
 
 def main() -> int:
@@ -211,7 +214,7 @@ def main() -> int:
         try:
             source = p
             if history_back:
-                versions = wd._artifact_history_versions(p)
+                versions = artifact_store.history_versions(p)
                 if len(versions) <= history_back:
                     print(f"  !! {n}: only {len(versions)} preserved generation(s), "
                           f"cannot go back {history_back}")
@@ -343,7 +346,7 @@ def self_test() -> int:
                     handle.write(original)
                 published = publish_fixed_seed(
                     path, "/* repaired seed */\nvoid f(void) { helper(); }\n")
-                versions = wd._artifact_history_versions(path)
+                versions = artifact_store.history_versions(path)
                 ck("/history/" in published.replace("\\", "/"),
                    "the returned queue path is immutable")
                 retained = []

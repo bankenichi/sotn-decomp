@@ -67,6 +67,8 @@ import time
 import tomllib
 from pathlib import Path
 
+import artifact_store
+
 REPO = Path(os.environ.get("SOTN_REPO", Path(__file__).resolve().parents[1]))
 QUEUE = Path(os.environ.get(
     "SOTN_QUEUE", os.path.expanduser("~/sotn-work/queue.jsonl")))
@@ -2223,18 +2225,14 @@ def migrate_legacy_seeds(apply: bool = False) -> int:
         print("\nread-only. Re-run with --apply-migration to publish versions.")
         return 0
 
-    sys.path.insert(0, str(Path(__file__).resolve().parent / "win"))
-    import worker_direct as wd                              # type: ignore
-    old_repo = wd.WIN_REPO
-    wd.WIN_REPO = str(REPO)
     try:
         for seed, original_bytes, rebuilt in prepared:
-            new_rel = wd._publish_versioned_artifact(
-                str(seed), rebuilt, "permuter seed")
+            new_rel = artifact_store.publish_versioned_artifact(
+                seed, rebuilt, "permuter seed", REPO)
             legacy_rel = ""
-            for version in wd._artifact_history_versions(str(seed)):
-                if Path(version).read_bytes() == original_bytes:
-                    legacy_rel = Path(version).relative_to(REPO).as_posix()
+            for version in artifact_store.history_versions(seed):
+                if version.read_bytes() == original_bytes:
+                    legacy_rel = version.relative_to(REPO).as_posix()
                     break
             if not legacy_rel:
                 raise OSError(f"legacy bytes not found in history for {seed.name}")
@@ -2243,8 +2241,6 @@ def migrate_legacy_seeds(apply: bool = False) -> int:
     except OSError as exc:
         print(f"  FAIL migration publish: {exc}")
         return 1
-    finally:
-        wd.WIN_REPO = old_repo
     return 0
 
 

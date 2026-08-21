@@ -41,6 +41,8 @@ import re
 import sys
 from pathlib import Path
 
+import artifact_store
+
 REPO = Path(__file__).resolve().parent.parent
 SCORE_ROOT = REPO / "nonmatchings" / ".adapt-scores"
 sys.path.insert(0, str(REPO / "automation"))
@@ -1506,8 +1508,8 @@ def _isolated_seed_artifact(row: dict) -> tuple[str, str]:
         "            permuter_supervisor.py; never treat this as a match. */\n"
         + whole)
     rec = {"id": row["record_id"], "function": row["function"]}
-    seed = wd._publish_versioned_artifact(
-        wd.candidate_path(rec), artifact, "isolated-score candidate")
+    seed = artifact_store.publish_versioned_artifact(
+        wd.candidate_path(rec), artifact, "isolated-score candidate", REPO)
     return seed, artifact
 
 
@@ -2311,7 +2313,7 @@ def self_test() -> int:
        "landing never regenerates the body it is meant to prove")
     publishing_src = src[src.index("def _isolated_seed_artifact"):
                          src.index("\ndef publish_low_scores")]
-    ck("_publish_versioned_artifact" in publishing_src
+    ck("artifact_store.publish_versioned_artifact" in publishing_src
        and "content: WHOLE FILE" in publishing_src,
        "low scores publish an immutable whole-file supervisor seed")
 

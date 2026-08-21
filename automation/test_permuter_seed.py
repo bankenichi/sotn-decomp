@@ -77,6 +77,15 @@ def main() -> int:
     check("save_candidate(rec, code, attempt, detail, ctx)" in src,
           "the call site actually passes ctx")
 
+    print("\nimmutable evidence publication has a public shared owner")
+    for rel in ("fix_seed_declarations.py", "permuter_supervisor.py", "transplant.py"):
+        consumer = (REPO / "automation" / rel).read_text()
+        check("artifact_store" in consumer,
+              f"{rel} imports the shared artifact store")
+        check("wd._publish_versioned_artifact" not in consumer
+              and "wd._artifact_history_versions" not in consumer,
+              f"{rel} no longer calls worker_direct private storage helpers")
+
     print("\nevery saved seed has an immutable queue path and stable current view")
     temp_root = Path(tempfile.mkdtemp())
     real_repo = wd.WIN_REPO
