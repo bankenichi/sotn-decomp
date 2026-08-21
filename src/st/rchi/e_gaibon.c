@@ -57,11 +57,6 @@ void EntityGaibonLeg(Entity *self)
    overlay's. */
 extern EInit D_us_80180624;
 
-#define ENTITY_DEFAULT 0
-#define ENTITY_ROTATE 4
-#define ENTITY_SCALEX 1
-#define FLAG_DEAD 256
-#define PAL_UNK_1B6 438
 extern u8 D_us_80181748[];
 extern EInit D_us_80180624;
 extern struct Entity;

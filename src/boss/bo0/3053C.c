@@ -464,6 +464,8 @@ s32 func_us_801B1E5C(void *arg0)
   void *child = *((void **) (((char *) entity) + 0x18));
   func_us_801B163C(&g_CurrentEntity->ext.venusWeed.pad_90, 0, 0xC);
   result1 = func_us_801B171C(entity, -0x40, 0x40, 0x60);
+ // CODEGEN: The straight-line form compiled and linked but did not match.
+ // This single-iteration wrapper is the form verified by the 81/81 oracle.
  do { result2 = func_us_801B171C(child, -0x200, 0x280, 0x50); return (result1 + result2) == 2; } while (0);
 }
 
