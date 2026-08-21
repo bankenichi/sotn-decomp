@@ -262,7 +262,8 @@ PRIORITY_FILE = REPO / "automation" / "priority.us.json"
 def _load_priority() -> dict:
     """Claim-order hints produced by automation/decl_coverage.py.
 
-    Shape: {"<function>": {"rank": int, "blocked": bool}, ...}
+    Shape: {"<build>:<overlay>:<function>":
+            {"rank": int, "blocked": bool}, ...}
 
     Kept OUT of the queue on purpose. Priority is derived from the repo (which
     symbols are declared, which data addresses are still unnamed) and changes
@@ -277,6 +278,16 @@ def _load_priority() -> dict:
         return json.loads(PRIORITY_FILE.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return {}
+
+
+def priority_for(priority: dict, record: dict) -> dict:
+    """Return one record's hints without collapsing equal function names.
+
+    The function-name fallback reads older generated files safely during an
+    update, but every new writer uses the full queue id.
+    """
+    return priority.get(record.get("id", ""),
+                        priority.get(record.get("function", ""), {}))
 
 
 def _take(records, best, args):
@@ -430,7 +441,7 @@ def cmd_next(args):
             return records, None
 
         def key(r):
-            p = prio.get(r.get("function", ""), {})
+            p = priority_for(prio, r)
             # Ordering, outermost first:
             #   1. deferred records LAST. A deferred handoff is a fallback: work
             #      it only once the live todo pool is exhausted. Without this the
@@ -447,7 +458,7 @@ def cmd_next(args):
 
         if not args.include_blocked:
             workable = [r for r in todo
-                        if not prio.get(r.get("function", ""), {}).get("blocked")]
+                        if not priority_for(prio, r).get("blocked")]
             # Only fall back to blocked records once the workable set is empty,
             # so the fleet never idles, but never starts there either.
             todo = workable or todo

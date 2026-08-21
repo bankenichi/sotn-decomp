@@ -31,6 +31,7 @@ import os
 import subprocess
 import sys
 import tempfile
+from pathlib import Path
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(HERE)
@@ -268,6 +269,48 @@ def scheduler_structure():
           "and no other subcommand does")
 
 
+def priority_identity():
+    """Claim priority must distinguish equal function names across overlays."""
+    import decl_coverage as dc
+    import scheduler
+
+    print("\npriority is keyed by queue identity, not a colliding function name")
+    rows = [
+        {"id": "us:ST/RCHI:EntityBreakable", "function": "EntityBreakable",
+         "data_refs": [], "blocked": False},
+        {"id": "us:ST/NO0:EntityBreakable", "function": "EntityBreakable",
+         "data_refs": ["D_us_80180000"], "blocked": True},
+    ]
+    make_priority = getattr(dc, "priority_map", None)
+    choose_priority = getattr(scheduler, "priority_for", None)
+    check(callable(make_priority), "decl_coverage exposes one priority writer")
+    check(callable(choose_priority), "scheduler exposes one priority lookup")
+    if not callable(make_priority) or not callable(choose_priority):
+        return
+    priority = make_priority(rows)
+    check(set(priority) == {row["id"] for row in rows},
+          "both overlay-specific records survive generation")
+    check(choose_priority(priority, rows[0]).get("blocked") is False,
+          "the workable RCHI record stays workable")
+    check(choose_priority(priority, rows[1]).get("blocked") is True,
+          "the blocked NO0 record stays blocked")
+
+    print("\nassembly lookup also requires overlay identity")
+    old_index = dc._ASM_INDEX
+    rchi = Path(REPO) / "asm/us/st/rchi/nonmatchings/e_breakable/EntityBreakable.s"
+    no0 = Path(REPO) / "asm/us/st/no0/nonmatchings/e_breakable/EntityBreakable.s"
+    try:
+        dc._ASM_INDEX = {"us": {"EntityBreakable": [rchi, no0]}}
+        check(dc.find_asm("EntityBreakable", "us", "ST/RCHI") == rchi,
+              "RCHI resolves only its own assembly")
+        check(dc.find_asm("EntityBreakable", "us", "ST/NO0") == no0,
+              "NO0 resolves only its own assembly")
+        check(dc.find_asm("EntityBreakable", "us") is None,
+              "an ambiguous bare name is refused instead of guessed")
+    finally:
+        dc._ASM_INDEX = old_index
+
+
 def worker_structure():
     import worker_direct as wd
     src = open(wd.__file__, encoding="utf-8", errors="replace").read()
@@ -358,6 +401,7 @@ def main():
         scheduler_behaviour(tmp)
         release_keeps_the_note(tmp)
     scheduler_structure()
+    priority_identity()
     worker_structure()
     connector_structure()
 

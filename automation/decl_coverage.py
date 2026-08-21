@@ -111,27 +111,47 @@ def load_candidates(version: str = "us", use_queue: bool = False) -> list[dict]:
     return scan_asm_for_unmatched(version)
 
 
-_ASM_INDEX: dict[str, Path] = {}
+_ASM_INDEX: dict[str, dict[str, list[Path]]] = {}
 
 
-def build_asm_index(version: str = "us") -> dict[str, Path]:
-    """Walk asm/<version> ONCE and map function name -> .s path.
+def build_asm_index(version: str = "us") -> dict[str, list[Path]]:
+    """Walk asm/<version> ONCE and retain every path for each function name.
 
     The first version of this called rglob() per function. That is
     O(functions x files) and with ~1300 unmatched functions over the full asm
     tree it did not finish inside a tool call. One walk, then dict lookups.
     """
     global _ASM_INDEX
-    if _ASM_INDEX:
-        return _ASM_INDEX
+    if version in _ASM_INDEX:
+        return _ASM_INDEX[version]
+    index: dict[str, list[Path]] = {}
     base = REPO / "asm" / version
     for p in base.rglob("*.s"):
-        _ASM_INDEX.setdefault(p.stem, p)
-    return _ASM_INDEX
+        if "nonmatchings" not in p.parts:
+            continue
+        index.setdefault(p.stem, []).append(p)
+    _ASM_INDEX[version] = index
+    return index
 
 
-def find_asm(function: str, version: str = "us") -> Path | None:
-    return build_asm_index(version).get(function)
+def asm_overlay(path: Path, version: str = "us") -> str:
+    """Overlay key for an unmatched assembly path."""
+    try:
+        parts = path.relative_to(REPO / "asm" / version).parts
+        stop = parts.index("nonmatchings")
+    except (ValueError, OSError):
+        return ""
+    return "/".join(parts[:stop]).upper()
+
+
+def find_asm(function: str, version: str = "us",
+             overlay: str = "") -> Path | None:
+    """Resolve one listing, refusing an ambiguous bare function name."""
+    hits = build_asm_index(version).get(function, [])
+    if overlay:
+        wanted = overlay.strip("/").upper()
+        hits = [path for path in hits if asm_overlay(path, version) == wanted]
+    return hits[0] if len(hits) == 1 else None
 
 
 def build_declaration_index() -> dict[str, str]:
@@ -169,6 +189,20 @@ def build_declaration_index() -> dict[str, str]:
         if name not in index or len(decl) < len(index[name]):
             index[name] = decl
     return index
+
+
+def priority_map(rows: list[dict]) -> dict[str, dict]:
+    """Scheduler hints keyed by full queue identity.
+
+    Function names are not unique across overlays. Keying by `function` made a
+    later duplicate overwrite an earlier record's blocked verdict, so the
+    scheduler could skip workable functions or serve blocked ones first.
+    """
+    priority = {}
+    for rank, row in enumerate(rows):
+        blocked = bool(row.get("undeclared_data", row.get("blocked", False)))
+        priority[row["id"]] = {"rank": rank, "blocked": blocked}
+    return priority
 
 
 def main() -> int:
@@ -275,7 +309,7 @@ def main() -> int:
             # never finishes.
             syms = list(per_file.get(rel, []))
         else:
-            asm = find_asm(fn, a.version)   # queue records carry no asm path
+            asm = find_asm(fn, a.version, r.get("overlay", ""))
             if not asm:
                 continue
             syms = list(per_file.get(str(asm.relative_to(REPO)), []))
@@ -343,12 +377,7 @@ def main() -> int:
         # Consumed by scheduler.cmd_next. Only the two fields it needs: keeping
         # this minimal means the ranking heuristic can change here without
         # touching the scheduler.
-        prio = {}
-        for rank, row in enumerate(rows):
-            undeclared_data = [d for d in row.get("data_refs", [])
-                               if d not in index]
-            prio[row["function"]] = {"rank": rank,
-                                     "blocked": bool(undeclared_data)}
+        prio = priority_map(rows)
         out = Path(a.write_priority)
         out.write_text(json.dumps(prio, indent=1))
         nb = sum(1 for v in prio.values() if v["blocked"])
