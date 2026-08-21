@@ -1836,15 +1836,18 @@ def verify_build(version: str = "us") -> dict:
 
 def queue_report(function_id: str, status: str, proof: str = "",
                  score: str = "", notes: str = "",
-                 keep_note: bool = True) -> dict:
+                 keep_note: bool = True, verdict_kind: str = "",
+                 verdict_seed_current: bool = False,
+                 verdict_source: str = "") -> dict:
     """Record an outcome through scheduler.py, the single queue writer.
 
     Without this the orchestrator can verify a match but has no sanctioned way
     to record it, and the charter forbids hand-editing work/queue.jsonl.
     The scheduler still refuses `matched` unless proof is supplied.
     """
+    normalized_status = _status(status)
     argv = [PYTHON, "automation/scheduler.py", "report",
-            "--id", function_id, "--status", _status(status)]
+            "--id", function_id, "--status", normalized_status]
     if proof:
         # Proof is a single-line provenance string (a path and a sha1), not a
         # commit message. It was validated with the old _msg(); that helper is
@@ -1863,6 +1866,20 @@ def queue_report(function_id: str, status: str, proof: str = "",
         argv += ["--notes", notes]
     if keep_note:
         argv.append("--keep-note")
+    verdict_requested = bool(
+        verdict_kind or verdict_seed_current or verdict_source)
+    if verdict_requested:
+        if verdict_kind != "permuter-exhausted":
+            raise Rejected("verdict_kind must be 'permuter-exhausted'")
+        if not verdict_seed_current:
+            raise Rejected("structured verdict requires verdict_seed_current=True")
+        source = " ".join(str(verdict_source).split())
+        if not source:
+            raise Rejected("structured verdict requires verdict_source")
+        if normalized_status != "deferred":
+            raise Rejected("structured verdict requires status='deferred'")
+        argv += ["--verdict-kind", verdict_kind,
+                 "--verdict-seed-current", "--verdict-source", source]
     if DRYRUN:
         return {"action": "queue_report", "argv": argv, "dry_run": True}
     p = subprocess.run(argv, cwd=str(REPO), capture_output=True, text=True,

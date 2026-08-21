@@ -139,6 +139,7 @@ _migrate_legacy_queue()
 WORKTREE_ROOT = REPO / "automation" / "wt"
 
 VALID_STATUS = {"todo", "claimed", "near", "matched", "escalated", "deferred"}
+VALID_VERDICT_KIND = {"permuter-exhausted"}
 
 
 def _now() -> str:
@@ -542,6 +543,22 @@ def cmd_report(args):
     if args.status not in VALID_STATUS:
         sys.exit(f"invalid status: {args.status}")
 
+    verdict_requested = bool(
+        args.verdict_kind or args.verdict_seed_current or args.verdict_source)
+    if verdict_requested:
+        if args.verdict_kind not in VALID_VERDICT_KIND:
+            sys.exit("invalid --verdict-kind: expected one of "
+                     + ", ".join(sorted(VALID_VERDICT_KIND)))
+        if not args.verdict_seed_current:
+            sys.exit("refused: a structured search verdict must explicitly say "
+                     "--verdict-seed-current")
+        if not (args.verdict_source or "").strip():
+            sys.exit("refused: a structured search verdict requires "
+                     "--verdict-source")
+        if args.status != "deferred":
+            sys.exit("refused: structured search verdicts require "
+                     "--status deferred")
+
     # STRUCTURAL TRUST INVARIANT
     # A record can only become 'matched' if the reporter supplies machine proof
     # (the built artifact's SHA-1, verified against config/check.<v>.sha). This
@@ -569,17 +586,32 @@ def cmd_report(args):
     def fn(records):
         for r in records:
             if r["id"] == args.id:
+                prior_status = r["status"]
                 r["status"] = args.status
+                if verdict_requested:
+                    r["search_verdict"] = {
+                        "kind": args.verdict_kind,
+                        "seed_current": True,
+                        "source": args.verdict_source,
+                        "recorded_at": _now(),
+                    }
+                elif args.status != "deferred" or prior_status != "deferred":
+                    # A structured exhaustion controls only the deferral it was
+                    # recorded for. Once the record leaves deferred, a later
+                    # attempt must earn a new verdict rather than inherit this
+                    # one. Deferred-to-deferred maintenance notes preserve it.
+                    r.pop("search_verdict", None)
                 if args.score is not None:
                     r["best_score"] = args.score
                 if args.tier is not None:
                     r["tier_reached"] = args.tier
                 if args.notes is not None:
-                    # THE NOTE IS THE ONLY INDEX. Nothing else records that a
-                    # record is a size handoff, carries a permuter seed, or
-                    # was rescued from a false escalation: `seed=`,
-                    # `rejected=` and TIER_HANDOFF_TOO_LARGE are all parsed
-                    # back out of this string.
+                    # Notes remain the human derivation and provenance index.
+                    # Size handoffs, permuter seed paths and false-escalation
+                    # rescues still use `seed=`, `rejected=` and
+                    # TIER_HANDOFF_TOO_LARGE here. Machine authority for a
+                    # current-seed search exhaustion belongs to the structured
+                    # `search_verdict` field above.
                     #
                     # A plain overwrite is right for a verdict, which
                     # supersedes what came before. It is WRONG for a release,
@@ -785,9 +817,12 @@ def cmd_prune(args):
 
 
 def cmd_list(args):
-    for r in Queue()._read():
-        if args.status and r["status"] != args.status:
-            continue
+    records = [r for r in Queue()._read()
+               if not args.status or r["status"] == args.status]
+    if args.json:
+        print(json.dumps(records, sort_keys=True))
+        return
+    for r in records:
         # Notes carry the FAILURE KIND ("built, but ... does not match" vs
         # "BUILD FAILED" vs a timeout). Without them a status listing cannot be
         # re-triaged, and the queue file lives outside the repo so it cannot be
@@ -1002,6 +1037,13 @@ def main():
                     help="read a JSON object containing notes and/or proof from "
                          "stdin. Used by Windows workers so durable evidence "
                          "does not cross the command-line length boundary")
+    pr.add_argument("--verdict-kind", choices=sorted(VALID_VERDICT_KIND),
+                    default=None,
+                    help="structured search verdict stored separately from notes")
+    pr.add_argument("--verdict-seed-current", action="store_true",
+                    help="assert that the verdict used the current preserved seed")
+    pr.add_argument("--verdict-source", default=None,
+                    help="durable receipt or task reference supporting the verdict")
     pr.add_argument("--add-iters", type=int, default=0)
     pr.add_argument("--handoff-limit", type=int, default=0,
                     help="the MAX_FUNC_CHARS of the tier deferring this "
@@ -1009,7 +1051,10 @@ def main():
                          "caller is actually bigger")
     pr.set_defaults(func=cmd_report)
 
-    pl = sub.add_parser("list"); pl.add_argument("--status", default=None)
+    pl = sub.add_parser("list")
+    pl.add_argument("--status", default=None)
+    pl.add_argument("--json", action="store_true",
+                    help="emit complete queue records as one JSON array")
     pl.set_defaults(func=cmd_list)
 
     ps = sub.add_parser("stats"); ps.set_defaults(func=cmd_stats)

@@ -1234,21 +1234,35 @@ def main() -> int:
             _replace_plan = cc.queue_report(
                 "us:BOSS/BO6:BO6_RicStepStand", "near",
                 notes="superseding evidence", keep_note=False)
+            _verdict_plan = cc.queue_report(
+                "us:BOSS/BO6:BO6_RicEntityCrashBibleBeam", "deferred",
+                verdict_kind="permuter-exhausted",
+                verdict_seed_current=True,
+                verdict_source="controlled receipt")
         except TypeError:
             _report_plan = {}
             _replace_plan = {}
+            _verdict_plan = {}
     finally:
         cc.DRYRUN = _saved_dryrun
     check("--keep-note" in _report_plan.get("argv", []),
           "commands_client preserves notes when keep_note is omitted")
     check("--keep-note" not in _replace_plan.get("argv", []),
           "commands_client permits an explicit note replacement")
+    check("--verdict-kind" in _verdict_plan.get("argv", [])
+          and "--verdict-seed-current" in _verdict_plan.get("argv", [])
+          and "--verdict-source" in _verdict_plan.get("argv", []),
+          "commands_client forwards structured search authority")
     _mcp_queue_src = (MCP / "sotn_cmd_mcp.py").read_text(encoding="utf-8")
     check(re.search(r"def queue_report\([^)]*keep_note\s*:\s*bool\s*=\s*True",
                     _mcp_queue_src, re.S) is not None,
           "the MCP queue_report schema defaults keep_note to True")
     check("keep_note=keep_note" in _mcp_queue_src,
           "the MCP wrapper forwards keep_note rather than accepting it cosmetically")
+    check("verdict_kind=verdict_kind" in _mcp_queue_src
+          and "verdict_seed_current=verdict_seed_current" in _mcp_queue_src
+          and "verdict_source=verdict_source" in _mcp_queue_src,
+          "the MCP wrapper forwards every structured verdict field")
 
     _long_note = "derivation:" + ("N" * 2048)
     _long_proof = "verified:" + ("P" * 1024)

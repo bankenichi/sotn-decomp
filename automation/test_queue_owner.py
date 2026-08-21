@@ -125,6 +125,36 @@ def test_report_preserves_complete_evidence() -> None:
               "--keep-note preserves both complete derivations")
 
 
+def test_report_preserves_structured_search_verdict() -> None:
+    """Search authority must survive without being reconstructed from prose."""
+    print("\ntest_report_preserves_structured_search_verdict")
+    with tempfile.TemporaryDirectory() as d:
+        q = Path(d) / "queue.jsonl"
+        q.write_text(REC)
+        r = run(
+            q, "report", "--id", "us:ST/RNO0:Demo", "--status", "deferred",
+            "--verdict-kind", "permuter-exhausted", "--verdict-seed-current",
+            "--verdict-source", "test receipt")
+        check(r.returncode == 0, "a structured verdict report succeeds")
+        record = json.loads(q.read_text().splitlines()[0])
+        verdict = record.get("search_verdict") or {}
+        check(verdict.get("kind") == "permuter-exhausted",
+              "the verdict kind is stored structurally")
+        check(verdict.get("seed_current") is True,
+              "current-seed authority is stored as a boolean")
+        check(verdict.get("source") == "test receipt",
+              "the structured verdict retains its evidence source")
+
+        listed = run(q, "list", "--status", "deferred", "--json")
+        check(listed.returncode == 0, "structured queue listing succeeds")
+        try:
+            records = json.loads(listed.stdout)
+        except json.JSONDecodeError:
+            records = []
+        check(records and records[0].get("search_verdict") == verdict,
+              "the scheduler exposes structured evidence without flattening it")
+
+
 def test_queue_writers_do_not_slice_evidence() -> None:
     """Catch silent caps in queue records and direct scheduler calls."""
     print("\ntest_queue_writers_do_not_slice_evidence")
@@ -226,6 +256,7 @@ def main() -> int:
                test_stamped_queue_refuses_writes,
                test_stamped_queue_still_allows_reads,
                test_report_preserves_complete_evidence,
+               test_report_preserves_structured_search_verdict,
                test_queue_writers_do_not_slice_evidence,
                test_every_mutating_command_is_covered):
         fn()

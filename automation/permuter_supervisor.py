@@ -1058,13 +1058,14 @@ MATCH_PENDING = "PERMUTER_MATCH_PENDING_BUILD"
 #
 # The supervisor is the one component that knows the answer: it imports from
 # automation/candidates/ at the moment it runs, so ANY verdict it writes is by
-# definition a verdict on the current seed. Saying so in the note is the whole
-# fix. Kept as a distinct token rather than prose so the classifier greps for
-# it, the same reason EXHAUSTED and DEFER_TOO_LARGE exist.
+# definition a verdict on the current seed. The scheduler-owned structured
+# search_verdict is the machine authority. This token remains in the note for
+# human readability and compatibility with historical classifiers.
 CURRENT_SEED = "SEED_CURRENT"
 
 
-def report(fn_id: str, status: str, notes: str, proof: str = "") -> str:
+def report(fn_id: str, status: str, notes: str, proof: str = "",
+           current_seed_exhausted: bool = False) -> str:
     """Record an outcome through scheduler.py, the single queue writer.
 
     The supervisor did not write to the queue at all before, which meant a
@@ -1082,6 +1083,10 @@ def report(fn_id: str, status: str, notes: str, proof: str = "") -> str:
     argv = [PYTHON, str(REPO / "automation" / "scheduler.py"), "report",
             "--id", fn_id, "--status", status, "--notes", notes,
             "--keep-note"]
+    if current_seed_exhausted:
+        argv += ["--verdict-kind", "permuter-exhausted",
+                 "--verdict-seed-current",
+                 "--verdict-source", "permuter_supervisor.py"]
     if proof:
         argv += ["--proof", proof]
     r = subprocess.run(argv, cwd=str(REPO), capture_output=True, text=True,
@@ -1905,7 +1910,8 @@ def supervise(slots: int, threads: int, stall: int, cycles: int,
                     slot.get("id", ""), "deferred",
                     f"{EXHAUSTED} {CURRENT_SEED}: hit the {max_iters}-iteration cap at best "
                     f"{d['best']}. Seed is promoted; re-derive from the asm, "
-                    f"then set this back to near."))
+                    f"then set this back to near.",
+                    current_seed_exhausted=True))
                 done.append(slot)
                 del active[jid]
                 continue
@@ -1937,7 +1943,7 @@ def supervise(slots: int, threads: int, stall: int, cycles: int,
                     f"iterations, {slot['cycles']} promotion(s), no improvement "
                     f"for {d['since_improvement']}. The permuter mutates "
                     f"expressions only; re-derive from the asm, then set this "
-                    f"back to near."))
+                    f"back to near.", current_seed_exhausted=True))
                 done.append(slot)
                 del active[jid]
 
@@ -2827,7 +2833,8 @@ def self_test() -> int:
             return subprocess.CompletedProcess(argv, 0, "updated\n", "")
         subprocess.run = fake_report_run
         report_result = report(
-            "us:TEST:Evidence", "deferred", "new outcome evidence")
+            "us:TEST:Evidence", "deferred", "new outcome evidence",
+            current_seed_exhausted=True)
     finally:
         subprocess.run = real_subprocess_run
     ck(report_result == "updated", "the behavioral report fixture succeeds")
@@ -2837,6 +2844,11 @@ def self_test() -> int:
        and captured_report[0][captured_report[0].index("--notes") + 1]
            == "new outcome evidence",
        "the complete new note is still forwarded")
+    ck(bool(captured_report)
+       and "--verdict-kind" in captured_report[0]
+       and "--verdict-seed-current" in captured_report[0]
+       and "--verdict-source" in captured_report[0],
+       "an authoritative exhaustion is also stored as structured evidence")
 
     print("\na solved-but-unbuilt function is not re-searched")
     ck(_why_skip({"notes": f"x {MATCH_PENDING} y"}, Path(".")) != "",

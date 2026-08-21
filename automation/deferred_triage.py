@@ -26,8 +26,9 @@ THE CLASSES
                 fix is stated in the note and is mechanical. Several records
                 usually share ONE missing symbol.
 
-  permuter-out  PERMUTER_EXHAUSTED with a real score and no improvement. The
-                permuter mutates expressions only, so this genuinely means
+  permuter-out  A scheduler-owned current-seed exhaustion verdict, or a legacy
+                PERMUTER_EXHAUSTED note with a real score and no improvement.
+                The permuter mutates expressions only, so this genuinely means
                 re-derive from the asm. Legitimately deferred.
 
   no-note       no note at all. Cannot be assessed from the queue; needs a
@@ -42,6 +43,7 @@ commands and still writes nothing.
 Usage:
     python3 automation/deferred_triage.py
     python3 automation/deferred_triage.py --requeue-plan
+    python3 automation/deferred_triage.py --verdict-migration FILE [--apply]
     python3 automation/deferred_triage.py --self-test
 """
 from __future__ import annotations
@@ -64,10 +66,9 @@ RX_TOO_LARGE = re.compile(r"TIER_HANDOFF_TOO_LARGE")
 RX_ASM_CHARS = re.compile(r"asm (\d+) chars")
 RX_UNDECLARED = re.compile(r"UNDECLARED SYMBOL: the seed calls (\w+)")
 RX_EXHAUSTED = re.compile(r"PERMUTER_EXHAUSTED")
-# permuter_supervisor.CURRENT_SEED. Stamped on every verdict the supervisor
-# writes, because it imports the seed from automation/candidates/ at run time
-# and therefore cannot be judging a stale one. Its presence overrides the
-# permanent seed-retrofit marker; see the degraded-search branch in classify().
+# Legacy compatibility marker from permuter_supervisor.CURRENT_SEED. New
+# reports carry scheduler-owned structured authority; historical notes still
+# need this fallback when no search_verdict exists.
 RX_CURRENT_SEED = re.compile(r"SEED_CURRENT")
 RX_RESCUED = re.compile(r"RESCUED", re.I)
 RX_CLEAN_RERUN = re.compile(
@@ -368,6 +369,27 @@ def classify(note: str, asm_chars: int | None = None,
     return "other", "specific human note; leave deferred"
 
 
+def classify_record(rec: dict, asm_chars: int | None = None,
+                    seed_retrofitted: bool = False) -> tuple[str, str]:
+    """Classify one complete queue record, preferring structured authority.
+
+    Notes remain the human derivation history. They are not a reliable database
+    column: historical reports predate SEED_CURRENT, and controlled searches can
+    contain ordinary failed mutations even when the preserved seed compiled.
+    The scheduler-owned search_verdict records the one fact triage needs without
+    reconstructing it from those sentences.
+    """
+    verdict = rec.get("search_verdict")
+    if (isinstance(verdict, dict)
+            and verdict.get("kind") == "permuter-exhausted"
+            and verdict.get("seed_current") is True):
+        return ("permuter-out",
+                "current preserved seed genuinely exhausted; re-derive from "
+                "the asm")
+    return classify(rec.get("note", ""), asm_chars, seed_retrofitted,
+                    rec.get("id", ""))
+
+
 def load() -> list[dict]:
     """Deferred records, THROUGH THE SCHEDULER.
 
@@ -380,20 +402,16 @@ def load() -> list[dict]:
     """
     r = subprocess.run(
         [PYTHON, str(REPO / "automation" / "scheduler.py"),
-         "list", "--status", "deferred"],
+         "list", "--status", "deferred", "--json"],
         capture_output=True, text=True, timeout=120, cwd=str(REPO))
-    out = []
-    for line in r.stdout.splitlines():
-        line = line.strip()
-        if not line.startswith("deferred"):
-            continue
-        parts = line.split(None, 2)
-        if len(parts) < 3:
-            continue
-        tail = parts[2]
-        rid, _, note = tail.partition("|")
-        out.append({"id": rid.strip(), "note": note.strip()})
-    return out
+    if r.returncode != 0:
+        raise RuntimeError((r.stderr or r.stdout or "scheduler list failed").strip())
+    records = json.loads(r.stdout)
+    if not isinstance(records, list):
+        raise RuntimeError("scheduler list --json did not return an array")
+    for rec in records:
+        rec["note"] = rec.get("notes", "")
+    return records
 
 
 def queue_identity() -> tuple[str, dict]:
@@ -522,6 +540,134 @@ def requeue(buckets: dict, apply: bool = False) -> int:
     return 1 if bad else 0
 
 
+def bucket_records(recs: list[dict]) -> dict[str, list]:
+    buckets: dict[str, list] = collections.defaultdict(list)
+    for rec in recs:
+        cls, action = classify_record(
+            rec, real_asm_chars(rec["id"]),
+            seed_was_retrofitted(rec["id"]))
+        buckets[cls].append((rec, action))
+    return buckets
+
+
+def load_verdict_migration(path: str) -> tuple[Path, dict]:
+    candidate = Path(path)
+    if not candidate.is_absolute():
+        candidate = REPO / candidate
+    candidate = candidate.resolve()
+    try:
+        candidate.relative_to(REPO.resolve())
+    except ValueError as exc:
+        raise ValueError("verdict migration must be an in-repo file") from exc
+    data = json.loads(candidate.read_text(encoding="utf-8"))
+    if data.get("schema") != 1:
+        raise ValueError("verdict migration schema must be 1")
+    if data.get("kind") != "permuter-exhausted":
+        raise ValueError("verdict migration kind must be permuter-exhausted")
+    if data.get("seed_current") is not True:
+        raise ValueError("verdict migration must assert seed_current=true")
+    records = data.get("records")
+    if not isinstance(records, dict) or not records:
+        raise ValueError("verdict migration records must be a nonempty object")
+    if any(not isinstance(rid, str) or not isinstance(source, str)
+           or not rid.strip() or not source.strip()
+           for rid, source in records.items()):
+        raise ValueError("every verdict migration record needs an id and source")
+    expected = data.get("expected_after")
+    if not isinstance(expected, dict) or not expected:
+        raise ValueError("verdict migration requires expected_after counts")
+    return candidate, data
+
+
+def migrate_verdicts(path: str, apply: bool = False) -> int:
+    migration_path, migration = load_verdict_migration(path)
+    live = load()
+    by_id = {rec["id"]: rec for rec in live}
+    targets = migration["records"]
+    missing = sorted(set(targets) - set(by_id))
+    if missing:
+        print("migration records are not deferred in the live queue: "
+              + ", ".join(missing), file=sys.stderr)
+        return 1
+
+    structured = {
+        "kind": migration["kind"],
+        "seed_current": True,
+    }
+    pending = []
+    projected = []
+    for rec in live:
+        copy = dict(rec)
+        if rec["id"] in targets:
+            current = rec.get("search_verdict") or {}
+            if (current.get("kind") == migration["kind"]
+                    and current.get("seed_current") is True):
+                pass
+            else:
+                cls, _ = classify_record(
+                    rec, real_asm_chars(rec["id"]),
+                    seed_was_retrofitted(rec["id"]))
+                if cls != "degraded-search":
+                    print(f"refused: {rec['id']} is {cls}, not degraded-search",
+                          file=sys.stderr)
+                    return 1
+                pending.append(rec["id"])
+            copy["search_verdict"] = structured
+        projected.append(copy)
+
+    projected_counts = collections.Counter(
+        cls for cls, rows in bucket_records(projected).items()
+        for _row in rows)
+    expected = migration["expected_after"]
+    mismatches = {
+        key: (projected_counts.get(key, 0), value)
+        for key, value in expected.items()
+        if projected_counts.get(key, 0) != value
+    }
+    if mismatches:
+        print(f"refused: projected live-pool counts differ: {mismatches}",
+              file=sys.stderr)
+        return 1
+
+    print(f"verdict migration: {migration_path.relative_to(REPO)}")
+    print(f"  {len(targets)} total, {len(pending)} pending")
+    print("  projected " + "  ".join(
+        f"{key}={projected_counts.get(key, 0)}" for key in expected))
+    if not apply:
+        for rid in pending:
+            print(f"  would certify {rid}")
+        print("dry run: re-run with --apply to write through scheduler.py")
+        return 0
+
+    failures = []
+    for rid in pending:
+        source = targets[rid]
+        result = subprocess.run(
+            [PYTHON, str(REPO / "automation" / "scheduler.py"), "report",
+             "--id", rid, "--status", "deferred",
+             "--verdict-kind", migration["kind"],
+             "--verdict-seed-current", "--verdict-source", source],
+            capture_output=True, text=True, timeout=120, cwd=str(REPO))
+        if result.returncode != 0:
+            failures.append((rid, (result.stderr or result.stdout).strip()))
+        else:
+            print(f"  certified {rid}")
+    if failures:
+        for rid, detail in failures:
+            print(f"  FAILED {rid}: {detail}", file=sys.stderr)
+        return 1
+
+    actual = bucket_records(load())
+    actual_counts = {key: len(actual.get(key, [])) for key in expected}
+    if any(actual_counts[key] != expected[key] for key in expected):
+        print(f"post-apply live-pool regression failed: {actual_counts}",
+              file=sys.stderr)
+        return 1
+    print("  verified " + "  ".join(
+        f"{key}={actual_counts[key]}" for key in expected))
+    return 0
+
+
 def report(plan: bool = False, do_requeue: bool = False,
            apply: bool = False) -> int:
     qpath, counts = queue_identity()
@@ -537,13 +683,7 @@ def report(plan: bool = False, do_requeue: bool = False,
     if not recs:
         print("no deferred records")
         return 0
-    buckets: dict[str, list] = collections.defaultdict(list)
-    for r in recs:
-        cls, action = classify(r.get("note", ""),
-                               real_asm_chars(r["id"]),
-                               seed_was_retrofitted(r["id"]),
-                               r["id"])
-        buckets[cls].append((r, action))
+    buckets = bucket_records(recs)
 
     print(f"{len(recs)} deferred record(s)\n")
     # zero-blocked leads the order: it is a finished match, and burying it
@@ -777,6 +917,41 @@ def self_test() -> int:
        f"a clean targeted rerun is authoritative despite seed history "
        f"({cls_targeted})")
 
+    print("\nstructured verdict authority overrides ambiguous historical prose")
+    structured = {
+        "id": "us:BOSS/BO0:func_us_801B15BC",
+        "note": clean,
+        "search_verdict": {
+            "kind": "permuter-exhausted",
+            "seed_current": True,
+            "source": "test receipt",
+        },
+    }
+    cls_structured, _ = classify_record(
+        structured, None, seed_retrofitted=True)
+    ck(cls_structured == "permuter-out",
+       f"structured current-seed exhaustion wins ({cls_structured})")
+    structured["search_verdict"]["seed_current"] = False
+    cls_untrusted, _ = classify_record(
+        structured, None, seed_retrofitted=True)
+    ck(cls_untrusted == "degraded-search",
+       f"an untrusted structured record does not waive the repair ({cls_untrusted})")
+
+    print("\nthe tracked verdict migration pins the live #98 correction")
+    migration_file = (
+        "automation/queue/migrations/2026-08-21-permuter-verdicts.json")
+    _migration_path, migration = load_verdict_migration(migration_file)
+    migration_ids = set(migration["records"])
+    ck(len(migration_ids) == 19,
+       f"all 19 proven post-repair exhaustions are listed ({len(migration_ids)})")
+    ck("us:ST/RNO0:func_801CD78C_801CEB40" not in migration_ids,
+       "the genuinely degraded RNO0 record is not certified")
+    ck("us:BOSS/BO6:func_us_801B8E80" not in migration_ids,
+       "the genuinely degraded BO6 record is not certified")
+    ck(migration["expected_after"] == {
+        "permuter-out": 33, "degraded-search": 2},
+       "the migration carries the live-pool acceptance counts")
+
     print("\nthe two modules agree on the token, which is why this works")
     # Same failure mode as scheduler.py's `set` subcommand that never existed:
     # one module writing a marker the other never looks for. Read the
@@ -945,14 +1120,24 @@ def main() -> int:
                     help="measure every TIER_HANDOFF record against the real "
                          "gate ceiling and say which path it would take. "
                          "Read-only; run it BEFORE planning any batch")
+    ap.add_argument("--verdict-migration", metavar="PATH",
+                    help="validate and apply a tracked structured-verdict migration; "
+                         "dry run unless --apply is also given")
     ap.add_argument("--self-test", action="store_true")
     a = ap.parse_args()
     if a.self_test:
         return self_test()
     if a.sizes:
         return sizes_report()
+    if a.verdict_migration:
+        if a.requeue or a.requeue_plan:
+            print("--verdict-migration cannot be combined with requeue modes",
+                  file=sys.stderr)
+            return 2
+        return migrate_verdicts(a.verdict_migration, apply=a.apply)
     if a.apply and not a.requeue:
-        print("--apply does nothing on its own; it modifies --requeue",
+        print("--apply does nothing on its own; it modifies --requeue or "
+              "--verdict-migration",
               file=sys.stderr)
         return 2
     return report(a.requeue_plan, do_requeue=a.requeue, apply=a.apply)

@@ -394,7 +394,9 @@ def verify_build(version: str = "us") -> dict:
 @mcp.tool()
 def queue_report(function_id: str, status: str, proof: str = "",
                  score: str = "", notes: str = "",
-                 keep_note: bool = True) -> dict:
+                 keep_note: bool = True, verdict_kind: str = "",
+                 verdict_seed_current: bool = False,
+                 verdict_source: str = "") -> dict:
     """Record an outcome in the work queue via scheduler.py (the single writer).
 
     status: todo|claimed|near|matched|escalated|deferred.
@@ -402,9 +404,15 @@ def queue_report(function_id: str, status: str, proof: str = "",
     verdict plus the artifact hash. Existing derivation notes are preserved by
     default; pass keep_note=False only when the new note explicitly supersedes
     them. Notes and proofs are forwarded in full; this surface never silently
-    truncates evidence. Never hand-edit work/queue.jsonl."""
+    truncates evidence. A current-seed permuter exhaustion can be stored apart
+    from prose with verdict_kind='permuter-exhausted',
+    verdict_seed_current=True and a durable verdict_source. Never hand-edit
+    work/queue.jsonl."""
     return cc.queue_report(function_id, status, proof=proof, score=score,
-                           notes=notes, keep_note=keep_note)
+                           notes=notes, keep_note=keep_note,
+                           verdict_kind=verdict_kind,
+                           verdict_seed_current=verdict_seed_current,
+                           verdict_source=verdict_source)
 
 
 @mcp.tool()

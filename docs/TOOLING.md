@@ -204,7 +204,7 @@ invisible to the harness".
 |---|---|---|
 | `queue_stats` | start of a session, to see the shape | counts by status |
 | `queue_list` | find records; filter by `status` | output is long, filter it |
-| `queue_report` | record an outcome | `proof` is **required** for `matched`. Existing method notes are preserved by default |
+| `queue_report` | record an outcome | `proof` is **required** for `matched`. Existing method notes are preserved by default. A current-seed permuter exhaustion uses the all-or-none structured fields `verdict_kind`, `verdict_seed_current`, and `verdict_source` |
 | `queue_annotate` | attach twin candidates from `automation/twins.us.json` | writes only the `twin` field, never status; re-running is a no-op |
 | `queue_init` | seed a fresh queue from a seed file | destructive to ordering; not a routine action |
 | `queue_prune` | drop records that are not real functions | **no record is ever removed from scope**; this is only for string labels and similar non-functions |
@@ -375,7 +375,7 @@ supports `--help` and most support `--self-test`.
 | `review_checks.py` | the gate the worker runs before building |
 | `decomp_fidelity.py` | callee recall and constant coverage against the asm |
 | `escalation_triage.py` | why each escalated record failed |
-| `deferred_triage.py` | why each deferred record was deferred, using the newest actual verdict segment so older accumulated failure markers cannot override a clean rerun |
+| `deferred_triage.py` | why each deferred record was deferred, preferring scheduler-owned structured search verdicts and falling back to the newest legacy note segment; `--verdict-migration FILE [--apply]` applies a tracked, validated historical backfill without rewriting notes |
 | `empty_response_audit.py` | dead-call rate per model. Reads current logs only unless you pass `--archived` |
 | `fleet_forensics.py` | what a fleet run actually did |
 | `reasoning_audit.py` | reasoning-effort A/B results |

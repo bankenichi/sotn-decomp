@@ -1,0 +1,31 @@
+{
+  "schema": 1,
+  "task": 215,
+  "kind": "permuter-exhausted",
+  "seed_current": true,
+  "expected_after": {
+    "permuter-out": 33,
+    "degraded-search": 2
+  },
+  "records": {
+    "us:BOSS/BO0:func_us_801B15BC": "docs/escalation-deferral-audit.md post-repair rerun table",
+    "us:BOSS/BO0:func_us_801B1B30": "docs/escalation-deferral-audit.md post-repair rerun table",
+    "us:BOSS/BO0:func_us_801B1CE0": "docs/escalation-deferral-audit.md post-repair rerun table",
+    "us:BOSS/BO0:func_us_801B1DDC": "docs/escalation-deferral-audit.md post-repair rerun table",
+    "us:BOSS/BO0:func_us_801B1EDC": "docs/escalation-deferral-audit.md post-repair rerun table",
+    "us:BOSS/BO0:func_us_801B1F5C": "docs/escalation-deferral-audit.md post-repair rerun table",
+    "us:BOSS/BO0:func_us_801B163C": "docs/escalation-deferral-audit.md post-repair rerun table",
+    "us:BOSS/BO0:func_us_801B171C": "docs/escalation-deferral-audit.md post-repair rerun table",
+    "us:BOSS/BO0:func_us_801B1950": "docs/escalation-deferral-audit.md post-repair rerun table",
+    "us:BOSS/BO0:func_us_801B2044": "docs/escalation-deferral-audit.md post-repair rerun table",
+    "us:BOSS/BO0:func_us_801B5D6C": "docs/escalation-deferral-audit.md post-repair rerun table",
+    "us:BOSS/BO0:func_us_801B5E08": "docs/escalation-deferral-audit.md post-repair rerun table",
+    "us:BOSS/BO0:func_us_801B5E8C": "docs/escalation-deferral-audit.md post-repair rerun table",
+    "us:BOSS/BO0:func_us_801B8B64": "docs/escalation-deferral-audit.md post-repair rerun table",
+    "us:BOSS/BO0:func_us_801BA724": "docs/escalation-deferral-audit.md post-repair rerun table",
+    "us:BOSS/BO6:BO6_RicEntityAguneaHitEnemy": "ROADMAP #187 controlled search",
+    "us:BOSS/BO6:BO6_RicEntityAguneaLightning": "ROADMAP #105 and #187 controlled search",
+    "us:BOSS/BO6:BO6_RicEntityShrinkingPowerUpRing": "ROADMAP #187 controlled search",
+    "us:ST/RNO0:EntityRelicOrb": "ROADMAP #105 and #187 controlled search"
+  }
+}

@@ -74,6 +74,30 @@
       "description": "First divergence, suspected cause, and any handoff context.",
       "default": ""
     },
+    "search_verdict": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "seed_current", "source", "recorded_at"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": ["permuter-exhausted"]
+        },
+        "seed_current": {
+          "type": "boolean",
+          "const": true
+        },
+        "source": {
+          "type": "string",
+          "minLength": 1
+        },
+        "recorded_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "description": "Scheduler-owned machine authority for a search verdict. Human derivation and failure evidence remain in notes."
+    },
     "pr": {
       "type": "string",
       "description": "Pull request URL once opened.",
