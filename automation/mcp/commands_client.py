@@ -2024,13 +2024,13 @@ def fleet_start(workers: int = 4, max_functions: int = 0,
     # does nothing -- the failure mode this project keeps finding.
     bad = [e for e in efforts if e not in ("none", "off", "0", "low")]
     if bad:
-        raise Rejected(f"reasoning entries must be 'low' (the default) or "
-                       f"'none'/'off'/'0'; Zen 503s on medium and 500s on "
-                       f"high. Rejected: {', '.join(sorted(set(bad)))}")
+        raise Rejected(f"reasoning entries must be 'none'/'off'/'0' (the "
+                       f"default) or explicit 'low'; Zen 503s on medium and "
+                       f"500s on high. Rejected: {', '.join(sorted(set(bad)))}")
 
     plan = {"backend": backend, "llama_workers": n_llama, "zen_workers": n_zen, "cli_workers": n_cli,
             "opencode_model": opencode_model or "(worker default)",
-            "reasoning": ",".join(efforts) or "(worker default: low)"}
+            "reasoning": ",".join(efforts) or "(worker default: none)"}
     if DRYRUN:
         return {"action": "fleet_start", "dry_run": True, **plan,
                 "note": "would launch detached workers"}

@@ -275,6 +275,13 @@ def main() -> int:
 
     check(default["backend"] == "zen",
           f"fleet_start defaults to zen (got {default['backend']})")
+    check(default["reasoning"] == "(worker default: none)",
+          f"fleet plan exposes the measured no-reasoning default "
+          f"(got {default['reasoning']!r})")
+    _worker = (pathlib.Path(__file__).parent / "win" /
+               "worker_direct.py").read_text(encoding="utf-8")
+    check('os.environ.get("REASONING_EFFORT", "none")' in _worker,
+          "the real Zen worker defaults to no reasoning")
     check(plans["zen"]["zen_workers"] == 2 and plans["zen"]["llama_workers"] == 0,
           "backend=zen starts zen workers and no llama workers")
     check(plans["llama"]["llama_workers"] == 2 and plans["llama"]["zen_workers"] == 0,

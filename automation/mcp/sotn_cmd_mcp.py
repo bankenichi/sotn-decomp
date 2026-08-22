@@ -516,20 +516,18 @@ def job_start(action: str, version: str = "us", script: str = "",
     verify a change to the worker on a chosen function; fleet_start claims by
     rank and cannot be aimed. It WRITES (edits source, builds, reports).
 
-    reasoning: "" keeps the worker default (`low`). "none" turns thinking off
-    at the API level -- worker_direct's sweep measured `none` returning 1990
-    chars of content in 9.9s with 0 reasoning tokens, against `low` returning
-    ZERO content in 81.5s having spent 25,215 tokens thinking. Only those two
-    values are accepted: Zen 503s on `medium`, 500s on `high`, and ignores
-    reasoning_budget entirely.
+    reasoning: "" keeps the worker default (`none`). "low" is retained only
+    for explicit experiments. The controlled #111 queue A/B measured `none`
+    at 24/24 nonempty calls, 440.9 seconds total and 2/6 records routed near;
+    `low` produced 18/24 nonempty calls, took 2303.1 seconds and routed 0/6
+    near. Only those two values are accepted: Zen 503s on `medium`, 500s on
+    `high`, and ignores reasoning_budget entirely.
 
-    THE A/B (#111): launch both arms at once against the same queue, e.g.
-    fleet_start(workers=2, reasoning="none") and fleet_start(workers=2,
-    force=True). Records are claimed in an order unrelated to the arm, so the
-    split is effectively random and tree state is controlled. Compare on
-    compiles-differs yield and quality-gate reject CLASS, not match rate --
-    the last 4-worker run produced 0 matches over ~37 records, which cannot
-    power a comparison.
+    Run any future A/B as one fleet against one queue, for example
+    fleet_start(workers=4, reasoning="none,low"). Per-worker round robin keeps
+    both arms under the same BuildLock and queue state. Compare
+    compiles-differs yield, empty-response rate, latency and quality-gate reject
+    class, not match rate alone.
 
     Refuses to start a second job for the same action while one is running: two
     concurrent builds share one build directory and would produce artifacts
