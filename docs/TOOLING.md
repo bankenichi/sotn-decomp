@@ -16,7 +16,7 @@ For the mechanisms that land matches, read `automation/README.md`.
 | Decompiled | **96.9%**, 6381/6558 functions; 180 US `INCLUDE_ASM` stubs remain |
 | Queue | 471 records: 294 matched, 22 todo, 110 escalated, 42 deferred, 3 near |
 | Provenance | upstream-harvest 44, shim-segment 9, shim-header 55, transplant 18, twin-port 29, permuter 15, claude-manual 4, model-fleet 55, unknown 65 |
-| Automation | 83 modules, 28 suites plus 34 module self-tests, 87 tools, 67 diagnostics |
+| Automation | 83 modules, 28 suites plus 34 module self-tests, 88 tools, 67 diagnostics |
 
 This block is regenerated from the same queue, checksum manifest, linker maps, provenance classifier, and connector inventory as `README.md`.
 <!-- LIVE-STATUS:END -->
@@ -204,6 +204,7 @@ invisible to the harness".
 |---|---|---|
 | `queue_stats` | start of a session, to see the shape | counts by status |
 | `queue_list` | find records; filter by `status` | output is long, filter it |
+| `queue_get` | read one complete record by exact full ID, including long notes and proof | use this for named records instead of searching a capped status listing |
 | `queue_report` | record an outcome | `proof` is **required** for `matched`. Existing method notes are preserved by default. A current-seed permuter exhaustion uses the all-or-none structured fields `verdict_kind`, `verdict_seed_current`, and `verdict_source` |
 | `queue_annotate` | attach twin candidates from `automation/twins.us.json` | writes only the `twin` field, never status; re-running is a no-op |
 | `queue_init` | seed a fresh queue from a seed file | destructive to ordering; not a routine action |

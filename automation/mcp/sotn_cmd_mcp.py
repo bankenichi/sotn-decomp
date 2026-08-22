@@ -431,6 +431,16 @@ def queue_list(status: str = "", timeout: int = 60) -> dict:
 
 
 @mcp.tool()
+def queue_get(function_id: str, timeout: int = 60) -> dict:
+    """Return one complete queue record by exact full id.
+
+    Use this instead of filtering queue_list when notes or proofs are long. The
+    record is returned losslessly, including evidence above the generic command
+    output cap. Read-only."""
+    return cc.queue_get(function_id, timeout=timeout)
+
+
+@mcp.tool()
 def git_status(timeout: int = 60) -> dict:
     """`git status --short` in the WSL2 repo. Read-only."""
     return cc.run("git_status", timeout=timeout)

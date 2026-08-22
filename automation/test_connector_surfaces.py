@@ -20,6 +20,7 @@ Run: python3 automation/test_connector_surfaces.py
 """
 from __future__ import annotations
 
+import json
 import re
 import subprocess
 import sys
@@ -1290,6 +1291,50 @@ def main() -> int:
           "commands_client forwards the complete queue note without truncation")
     check(_proof_arg == _long_proof,
           "commands_client forwards the complete proof without truncation")
+
+    print("\nexact queue lookup returns one complete durable record")
+    check("queue_get" in registry, "queue_get is in REGISTRY")
+    check("queue_get" in tools, "queue_get is callable (@mcp.tool)")
+    _queue_get = getattr(cc, "queue_get", None)
+    check(callable(_queue_get), "commands_client exposes queue_get")
+    _get_plan = {}
+    if callable(_queue_get):
+        _saved_dryrun = cc.DRYRUN
+        cc.DRYRUN = True
+        try:
+            _get_plan = _queue_get("us:BOSS/BO6:BO6_RicStepStand")
+        finally:
+            cc.DRYRUN = _saved_dryrun
+    check(_get_plan.get("argv", [])[-3:] ==
+          ["get", "--id", "us:BOSS/BO6:BO6_RicStepStand"],
+          "queue_get validates and forwards the exact full queue id")
+    _complete = False
+    if callable(_queue_get):
+        _saved_dryrun = cc.DRYRUN
+        _saved_run = cc.subprocess.run
+        long_record = {
+            "id": "us:BOSS/BO6:BO6_RicStepStand",
+            "status": "deferred",
+            "notes": "N" * 40000,
+        }
+        cc.DRYRUN = False
+        try:
+            cc.subprocess.run = lambda *a, **k: subprocess.CompletedProcess(
+                a[0] if a else [], 0, json.dumps(long_record), "")
+            got = _queue_get(long_record["id"])
+            _complete = got.get("record", {}).get("notes") == long_record["notes"]
+        finally:
+            cc.subprocess.run = _saved_run
+            cc.DRYRUN = _saved_dryrun
+    check(_complete,
+          "queue_get returns evidence above MAX_OUT without truncation")
+    _scheduler_src = (REPO / "automation" / "scheduler.py").read_text(
+        encoding="utf-8")
+    check("def cmd_get(" in _scheduler_src
+          and 'sub.add_parser("get")' in _scheduler_src,
+          "scheduler owns the exact read-only lookup")
+    check("return cc.queue_get(" in _mcp_queue_src,
+          "the MCP wrapper uses the lossless commands_client path")
 
     print("\nthe queue can be snapshotted into the repo and restored")
     check("queue_snapshot" in registry, "queue_snapshot is in REGISTRY")

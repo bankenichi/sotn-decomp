@@ -1065,6 +1065,8 @@ REGISTRY = {
     "queue_stats": lambda: [PYTHON, "automation/scheduler.py", "stats"],
     "queue_list":  lambda status="": ([PYTHON, "automation/scheduler.py", "list"]
                                       + (["--status", _status(status)] if status else [])),
+    "queue_get": lambda function_id: [
+        PYTHON, "automation/scheduler.py", "get", "--id", _queue_id(function_id)],
     # scoped git (no general shell): status, stage-all, commit, push
     "git_status":  lambda: ["git", "status", "--short"],
     "git_add_all": lambda: ["git", "add", "-A"],
@@ -1832,6 +1834,35 @@ def verify_build(version: str = "us") -> dict:
         "verdict": (f"{len(ok)}/{total} OK" if len(ok) == total and not bad
                     else f"{len(ok)}/{total} OK, {len(bad)} FAILED"),
     }
+
+
+def queue_get(function_id: str, timeout: float = 60) -> dict:
+    """Return one complete queue record without the generic output cap.
+
+    Durable notes can exceed MAX_OUT. Parse the scheduler's exact JSON response
+    before constructing the result so the record itself is never sliced.
+    """
+    argv = build_argv("queue_get", function_id=function_id)
+    if DRYRUN:
+        return {"action": "queue_get", "argv": argv, "dry_run": True}
+    try:
+        proc = subprocess.run(
+            argv, cwd=str(REPO), capture_output=True, text=True, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        return {"action": "queue_get", "argv": argv, "dry_run": False,
+                "timed_out": True, "timeout": timeout}
+    out = {"action": "queue_get", "argv": argv, "dry_run": False,
+           "returncode": proc.returncode,
+           "stderr": proc.stderr[-MAX_OUT:]}
+    if proc.returncode != 0:
+        out["error"] = (proc.stderr or proc.stdout).strip()[-MAX_OUT:]
+        return out
+    try:
+        out["record"] = json.loads(proc.stdout)
+    except json.JSONDecodeError as exc:
+        out["error"] = f"scheduler returned invalid queue JSON: {exc}"
+        out["returncode"] = 2
+    return out
 
 
 def queue_report(function_id: str, status: str, proof: str = "",

@@ -844,6 +844,19 @@ def cmd_list(args):
         print(f"{line}  |  {notes}" if notes else line)
 
 
+def cmd_get(args):
+    """Return one complete queue record by exact full id."""
+    records = [r for r in Queue()._read() if r.get("id") == args.id]
+    if not records:
+        print(f"queue record not found: {args.id}", file=sys.stderr)
+        raise SystemExit(1)
+    if len(records) != 1:
+        print(f"queue corruption: {args.id} occurs {len(records)} times",
+              file=sys.stderr)
+        raise SystemExit(2)
+    print(json.dumps(records[0], sort_keys=True))
+
+
 def cmd_stats(_args):
     from collections import Counter
     recs = Queue()._read()
@@ -1067,6 +1080,10 @@ def main():
     pl.add_argument("--json", action="store_true",
                     help="emit complete queue records as one JSON array")
     pl.set_defaults(func=cmd_list)
+
+    pg = sub.add_parser("get")
+    pg.add_argument("--id", required=True)
+    pg.set_defaults(func=cmd_get)
 
     ps = sub.add_parser("stats"); ps.set_defaults(func=cmd_stats)
 

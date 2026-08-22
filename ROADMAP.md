@@ -22,7 +22,7 @@ mistake impossible twice.
 | Decompiled | **96.9%**, 6381/6558 functions; 180 US `INCLUDE_ASM` stubs remain |
 | Queue | 471 records: 294 matched, 22 todo, 110 escalated, 42 deferred, 3 near |
 | Provenance | upstream-harvest 44, shim-segment 9, shim-header 55, transplant 18, twin-port 29, permuter 15, claude-manual 4, model-fleet 55, unknown 65 |
-| Automation | 83 modules, 28 suites plus 34 module self-tests, 87 tools, 67 diagnostics |
+| Automation | 83 modules, 28 suites plus 34 module self-tests, 88 tools, 67 diagnostics |
 
 This block is regenerated from the same queue, checksum manifest, linker maps, provenance classifier, and connector inventory as `README.md`.
 <!-- LIVE-STATUS:END -->
@@ -1218,7 +1218,7 @@ Status: **done**, **open**, **partial**, **void** (turned out unnecessary),
 | 227 | done | Closed review finding: `member_types.py` now resolves declarations at each access using lexical visibility ranges, so a nested stack value cannot retype an outer pointer. A shadowing regression covers the prior false-rejection shape |
 | 228 | done | Fixed the header-layout parser defect exposed while closing #220: hexadecimal array lengths such as `char pad_90[0xC]` previously counted as one byte, corrupting variant coverage. `_decl_size` now accepts decimal and hexadecimal extents, with a regression proving all 12 bytes are covered |
 | 229 | done | Prevented raw-offset preflight false positives from comments and string or character literals. `raw_entity_accesses` now masks non-code text before discovering Entity declarations and offsets, with a regression proving a commented example cannot manufacture a finding |
-| 230 | **open** | Add an exact full-ID read-only queue lookup surface. The capped bulk `queue_list` output prevented multiple benchmark agents from retrieving their named record without broad searches that contaminated the process gate |
+| 230 | done | Added exact full-ID `queue_get` lookup through the scheduler, connector client, MCP surface and bundle manifest. It returns the complete record without the bulk-list output cap, rejects missing or duplicate IDs, and has a 40,000-character lossless-note regression plus connector ownership and argv validation coverage |
 | 231 | **open** | Reconcile `us:ST/RDAI:func_us_801C4B2C` score provenance. Its scalar queue score reports 50 while the durable note records an exhausted best score of 950; preserve both receipts, identify the units or stale writer and correct the structured field without rewriting the note |
 | 232 | **open** | Reconcile the preserved advanced-context outputs in root-controlled order: validate Terra xhigh's C9DE8 fallthrough diagnosis first, then Luna xhigh's C4B2C re-derivation and CrashBibleBeam call-surface hypothesis. Any compiling body must be published immutably and routed near before source restoration |
 | 233 | superseded | Folded into #239 so the same deterministic near wave also owns the pre-existing `us:ST/RCEN:func_801904B8` seed. The two #111 seeds and their immutable evidence remain in scope |

@@ -51,6 +51,7 @@
     { "name": "queue_init", "description": "Seed the queue from a seed file" },
     { "name": "queue_stats", "description": "Queue counts by status" },
     { "name": "queue_list", "description": "List queue records, optionally by status" },
+    { "name": "queue_get", "description": "Return one complete queue record by exact full id without truncating evidence" },
     { "name": "queue_report", "description": "Set a record's status/score/notes. proof is REQUIRED for matched." },
     { "name": "queue_annotate", "description": "Attach twin candidates to records. Writes only the twin field." },
     { "name": "queue_prune", "description": "Remove records that are not real functions" },
