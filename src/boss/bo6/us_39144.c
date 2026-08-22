@@ -890,7 +890,31 @@ Entity* BO6_RicGetFreeEntityReverse(s16 start, s16 end) {
     return NULL;
 }
 
-INCLUDE_ASM("boss/bo6/nonmatchings/us_39144", func_us_801BB314);
+extern AnimationFrame* D_us_801812B8[];
+extern u8 D_us_801D07FC;
+extern u8 D_us_801812B9[];
+extern u8 D_us_801D0800;
+extern u8 D_us_801812BA[];
+extern u8 D_us_801D0804;
+extern u8 D_us_801812BB[];
+extern u8 D_us_801D0808;
+
+// Copies boss animation frame data into working variables for the current frame index
+void func_us_801BB314(s32 arg0) {
+    s32 index;
+
+    // arg0 is the frame index; multiply by 4 to get byte offset into pointer arrays
+    index = arg0 * 4;
+
+    // D_us_801812B8 is AnimationFrame*[], so D_us_801812B8[arg0] loads the pointer value
+    // The asm treats it as a byte load from the pointer array entry (low byte of pointer)
+    D_us_801D07FC = (u8)(s32)D_us_801812B8[arg0];
+
+    // D_us_801812B9/BA/BB are u8 arrays indexed by the same scaled index
+    D_us_801D0800 = D_us_801812B9[index];
+    D_us_801D0804 = D_us_801812BA[index];
+    D_us_801D0808 = D_us_801812BB[index];
+}
 
 extern SubweaponDef subweapons_def[];
 

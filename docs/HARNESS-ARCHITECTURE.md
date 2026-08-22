@@ -15,9 +15,9 @@ in each case so you can tell a deliberate choice from an accident.
 | live authority | current value |
 |---|---|
 | Build oracle | **81/81** from the artifacts on disk |
-| Decompiled | **96.9%**, 6382/6557 functions; 178 US `INCLUDE_ASM` stubs remain |
-| Queue | 471 records: 296 matched, 12 todo, 114 escalated, 43 deferred, 6 near |
-| Provenance | upstream-harvest 44, shim-segment 9, shim-header 55, transplant 19, twin-port 29, permuter 16, claude-manual 4, model-fleet 55, unknown 65 |
+| Decompiled | **96.9%**, 6383/6557 functions; 177 US `INCLUDE_ASM` stubs remain |
+| Queue | 471 records: 297 matched, 9 todo, 116 escalated, 43 deferred, 6 near |
+| Provenance | upstream-harvest 44, shim-segment 9, shim-header 55, transplant 19, twin-port 29, permuter 16, claude-manual 4, model-fleet 56, unknown 65 |
 | Automation | 84 modules, 28 suites plus 35 module self-tests, 90 tools, 68 diagnostics |
 
 This block is regenerated from the same queue, checksum manifest, linker maps, provenance classifier, and connector inventory as `README.md`.
