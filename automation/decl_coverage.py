@@ -30,6 +30,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import data_declarations
+
 REPO = Path(__file__).resolve().parent.parent
 
 # Mirrors worker_direct.extract_asm_symbols. Kept in sync deliberately: if the
@@ -215,6 +217,8 @@ def main() -> int:
     ap.add_argument("--version", default="us")
     ap.add_argument("--limit", type=int, default=30)
     ap.add_argument("--json", default="")
+    ap.add_argument("--show-missing", action="store_true",
+                    help="print unresolved data and other symbols for each row")
     # The declaration grep walks the whole tree and takes ~25s on a mounted
     # filesystem, which does not fit in one automated call alongside the rest.
     # Cache it so the scan can be driven in phases. Delete the cache after
@@ -321,15 +325,19 @@ def main() -> int:
         if fn.startswith(("D_", "jtbl_")):
             continue
         syms = [s for s in syms if s != fn and not s.startswith("jtbl_")]
-        found = [s for s in syms if s in index]
-        missing = [s for s in syms if s not in index]
+        retained = data_declarations.lookup_declarations(
+            syms, overlay=r.get("overlay", ""), version=a.version)
+        found = [s for s in syms if s in index or s in retained]
+        missing = [s for s in syms if s not in index and s not in retained]
         data_refs = [s for s in syms if s.startswith("D_")]
         rows.append({
             "id": r["id"], "function": fn, "overlay": r.get("overlay", ""),
             "symbols": len(syms), "resolved": len(found),
             "coverage": round(len(found) / len(syms), 3) if syms else 1.0,
             "data_refs": data_refs,
-            "undeclared_data": [d for d in data_refs if d not in index],
+            "retained_data": [retained[s] for s in data_refs if s in retained],
+            "undeclared_data": [
+                d for d in data_refs if d not in index and d not in retained],
             "missing": missing[:8],
         })
 
@@ -360,6 +368,17 @@ def main() -> int:
         print(f"{row['coverage']:>5.0%}  "
               f"{row['resolved']:>3}/{row['symbols']:<4}  "
               f"{row['overlay']:<12} {row['function']}")
+        if a.show_missing:
+            if row["retained_data"]:
+                print("       retained data: "
+                      + " | ".join(row["retained_data"]))
+            if row["undeclared_data"]:
+                print("       undeclared data: "
+                      + ", ".join(row["undeclared_data"]))
+            other = [sym for sym in row["missing"]
+                     if sym not in row["undeclared_data"]]
+            if other:
+                print("       other unresolved: " + ", ".join(other))
 
     workable = [r for r in rows if not r["undeclared_data"]]
     blocked = [r for r in rows if r["undeclared_data"]]

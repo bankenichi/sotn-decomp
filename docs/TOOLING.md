@@ -16,7 +16,7 @@ For the mechanisms that land matches, read `automation/README.md`.
 | Decompiled | **96.9%**, 6381/6558 functions; 180 US `INCLUDE_ASM` stubs remain |
 | Queue | 471 records: 294 matched, 22 todo, 109 escalated, 40 deferred, 6 near |
 | Provenance | upstream-harvest 44, shim-segment 9, shim-header 55, transplant 18, twin-port 29, permuter 15, claude-manual 4, model-fleet 55, unknown 65 |
-| Automation | 83 modules, 28 suites plus 34 module self-tests, 90 tools, 67 diagnostics |
+| Automation | 84 modules, 28 suites plus 35 module self-tests, 90 tools, 68 diagnostics |
 
 This block is regenerated from the same queue, checksum manifest, linker maps, provenance classifier, and connector inventory as `README.md`.
 <!-- LIVE-STATUS:END -->
@@ -360,7 +360,8 @@ script supports `--help` and most support `--self-test`.
 | `transplant.py` | move a twin body mechanically; `--scan` classifies donors, `--adapt` emits a target-informed draft, and `--score` ranks adaptable drafts without a game build or queue write |
 | `codebase_index.py` | the searchable index of the whole tree |
 | `queue_coverage.py` | does the queue cover what is actually in the tree |
-| `decl_coverage.py` | are the declarations a candidate needs already reachable |
+| `decl_coverage.py` | are the declarations a candidate needs already reachable; `--show-missing` prints retained-data proof without a scratch JSON report |
+| `data_declarations.py` | resolve raw `D_*` labels from overlay-specific retained data/rodata/bss directives and calibrated global `Entity` address aliases; ambiguous evidence is refused |
 | `ext_demand.py` | which `Ext` union variants cover generated offsets, including raw Entity-base byte-pointer views, and which named expressions can replace them |
 | `member_types.py` | is this struct member real, on **this** struct |
 | `find_data_segment.py` | which splat `.data` address a symbol belongs to |

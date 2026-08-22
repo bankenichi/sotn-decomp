@@ -918,6 +918,7 @@ CONTENT_CHECK_EVERY = int(os.environ.get("CONTENT_CHECK_EVERY", "120"))
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import artifact_store as _artifact_store  # noqa: E402
+import data_declarations as _data_declarations  # noqa: E402
 try:
     from degeneracy import degenerate as _content_degenerate
 except ImportError:                                          # pragma: no cover
@@ -1224,13 +1225,15 @@ def extract_asm_symbols(asm: str, exclude: str = "") -> list[str]:
     return out
 
 
-def lookup_declarations(symbols: list[str], limit: int = 40) -> list[str]:
+def lookup_declarations(symbols: list[str], limit: int = 40,
+                        overlay: str = "", asm_text: str = "") -> list[str]:
     """Existing declarations for `symbols`, harvested from the repo itself.
 
-    Deliberately NOT synthesised. A guessed `extern s32 D_us_X;` for something
-    the repo declares as `extern AnimationFrame D_us_X[];` would produce exactly
-    the codegen mismatch this is meant to prevent. If the tree does not already
-    declare a symbol, we say nothing about it rather than inventing a type.
+    Repository declarations remain authoritative. For an otherwise undeclared
+    raw D_* label, retained data assembly is also authoritative evidence: its
+    overlay, directive width, byte span and the target's load opcode constrain
+    a narrow address-based declaration. Ambiguous or absent retained labels are
+    still refused rather than guessed.
     """
     wanted = [s for s in symbols if s not in _DECL_CACHE][:limit]
     if wanted:
@@ -1271,8 +1274,11 @@ def lookup_declarations(symbols: list[str], limit: int = 40) -> list[str]:
                         found[s] = declaration
         for s in wanted:
             _DECL_CACHE[s] = found.get(s, "")
-    return [_DECL_CACHE[s] for s in symbols
-            if _DECL_CACHE.get(s)]
+    retained = _data_declarations.lookup_declarations(
+        [s for s in symbols if not _DECL_CACHE.get(s)],
+        overlay=overlay, asm_text=asm_text)
+    return [(_DECL_CACHE.get(s) or retained.get(s, "")) for s in symbols
+            if _DECL_CACHE.get(s) or retained.get(s)]
 
 
 def find_source(function: str, overlay: str | None = None):
@@ -2358,7 +2364,9 @@ def prepare(rec: dict, located) -> dict:
     if _cleaned:
         print(f"[prep] draft: resolved {len(_cleaned)} unkNN access(es) "
               f"before the model sees them")
-    decls = lookup_declarations(extract_asm_symbols(asm_text, exclude=fn))
+    decls = lookup_declarations(
+        extract_asm_symbols(asm_text, exclude=fn),
+        overlay=rec.get("overlay", ""), asm_text=asm_text)
     print(f"[prep] draft: {len(draft)} chars, asm: {len(asm_text)} chars, "
           f"decls: {len(decls)}")
     return {"asm": asm_text, "draft": draft, "src_rel": src_rel,

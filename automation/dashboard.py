@@ -655,6 +655,8 @@ DIAGNOSTICS = [
      "does every matched function have evidence behind it"),
     ("Declaration coverage", "decl_coverage.py", "",
      "which todo functions have resolvable declarations"),
+    ("Raw data declaration resolver", "data_declarations.py", "--self-test",
+     "retained data labels and calibrated Entity address aliases"),
     ("Shim sweep", "shim_sweep.py", "",
      "stubs a shared header could retire"),
     ("Twin finder", "asm_twin_finder.py", "",

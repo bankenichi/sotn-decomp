@@ -551,6 +551,7 @@ AUTOMATION_SCRIPTS = {
     "provenance_check.py",
     "review_checks.py",
     "decl_coverage.py",
+    "data_declarations.py",
     "test_twin_wiring.py",
     "opencode_size_bisect.py",
     # Ranks the ext-union fields whose absence is blocking the most functions.

@@ -283,6 +283,22 @@ def main():
         check(seg.index("_declare_used_symbols") < seg.index("pattern.sub"),
               "before the substitution, so it lands where the stub was")
 
+    print("\nretained assembly resolves raw data without guessing semantics")
+    retained = wd.lookup_declarations(
+        ["D_us_801812B9"], overlay="BOSS/BO6",
+        asm_text="lbu $v0, %lo(D_us_801812B9)($at)")
+    check(any(item.startswith("extern u8 D_us_801812B9[];")
+              for item in retained),
+          f"the target load and retained byte label agree ({retained})")
+    alias = wd.lookup_declarations(
+        ["D_8007C6E8"], overlay="ST/RCEN",
+        asm_text="lhu $v0, %lo(D_8007C6E8)($at)")
+    check(any("&g_Entities[200].params" in item for item in alias),
+          f"the global address resolves through the Entity layout ({alias})")
+    refused = wd.lookup_declarations(
+        ["D_us_DEADBEEF"], overlay="BOSS/BO6", asm_text="")
+    check(not refused, f"an absent retained label is still refused ({refused})")
+
     print("\nthe live tree really does not declare func_us_801B171C")
     # This is the premise of the whole fix. If someone later adds a real
     # prototype, this flips and the branch above takes over -- correctly, but

@@ -238,7 +238,12 @@ def test_every_mutating_command_is_covered() -> None:
     #
     # This check caught snapshot the moment it was added, on 2026-08-17, which
     # is the whole point of asserting a name list against the real subparsers.
-    expected_readonly = {"list", "stats", "verify", "show", "snapshot"}
+    # Exact queue lookup is also read-only. It was added for lossless long
+    # notes and proofs; omitting it here made the first full suite after #230
+    # report the safe reader as an unguarded surprise.
+    expected_readonly = {
+        "get", "list", "stats", "verify", "show", "snapshot",
+    }
     surprises = readonly - expected_readonly
     check(not surprises,
           f"no unguarded command outside the known readers (surprises: "

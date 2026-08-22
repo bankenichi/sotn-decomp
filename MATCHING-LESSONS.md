@@ -709,6 +709,16 @@ declare a symbol, the prompt says nothing about it. A synthesised
 `extern s32 D_us_X;` for something the repo declares as
 `extern AnimationFrame D_us_X[];` would manufacture the exact bug this prevents.
 
+Refinement, 2026-08-22: "the repo does not declare it" was too narrow because
+the retained assembly is also repository evidence. A raw `D_*` label in an
+overlay's data, rodata or bss assembly carries an exact owner, storage directive
+and byte span; the target load opcode supplies signedness and access width.
+Those facts support an address-based prompt declaration without inventing a
+semantic type. Global addresses inside `g_Entities` can likewise be resolved
+from configured array anchors, the 0xBC Entity stride and annotated member
+offsets. `data_declarations.py` centralizes both paths for the worker and
+coverage ranker, and refuses absent or conflicting evidence.
+
 The wider lesson, and the reason this went unnoticed for so long: **two failing
 consumers with a shared input means the input is the suspect** (see 10c). Both
 models produced identical wrong code, which read as "the models agree, so the
