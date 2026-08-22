@@ -862,6 +862,25 @@ def _tree_manifest(root: Path) -> list[tuple[str, str, int, str]]:
     return rows
 
 
+def rebase_archived_settings(work: Path, destination: Path) -> str:
+    """Keep an archived permuter work directory runnable after it moves."""
+    settings = destination / "settings.toml"
+    if not settings.is_file():
+        return ""
+    original = settings.read_text(encoding="utf-8")
+    match = re.search(r'(?m)^(symbol_map\s*=\s*)"([^"]+)"\s*$', original)
+    if not match or Path(match.group(2)).is_absolute():
+        return ""
+    target = (work / match.group(2)).resolve()
+    relative = os.path.relpath(target, destination).replace(os.sep, "/")
+    preserved = destination / "settings.prearchive.toml"
+    preserved.write_text(original, encoding="utf-8")
+    settings.write_text(
+        original[:match.start(2)] + relative + original[match.end(2):],
+        encoding="utf-8")
+    return "; rebased settings.toml and preserved settings.prearchive.toml"
+
+
 def archive_score_workdir(work: Path, destination: Path,
                           rename_func=None) -> tuple[bool, str]:
     """Archive one owned score directory without discarding its evidence.
@@ -874,7 +893,8 @@ def archive_score_workdir(work: Path, destination: Path,
     mover = rename_func or (lambda source, target: source.rename(target))
     try:
         mover(work, destination)
-        return True, "renamed into the isolated score archive"
+        settings_detail = rebase_archived_settings(work, destination)
+        return True, "renamed into the isolated score archive" + settings_detail
     except OSError as rename_error:
         try:
             if not destination.exists():
@@ -890,7 +910,9 @@ def archive_score_workdir(work: Path, destination: Path,
         except OSError as cleanup_error:
             return True, ("verified archive copy created; live duplicate retained "
                           f"because cleanup failed ({cleanup_error})")
-        return True, "verified archive copy created after rename was unavailable"
+        settings_detail = rebase_archived_settings(work, destination)
+        return True, ("verified archive copy created after rename was unavailable"
+                      + settings_detail)
 
 
 def recover_isolated_score_workdirs(fn: str) -> list[str]:
@@ -2798,6 +2820,12 @@ def self_test() -> int:
         fallback_destination = fallback_root / "fallback-archive" / "fallback-work"
         fallback_work.mkdir()
         (fallback_work / "evidence.txt").write_text("preserve me")
+        fallback_build = fallback_root / "build"
+        fallback_build.mkdir()
+        fallback_map = fallback_build / "test.map"
+        fallback_map.write_text("symbols")
+        original_settings = 'symbol_map = "../build/test.map"\n'
+        (fallback_work / "settings.toml").write_text(original_settings)
         def refuse_rename(_source, _target):
             raise PermissionError("simulated Windows handle")
         fallback_ok, fallback_detail = archive_score_workdir(
@@ -2807,6 +2835,14 @@ def self_test() -> int:
            "a failed directory rename falls back to a verified archive copy")
         ck("verified archive copy" in fallback_detail,
            "the fallback is explicit in durable archive evidence")
+        archived_settings = (fallback_destination / "settings.toml").read_text()
+        archived_map = re.search(r'symbol_map = "([^"]+)"', archived_settings)
+        ck(archived_map is not None and
+           (fallback_destination / archived_map.group(1)).resolve() == fallback_map,
+           "an archived work dir keeps a valid symbol-map path")
+        ck((fallback_destination / "settings.prearchive.toml").read_text()
+           == original_settings,
+           "the pre-archive settings remain durable evidence")
     score_src = src_sup[src_sup.index("def score_body_draft"):]
     score_src = score_src[:score_src.index("\n# Notes markers")]
     ck("with _build_lock()" in score_src and "_import_locked(" in score_src,

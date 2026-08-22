@@ -427,6 +427,22 @@ wrong compiler executable. Treat this as a bounded search problem: compare
 then use the permuter. `asm_delta.py` now calls this `schedule-only` when the
 instruction-shape multiset is identical.
 
+### 8c-2. Reconcile disjoint best outputs before declaring a plateau
+
+`func_us_801B001C` stalled at score 90 for 39,751 iterations, but the stopped
+workdir held four score-70 outputs. Each changed a different collision path from
+an explicit `velocityY` temporary to a direct field update, and each removed 20
+points independently. Applying all four preserved diffs to the same seed reached
+score 10. A separate score-80 output assigned the byte parameter through a
+temporary inside the compound addition; adding that disjoint finding reached
+score 0 and the controlled full build verified 81/81.
+
+The best numeric directory is not always the best complete answer. Before
+calling a search stalled, read every lowest-score `diff.txt`, identify changes
+whose hunks do not overlap, combine only independently proven improvements, and
+rescore their union. Preserve the original outputs as the evidence for every
+combined mutation.
+
 One more boundary matters: sequence alignment over a structural near miss may
 pair unrelated `jal` instructions. It once proposed `rand -> InitializeEntity`.
 Near alignment may provide diagnostics and codegen hints, but only a clean,

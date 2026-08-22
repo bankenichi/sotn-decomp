@@ -1,6 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #include "bo0.h"
 
+/* Added by the permuter-seed writer. The permuter parses the complete
+   translation unit, so every call needs typemap evidence. INCLUDE_ASM
+   disappears under PERMUTER, and C89 implicit calls have no declaration.
+   Either case otherwise raises KeyError when a mutation touches the call. */
+/* Declared by the tree: */
+void InitializeEntity(u16 arg0[]);
+void DestroyEntity(Entity*);
+/* End permuter-seed writer declarations. */
+
 // This file covers 0x2D26C..0x3053C. Everything from 0x3053C up now lives in
 // 3053C.c: see the note on that segment in config/splat.us.bobo0.yaml for why
 // the split had to happen.
@@ -50,6 +59,11 @@ void EntityOlroxAfterImage(Entity* entity) {
     }
 }
 
+/* Declarations injected by the worker: used by the candidate
+   below and absent from this file. Copied verbatim from the
+   tree, same overlay or a shared header, never another
+   overlay's. */
+extern Entity g_Entities_224[];
 extern EInit g_EInitInteractable;
 
 extern Entity g_Entities_224[];
@@ -262,7 +276,7 @@ void func_us_801B001C(Entity* self) {
 
     case 12:
         self->rotate -= 0x30;
-        // fallthrough
+         
     case 13:
         self->zPriority = 0x6B;
         self->drawFlags |= 4;

@@ -39,6 +39,7 @@ import argparse
 import json
 import re
 import sys
+import tempfile
 from pathlib import Path
 
 import artifact_store
@@ -2051,13 +2052,29 @@ def self_test() -> int:
         "automation/candidates/history/us_ST_RCEN_func_801904B8.v0004.c")
     ck("func_801904B8" in seed_body and seed_path.endswith(".v0004.c"),
        f"an immutable whole-file seed yields its exact definition ({seed_path})")
-    rno_body, _rno_path = load_score_body(
-        "func_us_801C7F24",
-        "automation/candidates/history/us_ST_RNO0_func_us_801C7F24.v0001.c",
-        "ST/RNO0")
-    ck("extern EInit g_EInitStoneSkull;" in rno_body
-       and "extern u8 D_us_80181E8C[];" in rno_body
-       and "extern u16 g_pads_1_pressed;" in rno_body,
+    with tempfile.TemporaryDirectory() as td:
+        fixture = Path(td)
+        donor = fixture / "donor.c"
+        destination = fixture / "destination.c"
+        donor.write_text(
+            "extern EInit g_EInitFixture;\n"
+            "extern u8 D_fixtureAnim[];\n"
+            "extern u16 g_fixturePressed;\n"
+            "void Fixture(Entity* self) {\n"
+            "    InitializeEntity(g_EInitFixture);\n"
+            "    AnimateEntity(D_fixtureAnim, self);\n"
+            "    if (g_fixturePressed) { self->step++; }\n"
+            "}\n",
+            encoding="utf-8")
+        destination.write_text(
+            'INCLUDE_ASM("fixture/nonmatchings/file", Fixture);\n',
+            encoding="utf-8")
+        fixture_body = _harv()._extract(donor.read_text(), "Fixture")
+        fixture_decls, _fixture_notes = donor_scope_decls(
+            fixture_body, donor, destination, defining="Fixture")
+    ck("extern EInit g_EInitFixture;" in fixture_decls
+       and "extern u8 D_fixtureAnim[];" in fixture_decls
+       and "extern u16 g_fixturePressed;" in fixture_decls,
        "whole-file seeds retain required declarations for isolated scoring")
     try:
         load_score_body("func_801904B8", "../outside.c")
@@ -2163,7 +2180,6 @@ def self_test() -> int:
        f"the evidence-based rewrite is reported ({api_notes})")
 
     print("\nmissing declarations are DERIVED from the definition")
-    import tempfile
     with tempfile.TemporaryDirectory() as td:
         ov = Path(td)
         (ov / "e_init.c").write_text(

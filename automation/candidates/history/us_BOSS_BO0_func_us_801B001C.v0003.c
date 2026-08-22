@@ -50,6 +50,11 @@ void EntityOlroxAfterImage(Entity* entity) {
     }
 }
 
+/* Declarations injected by the worker: used by the candidate
+   below and absent from this file. Copied verbatim from the
+   tree, same overlay or a shared header, never another
+   overlay's. */
+extern Entity g_Entities_224[];
 extern EInit g_EInitInteractable;
 
 extern Entity g_Entities_224[];
@@ -262,7 +267,7 @@ void func_us_801B001C(Entity* self) {
 
     case 12:
         self->rotate -= 0x30;
-        // fallthrough
+         
     case 13:
         self->zPriority = 0x6B;
         self->drawFlags |= 4;
