@@ -17,6 +17,8 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 _RECORD_ID = re.compile(r"^[A-Za-z0-9_.-]+:[A-Za-z0-9_./-]+:[A-Za-z0-9_.$-]+$")
+_PARENT_RELATIVE_INCLUDE = re.compile(
+    r'^\s*#\s*include\s+"(?:\.\./)+', re.MULTILINE)
 
 
 def history_versions(path: str | Path) -> list[Path]:
@@ -121,6 +123,10 @@ def publish_candidate_file(
     if not source.is_file() or source.suffix != ".c":
         raise ValueError("source file must be an existing in-repo .c file")
     text = source.read_text(encoding="utf-8")
+    if _PARENT_RELATIVE_INCLUDE.search(text):
+        raise ValueError(
+            "candidate source must use publish-ready includes, not parent-relative "
+            "scratch paths")
     function = record_id.rsplit(":", 1)[-1]
     if not re.search(
             rf"\b{re.escape(function)}\s*\([^;{{}}]*\)\s*{{", text,
@@ -177,6 +183,15 @@ def self_test() -> int:
         except ValueError:
             escaped = True
         checks.append((escaped, "candidate publication rejects escaping sources"))
+        incoming.write_text('#include "../../../src/test.h"\nvoid Function(void) {}\n')
+        try:
+            publish_candidate_file("us:ST/TEST:Function", incoming, root)
+            parent_relative = False
+        except ValueError:
+            parent_relative = True
+        checks.append((
+            parent_relative,
+            "candidate publication rejects parent-relative scratch includes"))
     failed = [label for ok, label in checks if not ok]
     for ok, label in checks:
         print(("  ok   " if ok else "  FAIL ") + label)

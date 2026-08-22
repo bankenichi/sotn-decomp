@@ -14,7 +14,7 @@ For the mechanisms that land matches, read `automation/README.md`.
 |---|---|
 | Build oracle | **81/81** from the artifacts on disk |
 | Decompiled | **96.9%**, 6381/6558 functions; 180 US `INCLUDE_ASM` stubs remain |
-| Queue | 471 records: 294 matched, 22 todo, 110 escalated, 42 deferred, 3 near |
+| Queue | 471 records: 294 matched, 22 todo, 109 escalated, 40 deferred, 6 near |
 | Provenance | upstream-harvest 44, shim-segment 9, shim-header 55, transplant 18, twin-port 29, permuter 15, claude-manual 4, model-fleet 55, unknown 65 |
 | Automation | 83 modules, 28 suites plus 34 module self-tests, 89 tools, 67 diagnostics |
 
@@ -100,7 +100,10 @@ A complete artifact that passes that gate is published with
 `candidate_publish`, not by manually choosing a history filename. The action
 derives the stable destination from the exact queue id, archives any
 unrepresented prior bytes, writes a new immutable generation, and only then
-refreshes the stable view. It does not edit `src/`, build, or mutate the queue.
+refreshes the stable view. It rejects parent-relative scratch includes because
+those paths change meaning after the artifact moves into candidate history. Use the
+canonical overlay header include in publish-ready input. It does not edit `src/`,
+build, or mutate the queue.
 After changing importer isolation or parser handling, run
 `run_analysis(script="test_permuter_import_parser.py")`; it pins both the
 unrelated-function retry and the selected-function hard failure.

@@ -19,7 +19,7 @@
    Do not apply this candidate as a match. It exists as the exact compiling
    source state whose linked function measured score 60. */
 // SPDX-License-Identifier: AGPL-3.0-or-later
-#include "bo6.h"
+#include "../../../src/boss/bo6/bo6.h"
 
 /* Added by the permuter-seed writer. INCLUDE_ASM expands to nothing under
    PERMUTER, so these same-file stubs lose their only mention and the

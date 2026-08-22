@@ -1,9 +1,3 @@
-/* ADVANCED RECONCILIATION #232
-   The preserved body compiles, but linked diagnostics measure score 15.
-   Isolated score zero was false terminal evidence: the project build emits an
-   8-byte stack frame instead of 16 and folds the first blez directly to the
-   return. Three linked words differ; all symbol addresses remain aligned.
-   Keep this near for target-led control-flow and frame-shape correction. */
 /* PERMUTER SEED -- compiled and linked, bytes differ.
    record : us:ST/RNO0:func_us_801CFD70
    attempt: 1/4

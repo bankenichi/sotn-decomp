@@ -3,7 +3,7 @@
    source: Luna xhigh advanced-context response for ROADMAP #232
    This file is not match evidence and must not be applied directly. */
 // SPDX-License-Identifier: AGPL-3.0-or-later
-#include "rdai.h"
+#include "../../../src/st/rdai/rdai.h"
 
 void func_us_801C4B2C(void) {
     Primitive* prim;
