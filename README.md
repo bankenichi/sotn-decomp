@@ -70,7 +70,7 @@ every one of them already had a generator that nobody was running.
 |---|---|
 | Build oracle | **81 / 81** overlay SHA-1s in `config/check.us.sha` |
 | Code decompiled | **96.9%** (6383 / 6557 functions) across 44 built binaries |
-| Queue | 471 records: **297 matched**, 9 todo, 116 escalated, 43 deferred, 6 near |
+| Queue | 471 records: **297 matched**, 124 escalated, 43 deferred, 7 near |
 | `INCLUDE_ASM` stubs left in `src/` | 177 (95 `boss`, 77 `st`, 3 `servant`, 2 `main`) |
 | Automation | 84 Python modules, 28 test suites plus 35 modules with their own `--self-test`, 90 connector tools, 68 diagnostics |
 
