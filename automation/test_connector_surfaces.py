@@ -1336,6 +1336,33 @@ def main() -> int:
     check("return cc.queue_get(" in _mcp_queue_src,
           "the MCP wrapper uses the lossless commands_client path")
 
+    print("\ncompiling reconciliation artifacts have one immutable publisher")
+    check("candidate_publish" in registry,
+          "candidate_publish is in REGISTRY")
+    check("candidate_publish" in tools,
+          "candidate_publish is callable (@mcp.tool)")
+    _publish_plan = _cc_mod.build_argv(
+        "candidate_publish",
+        function_id="us:ST/RDAI:func_us_801C4B2C",
+        source_file="automation/candidates/us_ST_RDAI_func_us_801C4B2C.c")
+    check("artifact_store.py" in _publish_plan[1]
+          and _publish_plan[-4:] == [
+              "--id", "us:ST/RDAI:func_us_801C4B2C", "--from-file",
+              str(REPO / "automation" / "candidates" /
+                  "us_ST_RDAI_func_us_801C4B2C.c")],
+          "candidate publication validates the exact id and source argv")
+    _bad_publish = None
+    try:
+        _cc_mod.build_argv(
+            "candidate_publish", function_id="not-an-exact-id",
+            source_file="automation/candidates/us_ST_RDAI_func_us_801C4B2C.c")
+    except Exception as exc:
+        _bad_publish = str(exc)
+    check(_bad_publish is not None,
+          "candidate publication refuses a non-queue identity")
+    check('return cc.run(\n        "candidate_publish"' in _mcp_queue_src,
+          "the MCP wrapper forwards candidate publication to the allowlist")
+
     print("\nthe queue can be snapshotted into the repo and restored")
     check("queue_snapshot" in registry, "queue_snapshot is in REGISTRY")
     check("queue_snapshot" in tools, "queue_snapshot is callable (@mcp.tool)")

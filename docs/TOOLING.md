@@ -16,7 +16,7 @@ For the mechanisms that land matches, read `automation/README.md`.
 | Decompiled | **96.9%**, 6381/6558 functions; 180 US `INCLUDE_ASM` stubs remain |
 | Queue | 471 records: 294 matched, 22 todo, 110 escalated, 42 deferred, 3 near |
 | Provenance | upstream-harvest 44, shim-segment 9, shim-header 55, transplant 18, twin-port 29, permuter 15, claude-manual 4, model-fleet 55, unknown 65 |
-| Automation | 83 modules, 28 suites plus 34 module self-tests, 88 tools, 67 diagnostics |
+| Automation | 83 modules, 28 suites plus 34 module self-tests, 89 tools, 67 diagnostics |
 
 This block is regenerated from the same queue, checksum manifest, linker maps, provenance classifier, and connector inventory as `README.md`.
 <!-- LIVE-STATUS:END -->
@@ -82,6 +82,7 @@ answers a different question.
 | `asm_diff` | *what* differs, instruction by instruction. Needs the overlay, not just the symbol |
 | `permuter` with `debug=True` | how far off is the base, scored in seconds, no search |
 | `permuter_import` | build a work dir from a seed so the permuter can search it |
+| `candidate_publish` | preserve a complete compiling C artifact as an immutable candidate generation derived from its exact queue id |
 | `permuter` | search the space. Hours. `-j` defaults to 1 |
 | `run_analysis` | everything else; see section 6 |
 
@@ -94,6 +95,12 @@ still needs the header and preceding flat extern context that made it compile in
 its source file. Keep the captured body exact and add that context around it.
 Import failure evidence joins stdout and stderr. Progress text on stdout must
 never hide the parser or compiler diagnostic written to stderr.
+
+A complete artifact that passes that gate is published with
+`candidate_publish`, not by manually choosing a history filename. The action
+derives the stable destination from the exact queue id, archives any
+unrepresented prior bytes, writes a new immutable generation, and only then
+refreshes the stable view. It does not edit `src/`, build, or mutate the queue.
 After changing importer isolation or parser handling, run
 `run_analysis(script="test_permuter_import_parser.py")`; it pins both the
 unrelated-function retry and the selected-function hard failure.

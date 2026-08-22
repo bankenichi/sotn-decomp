@@ -9,10 +9,14 @@ before replacement and no history generation is overwritten.
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import re
 import tempfile
 from pathlib import Path
+
+REPO = Path(__file__).resolve().parent.parent
+_RECORD_ID = re.compile(r"^[A-Za-z0-9_.-]+:[A-Za-z0-9_./-]+:[A-Za-z0-9_.$-]+$")
 
 
 def history_versions(path: str | Path) -> list[Path]:
@@ -96,6 +100,43 @@ def publish_versioned_artifact(
     return version_path.relative_to(root).as_posix()
 
 
+def candidate_path(record_id: str, repo_root: str | Path = REPO) -> Path:
+    """The single stable candidate path owned by one exact queue record."""
+    if not _RECORD_ID.fullmatch(record_id or ""):
+        raise ValueError("record id must be an exact build:overlay:function id")
+    slug = re.sub(r"[^A-Za-z0-9_.-]+", "_", record_id).strip("_")
+    return Path(repo_root) / "automation" / "candidates" / f"{slug}.c"
+
+
+def publish_candidate_file(
+        record_id: str, source_file: str | Path,
+        repo_root: str | Path = REPO) -> dict:
+    """Publish one complete C artifact without accepting an output path."""
+    root = Path(repo_root).resolve()
+    source = (root / source_file).resolve()
+    if source != root and root not in source.parents:
+        raise ValueError("source file must resolve inside the repo")
+    if source == root / ".git" or root / ".git" in source.parents:
+        raise ValueError("source file cannot be inside .git")
+    if not source.is_file() or source.suffix != ".c":
+        raise ValueError("source file must be an existing in-repo .c file")
+    text = source.read_text(encoding="utf-8")
+    function = record_id.rsplit(":", 1)[-1]
+    if not re.search(
+            rf"\b{re.escape(function)}\s*\([^;{{}}]*\)\s*{{", text,
+            re.DOTALL):
+        raise ValueError(f"source file does not define {function}")
+    stable = candidate_path(record_id, root)
+    version = publish_versioned_artifact(
+        stable, text, "candidate", root)
+    return {
+        "record": record_id,
+        "source": source.relative_to(root).as_posix(),
+        "stable": stable.relative_to(root).as_posix(),
+        "version": version,
+    }
+
+
 def self_test() -> int:
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
@@ -116,6 +157,26 @@ def self_test() -> int:
              "every generation remains byte-identical and ordered"),
             (stable.read_text() == "second\n", "stable view refreshes atomically"),
         ]
+        incoming = root / "automation" / "logs" / "incoming.c"
+        incoming.parent.mkdir(parents=True)
+        incoming.write_text("void Function(void) {}\n")
+        published = publish_candidate_file(
+            "us:ST/TEST:Function", incoming, root)
+        candidate = root / published["stable"]
+        checks += [
+            (published["version"].endswith(
+                "history/us_ST_TEST_Function.v0001.c"),
+             "candidate publication returns its immutable generation"),
+            (candidate.read_text() == incoming.read_text(),
+             "candidate stable view is derived from the exact source bytes"),
+        ]
+        try:
+            publish_candidate_file(
+                "us:ST/TEST:Function", root.parent / "outside.c", root)
+            escaped = False
+        except ValueError:
+            escaped = True
+        checks.append((escaped, "candidate publication rejects escaping sources"))
     failed = [label for ok, label in checks if not ok]
     for ok, label in checks:
         print(("  ok   " if ok else "  FAIL ") + label)
@@ -129,9 +190,22 @@ def self_test() -> int:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--self-test", action="store_true")
+    subparsers = parser.add_subparsers(dest="command")
+    publish = subparsers.add_parser(
+        "publish-candidate",
+        help="publish one in-repo C file under its exact queue record id")
+    publish.add_argument("--id", required=True)
+    publish.add_argument("--from-file", required=True)
     args = parser.parse_args()
     if args.self_test:
         return self_test()
+    if args.command == "publish-candidate":
+        try:
+            result = publish_candidate_file(args.id, args.from_file)
+        except (OSError, UnicodeError, ValueError) as exc:
+            parser.error(str(exc))
+        print(json.dumps(result, sort_keys=True))
+        return 0
     parser.print_help()
     return 0
 

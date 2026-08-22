@@ -254,6 +254,20 @@ def permuter_import(c_file: str, asm_file: str, timeout: int = 300) -> dict:
 
 
 @mcp.tool()
+def candidate_publish(
+        function_id: str, source_file: str, timeout: int = 120) -> dict:
+    """Publish one complete in-repo C artifact under an exact queue record id.
+
+    The destination is derived rather than caller-controlled. The existing
+    artifact store preserves an immutable history generation before atomically
+    refreshing the stable candidate view. This does not edit src/, build, or
+    mutate the queue."""
+    return cc.run(
+        "candidate_publish", timeout=timeout,
+        function_id=function_id, source_file=source_file)
+
+
+@mcp.tool()
 def fleet_start(workers: int = 4, max_functions: int = 0,
                 force: bool = False, backend: str = "zen",
                 cli_workers: int = 0, opencode_model: str = "",

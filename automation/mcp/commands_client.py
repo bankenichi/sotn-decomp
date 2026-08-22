@@ -981,6 +981,15 @@ REGISTRY = {
     "permuter_import": lambda c_file, asm_file: [
         PYTHON, "tools/decomp-permuter/import.py",
         _inrepo(c_file), _inrepo(asm_file)],
+    # Publish exactly one already-produced C translation unit. The caller does
+    # not choose the destination: artifact_store derives it from the validated
+    # queue id, writes an immutable generation first, then refreshes the stable
+    # view atomically. This is the explicit maintenance action that model-result
+    # reconciliation needs; it never touches src/, builds, or the live queue.
+    "candidate_publish": lambda function_id, source_file: [
+        PYTHON, "automation/artifact_store.py", "publish-candidate",
+        "--id", _queue_id(function_id),
+        "--from-file", _inrepo(source_file)],
     # queue seeding. MUST go through the connector rather than a sandbox shell:
     # SOTN_QUEUE defaults to ~/sotn-work/queue.jsonl, so a different HOME
     # resolves to a DIFFERENT queue file. The sandbox's copy reported 33 matched

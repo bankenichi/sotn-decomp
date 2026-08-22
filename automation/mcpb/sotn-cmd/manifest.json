@@ -38,6 +38,7 @@
     { "name": "asm_diff", "description": "Run asm-differ for one function. Needs the overlay name, not just the symbol." },
     { "name": "permuter", "description": "Run decomp-permuter on an in-repo work dir. debug=True scores the base only." },
     { "name": "permuter_import", "description": "Prepare a permuter work dir from a seed" },
+    { "name": "candidate_publish", "description": "Publish one complete C artifact through immutable candidate history" },
     { "name": "run_analysis", "description": "Run one read-only analysis script from ANALYSIS_SCRIPTS" },
     { "name": "opencode_preflight", "description": "Fail a doomed fleet fast, before workers start" },
     { "name": "worker_once", "description": "Run one worker iteration synchronously" },
