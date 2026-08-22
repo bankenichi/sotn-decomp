@@ -1065,7 +1065,8 @@ CURRENT_SEED = "SEED_CURRENT"
 
 
 def report(fn_id: str, status: str, notes: str, proof: str = "",
-           current_seed_exhausted: bool = False) -> str:
+           current_seed_exhausted: bool = False,
+           score: int | float | None = None) -> str:
     """Record an outcome through scheduler.py, the single queue writer.
 
     The supervisor did not write to the queue at all before, which meant a
@@ -1087,6 +1088,11 @@ def report(fn_id: str, status: str, notes: str, proof: str = "",
         argv += ["--verdict-kind", "permuter-exhausted",
                  "--verdict-seed-current",
                  "--verdict-source", "permuter_supervisor.py"]
+    if score is not None:
+        # The worker's initial near route uses a coarse priority placeholder.
+        # Once the permuter has measured a seed, its score is the authoritative
+        # value and must replace that placeholder in the structured field.
+        argv += ["--score", str(score)]
     if proof:
         argv += ["--proof", proof]
     r = subprocess.run(argv, cwd=str(REPO), capture_output=True, text=True,
@@ -1943,7 +1949,8 @@ def supervise(slots: int, threads: int, stall: int, cycles: int,
                     f"iterations, {slot['cycles']} promotion(s), no improvement "
                     f"for {d['since_improvement']}. The permuter mutates "
                     f"expressions only; re-derive from the asm, then set this "
-                    f"back to near.", current_seed_exhausted=True))
+                    f"back to near.", current_seed_exhausted=True,
+                    score=d["best"]))
                 done.append(slot)
                 del active[jid]
 
@@ -2834,7 +2841,7 @@ def self_test() -> int:
         subprocess.run = fake_report_run
         report_result = report(
             "us:TEST:Evidence", "deferred", "new outcome evidence",
-            current_seed_exhausted=True)
+            current_seed_exhausted=True, score=950)
     finally:
         subprocess.run = real_subprocess_run
     ck(report_result == "updated", "the behavioral report fixture succeeds")
@@ -2849,6 +2856,10 @@ def self_test() -> int:
        and "--verdict-seed-current" in captured_report[0]
        and "--verdict-source" in captured_report[0],
        "an authoritative exhaustion is also stored as structured evidence")
+    ck(bool(captured_report)
+       and captured_report[0][captured_report[0].index("--score") + 1]
+           == "950",
+       "the measured permuter score replaces the worker routing placeholder")
 
     print("\na solved-but-unbuilt function is not re-searched")
     ck(_why_skip({"notes": f"x {MATCH_PENDING} y"}, Path(".")) != "",
