@@ -18,7 +18,7 @@ in each case so you can tell a deliberate choice from an accident.
 | Decompiled | **96.9%**, 6381/6558 functions; 180 US `INCLUDE_ASM` stubs remain |
 | Queue | 471 records: 294 matched, 22 todo, 109 escalated, 40 deferred, 6 near |
 | Provenance | upstream-harvest 44, shim-segment 9, shim-header 55, transplant 18, twin-port 29, permuter 15, claude-manual 4, model-fleet 55, unknown 65 |
-| Automation | 83 modules, 28 suites plus 34 module self-tests, 89 tools, 67 diagnostics |
+| Automation | 83 modules, 28 suites plus 34 module self-tests, 90 tools, 67 diagnostics |
 
 This block is regenerated from the same queue, checksum manifest, linker maps, provenance classifier, and connector inventory as `README.md`.
 <!-- LIVE-STATUS:END -->
@@ -61,7 +61,9 @@ hour, or to stop bad candidates reaching it.
    jobs.py (detached long commands)          Claude / Cowork
 ```
 
-Supporting analysis, all read-only, all runnable via `run_analysis`:
+Supporting automation, all runnable via `run_automation`. The runner is not a
+read-only boundary; each script's help defines whether a mode writes reports,
+scratch, queue state, build artifacts, managed documents or source:
 
 | Script | Answers |
 |---|---|
@@ -420,8 +422,9 @@ There is no general shell.
 only the allowlist has produced wrong conclusions before; check the live tool
 list when it matters.
 
-Adding a script to `ANALYSIS_SCRIPTS` requires a connector restart before
-`run_analysis` will accept it.
+Adding a script to `AUTOMATION_SCRIPTS`, or changing its public connector
+surface, requires a connector restart. Privileged writers also belong in
+`AUTOMATION_MUTATORS`; the connector regression pins that inventory.
 
 Argument filtering is deliberately narrow: no spaces, quotes, semicolons,
 redirects — and **no commas**. Scripts meant to be driven through the connector
@@ -474,14 +477,14 @@ fleet_start(workers=3, backend="zen", force=True)   # after a deliberate stop
 fleet_stop()                       # ALWAYS; a killed worker strands its claim
                                    # (also replays journals; see below)
 
-# analysis (read-only, safe while the fleet runs)
-run_analysis(script="asm_twin_finder.py", args="--audit-matched")
-run_analysis(script="opencode_size_bisect.py", args="--top 3 --big")
+# non-writing modes shown here; check provider and fleet constraints in help
+run_automation(script="asm_twin_finder.py", args="--audit-matched")
+run_automation(script="opencode_size_bisect.py", args="--top 3 --big")
 
 # self-tests
-run_analysis(script="test_review_gate.py")
-run_analysis(script="test_build_classifier.py")
-run_analysis(script="test_twin_wiring.py")
+run_automation(script="test_review_gate.py")
+run_automation(script="test_build_classifier.py")
+run_automation(script="test_twin_wiring.py")
 
 # long commands
 job_start("make_build", version="us"); job_status(job_id, wait_s=25)

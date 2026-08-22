@@ -16,7 +16,7 @@ For the mechanisms that land matches, read `automation/README.md`.
 | Decompiled | **96.9%**, 6381/6558 functions; 180 US `INCLUDE_ASM` stubs remain |
 | Queue | 471 records: 294 matched, 22 todo, 109 escalated, 40 deferred, 6 near |
 | Provenance | upstream-harvest 44, shim-segment 9, shim-header 55, transplant 18, twin-port 29, permuter 15, claude-manual 4, model-fleet 55, unknown 65 |
-| Automation | 83 modules, 28 suites plus 34 module self-tests, 89 tools, 67 diagnostics |
+| Automation | 83 modules, 28 suites plus 34 module self-tests, 90 tools, 67 diagnostics |
 
 This block is regenerated from the same queue, checksum manifest, linker maps, provenance classifier, and connector inventory as `README.md`.
 <!-- LIVE-STATUS:END -->
@@ -84,7 +84,8 @@ answers a different question.
 | `permuter_import` | build a work dir from a seed so the permuter can search it |
 | `candidate_publish` | preserve a complete compiling C artifact as an immutable candidate generation derived from its exact queue id |
 | `permuter` | search the space. Hours. `-j` defaults to 1 |
-| `run_analysis` | everything else; see section 6 |
+| `run_automation` | allowlisted repository automation with script-specific authority; see section 6 |
+| `run_analysis` | compatibility alias for `run_automation`; not a read-only variant |
 
 `permuter_import` isolates the selected function before retrying a translation
 unit that pycparser cannot read. An unrelated GNU computed goto therefore no
@@ -105,7 +106,7 @@ those paths change meaning after the artifact moves into candidate history. Use 
 canonical overlay header include in publish-ready input. It does not edit `src/`,
 build, or mutate the queue.
 After changing importer isolation or parser handling, run
-`run_analysis(script="test_permuter_import_parser.py")`; it pins both the
+`run_automation(script="test_permuter_import_parser.py")`; it pins both the
 unrelated-function retry and the selected-function hard failure.
 
 Upstream permuter debug mode writes fixed relative filenames. The connector
@@ -180,7 +181,7 @@ newest receipt-owned isolated bodies in the requested range. Add `--apply` to
 publish those exact bodies through the immutable candidate writer. The command
 does not regenerate a draft from current source, and it never overwrites a prior
 generation. Use `--overlay` and `--limit` to bound a batch. Run a large corpus
-publication through `job_start(action="run_analysis", script="transplant.py",
+publication through `job_start(action="run_automation", script="transplant.py",
 args="...")`; a synchronous transport timeout does not mean the append-only
 publication stopped.
 
@@ -334,15 +335,20 @@ return empty roughly 94% of the time and worse on large contexts. Treating
 has measured 82s and 271s. It is not a runtime.
 
 `permuter_supervisor.py`'s long modes must go through `job_start`. Run through
-`run_analysis` its timeout kills it mid-lock, leaving a seed applied and a stale
+`run_automation` its timeout kills it mid-lock, leaving a seed applied and a stale
 build lock behind.
 
-## 6. Analysis: `run_analysis`
+## 6. Allowlisted automation: `run_automation`
 
-`run_analysis` runs one read-only script from `commands_client.ANALYSIS_SCRIPTS`.
-Pass a name that is not in the set and the error returns the full list, so **ask
-by being wrong** rather than trusting any list, including this one. Every script
-supports `--help` and most support `--self-test`.
+`run_automation` runs one script from `commands_client.AUTOMATION_SCRIPTS`.
+It is not a read-only boundary. Script-specific modes can write reports, caches,
+candidate history, permuter scratch, managed documents, the live queue, build
+artifacts or `src/`, and can call configured providers. The connector constrains
+the executable, argv shape and path traversal; the script help defines authority
+and dry-run behavior. `commands_client.AUTOMATION_MUTATORS` records privileged
+writers, and `run_analysis` remains only as an equal-authority compatibility
+alias. Pass a name outside the set and the error returns the live list. Every
+script supports `--help` and most support `--self-test`.
 
 ### Finding work
 
@@ -405,7 +411,7 @@ supports `--help` and most support `--self-test`.
 | `permuter_supervisor.py` | the auto-queueing permuter driver, legacy-seed migrator and focused importer. **Use `job_start`** for searches |
 | `test_connector_surfaces.py` | REGISTRY vs decorators vs manifest, plus portability and doc checks |
 
-The remaining `test_*.py` scripts are all callable through `run_analysis` and
+The remaining `test_*.py` scripts are all callable through `run_automation` and
 each explains itself when run. `test_connector_surfaces.py` enforces that
 blanket claim and exact coverage of every callable connector tool.
 `run_selftests.py` is the one to reach for.
@@ -424,7 +430,7 @@ the shared path-aware live `INCLUDE_ASM` index. A retained individual `.s` file
 does not make a landed C function undecompiled. `asm_twin_finder.py` uses the
 same index, so progress and twin discovery cannot drift on that boundary.
 After changing progress classification or `source_index.py`, run
-`run_analysis(script="test_progress_detection.py")`; it pins stale retained
+`run_automation(script="test_progress_detection.py")`; it pins stale retained
 assembly, live stubs, path collisions, and whole-file assembly ownership.
 
 ## 7. Scoped filesystem

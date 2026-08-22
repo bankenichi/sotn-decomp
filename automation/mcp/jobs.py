@@ -150,7 +150,7 @@ def slug_of(job_id: str) -> str:
     and both jobs.py and dashboard.py picked the slug out by hand. The
     dashboard's copy was `jid.split("-", 3)[3]`, which keeps the `~<n>`
     collision bump inside the name, so a bumped job renders as a work dir that
-    does not exist. Actions never contain a hyphen (make_build, run_analysis,
+    does not exist. Actions never contain a hyphen (make_build, run_automation,
     worker_once), so splitting on the first three is safe.
     """
     base = job_id.rsplit("~", 1)[0]

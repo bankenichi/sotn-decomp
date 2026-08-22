@@ -209,7 +209,7 @@ def _restorable(path: str, confirm_orphan: bool = False) -> str:
         f"covers it, so the file itself is the only record of whatever is in "
         f"it. That is the shape of a landed match nobody committed -- three "
         f"were found that way on 2026-08-10 and would have been destroyed by "
-        f"this command. Run `run_analysis orphan_check.py --build` to find "
+        f"this command. Run `run_automation orphan_check.py --build` to find "
         f"out whether it matches. If you already know it is worthless, pass "
         f"confirm_orphan=True.")
 
@@ -526,21 +526,13 @@ def _confirmed(confirm, what: str) -> None:
 #
 # Here there is no ceiling and the repo is local to WSL.
 #
-# All but two of these are read-only: they analyse and report, and none edits a
-# source file or builds. The exceptions are permuter_promote.py, which rewrites
-# base.c inside a nonmatchings/ work directory, and permuter_supervisor.py,
-# which calls promote and starts/cancels permuter jobs. That is deliberate and its
-# blast radius is bounded three ways: it only ever touches nonmatchings/, which
-# holds permuter scratch and no shipped source; it copies the pristine seed to
-# base.c.orig before the first write and never overwrites that copy; and
-# --revert restores it. Nothing under src/, include/ or config/ is reachable
-# from it.
-#
-# If another writing script is ever added here, say so in this comment. A
-# blanket "these are all read-only" that has quietly stopped being true is
-# worse than no comment, because it is the thing a reviewer trusts instead of
-# checking.
-ANALYSIS_SCRIPTS = {
+# This is an automation allowlist, not a read-only boundary. Some entries only
+# inspect the tree, while others can write reports, caches, candidate history,
+# permuter scratch, managed documents, the live queue, build artifacts, or src/
+# when their own explicit mode permits it. AUTOMATION_MUTATORS below records the
+# privileged writers. The connector still prevents shell interpretation and
+# path traversal, but callers must honor each script's help and dry-run rules.
+AUTOMATION_SCRIPTS = {
     "artifact_store.py",
     "asm_twin_finder.py",
     "match_provenance.py",
@@ -636,6 +628,29 @@ ANALYSIS_SCRIPTS = {
     # Runs every test_*.py and reports one table. Read-only.
     "run_selftests.py",
 }
+
+# Compatibility for generated inventory and older clients. New code and public
+# documentation use AUTOMATION_SCRIPTS and run_automation.
+ANALYSIS_SCRIPTS = AUTOMATION_SCRIPTS
+
+# Scripts whose normal production modes can mutate more than a disposable
+# report file or cache. This is documentation with executable coverage: the
+# connector test pins the known privileged surfaces and public descriptions.
+AUTOMATION_MUTATORS = {
+    "artifact_store.py": "immutable candidate history",
+    "asm_twin_finder.py": "recorded twin corpus",
+    "codebase_index.py": "shared codebase index",
+    "deferred_triage.py": "live queue with --apply",
+    "escalation_triage.py": "live queue with --apply",
+    "fix_seed_declarations.py": "immutable candidates and queue with --apply",
+    "orphan_check.py": "build artifacts with --build",
+    "permuter_promote.py": "nonmatchings permuter scratch",
+    "permuter_supervisor.py": "scratch, candidates, queue, src and build",
+    "probe_provider.py": "provider network and probe receipts",
+    "quality_ab.py": "provider network and benchmark receipts",
+    "readme_status.py": "managed living documents with --write",
+    "transplant.py": "scratch, candidates, queue, src and build",
+}
 # Deliberately narrow: flags, numbers, and in-repo-looking relative paths.
 # No spaces, quotes, semicolons, redirects, or leading dashes-with-spaces, so
 # nothing here can be reinterpreted by a shell even if one were ever involved.
@@ -661,8 +676,8 @@ def _rev_range(rng: str) -> str:
 
 
 def _script(name: str) -> str:
-    if name not in ANALYSIS_SCRIPTS:
-        raise Rejected(f"script must be one of {sorted(ANALYSIS_SCRIPTS)}")
+    if name not in AUTOMATION_SCRIPTS:
+        raise Rejected(f"script must be one of {sorted(AUTOMATION_SCRIPTS)}")
     return f"automation/{name}"
 
 
@@ -675,6 +690,9 @@ def _args(argstr: str) -> list[str]:
     for t in toks:
         if not _ARG_RX.match(t):
             raise Rejected(f"rejected argument {t!r}")
+        value = t.split("=", 1)[-1]
+        if ".." in value.split("/"):
+            raise Rejected(f"path traversal is not allowed in argument {t!r}")
     return toks
 
 
@@ -1015,7 +1033,12 @@ REGISTRY = {
     "git_restore": lambda path, confirm_orphan=False: (
         ["git", "checkout", "--",
          _restorable(path, confirm_orphan)]),
-    # Run a read-only analysis script in WSL, where there is no 45s ceiling.
+    # Canonical allowlisted automation runner. Script-specific authority is
+    # documented by AUTOMATION_MUTATORS and by each script's own help.
+    "run_automation": lambda script, args="": (
+        [PYTHON, _script(script)] + _args(args)),
+    # Compatibility alias. It has exactly the same authority and is NOT a
+    # read-only variant.
     "run_analysis": lambda script, args="": (
         [PYTHON, _script(script)] + _args(args)),
     # ONE record, named, in the foreground.
@@ -1644,7 +1667,8 @@ LONG_ACTIONS = {
     "make_force_symbols", "make_reports", "make_duplicates_report",
     # A worker's per-function budget is minutes: m2c, then up to three
     # model calls, each followed by a full build. It is never a run() call.
-    "make_function_finder", "run_analysis", "permuter", "worker_once",
+    "make_function_finder", "run_automation", "run_analysis", "permuter",
+    "worker_once",
 }
 
 

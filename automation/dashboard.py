@@ -587,9 +587,10 @@ ACTIONS = {
 # arguments are fixed HERE, never taken from the client, which keeps the
 # "no argv from a request" property that the rest of this file relies on.
 #
-# Every entry is read-only. permuter_promote is deliberately ABSENT even though
-# it is allowlisted for run_analysis: it rewrites base.c, and a diagnostics tab
-# is a place to look at things, not to change them by accident.
+# No entry writes source, queue state, candidate history, managed documents or
+# build artifacts. Some modes still write diagnostic receipts or caches, and
+# provider probes make network calls. permuter_promote is deliberately absent:
+# it rewrites base.c, and a diagnostics tab must not mutate working evidence.
 DIAGNOSTICS = [
     # label,                    script,                     args,      note
     ("Permuter plan", "permuter_supervisor.py", "--plan",
@@ -695,10 +696,10 @@ DIAGNOSTICS = [
     # audit re-reported five findings that were already fixed while missing one
     # that was not, because nothing checks the docs against the code.
     ("Doc drift", "readme_status.py", "--drift",
-     "hash count, queue path and the run_analysis component table, each "
+     "hash count, queue path and the run_automation component table, each "
      "checked against its ground truth in the repo"),
     # Was in the architecture doc's component table and wired to no button,
-    # while also missing from ANALYSIS_SCRIPTS: offered in prose, unrunnable in
+    # while also missing from AUTOMATION_SCRIPTS: offered in prose, unrunnable in
     # both places. The drift check above now watches the doc half.
     ("Overlay size check", "overlay_size_check.py", "",
      "map vs symbol addresses; attributes an overlay size delta to TEXT or BSS"),
@@ -732,7 +733,7 @@ DIAGNOSTICS = [
      "a runaway forced-code pass aborts instead of filling the budget"),
     ("Self-test: audit", "empty_response_audit.py", "--self-test",
      "the audit parser's own checks"),
-    # Added 2026-08-17. It was allowlisted in ANALYSIS_SCRIPTS and wired to no
+    # Added 2026-08-17. It was allowlisted in AUTOMATION_SCRIPTS and wired to no
     # button, so it was runnable through the connector and invisible from the
     # UI: the exact reachability gap this tab's own self-test was written to
     # catch, and the self-test was correctly failing on it. Third time this
@@ -963,7 +964,8 @@ LOG_SOURCES = [
     ("supervisor", Path(os.path.expanduser("~/sotn-work")), "supervisor.log"),
     ("permuter", JOBS_DIR, "permuter-*.log"),
     ("build", JOBS_DIR, "make_build-*.log"),
-    ("analysis", JOBS_DIR, "run_analysis-*.log"),
+    ("automation", JOBS_DIR, "run_automation-*.log"),
+    ("analysis-compat", JOBS_DIR, "run_analysis-*.log"),
     ("fleet", FLEET_LOGS, "worker-*.log"),
 ]
 
@@ -1993,7 +1995,7 @@ def self_test() -> int:
         "cc", str(REPO / "automation" / "mcp" / "commands_client.py"))
     try:
         _cc = _il.module_from_spec(_sp); _sp.loader.exec_module(_cc)
-        allowed = set(_cc.ANALYSIS_SCRIPTS)
+        allowed = set(_cc.AUTOMATION_SCRIPTS)
     except Exception:                                        # noqa: BLE001
         allowed = None
     if allowed is None:
@@ -2104,7 +2106,7 @@ def self_test() -> int:
     try:
         mod = _il.module_from_spec(spec)
         spec.loader.exec_module(mod)                       # type: ignore
-        allowed = mod.ANALYSIS_SCRIPTS
+        allowed = mod.AUTOMATION_SCRIPTS
         missing = sorted({d[1] for d in DIAGNOSTICS} - set(allowed))
     except Exception as e:                                 # noqa: BLE001
         missing = [f"could not load the allowlist: {e}"]

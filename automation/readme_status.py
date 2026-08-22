@@ -172,7 +172,7 @@ def inventory() -> dict[str, int]:
 
     Every one of these was a hand-maintained number somewhere at some point,
     and every hand-maintained number in this repo has drifted: fleet_start's
-    help omitted `zen` for weeks, run_analysis's docstring listed seven of
+    help omitted `zen` for weeks, the old run_analysis docstring listed seven of
     forty-five scripts, match_provenance enumerated two `_from_` suffixes out
     of five. Count them.
     """
@@ -192,7 +192,7 @@ def inventory() -> dict[str, int]:
     try:
         sys.path.insert(0, str(AUTO / "mcp"))
         import commands_client as cc                        # type: ignore
-        diagnostics = len(cc.ANALYSIS_SCRIPTS)
+        diagnostics = len(cc.AUTOMATION_SCRIPTS)
     except Exception:                                       # noqa: BLE001
         pass
     return {"modules": len(mods), "suites": len(suites),
@@ -628,7 +628,7 @@ def drift_component_table() -> list[str]:
     """Scripts the architecture doc says are runnable, that are not allowlisted.
 
     This is the one the 2026-08-15 audit got right: overlay_size_check.py was in
-    the table and wired to a dashboard button, but absent from ANALYSIS_SCRIPTS,
+    the table and wired to a dashboard button, but absent from AUTOMATION_SCRIPTS,
     so both paths failed only when used. The reverse is NOT checked -- the table
     is a curated eight, not an index of all 56 allowlisted scripts.
     """
@@ -636,30 +636,31 @@ def drift_component_table() -> list[str]:
     if not doc.exists():
         return ["docs/HARNESS-ARCHITECTURE.md missing"]
     text = doc.read_text(encoding="utf-8", errors="replace")
-    m = re.search(r"runnable via `run_analysis`:(.+?)(?:\n#|\Z)", text, re.S)
+    m = re.search(
+        r"runnable via `run_automation`[.:](.+?)(?:\n#|\Z)", text, re.S)
     if not m:
-        return ["the 'runnable via run_analysis' table is gone from "
+        return ["the 'runnable via run_automation' table is gone from "
                 "HARNESS-ARCHITECTURE.md; this check no longer verifies anything"]
     listed = set(re.findall(r"`([A-Za-z0-9_]+\.py)`", m.group(1)))
     if not listed:
-        return ["found the run_analysis section but no scripts in it"]
+        return ["found the run_automation section but no scripts in it"]
     # Read the allowlist as TEXT rather than importing commands_client. Pulling
     # in the whole connector to read one tuple means executing a module with
     # side effects inside a read-only doc check, which is the wrong trade
     # whatever it costs.
     allow = (AUTO / "mcp" / "commands_client.py").read_text(
         encoding="utf-8", errors="replace")
-    m2 = re.search(r"ANALYSIS_SCRIPTS\s*=\s*[({](.+?)[)}]", allow, re.S)
+    m2 = re.search(r"AUTOMATION_SCRIPTS\s*=\s*[({](.+?)[)}]", allow, re.S)
     if not m2:
-        return ["cannot find ANALYSIS_SCRIPTS in commands_client.py; this "
+        return ["cannot find AUTOMATION_SCRIPTS in commands_client.py; this "
                 "check no longer verifies anything"]
     allowed = set(re.findall(r"[\"']([A-Za-z0-9_]+\.py)[\"']", m2.group(1)))
     if not allowed:
-        return ["ANALYSIS_SCRIPTS parsed as empty; refusing to report every "
+        return ["AUTOMATION_SCRIPTS parsed as empty; refusing to report every "
                 "script as missing"]
     missing = sorted(listed - allowed)
     return [f"HARNESS-ARCHITECTURE.md offers {s} as runnable, but it is not in "
-            f"ANALYSIS_SCRIPTS, so run_analysis rejects it" for s in missing]
+            f"AUTOMATION_SCRIPTS, so run_automation rejects it" for s in missing]
 
 
 def _inclusive_block(text: str, begin: str, end: str) -> str | None:
@@ -1020,7 +1021,7 @@ def self_test() -> int:
     ck(inv["tools"] > 40, f"connector tools counted ({inv['tools']})")
     ck(inv["diagnostics"] > 40, f"diagnostics counted ({inv['diagnostics']})")
     src_self = Path(__file__).read_text(encoding="utf-8")
-    ck("ANALYSIS_SCRIPTS" in src_self,
+    ck("AUTOMATION_SCRIPTS" in src_self,
        "diagnostics read the real registry, not a literal")
 
     print("\nthe completion headline delegates to progress_table")

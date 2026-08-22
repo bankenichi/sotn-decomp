@@ -161,8 +161,53 @@ def main() -> int:
     # cc.start_job("permuter") raised on the missing positional.
     check('elif action != "permuter"' not in body,
           "the branch that silently dropped permuter's argument is gone")
-    for act in ("permuter", "run_analysis"):
+    for act in ("permuter", "run_automation", "run_analysis"):
         check(act in body, f"job_start still handles {act}")
+
+    print("\nthe generic automation runner states and bounds its real authority")
+    check("run_automation" in cc.REGISTRY,
+          "run_automation is the canonical registry action")
+    _auto_argv = cc.REGISTRY["run_automation"](
+        script="readme_status.py", args="--drift")
+    _alias_argv = cc.REGISTRY["run_analysis"](
+        script="readme_status.py", args="--drift")
+    check(_auto_argv == _alias_argv,
+          "run_analysis remains an equal-authority compatibility alias")
+    _required_mutators = {
+        "artifact_store.py", "asm_twin_finder.py", "codebase_index.py",
+        "deferred_triage.py", "escalation_triage.py",
+        "fix_seed_declarations.py", "orphan_check.py",
+        "permuter_promote.py", "permuter_supervisor.py",
+        "probe_provider.py", "quality_ab.py", "readme_status.py",
+        "transplant.py",
+    }
+    check(_required_mutators <= set(cc.AUTOMATION_MUTATORS),
+          "every known privileged automation writer is inventoried")
+    check(set(cc.AUTOMATION_MUTATORS) <= set(cc.AUTOMATION_SCRIPTS),
+          "every privileged writer is also explicitly allowlisted")
+    try:
+        cc.REGISTRY["run_automation"](
+            script="quality_audit.py",
+            args="--json automation/../../outside.json")
+        check(False, "generic automation arguments reject path traversal")
+    except cc.Rejected:
+        check(True, "generic automation arguments reject path traversal")
+    _auto_block = src_mcp[
+        src_mcp.find("def run_automation("):
+        src_mcp.find("\n@mcp.tool()", src_mcp.find("def run_automation("))]
+    _alias_block = src_mcp[
+        src_mcp.find("def run_analysis("):
+        src_mcp.find("\n@mcp.tool()", src_mcp.find("def run_analysis("))]
+    check("NOT A READ-ONLY BOUNDARY" in _auto_block,
+          "the canonical MCP description denies read-only authority")
+    check("NOT read-only" in _alias_block,
+          "the compatibility MCP description denies read-only authority")
+    _manifest_text = (
+        REPO / "automation" / "mcpb" / "sotn-cmd" / "manifest.json"
+    ).read_text(encoding="utf-8")
+    check('"name": "run_automation"' in _manifest_text and
+          "not a read-only boundary" in _manifest_text,
+          "the install manifest exposes the canonical tool and honest alias")
 
     print("\npermuter jobs run concurrently, builds do not")
     # The permuter takes a work_dir, compiles into it alone, and never touches
@@ -1573,8 +1618,8 @@ def main() -> int:
             r"^\|\s*`([A-Za-z0-9_]+(?:\.py)?)`", _doc, re.M))
         _known = tools | set(cc.FS_ACTIONS if hasattr(cc, "FS_ACTIONS") else ())
         _known |= {"read_file", "write_file", "list_dir", "search_repo"}
-        _known |= set(cc.ANALYSIS_SCRIPTS)
-        _known |= {s[:-3] for s in cc.ANALYSIS_SCRIPTS}
+        _known |= set(cc.AUTOMATION_SCRIPTS)
+        _known |= {s[:-3] for s in cc.AUTOMATION_SCRIPTS}
         _ghosts = sorted(n for n in _named if n not in _known)
         check(not _ghosts,
               f"no doc row names a tool or script that does not exist: {_ghosts}")
@@ -1588,7 +1633,7 @@ def main() -> int:
               f"every documented analysis script exists on disk: "
               f"{_missing_script_files}")
         _uncallable_doc_scripts = sorted(
-            _doc_scripts - set(cc.ANALYSIS_SCRIPTS)
+            _doc_scripts - set(cc.AUTOMATION_SCRIPTS)
         )
         check(not _uncallable_doc_scripts,
               f"every documented analysis script is callable: "
@@ -1598,10 +1643,10 @@ def main() -> int:
               f"every callable tool has a reference row: {_undocumented}")
 
         # TOOLING.md says every remaining top-level test is callable through
-        # run_analysis. That is a machine claim, so a threshold or spot check
+        # run_automation. That is a machine claim, so a threshold or spot check
         # would merely postpone the next stale-doc failure.
         _tests = {p.name for p in (REPO / "automation").glob("test_*.py")}
-        _uncallable_tests = sorted(_tests - set(cc.ANALYSIS_SCRIPTS))
+        _uncallable_tests = sorted(_tests - set(cc.AUTOMATION_SCRIPTS))
         check(not _uncallable_tests,
               f"every focused test named by the blanket doc claim is callable: "
               f"{_uncallable_tests}")

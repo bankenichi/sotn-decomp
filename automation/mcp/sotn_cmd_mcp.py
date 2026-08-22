@@ -533,8 +533,10 @@ def job_start(action: str, version: str = "us", script: str = "",
 
     action: make_build | make_extract | make_expected | make_clean |
             make_force_symbols | make_reports | make_duplicates_report |
-            make_function_finder | run_analysis | permuter | worker_once
-    For run_analysis, pass script= (e.g. asm_twin_finder.py) and args=.
+            make_function_finder | run_automation | run_analysis | permuter |
+            worker_once
+    For run_automation or its run_analysis compatibility alias, pass script=
+    (e.g. asm_twin_finder.py) and args=.
     For worker_once, pass only= with a queue id: it runs the ordinary worker
     against THAT record instead of the highest-ranked todo one. Use it to
     verify a change to the worker on a chosen function; fleet_start claims by
@@ -560,7 +562,7 @@ def job_start(action: str, version: str = "us", script: str = "",
     Then poll: job_status(job_id, wait_s=25) until state == 'done', and read
     'ok' and 'summary'."""
     kw = {}
-    if action == "run_analysis":
+    if action in {"run_automation", "run_analysis"}:
         kw = {"script": script, "args": args}
     elif action == "permuter":
         # permuter takes a work_dir, not a version. This branch used to pass
@@ -639,7 +641,7 @@ def git_restore(path: str, timeout: int = 120,
     a verified match whose only record is the file. A journal is also not
     permission for raw checkout: its saved pre-apply original may itself be
     uncommitted work, so checkout could discard both states. Run
-    `run_analysis orphan_check.py --build` for an orphan. Use `fleet_stop`
+    `run_automation orphan_check.py --build` for an orphan. Use `fleet_stop`
     to replay a journal. confirm_orphan=True is the deliberate destructive
     override for either case.
 
@@ -677,28 +679,31 @@ def git_restore_from_head(path: str, timeout: int = 120,
 
 
 @mcp.tool()
+def run_automation(script: str, args: str = "", timeout: int = 1800) -> dict:
+    """Run one allowlisted repository automation script in WSL.
+
+    THIS IS NOT A READ-ONLY BOUNDARY. Depending on the selected script and
+    mode, it may write in-repo reports or caches, candidate history, permuter
+    scratch, managed documents, the live queue, build artifacts, or src/, and
+    may call configured providers. The connector constrains the executable,
+    argv shape and path traversal; the script's own help defines its authority
+    and dry-run behavior. Prefer dedicated connector actions when one exists.
+
+    The canonical set is `commands_client.AUTOMATION_SCRIPTS`, with privileged
+    writers recorded in `AUTOMATION_MUTATORS`. A rejected name returns the
+    live set rather than relying on a copied list. Use
+    job_start('run_automation', script=..., args=...) for long modes."""
+    return cc.run("run_automation", timeout=timeout, script=script, args=args)
+
+
+@mcp.tool()
 def run_analysis(script: str, args: str = "", timeout: int = 1800) -> dict:
-    """Run a read-only analysis script in WSL, synchronously.
+    """Compatibility alias for run_automation with exactly the same authority.
 
-    Exists because these were being run from the Cowork sandbox, which caps
-    every call at 45s and reaches the repo over a slow Windows mount:
-    asm_twin_finder used 1.8s of CPU but 37s of wall clock, and any extra
-    command after it blew the limit. That was most of the 40 sandbox timeouts
-    in a single day, each costing a full re-run.
-
-    Allowed scripts: whatever is in `commands_client.ANALYSIS_SCRIPTS` (45 of
-    them as of 2026-08-09). A rejected name returns the full list in the
-    error, so ask by being wrong rather than trusting a docstring.
-
-    This paragraph used to enumerate seven scripts and had been wrong for
-    months: empty_response_audit, match_provenance, transplant and thirty
-    others were callable and undocumented. That is the same defect as
-    fleet_start's help omitting `backend="zen"` -- a list maintained by hand
-    beside the real one drifts, and the copy a caller reads is the one that
-    misleads them.
-
-    If it might exceed a couple of minutes, use
-    job_start('run_analysis', script=..., args=...) instead."""
+    Despite the old name, this is NOT read-only. It may reach repository files,
+    candidate and permuter scratch, managed documents, the live queue, builds,
+    src/, and configured providers when the selected script and flags do so.
+    New callers should use run_automation."""
     return cc.run("run_analysis", timeout=timeout, script=script, args=args)
 
 
