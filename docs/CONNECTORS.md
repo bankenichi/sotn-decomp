@@ -24,7 +24,7 @@ under any MCP client.
 |---|---|
 | Build oracle | **81/81** from the artifacts on disk |
 | Decompiled | **96.9%**, 6381/6558 functions; 180 US `INCLUDE_ASM` stubs remain |
-| Queue | 471 records: 294 matched, 22 todo, 109 escalated, 40 deferred, 6 near |
+| Queue | 471 records: 294 matched, 12 todo, 114 escalated, 43 deferred, 8 near |
 | Provenance | upstream-harvest 44, shim-segment 9, shim-header 55, transplant 18, twin-port 29, permuter 15, claude-manual 4, model-fleet 55, unknown 65 |
 | Automation | 84 modules, 28 suites plus 35 module self-tests, 90 tools, 68 diagnostics |
 

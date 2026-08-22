@@ -1094,10 +1094,15 @@ def release_claim_if_held() -> None:
 
 
 def _scheduler_report_transport(args: tuple[str, ...]) -> tuple[list[str], str | None]:
-    """Move report evidence from Windows argv to lossless JSON on stdin."""
+    """Preserve prior notes and move report evidence to lossless JSON stdin."""
     forwarded = list(args)
     if not forwarded or forwarded[0] != "report":
         return forwarded, None
+    # Worker outcomes add evidence to the derivation history. They must never
+    # replace the note that made the record eligible for this tier. Centralize
+    # the policy here so every terminal, interrupt and error path inherits it.
+    if "--keep-note" not in forwarded:
+        forwarded.append("--keep-note")
     evidence: dict[str, str] = {}
     for flag, field in (("--notes", "notes"), ("--proof", "proof")):
         positions = [i for i, value in enumerate(forwarded) if value == flag]

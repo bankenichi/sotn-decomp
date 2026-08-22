@@ -211,6 +211,43 @@ def test_queue_writers_do_not_slice_evidence() -> None:
           f"(offenders: {offenders})")
 
 
+def test_worker_reports_preserve_prior_notes() -> None:
+    """Both Windows transports must make append-only notes the default."""
+    print("\ntest_worker_reports_preserve_prior_notes")
+
+    def load_transport(path: Path):
+        tree = ast.parse(path.read_text(encoding="utf-8"), str(path))
+        fn = next(node for node in tree.body
+                  if isinstance(node, ast.FunctionDef) and
+                  node.name == "_scheduler_report_transport")
+        module = ast.Module(body=[fn], type_ignores=[])
+        ast.fix_missing_locations(module)
+        namespace = {"json": json}
+        exec(compile(module, str(path), "exec"), namespace)
+        return namespace["_scheduler_report_transport"]
+
+    workers = (
+        REPO / "automation" / "win" / "worker_direct.py",
+        REPO / "automation" / "win" / "worker_win.py",
+    )
+    for path in workers:
+        transport = load_transport(path)
+        forwarded, payload = transport((
+            "report", "--id", "us:ST/RNO0:Demo", "--status", "near",
+            "--notes", "new evidence"))
+        check(forwarded.count("--keep-note") == 1,
+              f"{path.name} adds exactly one --keep-note")
+        check("--notes" not in forwarded and
+              json.loads(payload or "{}").get("notes") == "new evidence",
+              f"{path.name} still uses lossless stdin evidence")
+
+        forwarded, _ = transport((
+            "report", "--id", "us:ST/RNO0:Demo", "--status", "near",
+            "--keep-note"))
+        check(forwarded.count("--keep-note") == 1,
+              f"{path.name} does not duplicate explicit --keep-note")
+
+
 def test_every_mutating_command_is_covered() -> None:
     """The guard is a name list, so it silently stops protecting anything that
     gets renamed or added. Assert the list against the actual subparsers."""
@@ -263,6 +300,7 @@ def main() -> int:
                test_report_preserves_complete_evidence,
                test_report_preserves_structured_search_verdict,
                test_queue_writers_do_not_slice_evidence,
+               test_worker_reports_preserve_prior_notes,
                test_every_mutating_command_is_covered):
         fn()
     print()

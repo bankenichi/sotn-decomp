@@ -255,10 +255,14 @@ def wsl_repo() -> str:
 
 
 def _scheduler_report_transport(args: tuple[str, ...]) -> tuple[list[str], str | None]:
-    """Move report evidence from Windows argv to lossless JSON on stdin."""
+    """Preserve prior notes and move report evidence to lossless JSON stdin."""
     forwarded = list(args)
     if not forwarded or forwarded[0] != "report":
         return forwarded, None
+    # Keep queue evidence append-only across every worker report path. The
+    # scheduler replaces notes unless --keep-note is explicit.
+    if "--keep-note" not in forwarded:
+        forwarded.append("--keep-note")
     evidence: dict[str, str] = {}
     for flag, field in (("--notes", "notes"), ("--proof", "proof")):
         positions = [i for i, value in enumerate(forwarded) if value == flag]

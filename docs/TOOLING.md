@@ -14,7 +14,7 @@ For the mechanisms that land matches, read `automation/README.md`.
 |---|---|
 | Build oracle | **81/81** from the artifacts on disk |
 | Decompiled | **96.9%**, 6381/6558 functions; 180 US `INCLUDE_ASM` stubs remain |
-| Queue | 471 records: 294 matched, 22 todo, 109 escalated, 40 deferred, 6 near |
+| Queue | 471 records: 294 matched, 12 todo, 114 escalated, 43 deferred, 8 near |
 | Provenance | upstream-harvest 44, shim-segment 9, shim-header 55, transplant 18, twin-port 29, permuter 15, claude-manual 4, model-fleet 55, unknown 65 |
 | Automation | 84 modules, 28 suites plus 35 module self-tests, 90 tools, 68 diagnostics |
 
@@ -251,8 +251,10 @@ The scheduler's raw `report` command replaces `notes` wholesale unless it gets
 solved and became part of the 24% that `match_provenance.py` reports as
 unattributed. Not recoverable for those records. The connector now exposes
 `keep_note` and defaults it to `True`; pass `False` only when the new note really
-supersedes the old derivation. Every queue writer must forward notes and proof
-in full. A size policy may reject a write loudly, but may never accept a
+supersedes the old derivation. Both fleet-worker transports also inject
+`--keep-note` centrally for every report path, so an outcome cannot replace the
+eligibility evidence that preceded it. Every queue writer must forward notes
+and proof in full. A size policy may reject a write loudly, but may never accept a
 silently truncated prefix. The 2026-08-17 truncation incident, affected records,
 and exact recovery payloads are preserved in
 `docs/queue-evidence-recovery-2026-08-17.md`.
