@@ -28,6 +28,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 CFG = REPO / "config" / "permuter_settings.toml"
+PERMUTER_SRC = REPO / "tools" / "decomp-permuter" / "src"
 FAILS: list[str] = []
 
 # Types pycparser knows without any typedef. Anything outside this set is only
@@ -106,6 +107,25 @@ def main() -> int:
             check(pm[name] == want, f"{name} is {want}",
                   f"got {pm[name]!r}; s32 is 'signed int' and u16 is "
                   f"'unsigned short' in include/common.h")
+
+    print("\nbranch targets participate in the permuter score")
+    sys.path.insert(0, str(PERMUTER_SRC))
+    import objdump
+    check(not objdump.ign_branch_targets,
+          "branch target normalization is disabled")
+    branch_a = objdump.simplify_objdump(
+        ["header", "0:\t14400009\tbnez\tv0,28"],
+        objdump.MIPS_SETTINGS, stack_differences=True)
+    branch_b = objdump.simplify_objdump(
+        ["header", "0:\t1440001b\tbnez\tv0,70"],
+        objdump.MIPS_SETTINGS, stack_differences=True)
+    check(branch_a and branch_b and branch_a[0].row != branch_b[0].row,
+          "different local branch destinations remain distinguishable")
+    jump_reloc = objdump.process_mips_reloc(
+        "R_MIPS_26 .text", "j\t1c8", ".text", "1c8")
+    check(jump_reloc == ".text+0x1c8",
+          "bare hexadecimal jump relocation addends parse without crashing",
+          jump_reloc)
 
     print()
     if FAILS:

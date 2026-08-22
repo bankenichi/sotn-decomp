@@ -1189,12 +1189,44 @@ def classify_build_failure(detail: str) -> str:
         about anything.
     """
     if "CHECKSUM MISMATCH" in detail:
-        return "CHECKSUM MISMATCH: " + detail[:400]
+        verdict = "CHECKSUM MISMATCH: " + detail[:400]
+        marker = detail.find("--- pre-restore mismatch forensics ---")
+        if marker >= 0:
+            verdict += "\n" + detail[marker:marker + 6500]
+        return verdict
     if "BUILD DIRTY" in detail:
         return "DIRTY: " + detail[:400]
     if "BUILD FAILED" in detail:
         return "COMPILE ERROR: " + detail[:600]
     return "UNKNOWN: " + detail[:400]
+
+
+def mismatch_forensic_commands(fn: str, overlay: str) -> list[list[str]]:
+    """Read-only diagnostics that must run before a failed build is restored."""
+    short_overlay = overlay.rsplit("/", 1)[-1].upper()
+    return [
+        [PYTHON, str(REPO / "automation" / "fn_diff.py"),
+         "--overlay", short_overlay, "--function", fn, "--max", "24"],
+        [PYTHON, str(REPO / "automation" / "relocation_check.py"),
+         "--overlay", short_overlay],
+    ]
+
+
+def capture_mismatch_forensics(fn: str, overlay: str) -> str:
+    """Capture bounded diagnostics from the still-live candidate artifacts."""
+    sections: list[str] = []
+    for command in mismatch_forensic_commands(fn, overlay):
+        label = Path(command[1]).stem
+        try:
+            result = subprocess.run(
+                command, cwd=str(REPO), capture_output=True, text=True,
+                timeout=120)
+            output = ((result.stdout or "") + "\n" + (result.stderr or "")).strip()
+            sections.append(
+                f"{label} rc={result.returncode}\n{output[-3000:] or '(no output)'}")
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            sections.append(f"{label} unavailable: {type(exc).__name__}: {exc}")
+    return "\n--- pre-restore mismatch forensics ---\n" + "\n\n".join(sections)
 
 
 def land_supervisor_slot(work: Path, slot: dict) -> tuple[bool, str]:
@@ -1315,6 +1347,9 @@ def land_match(work: Path, fn: str, build: str = "us",
                 # disagreement in the first place.
                 wd.build_and_check(rec)
                 return False, f"VERIFY FAILED: {vdetail}"
+
+            if "CHECKSUM MISMATCH" in detail:
+                detail += capture_mismatch_forensics(fn, overlay)
 
             # Revert FIRST. A failed build must leave the tree exactly as found
             # before anything else is attempted. restore() also drops the
@@ -2619,6 +2654,18 @@ def self_test() -> int:
        "a dirty build is not a verdict about the function")
     ck(classify_build_failure("something else").startswith("UNKNOWN"),
        "an unrecognised failure is not silently treated as a mismatch")
+    forensic_detail = (
+        "BUILT, CHECKSUM MISMATCH (bytes differ)\n"
+        "--- pre-restore mismatch forensics ---\nfn_diff rc=0\nfixture")
+    ck("fn_diff rc=0" in classify_build_failure(forensic_detail),
+       "pre-restore mismatch diagnostics survive verdict truncation")
+    forensic_commands = mismatch_forensic_commands(
+        "func_us_801C7F24", "st/rno0")
+    ck(any("fn_diff.py" in command[1] and "RNO0" in command
+           for command in forensic_commands)
+       and any("relocation_check.py" in command[1]
+               for command in forensic_commands),
+       "full-build mismatches schedule structural and relocation diagnostics")
     ck("save_rejected" in lm,
        "an attributable full-build compile failure preserves its exact body")
 
@@ -2633,6 +2680,10 @@ def self_test() -> int:
        "was")
     ck(lm2.index("wd.restore(ctx, original)") < lm2.index("ok2"),
        "and it reverts BEFORE that second build, so the check is honest")
+    failed_revert = lm2.index("wd.restore(ctx, original)",
+                              lm2.index("# Revert FIRST"))
+    ck(lm2.index("capture_mismatch_forensics") < failed_revert,
+       "mismatch diagnostics run while candidate build artifacts still exist")
     ck("path.write_text" not in lm2,
        "every revert goes through worker_direct.restore, which also drops the "
        "crash journal; a raw write would leave one behind")

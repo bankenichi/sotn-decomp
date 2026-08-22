@@ -1363,8 +1363,9 @@ def score_draft(fn: str, mapping: list[str] | None = None,
         overlay_hint=overlay)
 
 
-def load_score_body(fn: str, value: str) -> tuple[str, str]:
-    """Load one in-repo C definition for isolated scoring, without applying."""
+def load_score_body(fn: str, value: str,
+                    overlay: str = "") -> tuple[str, str]:
+    """Load one in-repo C definition and its required score-only context."""
     path = (REPO / value).resolve()
     try:
         rel = path.relative_to(REPO)
@@ -1374,6 +1375,13 @@ def load_score_body(fn: str, value: str) -> tuple[str, str]:
     body = _harv()._extract(raw, fn)
     if not body:
         raise ValueError(f"--body-file does not define {fn}: {rel}")
+    if overlay:
+        found = _sup().find_stub(fn, overlay)
+        if found:
+            declarations, _notes = donor_scope_decls(
+                body, path, found[0], defining=fn)
+            if declarations:
+                body = "\n".join(declarations + ["", body])
     return body, str(rel).replace("\\", "/")
 
 
@@ -1382,7 +1390,7 @@ def score_one(fn: str, mapping: list[str] | None = None,
     body = detail = ""
     if body_file:
         try:
-            body, rel = load_score_body(fn, body_file)
+            body, rel = load_score_body(fn, body_file, overlay)
         except (OSError, ValueError) as exc:
             print(f"{fn}\n  status: body-file-failed\n  score:  not available")
             print(f"  detail: {exc}")
@@ -1560,15 +1568,27 @@ def latest_score_receipts(root: Path = SCORE_ROOT,
     return sorted(rows, key=lambda row: row["record_id"])
 
 
-def _selected_score_receipts(min_score: int, max_score: int,
-                             overlay: str = "", limit: int = 0) -> list[dict]:
-    rows = [row for row in latest_score_receipts()
+def select_score_receipts(rows: list[dict], min_score: int, max_score: int,
+                          overlay: str = "", function: str = "",
+                          limit: int = 0) -> list[dict]:
+    """Select receipts by exact identity before applying an optional limit."""
+    rows = [row for row in rows
             if min_score <= row["score"] <= max_score]
     if overlay:
         rows = [row for row in rows
                 if overlay.lower() in row["overlay"].lower()]
+    if function:
+        rows = [row for row in rows if row["function"] == function]
     rows.sort(key=lambda row: (row["score"], row["record_id"]))
     return rows[:limit] if limit else rows
+
+
+def _selected_score_receipts(min_score: int, max_score: int,
+                             overlay: str = "", function: str = "",
+                             limit: int = 0) -> list[dict]:
+    return select_score_receipts(
+        latest_score_receipts(), min_score, max_score,
+        overlay=overlay, function=function, limit=limit)
 
 
 def _validate_receipt_target(row: dict) -> tuple[bool, str]:
@@ -1616,9 +1636,11 @@ def _isolated_seed_artifact(row: dict) -> tuple[str, str]:
 
 
 def publish_low_scores(apply: bool, min_score: int = 1, max_score: int = 35,
-                       overlay: str = "", limit: int = 0) -> int:
+                       overlay: str = "", function: str = "",
+                       limit: int = 0) -> int:
     """Publish the latest low isolated scores as immutable whole-file seeds."""
-    rows = _selected_score_receipts(min_score, max_score, overlay, limit)
+    rows = _selected_score_receipts(
+        min_score, max_score, overlay, function, limit)
     if not rows:
         print("no current isolated-score receipts in the requested range")
         return 0
@@ -1647,9 +1669,10 @@ def publish_low_scores(apply: bool, min_score: int = 1, max_score: int = 35,
     return 1 if failed else 0
 
 
-def land_score_zeros(apply: bool, overlay: str = "", limit: int = 0) -> int:
+def land_score_zeros(apply: bool, overlay: str = "", function: str = "",
+                     limit: int = 0) -> int:
     """Full-build the exact newest score-zero bodies, sequentially."""
-    rows = _selected_score_receipts(0, 0, overlay, limit)
+    rows = _selected_score_receipts(0, 0, overlay, function, limit)
     if not rows:
         print("no current score-zero receipts")
         return 0
@@ -2028,6 +2051,14 @@ def self_test() -> int:
         "automation/candidates/history/us_ST_RCEN_func_801904B8.v0004.c")
     ck("func_801904B8" in seed_body and seed_path.endswith(".v0004.c"),
        f"an immutable whole-file seed yields its exact definition ({seed_path})")
+    rno_body, _rno_path = load_score_body(
+        "func_us_801C7F24",
+        "automation/candidates/history/us_ST_RNO0_func_us_801C7F24.v0001.c",
+        "ST/RNO0")
+    ck("extern EInit g_EInitStoneSkull;" in rno_body
+       and "extern u8 D_us_80181E8C[];" in rno_body
+       and "extern u16 g_pads_1_pressed;" in rno_body,
+       "whole-file seeds retain required declarations for isolated scoring")
     try:
         load_score_body("func_801904B8", "../outside.c")
     except ValueError:
@@ -2436,9 +2467,17 @@ def self_test() -> int:
         ck("new" in receipt_rows[0]["body"]
            and "old" not in receipt_rows[0]["body"],
            "the selected body is byte-for-byte from the newest receipt")
-        ck(receipt_rows[0]["record_id"]
-           == "us:ST/TEST:FixtureFunction",
-           "the queue id is derived from the exact receipt overlay")
+    ck(receipt_rows[0]["record_id"]
+       == "us:ST/TEST:FixtureFunction",
+       "the queue id is derived from the exact receipt overlay")
+    selected = select_score_receipts([
+        {"score": 0, "record_id": "us:ST/RNO0:DrawLaserRing",
+         "overlay": "ST/RNO0", "function": "DrawLaserRing"},
+        {"score": 0, "record_id": "us:ST/RNO0:func_us_801C7F24",
+         "overlay": "ST/RNO0", "function": "func_us_801C7F24"},
+    ], 0, 0, overlay="ST/RNO0", function="func_us_801C7F24", limit=1)
+    ck([row["function"] for row in selected] == ["func_us_801C7F24"],
+       "an exact function filter is applied before a receipt limit")
     landing_src = src[src.index("def land_score_zeros"):
                       src.index("\ndef list_all")]
     ck('body=row["body"]' in landing_src,
@@ -2635,9 +2674,9 @@ def main() -> int:
         return 2
     if a.publish_low_scores:
         return publish_low_scores(
-            a.apply, a.score_min, a.score_max, a.overlay, a.limit)
+            a.apply, a.score_min, a.score_max, a.overlay, a.function, a.limit)
     if a.land_score_zeros:
-        return land_score_zeros(a.apply, a.overlay, a.limit)
+        return land_score_zeros(a.apply, a.overlay, a.function, a.limit)
     if a.list:
         return list_all()
     if a.scan:

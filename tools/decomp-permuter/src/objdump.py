@@ -14,10 +14,11 @@ from typing import List, Match, Pattern, Set, Tuple, Optional
 # be useful for debugging.)
 ign_regs = False
 
-# Don't include branch targets in the output. Assuming our input is semantically
-# equivalent skipping it shouldn't be an issue, and it makes insertions have too
-# large effect.
-ign_branch_targets = True
+# Matching decompilation cannot assume semantic equivalence. A branch to the
+# end of a switch and a branch to the next statement have identical opcode and
+# registers but different behavior. Ignoring the target reported score zero for
+# func_us_801C7F24 while the full build differed at that branch word.
+ign_branch_targets = False
 
 # Skip branch-likely delay slots. (They aren't interesting on IDO.)
 # Set to false for now to help non-IDO compilers and to match diff.py;
@@ -264,7 +265,19 @@ def process_mips_reloc(reloc_row: str, prev: str, repl: str, imm: str) -> str:
     # here to avoid a crash, by pretending that lost imms are zero for
     # relocations.
     if imm != "0" and imm != "imm" and imm != "addr":
-        repl += "+" + imm if int(imm, 0) > 0 else imm
+        # Objdump prints branch and jump destinations as bare hexadecimal
+        # (for example 1c8), while ordinary immediates were normalized to 0x
+        # form above. Keeping branch targets exposed used to crash here before
+        # the scorer could report their difference.
+        if ("R_MIPS_26" in reloc_row
+                and re.fullmatch(r"-?[0-9a-fA-F]+", imm)):
+            sign = -1 if imm.startswith("-") else 1
+            value = sign * int(imm.lstrip("-"), 16)
+            cooked_imm = ("-" if value < 0 else "0x") + format(abs(value), "x")
+        else:
+            value = int(imm, 0)
+            cooked_imm = imm
+        repl += "+" + cooked_imm if value > 0 else cooked_imm
     if any(
         reloc in reloc_row
         for reloc in ["R_MIPS_LO16", "R_MIPS_LITERAL", "R_MIPS_GPREL16"]

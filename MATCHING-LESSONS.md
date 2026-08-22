@@ -1408,3 +1408,20 @@ defect was fixed, and the preserved candidate was then proven to have a distinct
 link-context mismatch. Rebuilding the same body again would add no information.
 Restore 81/81, preserve the linked miss, record its terminal disposition, and
 move on to a different method or a later advanced-worker sample.
+
+## 26. A branch opcode match is not a branch target match
+
+`func_us_801C7F24` exposed a false isolated score 0. The candidate and target
+both contained `bnez v0` at file offset `0x4807c`, but the candidate jumped
+nine instructions while the target jumped 27. The old vendored permuter replaced
+every local destination with `<target>`, assuming semantic equivalence before
+the binary oracle had established it. The full build correctly rejected the
+candidate, and pre-restore relocation diagnostics localized the single differing
+word as `0x14400009` versus `0x1440001b`.
+
+Keep local branch destinations in the score. Once that normalization was
+disabled, the same candidate scored 5 and the explicit `break` form scored 0.
+Exposing the targets also reached a dormant parser bug: objdump emits
+`R_MIPS_26` addends such as `1c8` as bare hexadecimal, which `int(value, 0)`
+rejects. Parse that relocation shape as hexadecimal and retain the addend. Both
+behaviors have direct regressions in `automation/test_permuter_settings.py`.
