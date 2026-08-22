@@ -147,7 +147,11 @@ named definition is extracted from a body or whole-source artifact, and the
 same receipt-owned debug archive is produced. Required declarations from a
 whole-file candidate are resolved through the same score-only donor-scope
 resolver used by generated drafts, instead of being discarded with the rest of
-the translation unit. Donor discovery excludes only the exact destination path,
+the translation unit. Destination visibility is evaluated before the exact stub
+insertion point, including multiline stubs and only quoted headers reachable
+before that point. A later declaration or unincluded sibling header cannot
+suppress the score-only declaration. Donor discovery excludes only the exact
+destination path,
 so same-basename stage siblings remain eligible. A target-proven constant that
 crosses zero may adapt a matching `+=` or `-=` compound assignment; all other
 non-positional operand proposals remain diagnostic-only.
@@ -390,7 +394,7 @@ script supports `--help` and most support `--self-test`.
 | `queue_coverage.py` | does the queue cover what is actually in the tree |
 | `decl_coverage.py` | are the declarations a candidate needs already reachable; `--show-missing` prints retained-data proof without a scratch JSON report |
 | `data_declarations.py` | resolve raw `D_*` labels from overlay-specific retained data/rodata/bss directives and calibrated global `Entity` address aliases; ambiguous evidence is refused |
-| `ext_demand.py` | which `Ext` union variants cover generated offsets, including raw Entity-base byte-pointer views, and which named expressions can replace them |
+| `ext_demand.py` | which `Ext` union variants cover generated offsets, including raw Entity-base byte-pointer views and direct `entity->ext.unkNN` accesses, and which named expressions can replace them |
 | `member_types.py` | is this struct member real, on **this** struct |
 | `find_data_segment.py` | which splat `.data` address a symbol belongs to |
 
@@ -420,7 +424,7 @@ script supports `--help` and most support `--self-test`.
 | `model_codegen_audit.py` | joins queue provenance to matched source and reports model-contributed functions with strong unusual shapes but no substantive `CODEGEN:` explanation; it recognizes constant single-iteration loops, `volatile`, null control bodies, and genuine scalar self-assignment, but deliberately excludes semantic `goto` loops and member stores from same-named parameters; a finding requests recovered reasoning, not a rewrite |
 | `review_checks.py` | the gate the worker runs before building |
 | `decomp_fidelity.py` | callee recall and constant coverage against the asm |
-| `escalation_triage.py` | why each escalated record failed |
+| `escalation_triage.py` | why each escalated record failed; `--repair-candidates [--apply]` versions only independently proven declarations or lexically receiver-checked Entity-field spans in preserved rejected candidates, refuses static definitions, retracts unsafe generated externs while retaining their history, and never writes source or queue state |
 | `deferred_triage.py` | why each deferred record was deferred, preferring scheduler-owned structured search verdicts and falling back to the newest legacy note segment; `--verdict-migration FILE [--apply]` applies a tracked, validated historical backfill without rewriting notes |
 | `empty_response_audit.py` | dead-call rate per model. Reads current logs only unless you pass `--archived` |
 | `fleet_forensics.py` | what a fleet run actually did |

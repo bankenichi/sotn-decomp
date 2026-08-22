@@ -26,14 +26,17 @@ WHY THIS EXISTS (ROADMAP P6 item 2)
     a harness defect, and spending model quota on it is the waste the tiering
     was built to prevent.
 
-WHAT IT DOES NOT DO
-    It does not edit sources, does not build, and does not mutate the queue.
-    It reads and reports. Applying a rename is a build-gated action and the
-    fleet usually holds that lock; this runs safely alongside it.
+WRITE BOUNDARY
+    The default report is read-only. --repair-candidates may refresh only
+    preserved automation/rejected artifacts, with immutable history, and is a
+    dry run unless --apply is also present. It never edits src/, builds, or
+    mutates the queue. Compilation and routing stay with transplant.py.
 
 Usage:
     python3 automation/escalation_triage.py
     python3 automation/escalation_triage.py --json out.json
+    python3 automation/escalation_triage.py --repair-candidates
+    python3 automation/escalation_triage.py --repair-candidates --apply
     python3 automation/escalation_triage.py --self-test
 """
 from __future__ import annotations
@@ -44,6 +47,7 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 from collections import Counter, defaultdict
 from pathlib import Path
 
@@ -55,6 +59,9 @@ PYTHON = os.environ.get("SOTN_PYTHON", sys.executable)
 # same on both sides and a second implementation would drift.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from deferred_triage import defines_in_own_overlay  # noqa: E402
+from artifact_store import publish_versioned_artifact  # noqa: E402
+from member_types import _declared_type_at, _declared_type_ranges  # noqa: E402
+from quality_audit import _mask_c_comments_and_literals  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # classification
@@ -254,11 +261,11 @@ def known_objects() -> set[str]:
     return out
 
 
-_DECL_INDEX: dict[str, str] | None = None
+_DECL_INDEX: dict[str, list[str]] | None = None
 
 
-def _build_decl_index() -> dict[str, str]:
-    """symbol -> "path:line" for every file-scope declaration in the tree.
+def _build_decl_index() -> dict[str, list[str]]:
+    """symbol -> every "path:line" file-scope declaration in the tree.
 
     Built ONCE and cached. The first version re-scanned src/ and include/ for
     each identifier, which is O(tree x names) over a slow mount and did not
@@ -268,9 +275,9 @@ def _build_decl_index() -> dict[str, str]:
     column 0 so a local variable inside a function body cannot register as a
     declaration.
     """
-    idx: dict[str, str] = {}
+    idx: dict[str, list[str]] = defaultdict(list)
     rx = re.compile(
-        r"^(?:extern\s+)?[A-Za-z_][\w\s\*]*?\b([A-Za-z_]\w*)\s*"
+        r"^(?!static\b)(?:extern\s+)?[A-Za-z_][\w\s\*]*?\b([A-Za-z_]\w*)\s*"
         r"(?:\[[^\]]*\])?\s*(?:=[^=]|;)", re.M)
     for root in ("include", "src"):
         base = REPO / root
@@ -287,12 +294,13 @@ def _build_decl_index() -> dict[str, str]:
             rel = p.relative_to(REPO).as_posix()
             for m in rx.finditer(text):
                 name = m.group(1)
-                if name not in idx:
-                    idx[name] = f"{rel}:{text.count(chr(10), 0, m.start()) + 1}"
-    return idx
+                location = f"{rel}:{text.count(chr(10), 0, m.start()) + 1}"
+                if location not in idx[name]:
+                    idx[name].append(location)
+    return dict(idx)
 
 
-def declared_at(name: str) -> str | None:
+def declared_at(name: str, record_id: str = "") -> str | None:
     """Where the tree already declares this symbol, if anywhere.
 
     THE question to ask before proposing any rename: is the identifier the
@@ -300,7 +308,8 @@ def declared_at(name: str) -> str | None:
     for want of a declaration in one file, and renaming would silently change
     what the function does.
 
-    This check was missing from the first version and it produced a confidently
+    Same-overlay declarations outrank shared and cross-overlay hits. This check
+    was missing from the first version and it produced a confidently
     wrong answer on the very first real record. BO6_CheckHighJumpInput failed on
     `RIC_step' undeclared, and both this tool and a subagent proposed rewriting
     it to RIC.step. But `extern u16 RIC_step;' is declared at
@@ -310,7 +319,19 @@ def declared_at(name: str) -> str | None:
     global _DECL_INDEX
     if _DECL_INDEX is None:
         _DECL_INDEX = _build_decl_index()
-    return _DECL_INDEX.get(name)
+    found = _DECL_INDEX.get(name, [])
+    if not found:
+        return None
+    overlay = _overlay_of(record_id) if record_id else ""
+    if overlay:
+        same = [location for location in found
+                if _overlay_of(location) == overlay]
+        if same:
+            return same[0]
+        shared = [location for location in found if not _overlay_of(location)]
+        if shared:
+            return shared[0]
+    return found[0]
 
 
 _ENTITY: list[tuple[int, str, str]] | None = None
@@ -404,6 +425,18 @@ def resolve_entity_offset(name: str) -> str | None:
     return None
 
 
+def exact_entity_field(name: str) -> str | None:
+    """Return the field exactly at unk<hex>, never a containing-field hint."""
+    m = re.fullmatch(r"unk([0-9A-Fa-f]{1,3})", name)
+    if not m:
+        return None
+    off = int(m.group(1), 16)
+    for field_off, _field_type, field_name in entity_fields():
+        if field_off == off:
+            return field_name
+    return None
+
+
 # ---------------------------------------------------------------------------
 # ---------------------------------------------------------------------------
 # queue access
@@ -479,6 +512,38 @@ def _cross_overlay(rec_id: str, decl_path: str) -> bool:
     return bool(a and b and a != b)
 
 
+def _source_line(source: str, repo_root: Path = REPO) -> str:
+    """Read the exact physical source line named by a path:line receipt."""
+    path_text, sep, line_text = source.rpartition(":")
+    if not sep or not line_text.isdigit():
+        raise ValueError(f"invalid declaration source {source!r}")
+    path = repo_root / path_text
+    lines = path.read_text(errors="ignore").splitlines()
+    line_no = int(line_text)
+    if not 1 <= line_no <= len(lines):
+        raise ValueError(f"declaration source line is outside {path_text}")
+    return lines[line_no - 1]
+
+
+def _internal_linkage(source: str, repo_root: Path = REPO) -> bool:
+    """Whether a located definition is unavailable outside its source file."""
+    return bool(re.match(r"\s*static\b", _source_line(source, repo_root)))
+
+
+def _internal_linkage_fix(name: str, source: str) -> dict:
+    return {
+        "invented": name,
+        "kind": "internal-linkage-definition",
+        "source": source,
+        "executable": False,
+        "likely": (f"defined with internal linkage at {source}; it cannot be "
+                   "made visible from another source file with extern"),
+        "why": ("a file-scope static definition belongs only to its own "
+                "translation unit; deriving extern from it would name an "
+                "object the linker cannot provide"),
+    }
+
+
 def triage(records: list[dict]) -> list[dict]:
     known = known_objects()
     ext = ext_members()
@@ -517,7 +582,7 @@ def triage(records: list[dict]) -> list[dict]:
             # would have compiled and produced DIFFERENT CODE, which is the
             # failure this whole pipeline exists to avoid: plausible beats
             # verified right up until the bytes disagree.
-            where = declared_at(b)
+            where = declared_at(b, rec["id"])
             # A declaration in ANOTHER overlay is not evidence.
             #
             # Overlays have separate address spaces, so a raw-address name like
@@ -546,8 +611,14 @@ def triage(records: list[dict]) -> list[dict]:
             own = defines_in_own_overlay(b, rec["id"])
             if where and _cross_overlay(rec["id"], where):
                 if own:
+                    if _internal_linkage(own):
+                        fixes.append(_internal_linkage_fix(b, own))
+                        continue
                     fixes.append({
                         "invented": b,
+                        "kind": "declaration-definition",
+                        "source": own,
+                        "executable": True,
                         "likely": f"THIS overlay defines it at {own}; add "
                                   f"`extern` for it to this file",
                         "why": f"the only declaration in the tree is at "
@@ -561,8 +632,14 @@ def triage(records: list[dict]) -> list[dict]:
                     f"same object -- resolve it from this overlay's asm)")
                 continue
             if not where and own:
+                if _internal_linkage(own):
+                    fixes.append(_internal_linkage_fix(b, own))
+                    continue
                 fixes.append({
                     "invented": b,
+                    "kind": "declaration-definition",
+                    "source": own,
+                    "executable": True,
                     "likely": f"defined in this overlay at {own}; add "
                               f"`extern` for it to this file",
                     "why": "a DEFINITION with no extern anywhere, which a "
@@ -571,6 +648,9 @@ def triage(records: list[dict]) -> list[dict]:
             if where:
                 fixes.append({
                     "invented": b,
+                    "kind": "declaration",
+                    "source": where,
+                    "executable": True,
                     "likely": f"already declared at {where}; add that "
                               f"declaration to this file",
                     "why": "symbol EXISTS elsewhere, so this is a missing "
@@ -579,14 +659,11 @@ def triage(records: list[dict]) -> list[dict]:
             path = suggest_struct_path(b, known)
             if path:
                 fixes.append({"invented": b, "likely": path,
+                              "kind": "struct-path-unverified",
+                              "executable": False,
                               "why": "flat name whose head is a real object, "
                                      "and no declaration of it exists anywhere "
                                      "(UNVERIFIED: confirm against the asm)"})
-            elif resolve_entity_offset(b):
-                fixes.append({"invented": b,
-                              "likely": resolve_entity_offset(b),
-                              "why": "unk<hex> names an OFFSET; resolved against "
-                                     "the annotated Entity in include/game.h"})
             elif _union_member_error(note, b) and ext:
                 # ONLY when GCC actually said "union has no member named `b'".
                 #
@@ -597,11 +674,24 @@ def triage(records: list[dict]) -> list[dict]:
                 sample = ", ".join(sorted(ext)[:6]) if ext else ""
                 fixes.append({
                     "invented": b,
+                    "kind": "ext-member-diagnostic",
+                    "executable": False,
                     "likely": f"not a member of the Ext union ({len(ext)} real "
                               f"members, e.g. {sample}); pick the one for this "
                               f"entity, or read the asm offsets",
                     "why": "Ext is a union of per-entity structs, not a generic "
                            "bag"})
+            elif resolve_entity_offset(b):
+                field = exact_entity_field(b)
+                fixes.append({
+                    "invented": b,
+                    "kind": "entity-field" if field else "entity-offset-diagnostic",
+                    "replacement": field or "",
+                    "executable": False,
+                    "requires_candidate_receiver_type": "Entity" if field else "",
+                    "likely": resolve_entity_offset(b),
+                    "why": "unk<hex> names an OFFSET; resolved against "
+                           "the annotated Entity in include/game.h"})
             else:
                 unknowns.append(b)
         stale = stale_quality_reason(rec.get("note", "")) if cls == "quality" else ""
@@ -628,6 +718,264 @@ def triage(records: list[dict]) -> list[dict]:
             }.get(cls, "read it"),
         })
     return rows
+
+
+# ---------------------------------------------------------------------------
+# rejected-candidate repair
+
+def potentially_mechanical(row: dict) -> bool:
+    """True when fixes are executable directly or after a receiver-type check."""
+    fixes = row.get("resolvable", [])
+    return bool(
+        row.get("class") == "symbol" and fixes and
+        not row.get("unresolved") and
+        all(fix.get("executable") is True or fix.get("kind") in {
+            "entity-field", "internal-linkage-definition"}
+            for fix in fixes))
+
+
+def entity_field_access_spans(text: str, name: str) -> list[tuple[int, int]]:
+    """Return only field-token spans whose active receiver type is Entity."""
+    masked = _mask_c_comments_and_literals(text)
+    ranges = _declared_type_ranges(masked)
+    out = []
+    access = re.compile(
+        rf"\b(?P<receiver>[A-Za-z_]\w*)\s*->\s*"
+        rf"(?P<field>{re.escape(name)})\b")
+    for match in access.finditer(masked):
+        receiver = match.group("receiver")
+        declared = _declared_type_at(ranges, receiver, match.start())
+        if declared is None and receiver == "g_CurrentEntity":
+            declared = "Entity"
+        if declared == "Entity":
+            out.append(match.span("field"))
+    return out
+
+
+def entity_field_receiver_is_entity(text: str, name: str) -> bool:
+    """Whether at least one direct field use has a proven Entity receiver."""
+    return bool(entity_field_access_spans(text, name))
+
+
+_GENERATED_MARKER = "/* Mechanical symbol repair from escalation_triage.py. */"
+
+
+def _generated_extern_span(text: str, name: str,
+                           function: str) -> tuple[int, int] | None:
+    """Find one generated extern, never an original candidate declaration."""
+    marker = text.find(_GENERATED_MARKER)
+    if marker < 0:
+        return None
+    definition = re.search(
+        rf"(?m)^[A-Za-z_][^\n;{{}}]*\b{re.escape(function)}\s*"
+        rf"\([^;{{}}]*\)\s*{{", text[marker:])
+    if not definition:
+        return None
+    block_end = marker + definition.start()
+    match = re.search(
+        rf"(?m)^[ \t]*extern\b[^;\n]*\b{re.escape(name)}\b[^;\n]*;"
+        rf"[ \t]*(?:\n|$)", text[marker:block_end])
+    if not match:
+        return None
+    return marker + match.start(), marker + match.end()
+
+
+def mechanically_repairable(row: dict, candidate_text: str = "") -> bool:
+    """True only when every fix is proven in both tree and candidate context."""
+    if not potentially_mechanical(row):
+        return False
+    for fix in row["resolvable"]:
+        if fix.get("executable") is True:
+            continue
+        if (fix.get("kind") == "entity-field" and
+                entity_field_receiver_is_entity(
+                    candidate_text, fix["invented"])):
+            continue
+        if (fix.get("kind") == "internal-linkage-definition" and
+                _generated_extern_span(
+                    candidate_text, fix["invented"],
+                    row["id"].rsplit(":", 1)[-1])):
+            continue
+        return False
+    return True
+
+
+def mechanical_subset(row: dict, candidate_text: str) -> dict:
+    """Keep every independently proven fix, even if later work remains."""
+    selected = []
+    for fix in row.get("resolvable", []):
+        if fix.get("executable") is True:
+            selected.append(fix)
+        elif (fix.get("kind") == "entity-field" and
+              entity_field_receiver_is_entity(
+                  candidate_text, fix["invented"])):
+            selected.append(fix)
+        elif (fix.get("kind") == "internal-linkage-definition" and
+              _generated_extern_span(
+                  candidate_text, fix["invented"],
+                  row["id"].rsplit(":", 1)[-1])):
+            selected.append(fix)
+    subset = dict(row)
+    subset["resolvable"] = selected
+    subset["unresolved"] = []
+    return subset
+
+
+def rejected_path(record_id: str, repo_root: Path = REPO) -> Path:
+    slug = re.sub(r"[^A-Za-z0-9_.-]+", "_", record_id).strip("_")
+    return repo_root / "automation" / "rejected" / f"{slug}.c"
+
+
+def declaration_from_source(source: str, name: str,
+                            repo_root: Path = REPO) -> str:
+    """Derive one extern from the exact declaration or definition line."""
+    line = re.sub(r"/\*.*?\*/", " ",
+                  _source_line(source, repo_root)).strip()
+    if re.match(r"static\b", line):
+        raise ValueError(
+            f"refusing internal-linkage declaration for {name}: {line!r}")
+    if "=" in line:
+        head = line.split("=", 1)[0].strip()
+    elif ";" in line:
+        head = line.split(";", 1)[0].strip()
+    else:
+        raise ValueError(f"declaration for {name} is not complete on one line")
+    head = re.sub(r"^extern\s+", "", head).strip()
+    if (not re.search(rf"\b{re.escape(name)}\b", head) or
+            "(" in head or "," in head):
+        raise ValueError(f"refusing ambiguous declaration for {name}: {line!r}")
+    return f"extern {head};"
+
+
+def repair_candidate_text(row: dict, text: str,
+                          repo_root: Path = REPO) -> tuple[str, list[str]]:
+    """Apply one fully mechanical triage row to preserved candidate text."""
+    if not mechanically_repairable(row, text):
+        raise ValueError("row contains unresolved or interpretive fixes")
+    declarations: list[str] = []
+    changes: list[str] = []
+    for fix in row["resolvable"]:
+        kind = fix["kind"]
+        name = fix["invented"]
+        if kind == "internal-linkage-definition":
+            function = row["id"].rsplit(":", 1)[-1]
+            span = _generated_extern_span(text, name, function)
+            if not span:
+                raise ValueError(
+                    f"no generated extern exists to retract for {name}")
+            old = text[span[0]:span[1]].strip()
+            text = text[:span[0]] + text[span[1]:]
+            changes.append(f"retract unsafe generated {old}")
+            continue
+        if kind in {"declaration", "declaration-definition"}:
+            declaration = declaration_from_source(fix["source"], name, repo_root)
+            existing = re.search(
+                rf"(?m)^[ \t]*extern\b[^;\n]*\b{re.escape(name)}\b[^;\n]*;"
+                rf"[ \t]*(?:\n|$)", text)
+            if existing and existing.group(0).strip() != declaration:
+                text = text[:existing.start()] + declaration + "\n" + text[existing.end():]
+                changes.append(
+                    f"replace {existing.group(0).strip()} with {declaration}")
+            elif not existing:
+                declarations.append(declaration)
+                changes.append(f"add {declaration}")
+            continue
+        if kind == "entity-field":
+            replacement = fix["replacement"]
+            spans = entity_field_access_spans(text, name)
+            if not spans:
+                raise ValueError(f"candidate does not contain ->{name}")
+            for start, end in reversed(spans):
+                text = text[:start] + replacement + text[end:]
+            changes.append(
+                f"replace {len(spans)} proven Entity use(s) of {name} "
+                f"with {replacement}")
+            continue
+        raise ValueError(f"unsupported repair kind {kind}")
+
+    if declarations:
+        function = row["id"].rsplit(":", 1)[-1]
+        definition = re.search(
+            rf"(?m)^[A-Za-z_][^\n;{{}}]*\b{re.escape(function)}\s*"
+            rf"\([^;{{}}]*\)\s*{{", text)
+        if not definition:
+            raise ValueError(f"candidate does not define {function}")
+        block = (_GENERATED_MARKER + "\n" +
+                 "\n".join(dict.fromkeys(declarations)) + "\n\n")
+        text = text[:definition.start()] + block + text[definition.start():]
+    marker = text.find(_GENERATED_MARKER)
+    if marker >= 0:
+        function = row["id"].rsplit(":", 1)[-1]
+        definition = re.search(
+            rf"(?m)^[A-Za-z_][^\n;{{}}]*\b{re.escape(function)}\s*"
+            rf"\([^;{{}}]*\)\s*{{", text[marker:])
+        if definition:
+            block_end = marker + definition.start()
+            if not re.search(r"(?m)^\s*extern\b", text[marker:block_end]):
+                text = text[:marker] + text[block_end:]
+    if not changes:
+        raise ValueError("candidate already contains every requested repair")
+    return text, changes
+
+
+def repair_candidates(rows: list[dict], apply: bool = False,
+                      repo_root: Path = REPO) -> int:
+    """Repair preserved evidence only; compilation and queue routing are separate."""
+    results = []
+    for row in rows:
+        if row.get("class") != "symbol":
+            continue
+        path = rejected_path(row["id"], repo_root)
+        has_candidate_fix = any(
+            fix.get("executable") is True or fix.get("kind") in {
+                "entity-field", "internal-linkage-definition"}
+            for fix in row.get("resolvable", []))
+        if not has_candidate_fix:
+            kinds = sorted({fix.get("kind", "unknown")
+                            for fix in row.get("resolvable", [])})
+            reason = "unresolved identifiers" if row.get("unresolved") else \
+                "interpretive fixes: " + ", ".join(kinds or ["none"])
+            results.append({"id": row["id"], "status": "skipped", "reason": reason})
+            continue
+        if not path.is_file():
+            results.append({"id": row["id"], "status": "skipped",
+                            "reason": "no preserved rejected candidate"})
+            continue
+        original = path.read_text(errors="ignore")
+        subset = mechanical_subset(row, original)
+        if not subset["resolvable"]:
+            results.append({"id": row["id"], "status": "skipped",
+                            "reason": "no candidate-local repair is proven"})
+            continue
+        try:
+            repaired, changes = repair_candidate_text(
+                subset, original, repo_root)
+        except (OSError, ValueError) as exc:
+            message = str(exc)
+            status = "skipped" if "already contains" in message else "refused"
+            results.append({"id": row["id"], "status": status,
+                            "reason": message})
+            continue
+        item = {"id": row["id"], "status": "would-repair", "changes": changes,
+                "stable": path.relative_to(repo_root).as_posix()}
+        if apply:
+            item["version"] = publish_versioned_artifact(
+                path, repaired, "rejected candidate", repo_root)
+            item["status"] = "repaired"
+        results.append(item)
+
+    for item in results:
+        suffix = "; ".join(item.get("changes", [])) or item.get("reason", "")
+        print(f"  {item['status']:12} {item['id']}: {suffix}")
+        if item.get("version"):
+            print(f"    immutable: {item['version']}")
+    repaired = sum(item["status"] in {"would-repair", "repaired"} for item in results)
+    skipped = len(results) - repaired
+    verb = "repaired" if apply else "would repair"
+    print(f"\n{repaired} {verb}; {skipped} skipped or refused")
+    if not apply:
+        print("Re-run with --repair-candidates --apply to publish immutable repairs.")
+    return 0 if all(item["status"] != "refused" for item in results) else 1
 
 
 # ---------------------------------------------------------------------------
@@ -774,6 +1122,9 @@ def self_test() -> int:
        "RIC_step is declared somewhere in the tree (it is real)")
     ck(declared_at("totally_made_up_identifier_xyz") is None,
        "an invented name is declared nowhere")
+    ck(declared_at("PrizeDrops", "us:ST/RCEN:EntityShaft") ==
+       "src/st/rcen/e_shaft.c:48",
+       "a same-overlay declaration outranks an unrelated shared-header name")
 
     print("\nunk<hex> resolves against the ANNOTATED Entity, not any struct")
     ck(len(entity_fields()) > 40,
@@ -784,6 +1135,10 @@ def self_test() -> int:
        "unk8 -> velocityX")
     ck("INSIDE" in (resolve_entity_offset("unk29") or ""),
        "unk29 is reported as INSIDE pfnUpdate, not as a missing member")
+    ck(exact_entity_field("unk24") == "zPriority",
+       "an exact offset is executable as a field replacement")
+    ck(exact_entity_field("unk29") is None,
+       "a containing-field diagnostic is not executable")
     ck(resolve_entity_offset("state") is None,
        "a non-unk name yields nothing here (no guessing)")
     ck(resolve_entity_offset("unkZZ") is None, "a non-hex suffix yields nothing")
@@ -797,6 +1152,116 @@ def self_test() -> int:
     # The noise this replaced: PSP SDK structs answering questions about Entity.
     ck(not any("PspUsbCam" in m for m in ext_members()),
        "no PSP SDK struct leaks into the Ext answer")
+    union_unk = triage([{
+        "id": "us:BOSS/BO6:Function",
+        "note": "BUILD FAILED: union has no member named `unk00'"}])[0]
+    ck(union_unk["resolvable"][0]["kind"] == "ext-member-diagnostic",
+       "a union-member diagnostic beats the numeric Entity-offset spelling")
+    ck(not union_unk["resolvable"][0]["executable"],
+       "an invented Ext member is never auto-repaired as an Entity field")
+
+    print("\nmechanical candidate repair has a narrow write boundary")
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        source = root / "src" / "st" / "test" / "defs.c"
+        source.parent.mkdir(parents=True)
+        source.write_text("s16 D_us_80180000[] = {1, 2};\n")
+        row = {
+            "id": "us:ST/TEST:Function", "class": "symbol", "unresolved": [],
+            "resolvable": [
+                {"invented": "D_us_80180000", "kind": "declaration-definition",
+                 "source": "src/st/test/defs.c:1", "executable": True},
+                {"invented": "unk24", "kind": "entity-field",
+                 "replacement": "zPriority", "executable": False,
+                 "requires_candidate_receiver_type": "Entity"},
+            ],
+        }
+        original = "void Function(Entity* self) {\n    self->unk24 = D_us_80180000[0];\n}\n"
+        ck(mechanically_repairable(row, original),
+           "an Entity parameter proves the receiver type")
+        repaired, changes = repair_candidate_text(row, original, root)
+        ck("extern s16 D_us_80180000[];" in repaired,
+           "a same-overlay definition yields an extern declaration")
+        ck("self->zPriority" in repaired and "self->unk24" not in repaired,
+           "an exact Entity offset is replaced in candidate text")
+        ck(len(changes) == 2, "every applied repair is recorded")
+        wrong = "extern u8 D_us_80180000[];\n" + original
+        corrected, corrected_changes = repair_candidate_text(row, wrong, root)
+        ck("extern s16 D_us_80180000[];" in corrected and
+           "extern u8 D_us_80180000[];" not in corrected,
+           "a prior mechanically wrong extern is corrected, not treated as present")
+        ck(any("replace extern u8" in change for change in corrected_changes),
+           "the declaration correction is recorded")
+        primitive = original.replace(
+            "Entity* self", "Entity* self, Primitive* prim").replace(
+                "self->unk24", "prim->unk24")
+        ck(not mechanically_repairable(row, primitive),
+           "the same numeric member on Primitive is not an Entity field")
+        shadowed = (
+            "void Function(Entity* self) {\n"
+            "    self->unk24 = 1;\n"
+            "    { Primitive* self; self->unk24 = 2; }\n"
+            "    // self->unk24 must stay in this comment\n"
+            "    Log(\"self->unk24 must stay in this string\");\n"
+            "}\n")
+        shadow_row = dict(row)
+        shadow_row["resolvable"] = [row["resolvable"][1]]
+        shadow_fixed, shadow_changes = repair_candidate_text(
+            shadow_row, shadowed, root)
+        ck("self->zPriority = 1" in shadow_fixed and
+           "self->unk24 = 2" in shadow_fixed,
+           "only the lexically active Entity receiver is rewritten")
+        ck("// self->unk24" in shadow_fixed and
+           '"self->unk24' in shadow_fixed,
+           "comments and literals are not rewritten")
+        ck("1 proven Entity use" in shadow_changes[0],
+           "the repair count includes only proven code spans")
+        static_source = root / "src" / "st" / "test" / "private.c"
+        static_source.write_text(
+            "static u8 g_PrivateAnimations[] = {1, 2};\n")
+        try:
+            declaration_from_source(
+                "src/st/test/private.c:1", "g_PrivateAnimations", root)
+        except ValueError as exc:
+            static_refused = "internal-linkage" in str(exc)
+        else:
+            static_refused = False
+        ck(static_refused,
+           "a cross-translation-unit static definition cannot yield extern")
+        retract_row = {
+            "id": "us:ST/TEST:Function", "class": "symbol", "unresolved": [],
+            "resolvable": [_internal_linkage_fix(
+                "g_PrivateAnimations", "src/st/test/private.c:1")],
+        }
+        unsafe = (_GENERATED_MARKER + "\n" +
+                  "extern u8 g_PrivateAnimations[];\n\n" + original)
+        retracted, retract_changes = repair_candidate_text(
+            retract_row, unsafe, root)
+        ck("extern u8 g_PrivateAnimations[];" not in retracted and
+           _GENERATED_MARKER not in retracted,
+           "an earlier generated static-derived extern is retracted")
+        ck("retract unsafe generated" in retract_changes[0],
+           "the retraction is recorded as evidence")
+        interpretive = dict(row)
+        interpretive["resolvable"] = [{
+            "invented": "unk29", "kind": "entity-offset-diagnostic",
+            "executable": False}]
+        ck(not mechanically_repairable(interpretive),
+           "inside-field diagnostics are refused")
+        unverified = dict(row)
+        unverified["resolvable"] = [{
+            "invented": "RIC_posX_i_hi", "kind": "struct-path-unverified",
+            "executable": False}]
+        ck(not mechanically_repairable(unverified),
+           "unverified struct paths are refused")
+        mixed = dict(row)
+        mixed["unresolved"] = ["still_needs_analysis"]
+        mixed["resolvable"] = row["resolvable"] + [{
+            "invented": "RIC_zPriority", "kind": "struct-path-unverified",
+            "executable": False}]
+        subset = mechanical_subset(mixed, original)
+        ck(len(subset["resolvable"]) == 2 and not subset["unresolved"],
+           "proven fixes are preserved as a mechanical subset when work remains")
 
     print("\na declaration in another overlay is not evidence")
     ck(_cross_overlay("us:ST/RNO0:EntityBladeSoldierDeathParts",
@@ -968,15 +1433,22 @@ def main() -> int:
                     help="requeue the classes that are not a verdict on the "
                          "code (harness, nocode, c89, quality-stale). "
                          "DRY RUN unless --apply is also given")
+    ap.add_argument("--repair-candidates", action="store_true",
+                    help="repair only fully mechanical symbol failures in "
+                         "preserved rejected candidates. DRY RUN unless "
+                         "--apply is also given; never edits src/ or the queue")
     ap.add_argument("--apply", action="store_true",
-                    help="with --requeue, actually write through scheduler.py")
+                    help="apply the selected --requeue or --repair-candidates mode")
     a = ap.parse_args()
 
     if a.self_test:
         return self_test()
-    if a.apply and not a.requeue:
-        print("--apply does nothing on its own; it modifies --requeue",
+    if a.requeue and a.repair_candidates:
+        print("choose either --requeue or --repair-candidates, not both",
               file=sys.stderr)
+        return 2
+    if a.apply and not (a.requeue or a.repair_candidates):
+        print("--apply does nothing on its own", file=sys.stderr)
         return 2
 
     if a.notes_file:
@@ -1032,6 +1504,8 @@ def main() -> int:
         if r["unresolved"]:
             print(f"    unresolved: {', '.join(r['unresolved'][:6])}")
 
+    if a.repair_candidates:
+        return repair_candidates(rows, apply=a.apply)
     if a.requeue:
         if a.notes_file:
             print("\n--requeue needs the live queue; it is meaningless "

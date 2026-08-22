@@ -23,9 +23,6 @@
 
    Do NOT apply this to the tree. Read it, fix what the
    verdict names, and re-attempt. */
-/* Mechanical symbol repair from escalation_triage.py. */
-extern s16 D_us_8018333C[];
-
 void func_us_801D21C8(Entity* entity) {
     u16 step;
     s32 animResult;

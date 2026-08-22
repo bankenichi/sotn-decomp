@@ -790,13 +790,60 @@ def _without_comments(text: str) -> str:
     return re.sub(r"/\*.*?\*/|//[^\n]*", "", text, flags=re.S)
 
 
-def _destination_visible(dest: Path, name: str) -> bool:
-    """Whether the destination translation unit already names a dependency."""
-    pieces = [dest.read_text(errors="ignore")]
-    pieces.extend(path.read_text(errors="ignore")
-                  for path in sorted(dest.parent.glob("*.h")))
+def _destination_scope_sources(dest: Path,
+                               prefix: str) -> list[tuple[Path, str]]:
+    """Destination prefix plus quoted headers reachable from that prefix."""
+    out = [(dest, prefix)]
+    pending: list[tuple[Path, str]] = [(dest, prefix)]
+    seen: set[Path] = {dest.resolve()}
+    repo = REPO.resolve()
+    destination_root = dest.resolve().parent
+    while pending and len(seen) < 64:
+        source_path, source_text = pending.pop(0)
+        for include in re.findall(
+                r'^\s*#\s*include\s+"([^"]+)"', source_text, flags=re.M):
+            candidates = [source_path.parent / include,
+                          REPO / "src" / include,
+                          REPO / "include" / include]
+            found = next((item.resolve() for item in candidates
+                          if item.is_file()), None)
+            if found is None or found in seen:
+                continue
+            allowed = False
+            for root in (repo, destination_root):
+                try:
+                    found.relative_to(root)
+                    allowed = True
+                    break
+                except ValueError:
+                    continue
+            if not allowed:
+                continue
+            seen.add(found)
+            text = found.read_text(errors="ignore")
+            out.append((found, text))
+            pending.append((found, text))
+    return out
+
+
+def _destination_visible(dest: Path, name: str, defining: str = "") -> bool:
+    """Whether a dependency is declared before the destination insertion point."""
+    destination = dest.read_text(errors="ignore")
+    if defining:
+        stub = re.search(
+            rf"\bINCLUDE_(?:ASM|RODATA)\s*\(\s*\"[^\"]*\"\s*,\s*"
+            rf"{re.escape(defining)}\s*\)\s*;", destination, re.S)
+        definition = re.search(
+            rf"(?m)^[A-Za-z_][^\n;{{}}]*\b{re.escape(defining)}\s*\(",
+            destination)
+        markers = [match.start() for match in (stub, definition) if match]
+        if markers:
+            destination = destination[:min(markers)]
+    pieces = [text for _path, text in _destination_scope_sources(
+        dest, destination)]
     text = _without_comments("\n".join(pieces))
-    text = re.sub(r"^.*INCLUDE_(?:ASM|RODATA)\(.*$", "", text, flags=re.M)
+    text = re.sub(
+        r"\bINCLUDE_(?:ASM|RODATA)\s*\(.*?\)\s*;", " ", text, flags=re.S)
     return bool(re.search(
         rf"#\s*define[ \t]+{re.escape(name)}\b|"
         rf"\b{re.escape(name)}\b[ \t]*(?:\[|\(|=|,|;)", text))
@@ -900,7 +947,7 @@ def donor_scope_decls(body: str, donor: Path, dest: Path,
         for match in _DONOR_OBJECT.finditer(source_text):
             name = match.group("name")
             if (name in claimed or name not in used or name == defining
-                    or _destination_visible(dest, name)):
+                    or _destination_visible(dest, name, defining)):
                 continue
             array = _complete_array_shape(source_text, match)
             declaration = f"extern {match.group('type').strip()} {name}{array};"
@@ -913,7 +960,7 @@ def donor_scope_decls(body: str, donor: Path, dest: Path,
             name = match.group("name")
             if (name in claimed or name not in used or name == defining
                     or not re.search(rf"\b{re.escape(name)}\s*\(", body)
-                    or _destination_visible(dest, name)):
+                    or _destination_visible(dest, name, defining)):
                 continue
             storage = "extern " if "extern" in match.group("storage").split() else ""
             declaration = (f"{storage}{match.group('type').strip()} {name}"
@@ -936,7 +983,7 @@ def donor_scope_decls(body: str, donor: Path, dest: Path,
         pending.remove(name)
         item = macros.get(name)
         if (not item or name in added_macros
-                or _destination_visible(dest, name)):
+                or _destination_visible(dest, name, defining)):
             continue
         value, source_path = item
         if not value:
@@ -951,7 +998,7 @@ def donor_scope_decls(body: str, donor: Path, dest: Path,
 
     enum_values = _enum_values(source)
     for name in sorted(required):
-        if (name not in enum_values or _destination_visible(dest, name)
+        if (name not in enum_values or _destination_visible(dest, name, defining)
                 or name in added_macros):
             continue
         declaration = f"#define {name} {enum_values[name]}"
@@ -2066,16 +2113,28 @@ def self_test() -> int:
             "    if (g_fixturePressed) { self->step++; }\n"
             "}\n",
             encoding="utf-8")
+        (fixture / "visible.h").write_text(
+            "extern EInit g_EInitFixture;\n", encoding="utf-8")
+        (fixture / "late.h").write_text(
+            "extern u8 D_fixtureAnim[];\n", encoding="utf-8")
+        (fixture / "unused.h").write_text(
+            "extern u16 g_fixturePressed;\n", encoding="utf-8")
         destination.write_text(
-            'INCLUDE_ASM("fixture/nonmatchings/file", Fixture);\n',
+            '#include "visible.h"\n'
+            "INCLUDE_ASM(\n"
+            '    "fixture/nonmatchings/file",\n'
+            "    Fixture\n"
+            ");\n"
+            '#include "late.h"\n'
+            "extern u16 g_fixturePressed;\n",
             encoding="utf-8")
         fixture_body = _harv()._extract(donor.read_text(), "Fixture")
         fixture_decls, _fixture_notes = donor_scope_decls(
             fixture_body, donor, destination, defining="Fixture")
-    ck("extern EInit g_EInitFixture;" in fixture_decls
+    ck("extern EInit g_EInitFixture;" not in fixture_decls
        and "extern u8 D_fixtureAnim[];" in fixture_decls
        and "extern u16 g_fixturePressed;" in fixture_decls,
-       "whole-file seeds retain required declarations for isolated scoring")
+       "only headers reachable before a multiline stub suppress score declarations")
     try:
         load_score_body("func_801904B8", "../outside.c")
     except ValueError:

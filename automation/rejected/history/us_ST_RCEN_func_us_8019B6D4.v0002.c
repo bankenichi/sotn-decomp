@@ -27,10 +27,7 @@
    Do NOT apply this to the tree. Read it, fix what the
    verdict names, and re-attempt. */
 /* Mechanical symbol repair from escalation_triage.py. */
-extern u32 PrizeDrops;
-
-/* Mechanical symbol repair from escalation_triage.py. */
-extern EInit D_us_80180570;
+extern AnimationFrame PrizeDrops[];
 
 void func_us_8019B6D4(Entity* self) {
     s16 angle;

@@ -29,9 +29,6 @@
 /* Mechanical symbol repair from escalation_triage.py. */
 extern u32 PrizeDrops;
 
-/* Mechanical symbol repair from escalation_triage.py. */
-extern EInit D_us_80180570;
-
 void func_us_8019B6D4(Entity* self) {
     s16 angle;
     s32 dx;

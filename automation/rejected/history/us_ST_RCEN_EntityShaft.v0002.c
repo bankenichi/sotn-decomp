@@ -38,7 +38,7 @@ ction it appears in.)
    Do NOT apply this to the tree. Read it, fix what the
    verdict names, and re-attempt. */
 /* Mechanical symbol repair from escalation_triage.py. */
-extern u32 PrizeDrops;
+extern AnimationFrame PrizeDrops[];
 
 void EntityShaft(Entity* self) {
     s32 angle;

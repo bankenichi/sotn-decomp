@@ -115,7 +115,7 @@ RX_FIELD = re.compile(r"/\*\s*(0x[0-9A-Fa-f]+)\s*\*/\s*([^;/][^;]*);")
 RX_ANON_BITFIELD = re.compile(r"^\s*\w+\s*:\s*\d+\s*$")
 RX_NAME = re.compile(r"(\w+)\s*(?:\[[^\]]*\])*\s*$")
 
-RX_UNK = re.compile(r"->\s*unk([0-9A-Fa-f]{2,3})\b")
+RX_UNK = re.compile(r"->\s*(?:ext\s*\.\s*)?unk([0-9A-Fa-f]{2,3})\b")
 RX_ILLEGAL = re.compile(
     r"ext\s*\.\s*ILLEGAL\s*\.\s*(u8|s8|u16|s16|u32|s32)\s*\[\s*"
     r"(0[xX][0-9A-Fa-f]+|\d+)\s*\]")
@@ -440,8 +440,11 @@ def self_test() -> int:
        "hexadecimal array lengths cover the complete declared field")
 
     print("\nboth spellings m2c produces are counted")
-    d = demanded_offsets("a->unk86 = 1; b->unk24 = 2; c = x->ext.ILLEGAL.u8[0x2E];")
+    d = demanded_offsets(
+        "a->unk86 = 1; b->unk24 = 2; c = x->ext.ILLEGAL.u8[0x2E]; "
+        "d->ext.unk90 = 3;")
     ck(d[0x86] == 1, "->unkNN in the ext range")
+    ck(d[0x90] == 1, "->ext.unkNN in a rejected candidate")
     ck(0x24 not in d, "and NOT the fixed header, which is already named")
     # Found by running this against the live tree: EntityRelicOrb touches
     # ->unkB8 three times. 0xB8 is the named `struct Entity*` AFTER the union,

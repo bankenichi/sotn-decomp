@@ -24,12 +24,6 @@
    Do NOT apply this to the tree. Read it, fix what the
    verdict names, and re-attempt. */
 // Boss entity that tracks player position, draws an expanding/fading quad, then self-destructs.
-/* Mechanical symbol repair from escalation_triage.py. */
-extern s16 RIC_posX_i_hi;
-
-/* Mechanical symbol repair from escalation_triage.py. */
-extern s16 RIC_posY_i_hi;
-
 void func_us_801BE79C(Entity* entity) {
     u16 step;
     Primitive* prim;

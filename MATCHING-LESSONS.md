@@ -962,6 +962,29 @@ Three lessons, in order of value:
    four classes we already knew and never questioned the corpus. Independence is
    what produced the finding, so do not brief the reviewer on the answer.
 
+## 10l. A name is not a type, a declaration is not globally interchangeable, and order matters
+
+Task #240 exposed three ways a mechanical symbol resolver can produce a
+plausible wrong fix:
+
+- `unk24` is only an offset-like spelling. On `Entity*` it can name
+  `zPriority`; on `Primitive*` it is unrelated storage. Resolve the active
+  declaration at each access, including nested shadowing, and mask comments and
+  literals before replacing only proven spans.
+- A declaration with the same name in a shared header can have a different type
+  from the overlay-local object. Prefer same-overlay declarations and
+  definitions, and preserve the rejected declaration generation when compiler
+  evidence forces a correction. A file-scope `static` definition is never a
+  source for an `extern` in another translation unit.
+- A declaration later in the destination C file is not visible at an earlier
+  replacement site under this C89 compiler. Isolated scoring must evaluate
+  visibility at the stub insertion point, not over the whole translation unit,
+  and must follow only the quoted-header graph reachable before that point.
+
+All three failures passed a name-only check. The compiler was the cheap oracle
+that separated proof from resemblance, so mechanical repair must remain
+dry-run-first and compile-gated.
+
 ## 11. Probe the environment; never assert it from documentation
 
 On 2026-07-21 the orchestrator told the operator a cli fleet could not run under

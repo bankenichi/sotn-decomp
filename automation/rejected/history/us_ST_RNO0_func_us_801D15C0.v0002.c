@@ -38,9 +38,6 @@
 extern Point16 D_us_80183310[];
 extern s16 D_us_8018332C[];
 
-/* Mechanical symbol repair from escalation_triage.py. */
-extern Entity g_Entities_224[];
-
 void func_us_801D15C0(Entity* self) {
     Collider collider;
     s32 sp50;

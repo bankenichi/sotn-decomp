@@ -37,7 +37,7 @@
    Do NOT apply this to the tree. Read it, fix what the
    verdict names, and re-attempt. */
 /* Mechanical symbol repair from escalation_triage.py. */
-extern s32 D_us_80180BA8;
+extern u8 D_us_80180BA8[];
 
 void func_us_801AE858(Entity* self) {
         s16 sp70;

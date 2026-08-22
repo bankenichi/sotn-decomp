@@ -24,9 +24,6 @@
 
    Do NOT apply this to the tree. Read it, fix what the
    verdict names, and re-attempt. */
-/* Mechanical symbol repair from escalation_triage.py. */
-extern EInit g_EInitOlroxAfterImage;
-
 void func_us_801AF8C0(Entity* entity) {
     Entity* child;
     s16 scale;

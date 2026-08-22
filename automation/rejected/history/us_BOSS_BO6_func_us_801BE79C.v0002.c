@@ -27,9 +27,6 @@
 /* Mechanical symbol repair from escalation_triage.py. */
 extern s16 RIC_posX_i_hi;
 
-/* Mechanical symbol repair from escalation_triage.py. */
-extern s16 RIC_posY_i_hi;
-
 void func_us_801BE79C(Entity* entity) {
     u16 step;
     Primitive* prim;
