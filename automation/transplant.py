@@ -184,7 +184,11 @@ def local_twin(base: str, exclude: str = "") -> tuple[str, str]:
     hits = _local_def_index().get(base, [])
     uh = _harv()
     for h in hits:
-        if exclude and h.endswith(exclude):
+        # Exclude only the destination file itself. Comparing basenames hid
+        # valid stage siblings whenever both overlays used the same source
+        # filename, as with CEN and RCEN e_elevator.c:func_801904B8.
+        if (exclude and h.replace("\\", "/") ==
+                exclude.replace("\\", "/")):
             continue
         body = uh._extract((REPO / h).read_text(errors="ignore"), base)
         if body:
@@ -254,6 +258,72 @@ def apply_map(body: str, pairs: list[str]) -> tuple[str, list[str]]:
         re.escape(k) for k in sorted(table, key=len, reverse=True))
         + r")(?![\w.])")
     return pat.sub(lambda m: table[m.group(1)], body), notes
+
+
+def adapt_signed_compound_assignments(
+    body: str, pairs: list[str]
+) -> tuple[str, list[str], list[str]]:
+    """Apply target-proven sign changes that literal substitution cannot.
+
+    asm_delta represents `dy -= 32` versus `dy += 0x20` as `-32=0x20`.
+    The signed value is not a literal token in the C, so apply_map cannot see
+    it. Rewrite only compound assignments with a simple named lvalue and only
+    when the proven old and new constants cross zero.
+    """
+    notes: list[str] = []
+    remaining: list[str] = []
+    lvalue = r"(?P<lhs>\b[A-Za-z_]\w*(?:\s*(?:->|\.)\s*[A-Za-z_]\w*)*)"
+    for pair in pairs or []:
+        old_text, sep, new_text = pair.partition("=")
+        old_text, new_text = old_text.strip(), new_text.strip()
+        try:
+            old_value = int(old_text, 0)
+            new_value = int(new_text, 0)
+        except ValueError:
+            remaining.append(pair)
+            continue
+        if not sep or old_value == 0 or new_value == 0 or (
+                old_value < 0) == (new_value < 0):
+            remaining.append(pair)
+            continue
+
+        old_op = "-=" if old_value < 0 else "+="
+        new_op = "+=" if new_value > 0 else "-="
+        old_mag = abs(old_value)
+        forms = {str(old_mag), hex(old_mag), hex(old_mag).upper().replace("X", "x")}
+        literal = "(?:" + "|".join(
+            re.escape(value) for value in sorted(forms, key=len, reverse=True)
+        ) + ")"
+        pattern = re.compile(
+            lvalue + r"(?P<gap>\s*)" + re.escape(old_op) +
+            r"\s*" + literal + r"(?![\w.])")
+        replacement_value = new_text.lstrip("+-")
+        body, count = pattern.subn(
+            lambda match: (match.group("lhs") + match.group("gap") +
+                           new_op + " " + replacement_value),
+            body)
+        if count:
+            notes.append(
+                f"{old_op} {old_mag} -> {new_op} {replacement_value} "
+                f"({count} target-proven occurrence(s))")
+        else:
+            remaining.append(pair)
+    return body, remaining, notes
+
+
+def signed_compound_pairs(consts: dict) -> list[str]:
+    """Return only asm constant maps eligible for compound-op adaptation."""
+    pairs: list[str] = []
+    for old, new in sorted(consts.items(), key=lambda item: str(item[0])):
+        try:
+            old_value = int(str(old), 0)
+            new_value = int(str(new), 0)
+        except ValueError:
+            continue
+        if (old_value and new_value and
+                (old_value < 0) != (new_value < 0)):
+            pairs.append(f"{old}={new}")
+    return pairs
 
 
 def adapt_api_surfaces(
@@ -1085,7 +1155,7 @@ def preflight(fn: str, mapping: list[str] | None = None,
     body = path = src_kind = ""
     selected_delta: dict | None = None
     for cand in (twin_sources(fn) or [base]):
-        b, pth = local_twin(cand, exclude=Path(stub_path).name)
+        b, pth = local_twin(cand, exclude=stub_path)
         if not b:
             tried.append((cand, "no-definition", "no extractable definition"))
             continue
@@ -1147,19 +1217,25 @@ def preflight(fn: str, mapping: list[str] | None = None,
         if adaptable:
             adapt_kind = d["kind"]
             auto_notes.extend(f"codegen: {hint}" for hint in d.get("hints", []))
+            compound_pairs = signed_compound_pairs(d.get("consts", {}))
             proposed = len(d.get("symbols", {})) + len(d.get("consts", {}))
-            if proposed:
+            suppressed = proposed - len(compound_pairs)
+            if suppressed:
                 auto_notes.append(
-                    f"safety: suppressed {proposed} operand-map proposal(s) "
+                    f"safety: suppressed {suppressed} operand-map proposal(s) "
                     "from non-positional alignment")
-                auto_notes.extend(
-                    f"safety: diagnostic-only symbol {old} -> {new}"
-                    for old, new in sorted(d.get("symbols", {}).items()))
-                auto_notes.extend(
-                    f"safety: diagnostic-only constant {old} -> {new}"
-                    for old, new in sorted(d.get("consts", {}).items()))
+            auto_notes.extend(
+                f"codegen: signed compound candidate {pair}"
+                for pair in compound_pairs)
+            auto_notes.extend(
+                f"safety: diagnostic-only symbol {old} -> {new}"
+                for old, new in sorted(d.get("symbols", {}).items()))
+            auto_notes.extend(
+                f"safety: diagnostic-only constant {old} -> {new}"
+                for old, new in sorted(d.get("consts", {}).items()))
         target_symbols = set(d.get("target_symbols", set()))
-        pairs = ad.as_maps(d) + pairs
+        pairs = ad.as_maps(d) + (
+            compound_pairs if adaptable else []) + pairs
         em, en = enum_map(body,
                           Path(path).parent / f"{Path(path).parent.name}.h",
                           Path(REPO / stub_path).parent
@@ -1172,6 +1248,8 @@ def preflight(fn: str, mapping: list[str] | None = None,
     # literals; rewrite the macro argument instead, verified by evaluation.
     mc, mc_notes = macro_consts(body, pairs)
     auto_notes += [f"macro: {x}" for x in mc_notes]
+    body, pairs, compound_notes = adapt_signed_compound_assignments(body, pairs)
+    auto_notes += [f"compound: {x}" for x in compound_notes]
     body, map_notes = apply_map(body, pairs + mc)
     body, api_notes = adapt_api_surfaces(body, target_symbols)
     decls, decl_notes = auto_decls(body, REPO / stub_path, defining=fn)
@@ -1285,9 +1363,33 @@ def score_draft(fn: str, mapping: list[str] | None = None,
         overlay_hint=overlay)
 
 
+def load_score_body(fn: str, value: str) -> tuple[str, str]:
+    """Load one in-repo C definition for isolated scoring, without applying."""
+    path = (REPO / value).resolve()
+    try:
+        rel = path.relative_to(REPO)
+    except ValueError as exc:
+        raise ValueError("--body-file must stay inside the repository") from exc
+    raw = path.read_text(encoding="utf-8")
+    body = _harv()._extract(raw, fn)
+    if not body:
+        raise ValueError(f"--body-file does not define {fn}: {rel}")
+    return body, str(rel).replace("\\", "/")
+
+
 def score_one(fn: str, mapping: list[str] | None = None,
-              overlay: str = "") -> int:
-    result = score_draft(fn, mapping, overlay=overlay)
+              overlay: str = "", body_file: str = "") -> int:
+    body = detail = ""
+    if body_file:
+        try:
+            body, rel = load_score_body(fn, body_file)
+        except (OSError, ValueError) as exc:
+            print(f"{fn}\n  status: body-file-failed\n  score:  not available")
+            print(f"  detail: {exc}")
+            return 1
+        detail = f"operator-supplied body for isolated scoring: {rel}"
+    result = score_draft(
+        fn, mapping, body=body, detail=detail, overlay=overlay)
     score = result.get("score")
     print(f"{fn}\n  status: {result.get('status')}")
     print(f"  score:  {score if score is not None else 'not available'}")
@@ -1874,6 +1976,12 @@ def self_test() -> int:
                           if isinstance(n, _ast.Name)],
        "the upstream ref is never named")
 
+    print("\nsame-basename stage siblings remain eligible donors")
+    sibling_body, sibling_path = local_twin(
+        "func_801904B8", exclude="src/st/rcen/e_elevator.c")
+    ck(sibling_path == "src/st/cen/e_elevator.c" and sibling_body,
+       f"the exact RCEN destination is excluded without hiding CEN ({sibling_path})")
+
     print("\nthe twin is renamed to the symbol being replaced")
     ck(rename_function("void a(Entity* e) { a(e); }", "a", "a_from_no0")
        == "void a_from_no0(Entity* e) { a_from_no0(e); }",
@@ -1901,6 +2009,32 @@ def self_test() -> int:
     # mis-anchor; the guard is a non-word, non-dot lookaround.
     nb, _ = apply_map("x = 0x91; y = 0x910;", ["0x91=0x5F"])
     ck(nb == "x = 0x5F; y = 0x910;", f"0x910 is not touched by 0x91 ({nb})")
+
+    print("\nsigned asm constants can adapt compound assignments")
+    cb, left, cn = adapt_signed_compound_assignments(
+        "dy -= 32; prim->x += 8;", ["-32=0x20", "8=12"])
+    ck(cb == "dy += 0x20; prim->x += 8;",
+       f"a proven sign change flips only its compound operator ({cb})")
+    ck(left == ["8=12"], f"ordinary maps remain for apply_map ({left})")
+    ck(cn and "target-proven" in cn[0],
+       f"the structural rewrite is reported ({cn})")
+    ck(signed_compound_pairs({"-32": "0x20", "8": "12"}) ==
+       ["-32=0x20"],
+       "only sign-crossing asm constants enter the compound adapter")
+
+    print("\npreserved bodies can be scored without applying them")
+    seed_body, seed_path = load_score_body(
+        "func_801904B8",
+        "automation/candidates/history/us_ST_RCEN_func_801904B8.v0004.c")
+    ck("func_801904B8" in seed_body and seed_path.endswith(".v0004.c"),
+       f"an immutable whole-file seed yields its exact definition ({seed_path})")
+    try:
+        load_score_body("func_801904B8", "../outside.c")
+    except ValueError:
+        escaped = True
+    else:
+        escaped = False
+    ck(escaped, "body-file scoring refuses repository traversal")
 
     print("\nordinal enum mapping requires matching entity-update evidence")
     import tempfile as _tempfile
@@ -2474,6 +2608,9 @@ def main() -> int:
     ap.add_argument("--score", action="store_true",
                     help="debug-score an adaptable draft without a game build; "
                          "use with --function or --scan")
+    ap.add_argument("--body-file", default="",
+                    help="score the named function from an existing in-repo C "
+                         "file instead of generating a donor draft")
     ap.add_argument("--publish-low-scores", action="store_true",
                     help="publish newest isolated scores as immutable seeds")
     ap.add_argument("--land-score-zeros", action="store_true",
@@ -2491,7 +2628,7 @@ def main() -> int:
         pairs += [x for x in chunk.split("/") if x.strip()]
     if a.score:
         if a.function:
-            return score_one(a.function, pairs, a.overlay)
+            return score_one(a.function, pairs, a.overlay, a.body_file)
         if a.scan:
             return score_scan(a.limit, a.overlay)
         print("--score requires --function NAME or --scan", file=sys.stderr)
