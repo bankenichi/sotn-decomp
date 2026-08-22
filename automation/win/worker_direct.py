@@ -1658,7 +1658,12 @@ def _undeclared_calls(whole: str, code: str, skip: set) -> list:
 
 
 def _declare_stub_siblings(whole: str, code: str) -> str:
-    """Declare same-file INCLUDE_ASM stubs that the candidate calls.
+    """Declare calls the selected translation-unit scope needs for the permuter.
+
+    The historical name is retained for repair-tool compatibility. `code`
+    selects the scan scope: transplant callers may pass one generated body,
+    while save_candidate passes the complete substituted translation unit so
+    earlier existing C functions cannot retain undeclared calls.
 
     THE SEED IS THE WHOLE FILE AND THAT IS STILL NOT ENOUGH. Six BOSS/BO0
     records sat deferred as `seed-bug`, all six on one symbol:
@@ -1695,8 +1700,10 @@ def _declare_stub_siblings(whole: str, code: str) -> str:
         would change codegen; that is why lookup_declarations refuses to
         invent, and why this narrow fallback is separate from it.
 
-    Scope is deliberately tight: only INCLUDE_ASM stubs IN THIS FILE, only
-    ones this candidate actually calls, only ones the tree does not declare.
+    Scope is deliberately evidence-bound: only calls present in `code`; any
+    declaration, definition or INCLUDE_ASM stub already visible in `whole`
+    suppresses the implicit fallback; and a real repository declaration always
+    wins. The complete-file publication path passes `whole` for both arguments.
     """
     stubs = set(_RX_STUB_IN_FILE.findall(whole))
     called = sorted(n for n in stubs if re.search(rf"\b{re.escape(n)}\s*\(", code))
@@ -1721,10 +1728,11 @@ def _declare_stub_siblings(whole: str, code: str) -> str:
     if not decls and not implicit:
         return whole
 
-    block = ["\n/* Added by the permuter-seed writer. INCLUDE_ASM expands to "
-             "nothing under\n   PERMUTER, so these same-file stubs lose their "
-             "only mention and the\n   permuter's typemap raises KeyError on "
-             "every mutation touching them. */"]
+    block = ["\n/* Added by the permuter-seed writer. The permuter parses the "
+             "complete\n   translation unit, so every call needs typemap "
+             "evidence. INCLUDE_ASM\n   disappears under PERMUTER, and C89 "
+             "implicit calls have no declaration.\n   Either case otherwise "
+             "raises KeyError when a mutation touches the call. */"]
     if decls:
         block += ["/* Declared by the tree: */"] + decls
     if implicit:
@@ -1796,8 +1804,12 @@ def save_candidate(rec: dict, code: str, attempt: int, detail: str,
             try:
                 whole = virtual_apply(ctx, rec["function"], code)
                 if whole:
-                    whole = _declare_stub_siblings(whole, code)
-                    payload, kind = whole, "WHOLE FILE (stubs declared)"
+                    # The permuter parses the complete translation unit, so
+                    # existing C functions need explicit typemap declarations
+                    # too. Scanning only the generated body missed implicit
+                    # calls such as DestroyEntity in an earlier function.
+                    whole = _declare_stub_siblings(whole, whole)
+                    payload, kind = whole, "WHOLE FILE (calls declared)"
             except Exception as e:                       # never lose the seed
                 print(f"  !! seed fell back to the bare body: {e}", flush=True)
         verdict = _archive_verdict(detail)

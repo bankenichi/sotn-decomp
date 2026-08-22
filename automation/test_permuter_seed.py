@@ -77,6 +77,18 @@ def main() -> int:
     check("save_candidate(rec, code, attempt, detail, ctx)" in src,
           "the call site actually passes ctx")
 
+    print("\nwhole-file seed declarations cover existing C functions")
+    whole = (
+        '#include "game.h"\n'
+        'void Existing(Entity* self) { DestroyEntity(self); }\n'
+        'INCLUDE_ASM("test", Candidate);\n')
+    candidate = "void Candidate(void) {}\n"
+    check("_declare_stub_siblings(whole, whole)" in body,
+          "save_candidate scans the complete preserved translation unit")
+    repaired = wd._declare_stub_siblings(whole, whole)
+    check("void DestroyEntity(Entity*);" in repaired,
+          "an implicit call outside the generated body receives its real prototype")
+
     print("\nimmutable evidence publication has a public shared owner")
     for rel in ("fix_seed_declarations.py", "permuter_supervisor.py", "transplant.py"):
         consumer = (REPO / "automation" / rel).read_text()
@@ -99,14 +111,29 @@ def main() -> int:
         legacy = b"/* legacy current seed */\nvoid VersionedSeed(void) {}\n"
         current.write_bytes(legacy)
 
-        first = wd.save_candidate(
-            rec, "void VersionedSeed(void) { g_CurrentEntity->step = 1; }\n",
-            1, "BUILT, CHECKSUM MISMATCH", None)
+        translation_unit = (
+            '#include "game.h"\n'
+            'void Existing(Entity* self) { DestroyEntity(self); }\n'
+            'INCLUDE_ASM("test", VersionedSeed);\n')
+        original_virtual_apply = wd.virtual_apply
+        try:
+            wd.virtual_apply = lambda _ctx, _fn, generated: (
+                translation_unit.replace(
+                    'INCLUDE_ASM("test", VersionedSeed);', generated))
+            first = wd.save_candidate(
+                rec,
+                "void VersionedSeed(void) { g_CurrentEntity->step = 1; }\n",
+                1, "BUILT, CHECKSUM MISMATCH",
+                {"src_rel": "src/st/test.c", "asm_rel": "st/test"})
+        finally:
+            wd.virtual_apply = original_virtual_apply
         first_path = temp_root / first
         versions = sorted((current.parent / "history").glob("*.c"))
         check("/history/" in first.replace("\\", "/"),
               f"the queue path is immutable ({first})")
         check(first_path.is_file(), "the first immutable version exists")
+        check("void DestroyEntity(Entity*);" in first_path.read_text(),
+              "published whole-file generation is declaration-complete")
         check(any(item.read_bytes() == legacy for item in versions),
               "a legacy stable seed is archived byte-for-byte before replacement")
         check(len(versions) == 2,

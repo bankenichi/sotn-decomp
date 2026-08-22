@@ -2,9 +2,10 @@
 """Retrofit stub declarations onto permuter seeds written before the fix.
 
 WHY THIS EXISTS
-    worker_direct._declare_stub_siblings() now declares the same-file
-    INCLUDE_ASM stubs a seed calls, because INCLUDE_ASM expands to nothing
-    under PERMUTER and decomp-permuter's typemap then raises KeyError on every
+    worker_direct._declare_stub_siblings() now declares same-file INCLUDE_ASM
+    stubs and C89 implicit calls across the complete seed translation unit.
+    INCLUDE_ASM expands to nothing under PERMUTER, and decomp-permuter's typemap
+    then raises KeyError on every
     mutation that touches the call. Six BOSS/BO0 records lost 3% to 17% of
     their search that way and were deferred as `seed-bug`.
 
@@ -43,6 +44,9 @@ SEEDS = os.path.join(HERE, "candidates")
 # single /* ... */ block written by save_candidate.
 RX_BANNER = re.compile(r"\A\s*/\*.*?\*/\s*", re.S)
 WRITER_START = "/* Added by the permuter-seed writer. INCLUDE_ASM expands to nothing under"
+WRITER_START_CURRENT = (
+    "/* Added by the permuter-seed writer. The permuter parses the complete")
+WRITER_STARTS = (WRITER_START, WRITER_START_CURRENT)
 WRITER_END = "/* End permuter-seed writer declarations. */"
 
 
@@ -62,9 +66,11 @@ def strip_writer_blocks(body: str) -> tuple[str, list[str]]:
     """
     removed = []
     while True:
-        start = body.find(WRITER_START)
-        if start < 0:
+        starts = [body.find(marker) for marker in WRITER_STARTS]
+        starts = [offset for offset in starts if offset >= 0]
+        if not starts:
             return body, removed
+        start = min(starts)
         start = body.rfind("/*", 0, start + 2)
         line_start = body.rfind("\n", 0, start) + 1
         sentinel = body.find(WRITER_END, start)

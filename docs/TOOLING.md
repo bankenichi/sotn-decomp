@@ -416,6 +416,12 @@ each explains itself when run. `test_connector_surfaces.py` enforces that
 blanket claim and exact coverage of every callable connector tool.
 `run_selftests.py` is the one to reach for.
 
+Before publication, the worker scans the complete substituted translation unit,
+not only the generated function. Existing C earlier in the file can rely on C89
+implicit calls such as `DestroyEntity`; those calls need the same real prototype
+or evidence-bound implicit declaration in the permuter typemap before the queue
+names the immutable generation.
+
 The seed writer parses complete declaration spans rather than physical lines.
 It recognizes storage qualifiers, multiword and pointer return types, static
 definitions, balanced multiline prototypes, and complete multiline externs.
