@@ -450,7 +450,19 @@ INCLUDE_ASM("boss/bo0/nonmatchings/3053C", func_us_801B19FC);
 
 INCLUDE_ASM("boss/bo0/nonmatchings/3053C", func_us_801B1B30);
 
-INCLUDE_ASM("boss/bo0/nonmatchings/3053C", func_us_801B1C60);
+s32 func_us_801B1C60(ET_B0_Unk* self) {
+    ET_B0_Unk* child = (ET_B0_Unk*)self->parent;
+    s32 result1;
+    s32 result2;
+
+    func_us_801B163C(&g_CurrentEntity->ext.venusWeed.pad_90, -0x100, 0xC);
+    result1 = func_us_801B171C(self, -0x1C0, 0x280, 0x10);
+    // CODEGEN: This wrapper makes GCC preserve the target call setup order.
+    do {
+        result2 = func_us_801B171C(child, -0x380, 0x140, 0x10);
+        return (result1 + result2) == 2;
+    } while (0);
+}
 
 INCLUDE_ASM("boss/bo0/nonmatchings/3053C", func_us_801B1CE0);
 

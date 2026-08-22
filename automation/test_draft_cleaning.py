@@ -79,6 +79,32 @@ REAL_SHAPE = """void func_us_80100000(Entity *self, Primitive *prim) {
 }"""
 
 
+PARTIAL_ENTITY = """void func_801904B8(Entity *entity) {
+    entity->unk02 = 1;
+    entity->unk06 = 1;
+    entity->unk08 = 2;
+    entity->unk0A = 3;
+    entity->unk0C = 4;
+    entity->unk0D = 5;
+    entity->unk24 = 6;
+    entity->unk25 = 7;
+    entity->unk30 = 8;
+    entity->unk31 = 9;
+}"""
+
+PARTIAL_ASM = """lh $v0, 0x2($a0)
+lh $v0, 0x6($a0)
+sh $v0, 0x8($a0)
+sh $v0, 0xA($a0)
+sb $v0, 0xC($a0)
+sb $v0, 0xD($a0)
+sb $v0, 0x24($a0)
+sb $v0, 0x25($a0)
+sb $v0, 0x30($a0)
+sb $v0, 0x31($a0)
+"""
+
+
 def main():
     print("clean_draft rewrites ONLY what it can prove")
     out, notes = wd.clean_draft(REAL_SHAPE)
@@ -102,6 +128,81 @@ def main():
     check(wd.clean_draft("")[0] == "", "empty draft does not crash")
     check(wd.clean_draft("void f(void) { return; }")[1] == [],
           "a draft with no Entity is returned untouched")
+
+    print("\npartial-width Entity accesses stay named and preserve width")
+    partial, partial_notes = wd.clean_draft(PARTIAL_ENTITY, PARTIAL_ASM)
+    check("entity->posX.i.hi" in partial,
+          "the signed halfword at posX+2 uses the existing f32 submember")
+    check("entity->posY.i.hi" in partial,
+          "the signed halfword at posY+2 uses the existing f32 submember")
+    check("((s16*)&entity->velocityX)[0]" in partial,
+          "the low velocityX halfword is rooted at the named member")
+    check("((s16*)&entity->velocityX)[1]" in partial,
+          "the high velocityX halfword is rooted at the named member")
+    check("((u8*)&entity->velocityY)[0]" in partial and
+          "((u8*)&entity->velocityY)[1]" in partial,
+          "both velocityY byte stores preserve their exact offsets")
+    check("((u8*)&entity->zPriority)[0]" in partial and
+          "((u8*)&entity->zPriority)[1]" in partial,
+          "both zPriority byte stores preserve their exact offsets")
+    check("((u8*)&entity->params)[0]" in partial and
+          "((u8*)&entity->params)[1]" in partial,
+          "both params byte stores preserve their exact offsets")
+    check("->unk" not in partial,
+          "no nonexistent partial-width Entity member reaches the model")
+    check(len(partial_notes) == 10,
+          f"every mechanical replacement is reported ({len(partial_notes)})")
+
+    conflicting = """void f(Entity *entity) { entity->unk24 = 1; }"""
+    conflicting_asm = """sb $v0, 0x24($a0)
+sw $v1, 0x24($sp)
+"""
+    conflict_out, _ = wd.clean_draft(conflicting, conflicting_asm)
+    check("entity->unk24" in conflict_out and "zPriority" not in conflict_out,
+          "a same-offset stack access makes the width inference refuse")
+
+    print("\nsupporting structs arrive with their real reachable members")
+    struct_rec = {"function": "func_us_801CFC98", "overlay": "rno0",
+                  "build": "us"}
+    struct_ctx = {
+        "draft": "s32 func_us_801CFC98(void) { Collider col; return 0; }",
+        "asm": "lw $v0, 0x10($sp)\n", "decls": [],
+        "src_rel": "src/st/rno0/unk_4F968.c",
+    }
+    struct_prompt = wd.build_prompt(struct_rec, struct_ctx)
+    check("SUPPORTING STRUCT LAYOUTS" in struct_prompt,
+          "the prompt carries a dedicated non-Entity layout section")
+    check(re.search(r"Collider:.*0x00 effects\(u32\)", struct_prompt) is not None,
+          "Collider's real first member is explicit before generation")
+    bad_collider = ("s32 f(void) { Collider col; "
+                    "return col.hit & 1; }")
+    collider_hits = [p for p in wd.quality_gate(bad_collider, struct_ctx["asm"])
+                     if "Collider" in p and "hit" in p]
+    check(bool(collider_hits),
+          "the same absent value member is rejected before a build")
+    structs = wd._load_index().get("structs") or {}
+    layout_types = [name for name, fields in structs.items()
+                    if name not in ("Entity", "Ext") and fields][:5]
+    many_blob = "void f(void) { " + " ".join(
+        f"{name} value{i};" for i, name in enumerate(layout_types)) + " }"
+    many_layouts = wd.supporting_struct_layouts(many_blob)
+    check(len(layout_types) == 5 and
+          all(f"{name}:" in many_layouts for name in layout_types),
+          "a fifth supporting type is not silently dropped")
+    wide = next(((name, fields) for name, fields in structs.items()
+                 if name not in ("Entity", "Ext") and len(fields) > 24), None)
+    check(wide is not None, "the real index has a struct wider than 24 fields")
+    if wide:
+        wide_name, wide_fields = wide
+        wide_layout = wd.supporting_struct_layouts(
+            f"void f(void) {{ {wide_name} value; }}")
+        check(wide_fields[-1]["name"] in wide_layout,
+              "a real member after field 24 is not silently dropped")
+    et_name = next((name for name, fields in structs.items()
+                    if name.startswith("ET_") and fields), "")
+    check(et_name and f"{et_name}:" in wd.supporting_struct_layouts(
+              f"void f(void) {{ {et_name} value; }}"),
+          "an explicitly declared ET_ supporting type receives its layout")
 
     print("\nthe offset table is honest about which pointer it read")
     cleaned, _ = wd.clean_draft(REAL_SHAPE)

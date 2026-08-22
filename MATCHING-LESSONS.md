@@ -829,6 +829,18 @@ Two things this reframes:
   accessor is enough for the common case, and honest about the hard residue
   (byte-into-halfword accesses) that no map alone fixes.
 
+That hard residue was closed on 2026-08-21. The assembly access opcode supplies
+the missing width: signed fixed-point halfwords can use the real
+`.i.lo` / `.i.hi` members, while other partial accesses use a typed view rooted
+at the real aggregate, such as `((u8*)&self->params)[1]`. The root matters.
+`(u8*)self + 0x31` preserves bytes but discards the Entity meaning, and assigning
+`self->params` changes a byte store into a halfword store. The worker now performs
+this translation before generation when the width is unambiguous and leaves an
+explicit unresolved access when it is not. Unambiguous means one width from one
+assembly base register: a stack slot and an Entity field can share displacement
+0x24, and pooling those accesses would either widen the field or borrow the
+stack slot's type.
+
 ## 10j. A byte match is the FLOOR. Upstream reviews for STRUCTURE, not bytes
 
 Upstream reviewed this fork on 2026-07-21 and rejected matching code. The

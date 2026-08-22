@@ -2106,7 +2106,58 @@ _RX_ILLEGAL = re.compile(
     r"\bext\s*\.\s*ILLEGAL\s*\.\s*([us](?:8|16|32))\s*\[\s*([0-9a-fA-Fx]+)\s*\]")
 
 
-def clean_draft(draft: str) -> tuple[str, list[str]]:
+_ASM_MEMBER_ACCESS = re.compile(
+    r"^\s*(lb|lbu|lh|lhu|lw|sb|sh|sw)\s+[^,\n]+,\s*"
+    r"(-?(?:0x[0-9A-Fa-f]+|\d+))\s*\((\$?[A-Za-z0-9_]+)\)", re.M)
+_ACCESS_TYPE = {
+    "lb": "s8", "lbu": "u8", "sb": "u8",
+    "lh": "s16", "lhu": "u16", "sh": "s16",
+    "lw": "s32", "sw": "s32",
+}
+
+
+def _asm_member_accesses(asm: str) -> dict[int, set[tuple[str, str]]]:
+    """Potential member offsets, including the base that made each access."""
+    out: dict[int, set[tuple[str, str]]] = {}
+    for op, raw, base in _ASM_MEMBER_ACCESS.findall(asm or ""):
+        try:
+            off = int(raw, 0)
+        except ValueError:
+            continue
+        if off >= 0:
+            out.setdefault(off, set()).add((_ACCESS_TYPE[op], base.lstrip("$")))
+    return out
+
+
+def _unambiguous_access_type(
+        accesses: dict[int, set[tuple[str, str]]], off: int) -> str:
+    """Width only when one assembly base performs every access at this offset."""
+    found = accesses.get(off, set())
+    return next(iter(found))[0] if len(found) == 1 else ""
+
+
+def _partial_member_expr(var: str, off: int, access_type: str) -> str:
+    """Named Entity member view for one narrower assembly access."""
+    aw = _WIDTH.get(access_type)
+    if not aw:
+        return ""
+    prior = [f for f in _layout_fields() if f[0] <= off]
+    if not prior:
+        return ""
+    po, pname, ptype = prior[-1]
+    pw = _WIDTH.get(ptype)
+    rel = off - po
+    if not pw or rel < 0 or rel + aw > pw or rel % aw:
+        return ""
+    if ptype == "f32" and aw == 2:
+        half = "lo" if rel == 0 else "hi" if rel == 2 else ""
+        if half:
+            named = f"{var}->{pname}.i.{half}"
+            return named if access_type == "s16" else f"*(u16*)&{named}"
+    return f"(({access_type}*)&{var}->{pname})[{rel // aw}]"
+
+
+def clean_draft(draft: str, asm: str = "") -> tuple[str, list[str]]:
     """Resolve `->unkNN` in the m2c draft to real Entity fields.
 
     THE DRAFT IS THE MODEL'S STARTING POINT and it arrives full of the exact
@@ -2150,7 +2201,8 @@ def clean_draft(draft: str) -> tuple[str, list[str]]:
     typed = set(_RX_ENTITY_PTR.findall(draft))
     if not typed:
         return draft, []
-    fields = {off: name for off, name, _t in _layout_fields()}
+    fields = {off: (name, typ) for off, name, typ in _layout_fields()}
+    accesses = _asm_member_accesses(asm)
     notes, seen = [], set()
 
     def sub(m):
@@ -2158,12 +2210,30 @@ def clean_draft(draft: str) -> tuple[str, list[str]]:
         if var not in typed:
             return m.group(0)
         off = int(hexoff, 16)
-        if off >= 0x7C or off not in fields:
+        if off >= 0x7C:
             return m.group(0)
+        access_type = _unambiguous_access_type(accesses, off)
+        if access_type:
+            expr = _partial_member_expr(var, off, access_type)
+            exact = fields.get(off)
+            if expr and (not exact or _WIDTH.get(exact[1]) !=
+                         _WIDTH.get(access_type)):
+                if (var, hexoff) not in seen:
+                    seen.add((var, hexoff))
+                    notes.append(f"{var}->unk{hexoff} -> {expr}")
+                return expr
+        if off in accesses and not access_type:
+            # A stack slot or second object uses the same displacement. Falling
+            # through to the aggregate member could silently widen the Entity
+            # access, so leave the synthetic member unresolved for the model.
+            return m.group(0)
+        if off not in fields:
+            return m.group(0)
+        name, _typ = fields[off]
         if (var, hexoff) not in seen:
             seen.add((var, hexoff))
-            notes.append(f"{var}->unk{hexoff} -> ->{fields[off]}")
-        return f"{var}->{fields[off]}"
+            notes.append(f"{var}->unk{hexoff} -> ->{name}")
+        return f"{var}->{name}"
 
     return _RX_UNK_ACCESS.sub(sub, draft), notes_pre + notes
 
@@ -2284,7 +2354,7 @@ def prepare(rec: dict, located) -> dict:
         rc, draft = wsl(f"python3 tools/m2c/m2c.py --target mipsel-gcc-c "
                         f"-f {fn} {asm_file}", timeout=300)
     draft = compact_draft(draft)[:MAX_CTX_CHARS]
-    draft, _cleaned = clean_draft(draft)
+    draft, _cleaned = clean_draft(draft, asm_text)
     if _cleaned:
         print(f"[prep] draft: resolved {len(_cleaned)} unkNN access(es) "
               f"before the model sees them")
@@ -2320,8 +2390,10 @@ SYSTEM = (
     "A RAW ADDRESSES section, when present, gives the real expression: use it.\n"
     "- Named constants, not bitmask literals: `drawFlags &= ~ENTITY_ROTATE`, "
     "not `&= 0xFB`.\n"
-    "- Use existing structs, not pointer arithmetic: `SubweaponDef* p = "
-    "&tbl[i]; p->attackElement`, not `*(u16*)(base+4)`.\n"
+    "- Use existing structs, not raw base-pointer arithmetic: `SubweaponDef* "
+    "p = &tbl[i]; p->attackElement`, not `*(u16*)(base+4)`. When the asm "
+    "deliberately accesses only part of a real member, keep the named member "
+    "as the root: `((u8*)&self->params)[1]`, never `(u8*)self + 0x31`.\n"
     "- Follow the conventions of any EXISTING CODE section shown to you.\n"
     "STRUCT FIELDS: m2c writes a synthetic `->unkNN` when it cannot type a "
     "pointer (usually a parameter); `unkNN` is not a real field. Translate it "
@@ -2369,7 +2441,9 @@ ENTITY_LAYOUT = (
     "Use this to translate m2c's `->unkNN` (which means offset 0xNN on an "
     "Entity the decompiler could not type). Anything at 0x7C+ is the `ext` "
     "union: use the named field from EXT VARIANTS. If none covers the "
-    "offset, report that rather than inventing an access.\n"
+    "offset, report that rather than inventing an access. `f32` here is the "
+    "project fixed-point union: `.val` is the full word and `.i.lo` / `.i.hi` "
+    "are its named signed halfwords.\n"
     "0x00 posX(f32) 0x04 posY(f32) 0x08 velocityX(s32) 0x0C velocityY(s32)\n"
     "0x10 hitboxOffX(s16) 0x12 hitboxOffY(s16) 0x14 facingLeft(u16) 0x16 palette(u16)\n"
     "0x18 blendMode(u8) 0x19 drawFlags(u8) 0x1A scaleX(s16) 0x1C scaleY(s16) 0x1E rotate(s16)\n"
@@ -3808,7 +3882,8 @@ def _layout_fields() -> list[tuple[int, str, str]]:
     return sorted(out)
 
 
-def resolve_unk_offsets(draft: str, have_variants: bool = True) -> str:
+def resolve_unk_offsets(draft: str, have_variants: bool = True,
+                        asm: str = "") -> str:
     """Pre-resolve every `->unkNN` in the m2c draft to a real field.
 
     THE SINGLE LARGEST CONSUMER OF REASONING. Measured with
@@ -3873,6 +3948,7 @@ def resolve_unk_offsets(draft: str, have_variants: bool = True) -> str:
     if not wanted:
         return ""
     lines = []
+    accesses = _asm_member_accesses(asm)
     for off in wanted:
         vs = by_off[off]
         if vs and vs <= named_other:
@@ -3894,13 +3970,24 @@ def resolve_unk_offsets(draft: str, have_variants: bool = True) -> str:
     mixed = {o: sorted(by_off[o] & named_other)
              for o in wanted if by_off[o] & named_other}
     for off in wanted:
+        vs = by_off[off]
+        access_type = _unambiguous_access_type(accesses, off)
+        var = sorted(vs)[0] if vs else "self"
+        partial = (_partial_member_expr(var, off, access_type)
+                   if access_type else "")
         exact = [f for f in fields if f[0] == off]
         if exact:
             _o, name, typ = exact[0]
             note = ("   [m2c typed this pointer `void *`, i.e. it does not "
                     "know. Use this only if the asm shows it is the entity]"
                     if off in hedge else "")
-            lines.append(f"  unk{off:02X}  ->  ->{name}    ({typ}){note}")
+            if partial and _WIDTH.get(typ) != _WIDTH.get(access_type):
+                lines.append(
+                    f"  unk{off:02X}  ->  {access_type} access inside "
+                    f"->{name} ({typ}); once `{var}` is Entity*, use "
+                    f"`{partial}`{note}")
+            else:
+                lines.append(f"  unk{off:02X}  ->  ->{name}    ({typ}){note}")
             continue
         if off >= 0x7C:
             if have_variants:
@@ -3929,11 +4016,17 @@ def resolve_unk_offsets(draft: str, have_variants: bool = True) -> str:
             po, pname, ptyp = prev[-1]
             w = _WIDTH.get(ptyp, 4)
             if po + w > off:
-                lines.append(
-                    f"  unk{off:02X}  ->  NO named field. It is INSIDE "
-                    f"->{pname} (0x{po:02X}, {ptyp}, {w} bytes), so the asm is "
-                    f"reading part of that word. Keep unk{off:02X} and say so "
-                    f"in a comment. Do NOT invent a field.")
+                if partial:
+                    lines.append(
+                        f"  unk{off:02X}  ->  {access_type} access inside "
+                        f"->{pname} (0x{po:02X}, {ptyp}); once `{var}` is "
+                        f"Entity*, use `{partial}`. This is a named-member "
+                        f"view, not a raw entity offset")
+                else:
+                    lines.append(
+                        f"  unk{off:02X}  ->  NO named field. It is INSIDE "
+                        f"->{pname} (0x{po:02X}, {ptyp}, {w} bytes). The "
+                        f"access width is ambiguous, so do not guess a view")
                 continue
         lines.append(
             f"  unk{off:02X}  ->  NO named field at this offset and it is not "
@@ -3955,6 +4048,35 @@ def resolve_unk_offsets(draft: str, have_variants: bool = True) -> str:
             "do not paste an Entity field name there.\n" + "\n".join(lines) + "\n")
 
 
+_RX_CONTEXT_STRUCT = re.compile(
+    r"\b(?:struct\s+)?([A-Z]\w*)\s*(?:\*+\s*)?([A-Za-z_]\w*)"
+    r"\s*(?=[,;)=\[])")
+
+
+def supporting_struct_layouts(blob: str) -> str:
+    """Compact real layouts for non-Entity types already in the context."""
+    structs = _load_index().get("structs") or {}
+    names = []
+    for typ, _var in _RX_CONTEXT_STRUCT.findall(blob or ""):
+        if typ in structs and typ not in ("Entity", "Ext") and typ not in names:
+            names.append(typ)
+    lines = []
+    for name in names:
+        fields = structs.get(name) or []
+        shown = []
+        for field in fields:
+            off = field.get("offset") or "offset?"
+            typ = (field.get("type") or "?") + (field.get("array") or "")
+            shown.append(f"{off} {field.get('name')}({typ})")
+        if shown:
+            lines.append(f"{name}: " + ", ".join(shown))
+    if not lines:
+        return ""
+    return ("\n=== SUPPORTING STRUCT LAYOUTS (from the codebase index) ===\n"
+            "Only use members listed for the declared type.\n"
+            + "\n".join(lines) + "\n")
+
+
 def build_prompt(rec: dict, ctx: dict, feedback: str = "") -> str:
     fb = f"\nPREVIOUS ATTEMPT FAILED:\n{feedback}\nFix it.\n" if feedback else ""
     # Declarations harvested from the tree. These are ground truth about types,
@@ -3969,6 +4091,8 @@ def build_prompt(rec: dict, ctx: dict, feedback: str = "") -> str:
                 "Note the arrays: pass `NAME`, never `&NAME`. Taking the address\n"
                 "of an array generates different code and will not match.\n"
                 + "\n".join(decls) + "\n")
+    support_sec = supporting_struct_layouts(
+        (ctx.get("draft") or "") + "\n" + "\n".join(decls))
     # Inject the Entity layout only when this function actually deals with an
     # entity. The signal is either an Entity-typed thing in the draft/asm or the
     # tell-tale `->unkNN` accesses that the layout exists to translate. Skipping
@@ -3987,8 +4111,9 @@ def build_prompt(rec: dict, ctx: dict, feedback: str = "") -> str:
         # Then the pre-resolved lookup. It goes LAST so it is the most recent
         # thing before the task, and it is the section that replaces 34% of
         # the model's reasoning with text it can simply read.
-        entity_sec += resolve_unk_offsets(ctx.get("draft") or "",
-                                          have_variants=bool(ev))
+        entity_sec += resolve_unk_offsets(
+            ctx.get("draft") or "", have_variants=bool(ev),
+            asm=ctx.get("asm") or "")
     # Index-derived context, independent of whether this is an entity function:
     #   - raw D_ addresses resolved to their real meanings (kills the biggest
     #     review-rejection class: invented externs)
@@ -4007,7 +4132,7 @@ def build_prompt(rec: dict, ctx: dict, feedback: str = "") -> str:
     entity_sec += precedent_for(rec.get("function", ""), ctx.get("src_rel", ""))
     return (
         f"Function: {rec['function']}   (overlay {rec['overlay']}, build {rec['build']})\n"
-        f"{fb}{dsec}{entity_sec}"
+        f"{fb}{dsec}{support_sec}{entity_sec}"
         f"\n=== MIPS ASSEMBLY ===\n{ctx['asm']}\n\n"
         f"=== m2c DRAFT (rough, fix the types) ===\n{ctx['draft']}\n\n"
         f"Return the complete C function {rec['function']} only."

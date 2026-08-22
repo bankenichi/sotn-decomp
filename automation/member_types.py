@@ -52,12 +52,15 @@ REPO = Path(__file__).resolve().parent.parent
 INDEX = REPO / "automation" / "index.us.json"
 
 # `Entity* self`, `Entity *self`, `struct Primitive *p` -- declarations and
-# parameters both. Deliberately requires a POINTER: `->` on a non-pointer is a
-# different error and not the one being hunted.
+# parameters both.
 RX_DECL = re.compile(
     r"\b(?:struct\s+|const\s+)*([A-Z]\w+)\s*\*\s*(\w+)\s*(?=[,;)=\[])")
-RX_ACCESS = re.compile(r"\b(\w+)((?:\s*->\s*\w+)+)")
-RX_HOP = re.compile(r"->\s*(\w+)")
+# Stack values use `.`, and missing them let `Collider col; col.hit` reach the
+# compiler even though Collider is a trusted, completely modelled struct.
+RX_VALUE_DECL = re.compile(
+    r"\b(?:struct\s+|const\s+)*([A-Z]\w+)\s+(\w+)\s*(?=[,;=\[])")
+RX_ACCESS = re.compile(r"\b(\w+)((?:\s*(?:->|\.)\s*\w+)+)")
+RX_HOP = re.compile(r"(?:->|\.)\s*(\w+)")
 RX_COMMENT = re.compile(r"/\*.*?\*/|//[^\n]*", re.S)
 RX_FENCE = re.compile(r"^\s*```[a-zA-Z]*\s*$", re.M)
 RX_PTR_TYPE = re.compile(r"^(?:struct\s+|const\s+)*([A-Z]\w+)\s*\*+$")
@@ -150,13 +153,48 @@ def entity_offsets() -> dict[int, str]:
 
 
 def declared_types(code: str) -> dict[str, str]:
-    """{variable: struct name} for pointer declarations we can read."""
+    """{variable: struct name} for pointer and stack-value declarations."""
     known = struct_fields()
     out = {}
     for typ, var in RX_DECL.findall(code):
         if typ in known:
             out[var] = typ
+    for typ, var in RX_VALUE_DECL.findall(code):
+        if typ in known:
+            out[var] = typ
     return out
+
+
+def _declared_type_ranges(code: str) -> list[tuple[str, str, int, int]]:
+    """Declarations with the lexical range in which each one is visible."""
+    known = struct_fields()
+    stack: list[int] = []
+    closes: dict[int, int] = {}
+    for pos, char in enumerate(code):
+        if char == "{":
+            stack.append(pos)
+        elif char == "}" and stack:
+            closes[stack.pop()] = pos
+
+    def scope_end(pos: int) -> int:
+        active = [(start, end) for start, end in closes.items()
+                  if start < pos < end]
+        return max(active, default=(-1, len(code)))[1]
+
+    out = []
+    for rx in (RX_DECL, RX_VALUE_DECL):
+        for match in rx.finditer(code):
+            typ, var = match.groups()
+            if typ in known:
+                out.append((var, typ, match.start(), scope_end(match.start())))
+    return sorted(out, key=lambda item: item[2])
+
+
+def _declared_type_at(ranges: list[tuple[str, str, int, int]],
+                      var: str, pos: int) -> str | None:
+    visible = [(start, typ) for name, typ, start, end in ranges
+               if name == var and start <= pos < end]
+    return max(visible, default=(-1, None))[1]
 
 
 RX_FUNC_HEAD = re.compile(
@@ -208,12 +246,13 @@ def check(code: str) -> list[str]:
 
 def _check_scope(code: str, known: dict, macros: set, offs: dict,
                  seen: set) -> list[str]:
-    types = declared_types(code)
-    if not types:
+    ranges = _declared_type_ranges(code)
+    if not ranges:
         return []
     out: list[str] = []
-    for var, chain in RX_ACCESS.findall(code):
-        cur = types.get(var)
+    for access in RX_ACCESS.finditer(code):
+        var, chain = access.groups()
+        cur = _declared_type_at(ranges, var, access.start())
         if not cur or cur not in TRUSTED:
             continue                     # unknown or unmodelled: never guess
         for member in RX_HOP.findall(chain):
@@ -328,6 +367,20 @@ def self_test() -> int:
     bad = check("void f(Entity* e) { e->unk1C = 1; }")
     ck(bad and "0x1C" in bad[0] and "scaleY" in bad[0],
        f"unk1C is resolved to scaleY ({bad[0] if bad else ''})")
+
+    print("\nvalue-member accesses validate against their declared struct")
+    bad_dot = check("void f(void) { Collider col; if (col.hit & 1) return; }")
+    ck(bad_dot and "Collider" in bad_dot[0] and "hit" in bad_dot[0],
+       f"Collider col; col.hit is rejected before compilation ({bad_dot})")
+    ck(check("void f(void) { Collider col; if (col.effects & 1) return; }")
+       == [], "the real Collider.effects member still passes")
+    shadowed = """void f(Collider* item) {
+        if (item->effects & 1) return;
+        { Primitive item; item.drawMode = 0; }
+        if (item->effects & 2) return;
+    }"""
+    ck(check(shadowed) == [],
+       "a nested value declaration does not retype the outer pointer")
 
     print("\nunresolvable things are SKIPPED, never guessed at")
     # A false rejection costs a whole attempt, and this gate runs before the
