@@ -67,6 +67,30 @@ INCLUDE_ASM("st/rno0/nonmatchings/unk_4F968", func_us_801D1BF0);
 
 INCLUDE_ASM("st/rno0/nonmatchings/unk_4F968", func_us_801D2038);
 
-INCLUDE_ASM("st/rno0/nonmatchings/unk_4F968", func_us_801D21C8);
+extern s16 D_us_8018333C[];
+
+void func_us_801D21C8(Entity* entity) {
+    u16 step;
+    s32 animResult;
+
+    step = entity->step;
+    switch (step) {
+    case 0:
+        InitializeEntity(g_EInitGorgon);
+        entity->zPriority = 0x72;
+        entity->palette = 0x8235;
+        entity->velocityY = -0xC000;
+        break;
+    case 1:
+        MoveEntity();
+        animResult = AnimateEntity(D_us_8018333C, entity);
+        if (animResult == 0) {
+            DestroyEntity(entity);
+        }
+        break;
+    default:
+        break;
+    }
+}
 
 INCLUDE_ASM("st/rno0/nonmatchings/unk_4F968", func_us_801D2264);
