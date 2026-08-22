@@ -855,6 +855,44 @@ Also worth building, in rough value order:
 
 ---
 
+## P7: Empty the remaining queue by evidence class
+
+This is a frozen planning baseline from 2026-08-22. The generated status block at
+the top of this file remains the live count. `queue_coverage.py` found exactly
+177 live US stubs, zero queue blind spots and zero stale records. The 177 records
+are completely partitioned below, so finishing these lanes finishes the current
+queue rather than merely draining `todo`.
+
+| status and evidence class | records | owner task |
+|---|---:|---|
+| `todo`, all blocked on unnamed data symbols | 22 | #237, then #238 |
+| `near`, already compiling | 3 | #239 |
+| `escalated` symbol, fully mechanically resolvable | 33 | #240 |
+| `escalated` symbol, mixed or unresolved | 21 | #241 |
+| `escalated` current quality rejection | 21 | #242 |
+| `escalated` unknown, all BO6 | 15 | #243 |
+| `escalated` genuine decompilation work | 20 | #244 |
+| `deferred` invalidated seed or degraded-search verdict | 4 | #245 |
+| `deferred` genuine permuter exhaustion | 33 | #246, #247 |
+| `deferred` above the hosted context ceiling | 2 | #248 |
+| `deferred` specific-human or missing evidence | 3 | #249 |
+| **total** | **177** | #250 closure audit |
+
+The next fleet is gated. `decl_coverage.py --use-queue --status todo` found zero
+workable records: all 22 depend on unnamed data. Running Zen now would either
+claim nothing or spend calls rediscovering the same blocker. #235 and #237 come
+first; #238 is the final no-reasoning Zen wave after a fresh eligibility check.
+
+Priority follows dependency first, then the debt score
+`(impact + risk) * (6 - effort)`. Mechanical unblocking scores 32 to 40 and goes
+first. Current quality and unknown classification score 24 to 32 and follow.
+The 20 genuine escalations score 14, the 33 structurally exhausted derivations
+score 7, and the two oversized functions score 5. This ordering keeps expensive
+Terra and hand work behind every deterministic source, map, declaration and
+preserved-candidate path.
+
+---
+
 ## Deliberately not doing
 
 - ~~**Shimming `e_blade` or `e_gurkha`.** No stage shims them...~~
@@ -1076,7 +1114,7 @@ Status: **done**, **open**, **partial**, **void** (turned out unnecessary),
 | 129 | done | **The queue had no backup, and a backup branch did not reveal it.** Making a checkpoint branch on 2026-08-17 exposed the gap: the queue lives at `~/sotn-work/queue.jsonl`, outside the repo, so a branch protects `src/` and the docs and not the record of how any of it was produced. That location is correct and stays (a cloud sync daemon destroyed the in-repo queue in 2026-07 and took 438 records with it), but it answered *where the hot file lives* and never answered *what backs it up*. Built `queue_snapshot` and `queue_restore`: the hot file stays on WSL-native storage, a point-in-time copy lands in `automation/queue/snapshots/` on demand and is never rewritten, so no daemon has a race to lose. snapshot borrows the writer's lock and is deliberately NOT guarded by the queue-owner check, because backing up a queue you distrust is exactly when you need it to work; restore is guarded, validates every line before touching anything, and snapshots what it is about to replace |
 | 128 | done | Two matches by hand derivation. `EntityClockRoomController`: a declaration-order problem plus `u16` where the asm's `sll 16` + `bnez` demands `s16`. `func_us_801B6998`: **retracts the 2026-08-16 diagnosis** of a delay-slot nop at +21. The real cause was switch dispatch form: four live cases compile to a compare chain, and the jump table's own extent named the two empty cases needed to restore it |
 
-## Codex transition and dependency audit, 2026-08-18 (#130 to #198)
+## Codex transition and queue closure, 2026-08-18 onward (#130 to #250)
 
 | # | status | task and outcome |
 |---|---|---|
@@ -1183,6 +1221,21 @@ Status: **done**, **open**, **partial**, **void** (turned out unnecessary),
 | 230 | **open** | Add an exact full-ID read-only queue lookup surface. The capped bulk `queue_list` output prevented multiple benchmark agents from retrieving their named record without broad searches that contaminated the process gate |
 | 231 | **open** | Reconcile `us:ST/RDAI:func_us_801C4B2C` score provenance. Its scalar queue score reports 50 while the durable note records an exhausted best score of 950; preserve both receipts, identify the units or stale writer and correct the structured field without rewriting the note |
 | 232 | **open** | Reconcile the preserved advanced-context outputs in root-controlled order: validate Terra xhigh's C9DE8 fallthrough diagnosis first, then Luna xhigh's C4B2C re-derivation and CrashBibleBeam call-surface hypothesis. Any compiling body must be published immutably and routed near before source restoration |
-| 233 | **open** | Advance the two immutable no-reasoning Zen near seeds from #111, `us:ST/RNO0:func_us_801C7F24` and `us:BOSS/BO0:func_us_801B001C`, through deterministic diff diagnosis before any further model generation |
+| 233 | superseded | Folded into #239 so the same deterministic near wave also owns the pre-existing `us:ST/RCEN:func_801904B8` seed. The two #111 seeds and their immutable evidence remain in scope |
 | 234 | **open** | Make the `run_analysis` policy truthful. The connector describes the surface as read-only but forwards `--apply` to mutating maintenance scripts such as `fix_seed_declarations.py` and `readme_status.py`. Either reject mutating flags and expose explicit maintenance actions, or rename and document the actual authority boundary with regression coverage |
 | 235 | **open** | Make candidate publication declaration-complete before the queue points at its stable view. The #111 BO0 near seed was preserved correctly as v0001 but immediately failed the corpus gate on a missing `DestroyEntity` prototype; the existing repair tool published v0002 and the live queue note now names it |
+| 236 | done | Established the queue-exhaustion baseline without mutating the queue. Live status is 22 todo, 3 near, 110 escalated, 42 deferred and 294 matched. Coverage proves all 177 live US stubs have records with zero blind and zero stale entries. Escalated partitions exactly into 54 symbol, 21 quality, 15 unknown and 20 real; deferred partitions into 4 mechanically reactivatable, 33 genuine permuter exhaustions, 2 oversized and 3 special-evidence records |
+| 237 | **open** | Unblock all 22 todo records before another fleet. Every one is currently blocked on unnamed data symbols. Resolve overlay-local data through link maps, retained assembly, declaration indexing and address-based naming; update durable notes and rerun declaration coverage until the workable set is nonzero |
+| 238 | **open** | Run the final todo Zen wave only after #235 and #237. Use the measured `none` reasoning default, one shared BuildLock, bounded claims and one recovery-boundary queue snapshot. Preserve every generation, route compiling misses near, and stop when the eligible todo set reaches zero |
+| 239 | **open** | Close the complete three-record near pool in deterministic order: `us:ST/RCEN:func_801904B8`, `us:ST/RNO0:func_us_801C7F24`, then `us:BOSS/BO0:func_us_801B001C`. Start from immutable seeds, diagnose the first instruction divergence, use debug scoring before builds, and do not request new model generations until the preserved body is structurally exhausted |
+| 240 | **open** | Clear the 33 fully resolvable symbol escalations mechanically. Apply only declarations and field or object mappings already proven by the current tree and overlay, publish repaired immutable candidates, then route each record to todo or near according to compilation evidence. No model call is authorized for this lane |
+| 241 | **open** | Resolve the remaining 21 symbol escalations: 5 have both proven mappings and unresolved residue, while 16 are wholly blocked. Use overlay-local maps, `ext_demand.py`, `member_types.py`, caller context and assembly widths; never borrow raw-address names across overlays. Reclassify each record only after the unresolved list is empty or explicitly evidenced |
+| 242 | **open** | Rework all 21 current quality escalations from their preserved rejected generations. Fix the exact gate finding without discarding the candidate or relaxing the gate, republish immutably, and route compiling results near. Requeueing the unchanged body is forbidden |
+| 243 | **open** | Read and classify the 15 unknown escalations, all in BOSS/BO6. Run donor and twin analysis first, distinguish structural non-twins from missing evidence and stale failure notes, and replace `unknown` with a durable symbol, quality, real, near or matched disposition |
+| 244 | **open** | Advance the 20 genuine escalated decompilations after deterministic lanes are exhausted. Use Terra high for economical read-only evidence gathering and Terra xhigh only for difficult diagnosis; root retains every write, build, queue and Git action. Preserve all outputs and publish any useful candidate before testing it |
+| 245 | **open** | Reactivate the four deferred records whose verdict no longer holds: two repaired seed-bug records and two searches degraded by missing declarations. Prove each current seed compiles in isolated debug mode, append the repair evidence, and route it near before any new search |
+| 246 | **open** | Re-derive the 16 BOSS/BO0 records with genuine current-seed permuter exhaustion as one shared-context wave. Exhaust upstream, shared-header and compiled-donor evidence first; derive structural corrections from assembly; invoke the permuter only after a new compiling shape exists |
+| 247 | **open** | Re-derive the other 17 genuine permuter-exhausted records across BO6, RNO0, RCEN, RCHI and RDAI. #231 and #232 are prerequisites for the C4B2C and advanced-context cases. Rank by smallest assembly and lowest honest score, preserve failed hypotheses, and never rerun an exhausted seed unchanged |
+| 248 | **open** | Handle the two records still above the hosted 20,000-character ceiling, `EntityGaibon` and `func_us_801C2418`, without sending the full raw prompt to a hosted worker. Reduce them through m2c, control-flow partitioning, local indexes and bounded Terra analysis over extracted regions; preserve the full-function reconciliation at root |
+| 249 | **open** | Resolve the final three special deferred records. Reconstruct evidence for the no-note `EntityBreakable` record, then execute or explicitly supersede the specific-human instructions on `func_us_801CFE6C` and `DrawLaserRing`. None may remain deferred solely because its note was absent or unaudited |
+| 250 | **open** | Run the terminal queue-closure audit after #237 through #249. Require zero blind and stale records, zero claimed records, no unknown escalations, no invalidated deferred verdicts, immutable evidence for every near or rejected body, and an explicit matched or evidence-backed hard disposition for all 177 records |
