@@ -3319,6 +3319,23 @@ def quality_gate(code: str, asm: str) -> list[str]:
         problems.append(
             f"{n_casts} raw byte-pointer cast(s) like `*(u16*)((u8*)p + N)`; "
             f"use the real struct and named members instead")
+    try:
+        sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+        import ext_demand                                    # noqa: PLC0415
+        for access in ext_demand.raw_entity_accesses(code):
+            expressions, mismatch = ext_demand.named_ext_expressions(
+                access["offset"], access["width"])
+            named = ("; named candidates: " + ", ".join(expressions[:8])
+                     if expressions else
+                     "; no reachable Ext variant names that exact offset")
+            width = ("; the raw access width also disagrees with every named "
+                     "field at that offset" if mismatch else "")
+            problems.append(
+                f"raw Entity-base offset 0x{access['offset']:02X} through "
+                f"`{access['base']}`{named}{width}; use the proven named "
+                f"variant or stop for a header/type fix")
+    except Exception:                                        # noqa: BLE001
+        pass                     # never let a checker failure block a build
 
     # 3. `unsigned char` etc. instead of the project's own scalar typedefs.
     for bad, good in (("unsigned char", "u8"), ("unsigned short", "u16"),

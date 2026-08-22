@@ -203,6 +203,12 @@ sw $v1, 0x24($sp)
     check(et_name and f"{et_name}:" in wd.supporting_struct_layouts(
               f"void f(void) {{ {et_name} value; }}"),
           "an explicitly declared ET_ supporting type receives its layout")
+    raw_ext = ("void f(void) { use(&((u8*)g_CurrentEntity)[0x90]); }")
+    raw_findings = wd.quality_gate(raw_ext, "")
+    check(any("raw Entity-base offset 0x90" in p for p in raw_findings),
+          "the pre-build gate rejects a raw Entity ext offset")
+    check(any("named candidates: ext." in p for p in raw_findings),
+          "the rejection maps the offset to existing named candidates")
 
     print("\nthe offset table is honest about which pointer it read")
     cleaned, _ = wd.clean_draft(REAL_SHAPE)

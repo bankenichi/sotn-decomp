@@ -40,10 +40,12 @@ WHAT THIS DOES
     Parses the Ext union and every ET_ variant out of include/entity.h, exactly,
     including anonymous bitfield padding (`s16 : 16;`) which reserves space but
     covers nothing. Then scans generated C for offsets at 0x7C+ -- both m2c's
-    `->unkNN` and the `ext.ILLEGAL.<type>[<i>]` placeholder, using the same
-    arithmetic worker_direct uses -- and reports, per function:
+    `->unkNN`, the `ext.ILLEGAL.<type>[<i>]` placeholder, and raw byte-pointer
+    offsets rooted at a declared Entity pointer. It uses the same arithmetic
+    worker_direct uses and reports, per function:
 
         which variants already cover every offset it wants   (reuse: free)
+        which named Ext expressions start at a raw offset    (replace the cast)
         which offsets no variant covers at all               (header change)
 
     Evidence, not speculation: it reads code a model actually produced for a
@@ -117,12 +119,21 @@ RX_UNK = re.compile(r"->\s*unk([0-9A-Fa-f]{2,3})\b")
 RX_ILLEGAL = re.compile(
     r"ext\s*\.\s*ILLEGAL\s*\.\s*(u8|s8|u16|s16|u32|s32)\s*\[\s*"
     r"(0[xX][0-9A-Fa-f]+|\d+)\s*\]")
+RX_ENTITY_DECL = re.compile(r"\bEntity\s*\*\s*(\w+)")
+RX_RAW_INDEX = re.compile(
+    r"(?P<address>&\s*)?\(\(\s*(?P<type>u8|s8|u16|s16|u32|s32|char)\s*\*\s*\)"
+    r"\s*(?P<base>\w+)\s*\)\s*\[\s*(?P<offset>0[xX][0-9A-Fa-f]+|\d+)\s*\]")
+RX_RAW_ADD = re.compile(
+    r"\(\s*(?:u8|s8|char)\s*\*\s*\)\s*(?P<base>\w+)\s*\+\s*"
+    r"(?P<offset>0[xX][0-9A-Fa-f]+|\d+)")
+RX_COMMENT_OR_LITERAL = re.compile(
+    r"/\*.*?\*/|//[^\n]*|\"(?:\\.|[^\"\\])*\"|'(?:\\.|[^'\\])*'", re.S)
 
 
 def _decl_size(decl: str) -> int:
     """Bytes a declaration covers. 0 when the type is not recognised."""
-    m = re.search(r"\[\s*(\d+)\s*\]", decl)
-    count = int(m.group(1)) if m else 1
+    m = re.search(r"\[\s*(0[xX][0-9A-Fa-f]+|\d+)\s*\]", decl)
+    count = int(m.group(1), 0) if m else 1
     if "*" in decl:
         return 4 * count
     for tok in decl.replace("*", " ").split():
@@ -141,6 +152,7 @@ def parse_variants(text: str | None = None) -> dict[str, dict]:
     out: dict[str, dict] = {}
     for body, name in RX_ET_STRUCT.findall(text):
         fields: dict[int, str] = {}
+        widths: dict[int, int] = {}
         covered: set[int] = set()
         end = EXT_BASE
         for off_s, decl in RX_FIELD.findall(body):
@@ -153,9 +165,11 @@ def parse_variants(text: str | None = None) -> dict[str, dict]:
             if not m:
                 continue
             fields[off] = m.group(1)
+            widths[off] = size or 1
             covered.update(range(off, off + (size or 1)))
         if fields:
-            out[name] = {"fields": fields, "covered": covered, "end": end}
+            out[name] = {"fields": fields, "widths": widths,
+                         "covered": covered, "end": end}
     return out
 
 
@@ -168,8 +182,53 @@ def parse_union(text: str | None = None) -> dict[str, str]:
     return {member: et for et, member in RX_UNION_MEMBER.findall(m.group(1))}
 
 
+def raw_entity_accesses(code: str) -> list[dict]:
+    """Raw byte-pointer offsets whose base is provably an Entity pointer."""
+    code = RX_COMMENT_OR_LITERAL.sub(" ", code or "")
+    entity_vars = set(RX_ENTITY_DECL.findall(code)) | {"g_CurrentEntity"}
+    out = []
+    occupied = []
+    for match in RX_RAW_INDEX.finditer(code):
+        base = match.group("base")
+        if base not in entity_vars:
+            continue
+        off = int(match.group("offset"), 0)
+        if EXT_BASE <= off < EXT_END:
+            out.append({"base": base, "offset": off,
+                        "width": 0 if match.group("address") else
+                                 WIDTH[match.group("type")],
+                        "address_only": bool(match.group("address"))})
+            occupied.append(match.span())
+    for match in RX_RAW_ADD.finditer(code):
+        if any(start <= match.start() < end for start, end in occupied):
+            continue
+        base = match.group("base")
+        if base not in entity_vars:
+            continue
+        off = int(match.group("offset"), 0)
+        if EXT_BASE <= off < EXT_END:
+            out.append({"base": base, "offset": off, "width": 0,
+                        "address_only": True})
+    return out
+
+
+def named_ext_expressions(off: int, width: int = 0) -> tuple[list[str], bool]:
+    """Reachable named expressions starting at offset, plus width mismatch."""
+    variants, union = parse_variants(), parse_union()
+    expressions = []
+    widths = []
+    for member, et_name in union.items():
+        variant = variants.get(et_name) or {}
+        field = (variant.get("fields") or {}).get(off)
+        if field:
+            expressions.append(f"ext.{member}.{field}")
+            widths.append((variant.get("widths") or {}).get(off, 0))
+    mismatch = bool(width and widths and width not in widths)
+    return sorted(set(expressions)), mismatch
+
+
 def demanded_offsets(code: str) -> Counter:
-    """Ext-range offsets this code asks for, from both spellings m2c produces."""
+    """Ext-range offsets from m2c placeholders and raw Entity-base views."""
     hits: Counter = Counter()
     for off_s in RX_UNK.findall(code):
         off = int(off_s, 16)
@@ -181,6 +240,8 @@ def demanded_offsets(code: str) -> Counter:
         off = EXT_BASE + int(idx, 0) * WIDTH[typ]
         if EXT_BASE <= off < EXT_END:
             hits[off] += 1
+    for access in raw_entity_accesses(code):
+        hits[access["offset"]] += 1
     return hits
 
 
@@ -199,7 +260,8 @@ def analyse(files: list[Path] | None = None) -> list[dict]:
     files = _gen_files() if files is None else files
     rows = []
     for p in files:
-        want = demanded_offsets(p.read_text(encoding="utf-8", errors="replace"))
+        code = p.read_text(encoding="utf-8", errors="replace")
+        want = demanded_offsets(code)
         if not want:
             continue
         offs = set(want)
@@ -216,6 +278,8 @@ def analyse(files: list[Path] | None = None) -> list[dict]:
             "offsets": want,
             "fits": fits,
             "uncovered": sorted(o for o in offs if o not in anywhere),
+            "raw": raw_entity_accesses(code),
+            "expressions": {o: named_ext_expressions(o)[0] for o in offs},
         })
     return rows
 
@@ -306,6 +370,9 @@ def main() -> int:
             print(f"{r['file']}")
             print("  wants " + " ".join(f"0x{o:02X}" for o in sorted(r["offsets"])))
             print("  fits  " + (", ".join(r["fits"]) or "NOTHING: header change"))
+            for off, expressions in sorted(r["expressions"].items()):
+                if expressions:
+                    print(f"  0x{off:02X} named " + ", ".join(expressions[:8]))
             if r["uncovered"]:
                 print("  unnamed anywhere: "
                       + " ".join(f"0x{o:02X}" for o in r["uncovered"]))
@@ -369,6 +436,8 @@ def self_test() -> int:
     ck(0x86 in f["covered"] and 0x87 in f["covered"],
        "a 2-byte field covers BOTH its bytes, so a demand at 0x87 resolves")
     ck(f["covered"] >= {0x7C, 0x7D, 0x7E, 0x7F}, "a pointer covers 4 bytes")
+    ck(_decl_size("char pad_90[0xC]") == 0xC,
+       "hexadecimal array lengths cover the complete declared field")
 
     print("\nboth spellings m2c produces are counted")
     d = demanded_offsets("a->unk86 = 1; b->unk24 = 2; c = x->ext.ILLEGAL.u8[0x2E];")
@@ -385,7 +454,26 @@ def self_test() -> int:
        "ext.ILLEGAL.u8[0x2E] resolves to 0xAA, the same arithmetic "
        "worker_direct uses when it rewrites the placeholder")
     ck(demanded_offsets("x->ext.ILLEGAL.s16[2]")[0x80] == 1,
-       "and element width is honoured, so s16[2] is 0x80 not 0x7E")
+        "and element width is honoured, so s16[2] is 0x80 not 0x7E")
+
+    print("\nraw Entity-base offsets are evidence, not invisible pointer arithmetic")
+    raw_code = "void f(Entity* self) { use(&((u8*)g_CurrentEntity)[0x90]); }"
+    raw = raw_entity_accesses(raw_code)
+    ck(len(raw) == 1 and raw[0]["offset"] == 0x90,
+       "the #219 raw g_CurrentEntity offset is detected")
+    ck(raw[0]["address_only"] and raw[0]["width"] == 0,
+       "taking the address does not invent an access width")
+    ck(demanded_offsets(raw_code)[0x90] == 1,
+       "raw offsets enter the same ranked demand report")
+    expressions, mismatch = named_ext_expressions(0x90)
+    ck("ext.venusWeed.pad_90" in expressions,
+       "the existing Venus Weed member is mapped automatically")
+    ck(not mismatch, "an address-only view makes no false width claim")
+    ck(not raw_entity_accesses("void f(u8* bytes) { use(&bytes[0x90]); }"),
+       "an ordinary byte buffer is not misclassified as Entity")
+    ck(not raw_entity_accesses(
+        "void f(u8* bytes) { /* Entity* bytes; ((u8*)bytes)[0x90] */ return; }"),
+       "comments cannot manufacture an Entity declaration or raw access")
 
     print("\na variant only counts as reuse when it covers EVERYTHING")
     vt = {"ET_A": {"fields": {0x7C: "a"}, "covered": {0x7C}, "end": 0x80}}

@@ -344,7 +344,7 @@ supports `--help` and most support `--self-test`.
 | `codebase_index.py` | the searchable index of the whole tree |
 | `queue_coverage.py` | does the queue cover what is actually in the tree |
 | `decl_coverage.py` | are the declarations a candidate needs already reachable |
-| `ext_demand.py` | which `Ext` union variants cover a set of offsets |
+| `ext_demand.py` | which `Ext` union variants cover generated offsets, including raw Entity-base byte-pointer views, and which named expressions can replace them |
 | `member_types.py` | is this struct member real, on **this** struct |
 | `find_data_segment.py` | which splat `.data` address a symbol belongs to |
 
