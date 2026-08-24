@@ -45,7 +45,7 @@ This block is regenerated from the same queue, checksum manifest, linker maps, p
 | `BOSS/RBO1` | 20 | 20 | 0 | 0 | 0 | 0 |
 | `BOSS/RBO2` | 28 | 28 | 0 | 0 | 0 | 0 |
 | `BOSS/RBO4` | 7 | 7 | 0 | 0 | 0 | 0 |
-| `BOSS/RBO6` | 44 | 43 | 0 | 0 | 0 | 1 |
+| `BOSS/RBO6` | 43 | 43 | 0 | 0 | 0 | 1 |
 | `BOSS/RBO7` | 9 | 9 | 0 | 0 | 0 | 0 |
 | `BOSS/RBO8` | 24 | 24 | 0 | 0 | 0 | 0 |
 | `MAIN` | 2 | 0 | 0 | 2 | 0 | 0 |
@@ -54,7 +54,7 @@ This block is regenerated from the same queue, checksum manifest, linker maps, p
 | `ST/RDAI` | 18 | 0 | 1 | 15 | 2 | 0 |
 | `ST/RLIB` | 22 | 22 | 0 | 0 | 0 | 0 |
 | `ST/RNO0` | 31 | 0 | 2 | 18 | 11 | 188 |
-| `ST/RNO1` | 42 | 41 | 0 | 0 | 0 | 1 |
+| `ST/RNO1` | 41 | 41 | 0 | 0 | 0 | 1 |
 | `ST/RNO2` | 48 | 48 | 0 | 0 | 0 | 0 |
 | `ST/RNO4` | 84 | 84 | 0 | 0 | 0 | 0 |
 | `ST/RNZ1` | 65 | 65 | 0 | 0 | 0 | 0 |
