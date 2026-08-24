@@ -1,18 +1,42 @@
 {
- "generated_from": "08fd15741",
+ "generated_from": "2d69cb333",
  "how_to_read": "A twin is a starting point, not an answer. Diff it against the stub's assembly before copying: sibling overlays routinely differ by one constant or one branch, and copying past that difference produces a function that is wrong in a way the build will catch but a reviewer will not. A twin under src/st/<name>.h is a SHARED implementation, so the right answer there is usually a shim, not a copy -- check shim_viable() in codebase_index.py first.",
  "regenerate": "python3 automation/asm_twin_finder.py --record",
  "twins": {
-  "boss/bo0/func_us_801B1DDC": {
+  "boss/bo0/func_us_801B15BC": {
    "instructions": 32,
    "name_twins": [],
    "overlay": "boss/bo0",
    "shape_twins": [
     {
-     "identical_constants": false,
-     "overlay": "boss/bo0",
-     "symbol": "func_us_801B1E5C"
+     "identical_constants": true,
+     "overlay": "boss/rbo2",
+     "symbol": "func_801CDC80"
     },
+    {
+     "identical_constants": true,
+     "overlay": "st/rlib",
+     "symbol": "func_us_801AE4B4"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "st/rlib",
+     "symbol": "func_us_801AF3C8"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "st/rnz1",
+     "symbol": "func_801CDC80"
+    }
+   ],
+   "symbol": "func_us_801B15BC",
+   "token_twins": []
+  },
+  "boss/bo0/func_us_801B1DDC": {
+   "instructions": 32,
+   "name_twins": [],
+   "overlay": "boss/bo0",
+   "shape_twins": [
     {
      "identical_constants": false,
      "overlay": "boss/bo0",
@@ -31,14 +55,718 @@
      "identical_constants": false,
      "overlay": "boss/bo0",
      "symbol": "func_us_801B1DDC"
-    },
-    {
-     "identical_constants": false,
-     "overlay": "boss/bo0",
-     "symbol": "func_us_801B1E5C"
     }
    ],
    "symbol": "func_us_801B1EDC",
+   "token_twins": []
+  },
+  "boss/bo2/EntityBossDoors": {
+   "instructions": 353,
+   "name_twins": [
+    {
+     "file": "src/boss/rbo0/e_boss_doors.c",
+     "function": "EntityBossDoors"
+    },
+    {
+     "file": "src/st/are/e_boss_doors.c",
+     "function": "EntityBossDoors"
+    },
+    {
+     "file": "src/st/nz1/e_boss_doors.c",
+     "function": "EntityBossDoors"
+    },
+    {
+     "file": "src/st/rare/e_boss_doors.c",
+     "function": "EntityBossDoors"
+    }
+   ],
+   "overlay": "boss/bo2",
+   "shape_twins": [],
+   "symbol": "EntityBossDoors",
+   "token_twins": []
+  },
+  "boss/bo2/EntityBossTorch": {
+   "instructions": 102,
+   "name_twins": [
+    {
+     "file": "src/boss/rbo0/e_boss_torch.c",
+     "function": "EntityBossTorch"
+    },
+    {
+     "file": "src/st/are/e_boss_torch.h",
+     "function": "EntityBossTorch"
+    }
+   ],
+   "overlay": "boss/bo2",
+   "shape_twins": [],
+   "symbol": "EntityBossTorch",
+   "token_twins": []
+  },
+  "boss/bo2/EntityCutsceneDialogue": {
+   "instructions": 1134,
+   "name_twins": [
+    {
+     "file": "src/st/dai/e_cutscene_dialogue.c",
+     "function": "EntityCutsceneDialogue"
+    },
+    {
+     "file": "src/st/dre/e_cutscene_dialogue.c",
+     "function": "EntityCutsceneDialogue"
+    }
+   ],
+   "overlay": "boss/bo2",
+   "shape_twins": [],
+   "symbol": "EntityCutsceneDialogue",
+   "token_twins": []
+  },
+  "boss/bo2/EntityWerewolfDeathFlames": {
+   "instructions": 323,
+   "name_twins": [
+    {
+     "file": "src/st/rare/e_werewolf.c",
+     "function": "EntityWerewolfDeathFlames"
+    }
+   ],
+   "overlay": "boss/bo2",
+   "shape_twins": [],
+   "symbol": "EntityWerewolfDeathFlames",
+   "token_twins": []
+  },
+  "boss/bo2/func_us_801A2610": {
+   "instructions": 35,
+   "name_twins": [],
+   "overlay": "boss/bo2",
+   "shape_twins": [
+    {
+     "identical_constants": false,
+     "overlay": "boss/bo2",
+     "symbol": "func_us_801B37D0"
+    }
+   ],
+   "symbol": "func_us_801A2610",
+   "token_twins": []
+  },
+  "boss/bo2/func_us_801B37D0": {
+   "instructions": 35,
+   "name_twins": [],
+   "overlay": "boss/bo2",
+   "shape_twins": [
+    {
+     "identical_constants": false,
+     "overlay": "boss/bo2",
+     "symbol": "func_us_801A2610"
+    }
+   ],
+   "symbol": "func_us_801B37D0",
+   "token_twins": []
+  },
+  "boss/bo3/CheckColliderOffsets": {
+   "instructions": 60,
+   "name_twins": [
+    {
+     "file": "src/boss/bo7/e_misc.c",
+     "function": "CheckColliderOffsets"
+    },
+    {
+     "file": "src/st/e_misc.h",
+     "function": "CheckColliderOffsets"
+    },
+    {
+     "file": "src/st/rno1/e_misc.c",
+     "function": "CheckColliderOffsets"
+    },
+    {
+     "file": "src/st/rno2/e_misc.c",
+     "function": "CheckColliderOffsets"
+    }
+   ],
+   "overlay": "boss/bo3",
+   "shape_twins": [],
+   "symbol": "CheckColliderOffsets",
+   "token_twins": []
+  },
+  "boss/bo3/CreateExplosionPuff": {
+   "instructions": 48,
+   "name_twins": [
+    {
+     "file": "src/boss/rbo0/e_fake_sypha.c",
+     "function": "CreateExplosionPuff"
+    },
+    {
+     "file": "src/st/e_explosion_puff_opaque.h",
+     "function": "CreateExplosionPuff"
+    }
+   ],
+   "overlay": "boss/bo3",
+   "shape_twins": [],
+   "symbol": "CreateExplosionPuff",
+   "token_twins": []
+  },
+  "boss/bo3/EntityExplosionVariants": {
+   "instructions": 60,
+   "name_twins": [
+    {
+     "file": "src/st/e_misc.h",
+     "function": "EntityExplosionVariants"
+    }
+   ],
+   "overlay": "boss/bo3",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "boss/bo7",
+     "symbol": "EntityExplosionVariants"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "st/rno1",
+     "symbol": "EntityExplosionVariants"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "st/rno2",
+     "symbol": "EntityExplosionVariants"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "st/rno4",
+     "symbol": "EntityExplosionVariants"
+    }
+   ],
+   "symbol": "EntityExplosionVariants",
+   "token_twins": []
+  },
+  "boss/bo3/EntityGreyPuff": {
+   "instructions": 61,
+   "name_twins": [
+    {
+     "file": "src/st/e_misc.h",
+     "function": "EntityGreyPuff"
+    }
+   ],
+   "overlay": "boss/bo3",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "boss/bo7",
+     "symbol": "EntityGreyPuff"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "st/rno1",
+     "symbol": "EntityGreyPuff"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "st/rno2",
+     "symbol": "EntityGreyPuff"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "st/rno4",
+     "symbol": "EntityGreyPuff"
+    }
+   ],
+   "symbol": "EntityGreyPuff",
+   "token_twins": []
+  },
+  "boss/bo3/EntityOlroxDrool": {
+   "instructions": 140,
+   "name_twins": [
+    {
+     "file": "src/st/e_misc.h",
+     "function": "EntityOlroxDrool"
+    }
+   ],
+   "overlay": "boss/bo3",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "boss/bo7",
+     "symbol": "EntityOlroxDrool"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "st/rno1",
+     "symbol": "EntityOlroxDrool"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "st/rno2",
+     "symbol": "EntityOlroxDrool"
+    }
+   ],
+   "symbol": "EntityOlroxDrool",
+   "token_twins": []
+  },
+  "boss/bo3/EntitySplashWater": {
+   "instructions": 578,
+   "name_twins": [
+    {
+     "file": "src/st/rno3/water_effects.c",
+     "function": "EntitySplashWater"
+    },
+    {
+     "file": "src/st/water_effects.h",
+     "function": "EntitySplashWater"
+    }
+   ],
+   "overlay": "boss/bo3",
+   "shape_twins": [],
+   "symbol": "EntitySplashWater",
+   "token_twins": []
+  },
+  "boss/bo3/EntityUnkId13": {
+   "instructions": 68,
+   "name_twins": [
+    {
+     "file": "src/boss/bo7/e_misc.c",
+     "function": "EntityUnkId13"
+    },
+    {
+     "file": "src/st/e_misc.h",
+     "function": "EntityUnkId13"
+    },
+    {
+     "file": "src/st/rno1/e_misc.c",
+     "function": "EntityUnkId13"
+    },
+    {
+     "file": "src/st/rno2/e_misc.c",
+     "function": "EntityUnkId13"
+    }
+   ],
+   "overlay": "boss/bo3",
+   "shape_twins": [],
+   "symbol": "EntityUnkId13",
+   "token_twins": []
+  },
+  "boss/bo3/EntityWaterBox": {
+   "instructions": 124,
+   "name_twins": [
+    {
+     "file": "src/st/no4/first_c_file.c",
+     "function": "EntityWaterBox"
+    }
+   ],
+   "overlay": "boss/bo3",
+   "shape_twins": [],
+   "symbol": "EntityWaterBox",
+   "token_twins": []
+  },
+  "boss/bo3/EntityWaterDrop": {
+   "instructions": 169,
+   "name_twins": [
+    {
+     "file": "src/st/rno3/water_effects.c",
+     "function": "EntityWaterDrop"
+    },
+    {
+     "file": "src/st/water_effects.h",
+     "function": "EntityWaterDrop"
+    }
+   ],
+   "overlay": "boss/bo3",
+   "shape_twins": [],
+   "symbol": "EntityWaterDrop",
+   "token_twins": []
+  },
+  "boss/bo3/InitializeUnkEntity": {
+   "instructions": 51,
+   "name_twins": [
+    {
+     "file": "src/st/e_misc.h",
+     "function": "InitializeUnkEntity"
+    }
+   ],
+   "overlay": "boss/bo3",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "boss/bo7",
+     "symbol": "InitializeUnkEntity"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "st/rno1",
+     "symbol": "InitializeUnkEntity"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "st/rno2",
+     "symbol": "InitializeUnkEntity"
+    }
+   ],
+   "symbol": "InitializeUnkEntity",
+   "token_twins": []
+  },
+  "boss/bo3/UnkRecursivePrimFunc1": {
+   "instructions": 376,
+   "name_twins": [
+    {
+     "file": "src/st/e_misc.h",
+     "function": "UnkRecursivePrimFunc1"
+    }
+   ],
+   "overlay": "boss/bo3",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "boss/bo7",
+     "symbol": "UnkRecursivePrimFunc1"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "st/rno1",
+     "symbol": "UnkRecursivePrimFunc1"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "st/rno2",
+     "symbol": "UnkRecursivePrimFunc1"
+    }
+   ],
+   "symbol": "UnkRecursivePrimFunc1",
+   "token_twins": []
+  },
+  "boss/bo3/UnkRecursivePrimFunc2": {
+   "instructions": 448,
+   "name_twins": [
+    {
+     "file": "src/st/e_misc.h",
+     "function": "UnkRecursivePrimFunc2"
+    }
+   ],
+   "overlay": "boss/bo3",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "boss/bo7",
+     "symbol": "UnkRecursivePrimFunc2"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "st/rno1",
+     "symbol": "UnkRecursivePrimFunc2"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "st/rno2",
+     "symbol": "UnkRecursivePrimFunc2"
+    }
+   ],
+   "symbol": "UnkRecursivePrimFunc2",
+   "token_twins": []
+  },
+  "boss/bo3/func_us_801A071C": {
+   "instructions": 44,
+   "name_twins": [],
+   "overlay": "boss/bo3",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "st/rno4",
+     "symbol": "func_us_801A071C_from_bo3"
+    }
+   ],
+   "symbol": "func_us_801A071C",
+   "token_twins": []
+  },
+  "boss/bo3/func_us_801C123C_from_no4": {
+   "instructions": 29,
+   "name_twins": [
+    {
+     "file": "src/st/rcen/unk_1F0D8.c",
+     "function": "func_us_801C123C_from_no4"
+    }
+   ],
+   "overlay": "boss/bo3",
+   "shape_twins": [
+    {
+     "identical_constants": false,
+     "overlay": "st/rno4",
+     "symbol": "func_us_801C123C_from_no4"
+    }
+   ],
+   "symbol": "func_us_801C123C_from_no4",
+   "token_twins": []
+  },
+  "boss/bo3/func_us_801C12B0_from_no4": {
+   "instructions": 210,
+   "name_twins": [],
+   "overlay": "boss/bo3",
+   "shape_twins": [
+    {
+     "identical_constants": false,
+     "overlay": "st/rno4",
+     "symbol": "func_us_801C12B0_from_no4"
+    }
+   ],
+   "symbol": "func_us_801C12B0_from_no4",
+   "token_twins": []
+  },
+  "boss/bo3/func_us_801C37C8_from_no4": {
+   "instructions": 143,
+   "name_twins": [],
+   "overlay": "boss/bo3",
+   "shape_twins": [
+    {
+     "identical_constants": false,
+     "overlay": "st/rno4",
+     "symbol": "func_us_801C37C8_from_no4"
+    }
+   ],
+   "symbol": "func_us_801C37C8_from_no4",
+   "token_twins": []
+  },
+  "boss/bo3/func_us_801C3CC4_from_no4": {
+   "instructions": 187,
+   "name_twins": [],
+   "overlay": "boss/bo3",
+   "shape_twins": [
+    {
+     "identical_constants": false,
+     "overlay": "st/rno4",
+     "symbol": "func_us_801C3CC4_from_no4"
+    }
+   ],
+   "symbol": "func_us_801C3CC4_from_no4",
+   "token_twins": []
+  },
+  "boss/bo3/func_us_801C5518_from_no4": {
+   "instructions": 68,
+   "name_twins": [],
+   "overlay": "boss/bo3",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "st/rno4",
+     "symbol": "func_us_801C5518_from_no4"
+    }
+   ],
+   "symbol": "func_us_801C5518_from_no4",
+   "token_twins": []
+  },
+  "boss/bo5/BO5_RicSetDeadPrologue": {
+   "instructions": 8,
+   "name_twins": [
+    {
+     "file": "src/boss/bo6/us_39144.c",
+     "function": "BO6_RicSetDeadPrologue"
+    },
+    {
+     "file": "src/ric/pl_setstep.c",
+     "function": "RicSetDeadPrologue"
+    }
+   ],
+   "overlay": "boss/bo5",
+   "shape_twins": [],
+   "symbol": "BO5_RicSetDeadPrologue",
+   "token_twins": []
+  },
+  "boss/bo5/CutsceneCameraPan": {
+   "instructions": 24,
+   "name_twins": [
+    {
+     "file": "src/st/cen/e_chamber.c",
+     "function": "CutsceneCameraPan"
+    },
+    {
+     "file": "src/st/dai/e_cutscene_actors.c",
+     "function": "CutsceneCameraPan"
+    },
+    {
+     "file": "src/st/dre/e_cutscene_actors.c",
+     "function": "CutsceneCameraPan"
+    }
+   ],
+   "overlay": "boss/bo5",
+   "shape_twins": [],
+   "symbol": "CutsceneCameraPan",
+   "token_twins": []
+  },
+  "boss/bo5/EntityBell": {
+   "instructions": 736,
+   "name_twins": [
+    {
+     "file": "src/st/dai/e_bell.c",
+     "function": "EntityBell"
+    }
+   ],
+   "overlay": "boss/bo5",
+   "shape_twins": [],
+   "symbol": "EntityBell",
+   "token_twins": []
+  },
+  "boss/bo5/EntityBellSpawner": {
+   "instructions": 51,
+   "name_twins": [
+    {
+     "file": "src/st/dai/e_bell.c",
+     "function": "EntityBellSpawner"
+    }
+   ],
+   "overlay": "boss/bo5",
+   "shape_twins": [],
+   "symbol": "EntityBellSpawner",
+   "token_twins": []
+  },
+  "boss/bo5/EntityClouds": {
+   "instructions": 416,
+   "name_twins": [
+    {
+     "file": "src/boss/rbo3/e_clouds.c",
+     "function": "EntityClouds"
+    },
+    {
+     "file": "src/st/e_clouds.h",
+     "function": "EntityClouds"
+    },
+    {
+     "file": "src/st/e_clouds_keep.h",
+     "function": "EntityClouds"
+    },
+    {
+     "file": "src/st/nz1/e_clouds.c",
+     "function": "EntityClouds"
+    },
+    {
+     "file": "src/st/rnz1/e_clouds.c",
+     "function": "EntityClouds"
+    }
+   ],
+   "overlay": "boss/bo5",
+   "shape_twins": [],
+   "symbol": "EntityClouds",
+   "token_twins": []
+  },
+  "boss/bo5/EntityCutscene": {
+   "instructions": 1115,
+   "name_twins": [
+    {
+     "file": "src/boss/mar/cutscene.c",
+     "function": "EntityCutscene"
+    },
+    {
+     "file": "src/st/cen/cutscene.c",
+     "function": "EntityCutscene"
+    },
+    {
+     "file": "src/st/lib/cutscene.c",
+     "function": "EntityCutscene"
+    },
+    {
+     "file": "src/st/lib_psp/cutscene.c",
+     "function": "EntityCutscene"
+    },
+    {
+     "file": "src/st/no3/cutscene.c",
+     "function": "EntityCutscene"
+    },
+    {
+     "file": "src/st/no4/cutscene.c",
+     "function": "EntityCutscene"
+    },
+    {
+     "file": "src/st/nz0/cutscene.c",
+     "function": "EntityCutscene"
+    },
+    {
+     "file": "src/st/nz0/cutscene_psp.c",
+     "function": "EntityCutscene"
+    },
+    {
+     "file": "src/st/rcen/cutscene.c",
+     "function": "EntityCutscene"
+    },
+    {
+     "file": "src/st/sel/cutscene.c",
+     "function": "EntityCutscene"
+    },
+    {
+     "file": "src/st/sel_psp/cutscene.c",
+     "function": "EntityCutscene"
+    },
+    {
+     "file": "src/st/st0/cutscene.c",
+     "function": "EntityCutscene"
+    },
+    {
+     "file": "src/st/top/cutscene.c",
+     "function": "EntityCutscene"
+    }
+   ],
+   "overlay": "boss/bo5",
+   "shape_twins": [],
+   "symbol": "EntityCutscene",
+   "token_twins": []
+  },
+  "boss/bo5/EntityRbo3Door": {
+   "instructions": 198,
+   "name_twins": [
+    {
+     "file": "src/st/func_80192d64.h",
+     "function": "EntityRbo3Door"
+    }
+   ],
+   "overlay": "boss/bo5",
+   "shape_twins": [],
+   "symbol": "EntityRbo3Door",
+   "token_twins": []
+  },
+  "boss/bo5/EntityRoomForeground": {
+   "instructions": 59,
+   "name_twins": [
+    {
+     "file": "src/st/e_room_fg.h",
+     "function": "EntityRoomForeground"
+    },
+    {
+     "file": "src/st/mad/e_room_fg.c",
+     "function": "EntityRoomForeground"
+    },
+    {
+     "file": "src/st/no3/e_room_fg.c",
+     "function": "EntityRoomForeground"
+    },
+    {
+     "file": "src/st/np3/e_room_fg.c",
+     "function": "EntityRoomForeground"
+    },
+    {
+     "file": "src/st/rno3/e_room_fg.c",
+     "function": "EntityRoomForeground"
+    }
+   ],
+   "overlay": "boss/bo5",
+   "shape_twins": [],
+   "symbol": "EntityRoomForeground",
+   "token_twins": []
+  },
+  "boss/bo5/EntityStainedGlass": {
+   "instructions": 483,
+   "name_twins": [
+    {
+     "file": "src/st/dai/e_stained_glass.c",
+     "function": "EntityStainedGlass"
+    }
+   ],
+   "overlay": "boss/bo5",
+   "shape_twins": [],
+   "symbol": "EntityStainedGlass",
+   "token_twins": []
+  },
+  "boss/bo5/EntityStainedGlassBackground": {
+   "instructions": 464,
+   "name_twins": [
+    {
+     "file": "src/st/dai/e_stained_glass.c",
+     "function": "EntityStainedGlassBackground"
+    }
+   ],
+   "overlay": "boss/bo5",
+   "shape_twins": [],
+   "symbol": "EntityStainedGlassBackground",
    "token_twins": []
   },
   "boss/bo6/BO6_EntityStopWatch": {
@@ -78,38 +806,6 @@
    "overlay": "boss/bo6",
    "shape_twins": [],
    "symbol": "BO6_RicCheckSubweapon",
-   "token_twins": [
-    {
-     "file": "src/boss/bo6/richter.c",
-     "function": "func_us_801B77D8",
-     "score": 0.303
-    }
-   ]
-  },
-  "boss/bo6/BO6_RicDoAttack": {
-   "instructions": 216,
-   "name_twins": [
-    {
-     "file": "src/ric/pl_setstep.c",
-     "function": "RicDoAttack"
-    }
-   ],
-   "overlay": "boss/bo6",
-   "shape_twins": [],
-   "symbol": "BO6_RicDoAttack",
-   "token_twins": []
-  },
-  "boss/bo6/BO6_RicDoCrash": {
-   "instructions": 196,
-   "name_twins": [
-    {
-     "file": "src/ric/pl_setstep.c",
-     "function": "RicDoCrash"
-    }
-   ],
-   "overlay": "boss/bo6",
-   "shape_twins": [],
-   "symbol": "BO6_RicDoCrash",
    "token_twins": []
   },
   "boss/bo6/BO6_RicEntityAguneaCircle": {
@@ -150,30 +846,6 @@
    "shape_twins": [],
    "symbol": "BO6_RicEntityAguneaLightning",
    "token_twins": []
-  },
-  "boss/bo6/BO6_RicEntityArmBrandishWhip": {
-   "instructions": 114,
-   "name_twins": [
-    {
-     "file": "src/ric/pl_whip.c",
-     "function": "RicEntityArmBrandishWhip"
-    }
-   ],
-   "overlay": "boss/bo6",
-   "shape_twins": [],
-   "symbol": "BO6_RicEntityArmBrandishWhip",
-   "token_twins": [
-    {
-     "file": "src/boss/bo6/richter.c",
-     "function": "func_us_801B77D8",
-     "score": 0.524
-    },
-    {
-     "file": "src/boss/bo6/us_39144.c",
-     "function": "BO6_RicSetStep",
-     "score": 0.402
-    }
-   ]
   },
   "boss/bo6/BO6_RicEntityCrashBible": {
    "instructions": 502,
@@ -253,30 +925,6 @@
    "symbol": "BO6_RicEntityCrashVibhuti",
    "token_twins": []
   },
-  "boss/bo6/BO6_RicEntityFactory": {
-   "instructions": 311,
-   "name_twins": [
-    {
-     "file": "src/ric/pl_blueprints.c",
-     "function": "RicEntityFactory"
-    }
-   ],
-   "overlay": "boss/bo6",
-   "shape_twins": [],
-   "symbol": "BO6_RicEntityFactory",
-   "token_twins": [
-    {
-     "file": "src/boss/bo6/richter.c",
-     "function": "func_us_801B77D8",
-     "score": 0.524
-    },
-    {
-     "file": "src/boss/bo6/us_39144.c",
-     "function": "BO6_RicSetStep",
-     "score": 0.402
-    }
-   ]
-  },
   "boss/bo6/BO6_RicEntityHitByCutBlood": {
    "instructions": 520,
    "name_twins": [
@@ -288,43 +936,6 @@
    "overlay": "boss/bo6",
    "shape_twins": [],
    "symbol": "BO6_RicEntityHitByCutBlood",
-   "token_twins": []
-  },
-  "boss/bo6/BO6_RicEntityHitByDark": {
-   "instructions": 118,
-   "name_twins": [
-    {
-     "file": "src/ric/pl_blueprints.c",
-     "function": "RicEntityHitByDark"
-    }
-   ],
-   "overlay": "boss/bo6",
-   "shape_twins": [],
-   "symbol": "BO6_RicEntityHitByDark",
-   "token_twins": [
-    {
-     "file": "src/boss/bo6/richter.c",
-     "function": "func_us_801B77D8",
-     "score": 0.524
-    },
-    {
-     "file": "src/boss/bo6/us_39144.c",
-     "function": "BO6_RicSetStep",
-     "score": 0.402
-    }
-   ]
-  },
-  "boss/bo6/BO6_RicEntityHitByHoly": {
-   "instructions": 205,
-   "name_twins": [
-    {
-     "file": "src/ric/pl_blueprints.c",
-     "function": "RicEntityHitByHoly"
-    }
-   ],
-   "overlay": "boss/bo6",
-   "shape_twins": [],
-   "symbol": "BO6_RicEntityHitByHoly",
    "token_twins": []
   },
   "boss/bo6/BO6_RicEntityHitByIce": {
@@ -392,32 +1003,6 @@
    "symbol": "BO6_RicEntitySubwpnAgunea",
    "token_twins": []
   },
-  "boss/bo6/BO6_RicEntitySubwpnBible": {
-   "instructions": 345,
-   "name_twins": [
-    {
-     "file": "src/ric/319C4.c",
-     "function": "RicEntitySubwpnBible"
-    }
-   ],
-   "overlay": "boss/bo6",
-   "shape_twins": [],
-   "symbol": "BO6_RicEntitySubwpnBible",
-   "token_twins": []
-  },
-  "boss/bo6/BO6_RicEntitySubwpnCrashCross": {
-   "instructions": 283,
-   "name_twins": [
-    {
-     "file": "src/ric/pl_subweapon_cross.c",
-     "function": "RicEntitySubwpnCrashCross"
-    }
-   ],
-   "overlay": "boss/bo6",
-   "shape_twins": [],
-   "symbol": "BO6_RicEntitySubwpnCrashCross",
-   "token_twins": []
-  },
   "boss/bo6/BO6_RicEntitySubwpnCrashCrossParticles": {
    "instructions": 218,
    "name_twins": [
@@ -429,19 +1014,6 @@
    "overlay": "boss/bo6",
    "shape_twins": [],
    "symbol": "BO6_RicEntitySubwpnCrashCrossParticles",
-   "token_twins": []
-  },
-  "boss/bo6/BO6_RicEntitySubwpnHolyWaterBreakGlass": {
-   "instructions": 277,
-   "name_twins": [
-    {
-     "file": "src/ric/pl_subweapon_holywater.c",
-     "function": "RicEntitySubwpnHolyWaterBreakGlass"
-    }
-   ],
-   "overlay": "boss/bo6",
-   "shape_twins": [],
-   "symbol": "BO6_RicEntitySubwpnHolyWaterBreakGlass",
    "token_twins": []
   },
   "boss/bo6/BO6_RicEntitySubwpnHolyWaterFlame": {
@@ -481,19 +1053,6 @@
    "overlay": "boss/bo6",
    "shape_twins": [],
    "symbol": "BO6_RicEntitySubwpnReboundStone",
-   "token_twins": []
-  },
-  "boss/bo6/BO6_RicEntitySubwpnStopwatchCircle": {
-   "instructions": 226,
-   "name_twins": [
-    {
-     "file": "src/ric/319C4.c",
-     "function": "RicEntitySubwpnStopwatchCircle"
-    }
-   ],
-   "overlay": "boss/bo6",
-   "shape_twins": [],
-   "symbol": "BO6_RicEntitySubwpnStopwatchCircle",
    "token_twins": []
   },
   "boss/bo6/BO6_RicEntitySubwpnThrownAxe": {
@@ -548,35 +1107,6 @@
    "symbol": "BO6_RicMain",
    "token_twins": []
   },
-  "boss/bo6/BO6_RicStepCrouch": {
-   "instructions": 242,
-   "name_twins": [
-    {
-     "file": "src/ric/pl_steps.c",
-     "function": "RicStepCrouch"
-    }
-   ],
-   "overlay": "boss/bo6",
-   "shape_twins": [],
-   "symbol": "BO6_RicStepCrouch",
-   "token_twins": [
-    {
-     "file": "src/servant/set_entity_animation.h",
-     "function": "SetEntityAnimation",
-     "score": 0.411
-    },
-    {
-     "file": "src/dra/alu_anim.c",
-     "function": "SetPlayerAnim",
-     "score": 0.366
-    },
-    {
-     "file": "src/boss/dop_anim.h",
-     "function": "SetDopplegangerAnim",
-     "score": 0.366
-    }
-   ]
-  },
   "boss/bo6/BO6_RicStepDead": {
    "instructions": 432,
    "name_twins": [
@@ -603,56 +1133,6 @@
    "symbol": "BO6_RicStepHit",
    "token_twins": []
   },
-  "boss/bo6/BO6_RicStepJump": {
-   "instructions": 303,
-   "name_twins": [
-    {
-     "file": "src/ric/pl_steps.c",
-     "function": "RicStepJump"
-    }
-   ],
-   "overlay": "boss/bo6",
-   "shape_twins": [],
-   "symbol": "BO6_RicStepJump",
-   "token_twins": [
-    {
-     "file": "src/st/sel_psp/BB50.c",
-     "function": "SetStep",
-     "score": 0.309
-    },
-    {
-     "file": "src/st/sel/34B30.c",
-     "function": "SetStep",
-     "score": 0.309
-    }
-   ]
-  },
-  "boss/bo6/BO6_RicStepSlide": {
-   "instructions": 181,
-   "name_twins": [
-    {
-     "file": "src/ric/pl_steps.c",
-     "function": "RicStepSlide"
-    }
-   ],
-   "overlay": "boss/bo6",
-   "shape_twins": [],
-   "symbol": "BO6_RicStepSlide",
-   "token_twins": []
-  },
-  "boss/bo6/BO6_RicStepSlideKick": {
-   "instructions": 178,
-   "name_twins": [
-    {
-     "file": "src/ric/pl_steps.c",
-     "function": "RicStepSlideKick"
-    }
-   ],
-   "overlay": "boss/bo6",
-   "shape_twins": [],
-   "symbol": "BO6_RicStepSlideKick",
-   "token_twins": []
-  },
   "boss/bo6/BO6_RicStepStand": {
    "instructions": 153,
    "name_twins": [
@@ -666,38 +1146,19 @@
    "symbol": "BO6_RicStepStand",
    "token_twins": [
     {
+     "file": "src/st/cen_psp/e_maria_utils.c",
+     "function": "MarSetAnimation",
+     "score": 0.417
+    },
+    {
      "file": "src/servant/set_entity_animation.h",
      "function": "SetEntityAnimation",
-     "score": 0.411
+     "score": 0.417
     },
     {
-     "file": "src/dra/alu_anim.c",
-     "function": "SetPlayerAnim",
-     "score": 0.366
-    },
-    {
-     "file": "src/boss/dop_anim.h",
-     "function": "SetDopplegangerAnim",
-     "score": 0.366
-    }
-   ]
-  },
-  "boss/bo6/EntityShaft": {
-   "instructions": 157,
-   "name_twins": [],
-   "overlay": "boss/bo6",
-   "shape_twins": [],
-   "symbol": "EntityShaft",
-   "token_twins": [
-    {
-     "file": "src/boss/bo6/richter.c",
-     "function": "func_us_801B77D8",
-     "score": 0.524
-    },
-    {
-     "file": "src/boss/bo6/us_39144.c",
-     "function": "BO6_RicSetStep",
-     "score": 0.402
+     "file": "src/ric/pl_utils.c",
+     "function": "RicSetAnimation",
+     "score": 0.417
     }
    ]
   },
@@ -711,12 +1172,12 @@
     {
      "file": "src/boss/bo6/richter.c",
      "function": "func_us_801B77D8",
-     "score": 0.409
+     "score": 0.395
     },
     {
      "file": "src/boss/bo6/us_39144.c",
      "function": "BO6_RicSetStep",
-     "score": 0.331
+     "score": 0.317
     }
    ]
   },
@@ -730,12 +1191,12 @@
     {
      "file": "src/boss/bo6/richter.c",
      "function": "func_us_801B77D8",
-     "score": 0.409
+     "score": 0.395
     },
     {
      "file": "src/boss/bo6/us_39144.c",
      "function": "BO6_RicSetStep",
-     "score": 0.331
+     "score": 0.317
     }
    ]
   },
@@ -749,12 +1210,12 @@
     {
      "file": "src/boss/bo6/richter.c",
      "function": "func_us_801B77D8",
-     "score": 0.524
+     "score": 0.508
     },
     {
      "file": "src/boss/bo6/us_39144.c",
      "function": "BO6_RicSetStep",
-     "score": 0.402
+     "score": 0.387
     }
    ]
   },
@@ -768,12 +1229,12 @@
     {
      "file": "src/boss/bo6/richter.c",
      "function": "func_us_801B77D8",
-     "score": 0.524
+     "score": 0.508
     },
     {
      "file": "src/boss/bo6/us_39144.c",
      "function": "BO6_RicSetStep",
-     "score": 0.402
+     "score": 0.387
     }
    ]
   },
@@ -787,14 +1248,1809 @@
     {
      "file": "src/boss/bo6/richter.c",
      "function": "func_us_801B77D8",
-     "score": 0.524
+     "score": 0.508
     },
     {
      "file": "src/boss/bo6/us_39144.c",
      "function": "BO6_RicSetStep",
-     "score": 0.402
+     "score": 0.387
     }
    ]
+  },
+  "boss/bo7/EntityBigRedFireball": {
+   "instructions": 118,
+   "name_twins": [
+    {
+     "file": "src/boss/bo3/e_misc.c",
+     "function": "EntityBigRedFireball"
+    },
+    {
+     "file": "src/st/e_misc.h",
+     "function": "EntityBigRedFireball"
+    },
+    {
+     "file": "src/st/rno1/e_misc.c",
+     "function": "EntityBigRedFireball"
+    },
+    {
+     "file": "src/st/rno2/e_misc.c",
+     "function": "EntityBigRedFireball"
+    }
+   ],
+   "overlay": "boss/bo7",
+   "shape_twins": [],
+   "symbol": "EntityBigRedFireball",
+   "token_twins": []
+  },
+  "boss/bo7/EntityBreakable": {
+   "instructions": 164,
+   "name_twins": [
+    {
+     "file": "src/boss/bo1/e_breakable.c",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/are/e_breakable.h",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/cat/e_breakable.h",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/e_breakable.h",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/e_breakable_no4.h",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/e_breakable_with_debris.h",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/e_breakable_with_lighting.h",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/lib/e_breakable.c",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/no4/e_breakable.c",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/nz1/e_breakable.c",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/rnz1/e_breakable.c",
+     "function": "EntityBreakable"
+    }
+   ],
+   "overlay": "boss/bo7",
+   "shape_twins": [],
+   "symbol": "EntityBreakable",
+   "token_twins": []
+  },
+  "boss/bo7/EntityBreakableDebris": {
+   "instructions": 254,
+   "name_twins": [
+    {
+     "file": "src/st/are/e_breakable.h",
+     "function": "EntityBreakableDebris"
+    },
+    {
+     "file": "src/st/e_breakable_with_debris.h",
+     "function": "EntityBreakableDebris"
+    },
+    {
+     "file": "src/st/e_breakable_with_lighting.h",
+     "function": "EntityBreakableDebris"
+    },
+    {
+     "file": "src/st/lib/e_breakable.c",
+     "function": "EntityBreakableDebris"
+    },
+    {
+     "file": "src/st/nz1/e_breakable.c",
+     "function": "EntityBreakableDebris"
+    },
+    {
+     "file": "src/st/rnz1/e_breakable.c",
+     "function": "EntityBreakableDebris"
+    }
+   ],
+   "overlay": "boss/bo7",
+   "shape_twins": [],
+   "symbol": "EntityBreakableDebris",
+   "token_twins": []
+  },
+  "boss/bo7/EntityBreakableWall": {
+   "instructions": 384,
+   "name_twins": [
+    {
+     "file": "src/st/chi/en_breakable_wall.c",
+     "function": "EntityBreakableWall"
+    },
+    {
+     "file": "src/st/no4/e_secrets.c",
+     "function": "EntityBreakableWall"
+    },
+    {
+     "file": "src/st/nz1/e_secrets.c",
+     "function": "EntityBreakableWall"
+    },
+    {
+     "file": "src/st/rtop/20B48.c",
+     "function": "EntityBreakableWall"
+    },
+    {
+     "file": "src/st/top/e_breakable_wall.c",
+     "function": "EntityBreakableWall"
+    }
+   ],
+   "overlay": "boss/bo7",
+   "shape_twins": [],
+   "symbol": "EntityBreakableWall",
+   "token_twins": []
+  },
+  "boss/bo7/EntityBreakableWallDebris": {
+   "instructions": 172,
+   "name_twins": [
+    {
+     "file": "src/st/cat/e_secrets.c",
+     "function": "EntityBreakableWallDebris"
+    },
+    {
+     "file": "src/st/chi/en_breakable_wall.c",
+     "function": "EntityBreakableWallDebris"
+    },
+    {
+     "file": "src/st/chi_psp/en_breakable_wall.c",
+     "function": "EntityBreakableWallDebris"
+    },
+    {
+     "file": "src/st/e_breakable_wall_debris.h",
+     "function": "EntityBreakableWallDebris"
+    },
+    {
+     "file": "src/st/no4/e_secrets.c",
+     "function": "EntityBreakableWallDebris"
+    },
+    {
+     "file": "src/st/rcat/e_secrets.c",
+     "function": "EntityBreakableWallDebris"
+    }
+   ],
+   "overlay": "boss/bo7",
+   "shape_twins": [],
+   "symbol": "EntityBreakableWallDebris",
+   "token_twins": []
+  },
+  "boss/bo7/EntityCerberusGateDebug": {
+   "instructions": 352,
+   "name_twins": [
+    {
+     "file": "src/st/chi/en_debug_cerberus_gate.c",
+     "function": "EntityCerberusGateDebug"
+    }
+   ],
+   "overlay": "boss/bo7",
+   "shape_twins": [
+    {
+     "identical_constants": false,
+     "overlay": "boss/rbo2",
+     "symbol": "EntityCerberusGateDebug"
+    }
+   ],
+   "symbol": "EntityCerberusGateDebug",
+   "token_twins": []
+  },
+  "boss/bo7/EntityDemonSwitch": {
+   "instructions": 57,
+   "name_twins": [
+    {
+     "file": "src/st/chi/en_demon_switch_wall.c",
+     "function": "EntityDemonSwitch"
+    }
+   ],
+   "overlay": "boss/bo7",
+   "shape_twins": [],
+   "symbol": "EntityDemonSwitch",
+   "token_twins": []
+  },
+  "boss/bo7/EntityDemonSwitchWall": {
+   "instructions": 289,
+   "name_twins": [
+    {
+     "file": "src/st/chi/en_demon_switch_wall.c",
+     "function": "EntityDemonSwitchWall"
+    }
+   ],
+   "overlay": "boss/bo7",
+   "shape_twins": [],
+   "symbol": "EntityDemonSwitchWall",
+   "token_twins": []
+  },
+  "boss/bo7/EntityExplosionVariants": {
+   "instructions": 60,
+   "name_twins": [
+    {
+     "file": "src/st/e_misc.h",
+     "function": "EntityExplosionVariants"
+    }
+   ],
+   "overlay": "boss/bo7",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "boss/bo3",
+     "symbol": "EntityExplosionVariants"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "st/rno1",
+     "symbol": "EntityExplosionVariants"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "st/rno2",
+     "symbol": "EntityExplosionVariants"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "st/rno4",
+     "symbol": "EntityExplosionVariants"
+    }
+   ],
+   "symbol": "EntityExplosionVariants",
+   "token_twins": []
+  },
+  "boss/bo7/EntityGreyPuff": {
+   "instructions": 61,
+   "name_twins": [
+    {
+     "file": "src/st/e_misc.h",
+     "function": "EntityGreyPuff"
+    }
+   ],
+   "overlay": "boss/bo7",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "boss/bo3",
+     "symbol": "EntityGreyPuff"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "st/rno1",
+     "symbol": "EntityGreyPuff"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "st/rno2",
+     "symbol": "EntityGreyPuff"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "st/rno4",
+     "symbol": "EntityGreyPuff"
+    }
+   ],
+   "symbol": "EntityGreyPuff",
+   "token_twins": []
+  },
+  "boss/bo7/EntityOlroxDrool": {
+   "instructions": 140,
+   "name_twins": [
+    {
+     "file": "src/st/e_misc.h",
+     "function": "EntityOlroxDrool"
+    }
+   ],
+   "overlay": "boss/bo7",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "boss/bo3",
+     "symbol": "EntityOlroxDrool"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "st/rno1",
+     "symbol": "EntityOlroxDrool"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "st/rno2",
+     "symbol": "EntityOlroxDrool"
+    }
+   ],
+   "symbol": "EntityOlroxDrool",
+   "token_twins": []
+  },
+  "boss/bo7/InitializeUnkEntity": {
+   "instructions": 51,
+   "name_twins": [
+    {
+     "file": "src/st/e_misc.h",
+     "function": "InitializeUnkEntity"
+    }
+   ],
+   "overlay": "boss/bo7",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "boss/bo3",
+     "symbol": "InitializeUnkEntity"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "st/rno1",
+     "symbol": "InitializeUnkEntity"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "st/rno2",
+     "symbol": "InitializeUnkEntity"
+    }
+   ],
+   "symbol": "InitializeUnkEntity",
+   "token_twins": []
+  },
+  "boss/bo7/UnkRecursivePrimFunc1": {
+   "instructions": 376,
+   "name_twins": [
+    {
+     "file": "src/st/e_misc.h",
+     "function": "UnkRecursivePrimFunc1"
+    }
+   ],
+   "overlay": "boss/bo7",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "boss/bo3",
+     "symbol": "UnkRecursivePrimFunc1"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "st/rno1",
+     "symbol": "UnkRecursivePrimFunc1"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "st/rno2",
+     "symbol": "UnkRecursivePrimFunc1"
+    }
+   ],
+   "symbol": "UnkRecursivePrimFunc1",
+   "token_twins": []
+  },
+  "boss/bo7/UnkRecursivePrimFunc2": {
+   "instructions": 448,
+   "name_twins": [
+    {
+     "file": "src/st/e_misc.h",
+     "function": "UnkRecursivePrimFunc2"
+    }
+   ],
+   "overlay": "boss/bo7",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "boss/bo3",
+     "symbol": "UnkRecursivePrimFunc2"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "st/rno1",
+     "symbol": "UnkRecursivePrimFunc2"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "st/rno2",
+     "symbol": "UnkRecursivePrimFunc2"
+    }
+   ],
+   "symbol": "UnkRecursivePrimFunc2",
+   "token_twins": []
+  },
+  "boss/bo7/UpdateFallingPebble": {
+   "instructions": 59,
+   "name_twins": [
+    {
+     "file": "src/st/chi/en_demon_switch_wall.c",
+     "function": "UpdateFallingPebble"
+    },
+    {
+     "file": "src/st/rchi/e_demon_switch_wall.c",
+     "function": "UpdateFallingPebble"
+    }
+   ],
+   "overlay": "boss/bo7",
+   "shape_twins": [],
+   "symbol": "UpdateFallingPebble",
+   "token_twins": []
+  },
+  "boss/rbo1/EntityBossRoomBlock": {
+   "instructions": 99,
+   "name_twins": [
+    {
+     "file": "src/st/nz0/bossfight.c",
+     "function": "EntityBossRoomBlock"
+    }
+   ],
+   "overlay": "boss/rbo1",
+   "shape_twins": [],
+   "symbol": "EntityBossRoomBlock",
+   "token_twins": []
+  },
+  "boss/rbo1/EntityBreakable": {
+   "instructions": 77,
+   "name_twins": [
+    {
+     "file": "src/boss/bo1/e_breakable.c",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/are/e_breakable.h",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/cat/e_breakable.h",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/e_breakable.h",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/e_breakable_no4.h",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/e_breakable_with_debris.h",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/e_breakable_with_lighting.h",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/lib/e_breakable.c",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/no4/e_breakable.c",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/nz1/e_breakable.c",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/rnz1/e_breakable.c",
+     "function": "EntityBreakable"
+    }
+   ],
+   "overlay": "boss/rbo1",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "boss/rbo2",
+     "symbol": "EntityBreakable"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "boss/rbo4",
+     "symbol": "EntityBreakable"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "boss/rbo6",
+     "symbol": "EntityBreakable"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "boss/rbo7",
+     "symbol": "EntityBreakable"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "boss/rbo8",
+     "symbol": "EntityBreakable"
+    }
+   ],
+   "symbol": "EntityBreakable",
+   "token_twins": []
+  },
+  "boss/rbo1/func_801CDD00": {
+   "instructions": 32,
+   "name_twins": [],
+   "overlay": "boss/rbo1",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "boss/rbo2",
+     "symbol": "func_801CDD00"
+    }
+   ],
+   "symbol": "func_801CDD00",
+   "token_twins": []
+  },
+  "boss/rbo1/func_801CDD80": {
+   "instructions": 36,
+   "name_twins": [],
+   "overlay": "boss/rbo1",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "boss/rbo2",
+     "symbol": "func_801CDD80"
+    }
+   ],
+   "symbol": "func_801CDD80",
+   "token_twins": []
+  },
+  "boss/rbo1/func_801CDF1C": {
+   "instructions": 47,
+   "name_twins": [],
+   "overlay": "boss/rbo1",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "boss/rbo2",
+     "symbol": "func_801CDF1C"
+    }
+   ],
+   "symbol": "func_801CDF1C",
+   "token_twins": []
+  },
+  "boss/rbo1/func_801CE1E8": {
+   "instructions": 16,
+   "name_twins": [],
+   "overlay": "boss/rbo1",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "boss/rbo2",
+     "symbol": "func_801CE1E8"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "boss/rbo8",
+     "symbol": "func_801CE1E8"
+    }
+   ],
+   "symbol": "func_801CE1E8",
+   "token_twins": []
+  },
+  "boss/rbo1/func_801CE228": {
+   "instructions": 12,
+   "name_twins": [],
+   "overlay": "boss/rbo1",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "boss/rbo2",
+     "symbol": "func_801CE228"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "boss/rbo8",
+     "symbol": "func_801CE228"
+    }
+   ],
+   "symbol": "func_801CE228",
+   "token_twins": []
+  },
+  "boss/rbo1/func_us_8019D260_from_rcen": {
+   "instructions": 52,
+   "name_twins": [
+    {
+     "file": "src/boss/bo1/e_explosion_flame.c",
+     "function": "func_us_8019D260_from_rcen"
+    }
+   ],
+   "overlay": "boss/rbo1",
+   "shape_twins": [
+    {
+     "identical_constants": false,
+     "overlay": "boss/rbo2",
+     "symbol": "func_us_8019D260_from_rcen"
+    },
+    {
+     "identical_constants": false,
+     "overlay": "boss/rbo6",
+     "symbol": "func_us_8019D260_from_rcen"
+    },
+    {
+     "identical_constants": false,
+     "overlay": "st/rcen",
+     "symbol": "func_us_8019D260"
+    }
+   ],
+   "symbol": "func_us_8019D260_from_rcen",
+   "token_twins": []
+  },
+  "boss/rbo1/func_us_8019ED80_from_rbo2": {
+   "instructions": 51,
+   "name_twins": [],
+   "overlay": "boss/rbo1",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "boss/rbo2",
+     "symbol": "func_us_8019ED80"
+    }
+   ],
+   "symbol": "func_us_8019ED80_from_rbo2",
+   "token_twins": []
+  },
+  "boss/rbo1/polarPlacePartsList": {
+   "instructions": 29,
+   "name_twins": [
+    {
+     "file": "src/st/giantbro_helpers_2.h",
+     "function": "polarPlacePartsList"
+    },
+    {
+     "file": "src/st/no2/4966C.c",
+     "function": "polarPlacePartsList"
+    },
+    {
+     "file": "src/st/np3/4E04C.c",
+     "function": "polarPlacePartsList"
+    }
+   ],
+   "overlay": "boss/rbo1",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "boss/rbo2",
+     "symbol": "polarPlacePartsList"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "boss/rbo8",
+     "symbol": "polarPlacePartsList"
+    }
+   ],
+   "symbol": "polarPlacePartsList",
+   "token_twins": []
+  },
+  "boss/rbo1/polarPlacePartsWithAngvel": {
+   "instructions": 37,
+   "name_twins": [
+    {
+     "file": "src/st/giantbro_helpers.h",
+     "function": "polarPlacePartsWithAngvel"
+    }
+   ],
+   "overlay": "boss/rbo1",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "boss/rbo2",
+     "symbol": "polarPlacePartsWithAngvel"
+    }
+   ],
+   "symbol": "polarPlacePartsWithAngvel",
+   "token_twins": []
+  },
+  "boss/rbo2/CutsceneCameraPan": {
+   "instructions": 23,
+   "name_twins": [
+    {
+     "file": "src/st/cen/e_chamber.c",
+     "function": "CutsceneCameraPan"
+    },
+    {
+     "file": "src/st/dai/e_cutscene_actors.c",
+     "function": "CutsceneCameraPan"
+    },
+    {
+     "file": "src/st/dre/e_cutscene_actors.c",
+     "function": "CutsceneCameraPan"
+    }
+   ],
+   "overlay": "boss/rbo2",
+   "shape_twins": [],
+   "symbol": "CutsceneCameraPan",
+   "token_twins": []
+  },
+  "boss/rbo2/EntityBreakable": {
+   "instructions": 77,
+   "name_twins": [
+    {
+     "file": "src/boss/bo1/e_breakable.c",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/are/e_breakable.h",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/cat/e_breakable.h",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/e_breakable.h",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/e_breakable_no4.h",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/e_breakable_with_debris.h",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/e_breakable_with_lighting.h",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/lib/e_breakable.c",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/no4/e_breakable.c",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/nz1/e_breakable.c",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/rnz1/e_breakable.c",
+     "function": "EntityBreakable"
+    }
+   ],
+   "overlay": "boss/rbo2",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "boss/rbo1",
+     "symbol": "EntityBreakable"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "boss/rbo4",
+     "symbol": "EntityBreakable"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "boss/rbo6",
+     "symbol": "EntityBreakable"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "boss/rbo7",
+     "symbol": "EntityBreakable"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "boss/rbo8",
+     "symbol": "EntityBreakable"
+    }
+   ],
+   "symbol": "EntityBreakable",
+   "token_twins": []
+  },
+  "boss/rbo2/EntityCerberusGateDebug": {
+   "instructions": 352,
+   "name_twins": [
+    {
+     "file": "src/st/chi/en_debug_cerberus_gate.c",
+     "function": "EntityCerberusGateDebug"
+    }
+   ],
+   "overlay": "boss/rbo2",
+   "shape_twins": [
+    {
+     "identical_constants": false,
+     "overlay": "boss/bo7",
+     "symbol": "EntityCerberusGateDebug"
+    }
+   ],
+   "symbol": "EntityCerberusGateDebug",
+   "token_twins": []
+  },
+  "boss/rbo2/EntityCutsceneDialogue": {
+   "instructions": 1111,
+   "name_twins": [
+    {
+     "file": "src/st/dai/e_cutscene_dialogue.c",
+     "function": "EntityCutsceneDialogue"
+    },
+    {
+     "file": "src/st/dre/e_cutscene_dialogue.c",
+     "function": "EntityCutsceneDialogue"
+    }
+   ],
+   "overlay": "boss/rbo2",
+   "shape_twins": [],
+   "symbol": "EntityCutsceneDialogue",
+   "token_twins": []
+  },
+  "boss/rbo2/func_801CDC80": {
+   "instructions": 32,
+   "name_twins": [],
+   "overlay": "boss/rbo2",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "boss/bo0",
+     "symbol": "func_us_801B15BC"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "st/rlib",
+     "symbol": "func_us_801AE4B4"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "st/rlib",
+     "symbol": "func_us_801AF3C8"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "st/rnz1",
+     "symbol": "func_801CDC80"
+    }
+   ],
+   "symbol": "func_801CDC80",
+   "token_twins": []
+  },
+  "boss/rbo2/func_801CDD00": {
+   "instructions": 32,
+   "name_twins": [],
+   "overlay": "boss/rbo2",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "boss/rbo1",
+     "symbol": "func_801CDD00"
+    }
+   ],
+   "symbol": "func_801CDD00",
+   "token_twins": []
+  },
+  "boss/rbo2/func_801CDD80": {
+   "instructions": 36,
+   "name_twins": [],
+   "overlay": "boss/rbo2",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "boss/rbo1",
+     "symbol": "func_801CDD80"
+    }
+   ],
+   "symbol": "func_801CDD80",
+   "token_twins": []
+  },
+  "boss/rbo2/func_801CDF1C": {
+   "instructions": 47,
+   "name_twins": [],
+   "overlay": "boss/rbo2",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "boss/rbo1",
+     "symbol": "func_801CDF1C"
+    }
+   ],
+   "symbol": "func_801CDF1C",
+   "token_twins": []
+  },
+  "boss/rbo2/func_801CE1E8": {
+   "instructions": 16,
+   "name_twins": [],
+   "overlay": "boss/rbo2",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "boss/rbo1",
+     "symbol": "func_801CE1E8"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "boss/rbo8",
+     "symbol": "func_801CE1E8"
+    }
+   ],
+   "symbol": "func_801CE1E8",
+   "token_twins": []
+  },
+  "boss/rbo2/func_801CE228": {
+   "instructions": 12,
+   "name_twins": [],
+   "overlay": "boss/rbo2",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "boss/rbo1",
+     "symbol": "func_801CE228"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "boss/rbo8",
+     "symbol": "func_801CE228"
+    }
+   ],
+   "symbol": "func_801CE228",
+   "token_twins": []
+  },
+  "boss/rbo2/func_us_8019D260_from_rcen": {
+   "instructions": 52,
+   "name_twins": [
+    {
+     "file": "src/boss/bo1/e_explosion_flame.c",
+     "function": "func_us_8019D260_from_rcen"
+    }
+   ],
+   "overlay": "boss/rbo2",
+   "shape_twins": [
+    {
+     "identical_constants": false,
+     "overlay": "boss/rbo1",
+     "symbol": "func_us_8019D260_from_rcen"
+    },
+    {
+     "identical_constants": false,
+     "overlay": "boss/rbo6",
+     "symbol": "func_us_8019D260_from_rcen"
+    },
+    {
+     "identical_constants": false,
+     "overlay": "st/rcen",
+     "symbol": "func_us_8019D260"
+    }
+   ],
+   "symbol": "func_us_8019D260_from_rcen",
+   "token_twins": []
+  },
+  "boss/rbo2/func_us_8019D950": {
+   "instructions": 45,
+   "name_twins": [],
+   "overlay": "boss/rbo2",
+   "shape_twins": [
+    {
+     "identical_constants": false,
+     "overlay": "boss/rbo2",
+     "symbol": "func_us_8019ECCC"
+    }
+   ],
+   "symbol": "func_us_8019D950",
+   "token_twins": []
+  },
+  "boss/rbo2/func_us_8019ECCC": {
+   "instructions": 45,
+   "name_twins": [],
+   "overlay": "boss/rbo2",
+   "shape_twins": [
+    {
+     "identical_constants": false,
+     "overlay": "boss/rbo2",
+     "symbol": "func_us_8019D950"
+    }
+   ],
+   "symbol": "func_us_8019ECCC",
+   "token_twins": []
+  },
+  "boss/rbo2/func_us_8019ED80": {
+   "instructions": 51,
+   "name_twins": [],
+   "overlay": "boss/rbo2",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "boss/rbo1",
+     "symbol": "func_us_8019ED80_from_rbo2"
+    }
+   ],
+   "symbol": "func_us_8019ED80",
+   "token_twins": []
+  },
+  "boss/rbo2/polarPlacePartsList": {
+   "instructions": 29,
+   "name_twins": [
+    {
+     "file": "src/st/giantbro_helpers_2.h",
+     "function": "polarPlacePartsList"
+    },
+    {
+     "file": "src/st/no2/4966C.c",
+     "function": "polarPlacePartsList"
+    },
+    {
+     "file": "src/st/np3/4E04C.c",
+     "function": "polarPlacePartsList"
+    }
+   ],
+   "overlay": "boss/rbo2",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "boss/rbo1",
+     "symbol": "polarPlacePartsList"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "boss/rbo8",
+     "symbol": "polarPlacePartsList"
+    }
+   ],
+   "symbol": "polarPlacePartsList",
+   "token_twins": []
+  },
+  "boss/rbo2/polarPlacePartsWithAngvel": {
+   "instructions": 37,
+   "name_twins": [
+    {
+     "file": "src/st/giantbro_helpers.h",
+     "function": "polarPlacePartsWithAngvel"
+    }
+   ],
+   "overlay": "boss/rbo2",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "boss/rbo1",
+     "symbol": "polarPlacePartsWithAngvel"
+    }
+   ],
+   "symbol": "polarPlacePartsWithAngvel",
+   "token_twins": []
+  },
+  "boss/rbo4/EntityBreakable": {
+   "instructions": 77,
+   "name_twins": [
+    {
+     "file": "src/boss/bo1/e_breakable.c",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/are/e_breakable.h",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/cat/e_breakable.h",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/e_breakable.h",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/e_breakable_no4.h",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/e_breakable_with_debris.h",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/e_breakable_with_lighting.h",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/lib/e_breakable.c",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/no4/e_breakable.c",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/nz1/e_breakable.c",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/rnz1/e_breakable.c",
+     "function": "EntityBreakable"
+    }
+   ],
+   "overlay": "boss/rbo4",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "boss/rbo1",
+     "symbol": "EntityBreakable"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "boss/rbo2",
+     "symbol": "EntityBreakable"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "boss/rbo6",
+     "symbol": "EntityBreakable"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "boss/rbo7",
+     "symbol": "EntityBreakable"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "boss/rbo8",
+     "symbol": "EntityBreakable"
+    }
+   ],
+   "symbol": "EntityBreakable",
+   "token_twins": []
+  },
+  "boss/rbo4/func_us_80198A18": {
+   "instructions": 47,
+   "name_twins": [],
+   "overlay": "boss/rbo4",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "st/rno1",
+     "symbol": "func_us_80198A18_from_rbo4"
+    }
+   ],
+   "symbol": "func_us_80198A18",
+   "token_twins": []
+  },
+  "boss/rbo6/DecreaseBrightness": {
+   "instructions": 25,
+   "name_twins": [
+    {
+     "file": "src/st/cat/e_spikes.c",
+     "function": "DecreaseBrightness"
+    }
+   ],
+   "overlay": "boss/rbo6",
+   "shape_twins": [],
+   "symbol": "DecreaseBrightness",
+   "token_twins": []
+  },
+  "boss/rbo6/EntityBackgroundVortex": {
+   "instructions": 628,
+   "name_twins": [
+    {
+     "file": "src/st/st0/e_bg_vortex.c",
+     "function": "EntityBackgroundVortex"
+    }
+   ],
+   "overlay": "boss/rbo6",
+   "shape_twins": [],
+   "symbol": "EntityBackgroundVortex",
+   "token_twins": []
+  },
+  "boss/rbo6/EntityBreakable": {
+   "instructions": 77,
+   "name_twins": [
+    {
+     "file": "src/boss/bo1/e_breakable.c",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/are/e_breakable.h",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/cat/e_breakable.h",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/e_breakable.h",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/e_breakable_no4.h",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/e_breakable_with_debris.h",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/e_breakable_with_lighting.h",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/lib/e_breakable.c",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/no4/e_breakable.c",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/nz1/e_breakable.c",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/rnz1/e_breakable.c",
+     "function": "EntityBreakable"
+    }
+   ],
+   "overlay": "boss/rbo6",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "boss/rbo1",
+     "symbol": "EntityBreakable"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "boss/rbo2",
+     "symbol": "EntityBreakable"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "boss/rbo4",
+     "symbol": "EntityBreakable"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "boss/rbo7",
+     "symbol": "EntityBreakable"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "boss/rbo8",
+     "symbol": "EntityBreakable"
+    }
+   ],
+   "symbol": "EntityBreakable",
+   "token_twins": []
+  },
+  "boss/rbo6/EntityCutscene": {
+   "instructions": 1102,
+   "name_twins": [
+    {
+     "file": "src/boss/mar/cutscene.c",
+     "function": "EntityCutscene"
+    },
+    {
+     "file": "src/st/cen/cutscene.c",
+     "function": "EntityCutscene"
+    },
+    {
+     "file": "src/st/lib/cutscene.c",
+     "function": "EntityCutscene"
+    },
+    {
+     "file": "src/st/lib_psp/cutscene.c",
+     "function": "EntityCutscene"
+    },
+    {
+     "file": "src/st/no3/cutscene.c",
+     "function": "EntityCutscene"
+    },
+    {
+     "file": "src/st/no4/cutscene.c",
+     "function": "EntityCutscene"
+    },
+    {
+     "file": "src/st/nz0/cutscene.c",
+     "function": "EntityCutscene"
+    },
+    {
+     "file": "src/st/nz0/cutscene_psp.c",
+     "function": "EntityCutscene"
+    },
+    {
+     "file": "src/st/rcen/cutscene.c",
+     "function": "EntityCutscene"
+    },
+    {
+     "file": "src/st/sel/cutscene.c",
+     "function": "EntityCutscene"
+    },
+    {
+     "file": "src/st/sel_psp/cutscene.c",
+     "function": "EntityCutscene"
+    },
+    {
+     "file": "src/st/st0/cutscene.c",
+     "function": "EntityCutscene"
+    },
+    {
+     "file": "src/st/top/cutscene.c",
+     "function": "EntityCutscene"
+    }
+   ],
+   "overlay": "boss/rbo6",
+   "shape_twins": [],
+   "symbol": "EntityCutscene",
+   "token_twins": []
+  },
+  "boss/rbo6/EntityLockCamera": {
+   "instructions": 274,
+   "name_twins": [
+    {
+     "file": "src/st/e_lock_camera.h",
+     "function": "EntityLockCamera"
+    },
+    {
+     "file": "src/st/entity_lock_camera.h",
+     "function": "EntityLockCamera"
+    },
+    {
+     "file": "src/st/lib/e_lock_camera.c",
+     "function": "EntityLockCamera"
+    },
+    {
+     "file": "src/st/rcen/e_lock_camera.c",
+     "function": "EntityLockCamera"
+    },
+    {
+     "file": "src/st/st0/e_lock_camera.c",
+     "function": "EntityLockCamera"
+    }
+   ],
+   "overlay": "boss/rbo6",
+   "shape_twins": [],
+   "symbol": "EntityLockCamera",
+   "token_twins": []
+  },
+  "boss/rbo6/FindFirstUnkPrim": {
+   "instructions": 12,
+   "name_twins": [
+    {
+     "file": "src/st/prim_helpers.h",
+     "function": "FindFirstUnkPrim"
+    }
+   ],
+   "overlay": "boss/rbo6",
+   "shape_twins": [],
+   "symbol": "FindFirstUnkPrim",
+   "token_twins": []
+  },
+  "boss/rbo6/FindFirstUnkPrim2": {
+   "instructions": 31,
+   "name_twins": [
+    {
+     "file": "src/st/prim_helpers.h",
+     "function": "FindFirstUnkPrim2"
+    }
+   ],
+   "overlay": "boss/rbo6",
+   "shape_twins": [],
+   "symbol": "FindFirstUnkPrim2",
+   "token_twins": []
+  },
+  "boss/rbo6/PlayerIsWithinHitbox": {
+   "instructions": 33,
+   "name_twins": [
+    {
+     "file": "src/st/player_is_within_hitbox.h",
+     "function": "PlayerIsWithinHitbox"
+    }
+   ],
+   "overlay": "boss/rbo6",
+   "shape_twins": [],
+   "symbol": "PlayerIsWithinHitbox",
+   "token_twins": []
+  },
+  "boss/rbo6/PrimDecreaseBrightness": {
+   "instructions": 25,
+   "name_twins": [
+    {
+     "file": "src/boss/bo6/us_3E79C.c",
+     "function": "BO6_PrimDecreaseBrightness"
+    },
+    {
+     "file": "src/dra/84B88.c",
+     "function": "PrimDecreaseBrightness"
+    },
+    {
+     "file": "src/ric/2F8E8.c",
+     "function": "PrimDecreaseBrightness"
+    },
+    {
+     "file": "src/st/prim_helpers.h",
+     "function": "PrimDecreaseBrightness"
+    }
+   ],
+   "overlay": "boss/rbo6",
+   "shape_twins": [],
+   "symbol": "PrimDecreaseBrightness",
+   "token_twins": []
+  },
+  "boss/rbo6/PrimResetNext": {
+   "instructions": 56,
+   "name_twins": [
+    {
+     "file": "src/st/prim_helpers.h",
+     "function": "PrimResetNext"
+    }
+   ],
+   "overlay": "boss/rbo6",
+   "shape_twins": [],
+   "symbol": "PrimResetNext",
+   "token_twins": []
+  },
+  "boss/rbo6/PrimToggleVisibility": {
+   "instructions": 34,
+   "name_twins": [
+    {
+     "file": "src/st/prim_helpers.h",
+     "function": "PrimToggleVisibility"
+    }
+   ],
+   "overlay": "boss/rbo6",
+   "shape_twins": [],
+   "symbol": "PrimToggleVisibility",
+   "token_twins": []
+  },
+  "boss/rbo6/UnkPolyFunc0": {
+   "instructions": 11,
+   "name_twins": [
+    {
+     "file": "src/st/prim_helpers.h",
+     "function": "UnkPolyFunc0"
+    }
+   ],
+   "overlay": "boss/rbo6",
+   "shape_twins": [],
+   "symbol": "UnkPolyFunc0",
+   "token_twins": []
+  },
+  "boss/rbo6/UnkPolyFunc2": {
+   "instructions": 21,
+   "name_twins": [
+    {
+     "file": "src/st/prim_helpers.h",
+     "function": "UnkPolyFunc2"
+    }
+   ],
+   "overlay": "boss/rbo6",
+   "shape_twins": [],
+   "symbol": "UnkPolyFunc2",
+   "token_twins": []
+  },
+  "boss/rbo6/UnkPrimHelper": {
+   "instructions": 250,
+   "name_twins": [
+    {
+     "file": "src/st/prim_helpers.h",
+     "function": "UnkPrimHelper"
+    }
+   ],
+   "overlay": "boss/rbo6",
+   "shape_twins": [],
+   "symbol": "UnkPrimHelper",
+   "token_twins": []
+  },
+  "boss/rbo6/UpdateAnimation": {
+   "instructions": 84,
+   "name_twins": [
+    {
+     "file": "src/st/prim_helpers.h",
+     "function": "UpdateAnimation"
+    }
+   ],
+   "overlay": "boss/rbo6",
+   "shape_twins": [],
+   "symbol": "UpdateAnimation",
+   "token_twins": []
+  },
+  "boss/rbo6/func_us_8019D260_from_rcen": {
+   "instructions": 52,
+   "name_twins": [
+    {
+     "file": "src/boss/bo1/e_explosion_flame.c",
+     "function": "func_us_8019D260_from_rcen"
+    }
+   ],
+   "overlay": "boss/rbo6",
+   "shape_twins": [
+    {
+     "identical_constants": false,
+     "overlay": "boss/rbo1",
+     "symbol": "func_us_8019D260_from_rcen"
+    },
+    {
+     "identical_constants": false,
+     "overlay": "boss/rbo2",
+     "symbol": "func_us_8019D260_from_rcen"
+    },
+    {
+     "identical_constants": false,
+     "overlay": "st/rcen",
+     "symbol": "func_us_8019D260"
+    }
+   ],
+   "symbol": "func_us_8019D260_from_rcen",
+   "token_twins": []
+  },
+  "boss/rbo7/EntityBreakable": {
+   "instructions": 77,
+   "name_twins": [
+    {
+     "file": "src/boss/bo1/e_breakable.c",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/are/e_breakable.h",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/cat/e_breakable.h",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/e_breakable.h",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/e_breakable_no4.h",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/e_breakable_with_debris.h",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/e_breakable_with_lighting.h",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/lib/e_breakable.c",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/no4/e_breakable.c",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/nz1/e_breakable.c",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/rnz1/e_breakable.c",
+     "function": "EntityBreakable"
+    }
+   ],
+   "overlay": "boss/rbo7",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "boss/rbo1",
+     "symbol": "EntityBreakable"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "boss/rbo2",
+     "symbol": "EntityBreakable"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "boss/rbo4",
+     "symbol": "EntityBreakable"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "boss/rbo6",
+     "symbol": "EntityBreakable"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "boss/rbo8",
+     "symbol": "EntityBreakable"
+    }
+   ],
+   "symbol": "EntityBreakable",
+   "token_twins": []
+  },
+  "boss/rbo7/EntityCtulhuDeath": {
+   "instructions": 61,
+   "name_twins": [
+    {
+     "file": "src/st/e_ctulhu.h",
+     "function": "EntityCtulhuDeath"
+    }
+   ],
+   "overlay": "boss/rbo7",
+   "shape_twins": [],
+   "symbol": "EntityCtulhuDeath",
+   "token_twins": []
+  },
+  "boss/rbo7/EntityHarpyKick": {
+   "instructions": 59,
+   "name_twins": [
+    {
+     "file": "src/st/e_harpy.h",
+     "function": "EntityHarpyKick"
+    }
+   ],
+   "overlay": "boss/rbo7",
+   "shape_twins": [],
+   "symbol": "EntityHarpyKick",
+   "token_twins": []
+  },
+  "boss/rbo8/EntityBreakable": {
+   "instructions": 77,
+   "name_twins": [
+    {
+     "file": "src/boss/bo1/e_breakable.c",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/are/e_breakable.h",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/cat/e_breakable.h",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/e_breakable.h",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/e_breakable_no4.h",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/e_breakable_with_debris.h",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/e_breakable_with_lighting.h",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/lib/e_breakable.c",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/no4/e_breakable.c",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/nz1/e_breakable.c",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/rnz1/e_breakable.c",
+     "function": "EntityBreakable"
+    }
+   ],
+   "overlay": "boss/rbo8",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "boss/rbo1",
+     "symbol": "EntityBreakable"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "boss/rbo2",
+     "symbol": "EntityBreakable"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "boss/rbo4",
+     "symbol": "EntityBreakable"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "boss/rbo6",
+     "symbol": "EntityBreakable"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "boss/rbo7",
+     "symbol": "EntityBreakable"
+    }
+   ],
+   "symbol": "EntityBreakable",
+   "token_twins": []
+  },
+  "boss/rbo8/EntityMinotaurSpitLiquid": {
+   "instructions": 82,
+   "name_twins": [
+    {
+     "file": "src/boss/bo2/e_minotaur.h",
+     "function": "EntityMinotaurSpitLiquid"
+    },
+    {
+     "file": "src/st/rare/e_minotaur.c",
+     "function": "EntityMinotaurSpitLiquid"
+    }
+   ],
+   "overlay": "boss/rbo8",
+   "shape_twins": [],
+   "symbol": "EntityMinotaurSpitLiquid",
+   "token_twins": []
+  },
+  "boss/rbo8/func_801CE1E8": {
+   "instructions": 16,
+   "name_twins": [],
+   "overlay": "boss/rbo8",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "boss/rbo1",
+     "symbol": "func_801CE1E8"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "boss/rbo2",
+     "symbol": "func_801CE1E8"
+    }
+   ],
+   "symbol": "func_801CE1E8",
+   "token_twins": []
+  },
+  "boss/rbo8/func_801CE228": {
+   "instructions": 12,
+   "name_twins": [],
+   "overlay": "boss/rbo8",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "boss/rbo1",
+     "symbol": "func_801CE228"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "boss/rbo2",
+     "symbol": "func_801CE228"
+    }
+   ],
+   "symbol": "func_801CE228",
+   "token_twins": []
+  },
+  "boss/rbo8/func_us_801BA164_from_cat": {
+   "instructions": 163,
+   "name_twins": [
+    {
+     "file": "src/boss/bo1/unk_210A8.c",
+     "function": "func_us_801BA164_from_cat"
+    }
+   ],
+   "overlay": "boss/rbo8",
+   "shape_twins": [],
+   "symbol": "func_us_801BA164_from_cat",
+   "token_twins": []
+  },
+  "boss/rbo8/polarPlacePartsList": {
+   "instructions": 29,
+   "name_twins": [
+    {
+     "file": "src/st/giantbro_helpers_2.h",
+     "function": "polarPlacePartsList"
+    },
+    {
+     "file": "src/st/no2/4966C.c",
+     "function": "polarPlacePartsList"
+    },
+    {
+     "file": "src/st/np3/4E04C.c",
+     "function": "polarPlacePartsList"
+    }
+   ],
+   "overlay": "boss/rbo8",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "boss/rbo1",
+     "symbol": "polarPlacePartsList"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "boss/rbo2",
+     "symbol": "polarPlacePartsList"
+    }
+   ],
+   "symbol": "polarPlacePartsList",
+   "token_twins": []
   },
   "st/rcen/EntityUnkId1B": {
    "instructions": 59,
@@ -830,8 +3086,8 @@
    "shape_twins": [
     {
      "identical_constants": false,
-     "overlay": "boss/bo0",
-     "symbol": "func_us_801BA030"
+     "overlay": "st/rno4",
+     "symbol": "PlaySfxPositional"
     }
    ],
    "symbol": "func_us_8019AA04",
@@ -847,21 +3103,7 @@
     {
      "file": "src/st/rcen/e_shaft.c",
      "function": "func_us_8019CDA0",
-     "score": 0.363
-    }
-   ]
-  },
-  "st/rcen/func_us_8019B6D4": {
-   "instructions": 123,
-   "name_twins": [],
-   "overlay": "st/rcen",
-   "shape_twins": [],
-   "symbol": "func_us_8019B6D4",
-   "token_twins": [
-    {
-     "file": "src/st/rcen/e_shaft.c",
-     "function": "func_us_8019CDA0",
-     "score": 0.432
+     "score": 0.364
     }
    ]
   },
@@ -893,19 +3135,29 @@
     }
    ]
   },
-  "st/rcen/func_us_8019CDF8": {
-   "instructions": 293,
+  "st/rcen/func_us_8019D260": {
+   "instructions": 52,
    "name_twins": [],
    "overlay": "st/rcen",
-   "shape_twins": [],
-   "symbol": "func_us_8019CDF8",
-   "token_twins": [
+   "shape_twins": [
     {
-     "file": "src/st/rcen/e_shaft.c",
-     "function": "func_us_8019CDA0",
-     "score": 0.333
+     "identical_constants": false,
+     "overlay": "boss/rbo1",
+     "symbol": "func_us_8019D260_from_rcen"
+    },
+    {
+     "identical_constants": false,
+     "overlay": "boss/rbo2",
+     "symbol": "func_us_8019D260_from_rcen"
+    },
+    {
+     "identical_constants": false,
+     "overlay": "boss/rbo6",
+     "symbol": "func_us_8019D260_from_rcen"
     }
-   ]
+   ],
+   "symbol": "func_us_8019D260",
+   "token_twins": []
   },
   "st/rcen/func_us_8019FD4C": {
    "instructions": 45,
@@ -925,6 +3177,10 @@
    "instructions": 156,
    "name_twins": [
     {
+     "file": "src/boss/bo1/e_breakable.c",
+     "function": "EntityBreakable"
+    },
+    {
      "file": "src/st/are/e_breakable.h",
      "function": "EntityBreakable"
     },
@@ -934,6 +3190,10 @@
     },
     {
      "file": "src/st/e_breakable.h",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/e_breakable_no4.h",
      "function": "EntityBreakable"
     },
     {
@@ -954,6 +3214,10 @@
     },
     {
      "file": "src/st/nz1/e_breakable.c",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/rnz1/e_breakable.c",
      "function": "EntityBreakable"
     }
    ],
@@ -983,6 +3247,10 @@
     },
     {
      "file": "src/st/nz1/e_breakable.c",
+     "function": "EntityBreakableDebris"
+    },
+    {
+     "file": "src/st/rnz1/e_breakable.c",
      "function": "EntityBreakableDebris"
     }
    ],
@@ -1033,6 +3301,10 @@
     },
     {
      "file": "src/st/chi_psp/en_breakable_wall.c",
+     "function": "EntityBreakableWallDebris"
+    },
+    {
+     "file": "src/st/e_breakable_wall_debris.h",
      "function": "EntityBreakableWallDebris"
     },
     {
@@ -1126,23 +3398,6 @@
    "symbol": "EntitySlogra",
    "token_twins": []
   },
-  "st/rchi/EntitySlograSpear": {
-   "instructions": 107,
-   "name_twins": [
-    {
-     "file": "src/st/np3/slogra.c",
-     "function": "EntitySlograSpear"
-    },
-    {
-     "file": "src/st/nz0/slogra.c",
-     "function": "EntitySlograSpear"
-    }
-   ],
-   "overlay": "st/rchi",
-   "shape_twins": [],
-   "symbol": "EntitySlograSpear",
-   "token_twins": []
-  },
   "st/rchi/EntitySlograSpearProjectile": {
    "instructions": 73,
    "name_twins": [
@@ -1160,65 +3415,13 @@
    "symbol": "EntitySlograSpearProjectile",
    "token_twins": []
   },
-  "st/rchi/EntitySmallGaibonProjectile": {
-   "instructions": 68,
+  "st/rlib/EntityBreakable": {
+   "instructions": 193,
    "name_twins": [
     {
-     "file": "src/st/np3/gaibon.c",
-     "function": "EntitySmallGaibonProjectile"
+     "file": "src/boss/bo1/e_breakable.c",
+     "function": "EntityBreakable"
     },
-    {
-     "file": "src/st/nz0/gaibon.c",
-     "function": "EntitySmallGaibonProjectile"
-    }
-   ],
-   "overlay": "st/rchi",
-   "shape_twins": [],
-   "symbol": "EntitySmallGaibonProjectile",
-   "token_twins": []
-  },
-  "st/rchi/UpdateFallingPebble": {
-   "instructions": 59,
-   "name_twins": [
-    {
-     "file": "src/st/chi/en_demon_switch_wall.c",
-     "function": "UpdateFallingPebble"
-    }
-   ],
-   "overlay": "st/rchi",
-   "shape_twins": [],
-   "symbol": "UpdateFallingPebble",
-   "token_twins": []
-  },
-  "st/rno0/DrawLaserRing": {
-   "instructions": 140,
-   "name_twins": [
-    {
-     "file": "src/st/rno3/e_nova_skeleton.c",
-     "function": "DrawLaserRing"
-    }
-   ],
-   "overlay": "st/rno0",
-   "shape_twins": [],
-   "symbol": "DrawLaserRing",
-   "token_twins": []
-  },
-  "st/rno0/EntityBladeSoldierDeathParts": {
-   "instructions": 62,
-   "name_twins": [
-    {
-     "file": "src/st/are/e_blade_soldier.c",
-     "function": "EntityBladeSoldierDeathParts"
-    }
-   ],
-   "overlay": "st/rno0",
-   "shape_twins": [],
-   "symbol": "EntityBladeSoldierDeathParts",
-   "token_twins": []
-  },
-  "st/rno0/EntityBreakable": {
-   "instructions": 92,
-   "name_twins": [
     {
      "file": "src/st/are/e_breakable.h",
      "function": "EntityBreakable"
@@ -1229,6 +3432,10 @@
     },
     {
      "file": "src/st/e_breakable.h",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/e_breakable_no4.h",
      "function": "EntityBreakable"
     },
     {
@@ -1250,6 +3457,182 @@
     {
      "file": "src/st/nz1/e_breakable.c",
      "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/rnz1/e_breakable.c",
+     "function": "EntityBreakable"
+    }
+   ],
+   "overlay": "st/rlib",
+   "shape_twins": [],
+   "symbol": "EntityBreakable",
+   "token_twins": []
+  },
+  "st/rlib/EntityHarpyKick": {
+   "instructions": 56,
+   "name_twins": [
+    {
+     "file": "src/st/e_harpy.h",
+     "function": "EntityHarpyKick"
+    }
+   ],
+   "overlay": "st/rlib",
+   "shape_twins": [],
+   "symbol": "EntityHarpyKick",
+   "token_twins": []
+  },
+  "st/rlib/func_us_801AE4B4": {
+   "instructions": 32,
+   "name_twins": [],
+   "overlay": "st/rlib",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "boss/bo0",
+     "symbol": "func_us_801B15BC"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "boss/rbo2",
+     "symbol": "func_801CDC80"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "st/rlib",
+     "symbol": "func_us_801AF3C8"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "st/rnz1",
+     "symbol": "func_801CDC80"
+    }
+   ],
+   "symbol": "func_us_801AE4B4",
+   "token_twins": []
+  },
+  "st/rlib/func_us_801AF3C8": {
+   "instructions": 32,
+   "name_twins": [],
+   "overlay": "st/rlib",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "boss/bo0",
+     "symbol": "func_us_801B15BC"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "boss/rbo2",
+     "symbol": "func_801CDC80"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "st/rlib",
+     "symbol": "func_us_801AE4B4"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "st/rnz1",
+     "symbol": "func_801CDC80"
+    }
+   ],
+   "symbol": "func_us_801AF3C8",
+   "token_twins": []
+  },
+  "st/rno0/DrawLaserRing": {
+   "instructions": 140,
+   "name_twins": [
+    {
+     "file": "src/st/rno3/e_nova_skeleton.c",
+     "function": "DrawLaserRing"
+    }
+   ],
+   "overlay": "st/rno0",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "st/rno1",
+     "symbol": "DrawLaserRing"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "st/rno4",
+     "symbol": "DrawLaserRing"
+    }
+   ],
+   "symbol": "DrawLaserRing",
+   "token_twins": []
+  },
+  "st/rno0/EntityBladeSoldierDeathParts": {
+   "instructions": 62,
+   "name_twins": [
+    {
+     "file": "src/st/are/e_blade_soldier.c",
+     "function": "EntityBladeSoldierDeathParts"
+    }
+   ],
+   "overlay": "st/rno0",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "st/rno1",
+     "symbol": "EntityBladeSoldierDeathParts"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "st/rno4",
+     "symbol": "EntityBladeSoldierDeathParts"
+    }
+   ],
+   "symbol": "EntityBladeSoldierDeathParts",
+   "token_twins": []
+  },
+  "st/rno0/EntityBreakable": {
+   "instructions": 92,
+   "name_twins": [
+    {
+     "file": "src/boss/bo1/e_breakable.c",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/are/e_breakable.h",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/cat/e_breakable.h",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/e_breakable.h",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/e_breakable_no4.h",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/e_breakable_with_debris.h",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/e_breakable_with_lighting.h",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/lib/e_breakable.c",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/no4/e_breakable.c",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/nz1/e_breakable.c",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/rnz1/e_breakable.c",
+     "function": "EntityBreakable"
     }
    ],
    "overlay": "st/rno0",
@@ -1266,21 +3649,19 @@
     }
    ],
    "overlay": "st/rno0",
-   "shape_twins": [],
-   "symbol": "EntityJackOBones",
-   "token_twins": []
-  },
-  "st/rno0/EntityJackOBonesDeathParts": {
-   "instructions": 63,
-   "name_twins": [
+   "shape_twins": [
     {
-     "file": "src/st/rno3/e_jack_o_bones.c",
-     "function": "EntityJackOBonesDeathParts"
+     "identical_constants": false,
+     "overlay": "st/rno1",
+     "symbol": "EntityJackOBones"
+    },
+    {
+     "identical_constants": false,
+     "overlay": "st/rno4",
+     "symbol": "EntityJackOBones"
     }
    ],
-   "overlay": "st/rno0",
-   "shape_twins": [],
-   "symbol": "EntityJackOBonesDeathParts",
+   "symbol": "EntityJackOBones",
    "token_twins": []
   },
   "st/rno0/EntityJackOBonesJack": {
@@ -1292,7 +3673,18 @@
     }
    ],
    "overlay": "st/rno0",
-   "shape_twins": [],
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "st/rno1",
+     "symbol": "EntityJackOBonesJack"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "st/rno4",
+     "symbol": "EntityJackOBonesJack"
+    }
+   ],
    "symbol": "EntityJackOBonesJack",
    "token_twins": []
   },
@@ -1305,21 +3697,19 @@
     }
    ],
    "overlay": "st/rno0",
-   "shape_twins": [],
-   "symbol": "EntityNovaLaser",
-   "token_twins": []
-  },
-  "st/rno0/EntityNovaLaserPulse": {
-   "instructions": 86,
-   "name_twins": [
+   "shape_twins": [
     {
-     "file": "src/st/rno3/e_nova_skeleton.c",
-     "function": "EntityNovaLaserPulse"
+     "identical_constants": false,
+     "overlay": "st/rno1",
+     "symbol": "EntityNovaLaser"
+    },
+    {
+     "identical_constants": false,
+     "overlay": "st/rno4",
+     "symbol": "EntityNovaLaser"
     }
    ],
-   "overlay": "st/rno0",
-   "shape_twins": [],
-   "symbol": "EntityNovaLaserPulse",
+   "symbol": "EntityNovaLaser",
    "token_twins": []
   },
   "st/rno0/EntityNovaSkeleton": {
@@ -1331,7 +3721,18 @@
     }
    ],
    "overlay": "st/rno0",
-   "shape_twins": [],
+   "shape_twins": [
+    {
+     "identical_constants": false,
+     "overlay": "st/rno1",
+     "symbol": "EntityNovaSkeleton"
+    },
+    {
+     "identical_constants": false,
+     "overlay": "st/rno4",
+     "symbol": "EntityNovaSkeleton"
+    }
+   ],
    "symbol": "EntityNovaSkeleton",
    "token_twins": []
   },
@@ -1392,46 +3793,6 @@
    "symbol": "EntityUnkId1B",
    "token_twins": []
   },
-  "st/rno0/TryShoot": {
-   "instructions": 40,
-   "name_twins": [
-    {
-     "file": "src/st/rno3/e_nova_skeleton.c",
-     "function": "TryShoot"
-    }
-   ],
-   "overlay": "st/rno0",
-   "shape_twins": [],
-   "symbol": "TryShoot",
-   "token_twins": []
-  },
-  "st/rno0/TryThrow": {
-   "instructions": 41,
-   "name_twins": [
-    {
-     "file": "src/st/rno3/e_jack_o_bones.c",
-     "function": "TryThrow"
-    }
-   ],
-   "overlay": "st/rno0",
-   "shape_twins": [],
-   "symbol": "TryThrow",
-   "token_twins": []
-  },
-  "st/rno0/func_801CD78C_801CEB40": {
-   "instructions": 44,
-   "name_twins": [],
-   "overlay": "st/rno0",
-   "shape_twins": [
-    {
-     "identical_constants": true,
-     "overlay": "st/rno0",
-     "symbol": "func_801CD78C_801C9A60"
-    }
-   ],
-   "symbol": "func_801CD78C_801CEB40",
-   "token_twins": []
-  },
   "st/rno0/func_us_8019FD4C_from_rcen": {
    "instructions": 45,
    "name_twins": [],
@@ -1446,18 +3807,3190 @@
    "symbol": "func_us_8019FD4C_from_rcen",
    "token_twins": []
   },
-  "st/rno0/func_us_801D289C": {
+  "st/rno1/DrawLaserRing": {
+   "instructions": 140,
+   "name_twins": [
+    {
+     "file": "src/st/rno3/e_nova_skeleton.c",
+     "function": "DrawLaserRing"
+    }
+   ],
+   "overlay": "st/rno1",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "st/rno0",
+     "symbol": "DrawLaserRing"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "st/rno4",
+     "symbol": "DrawLaserRing"
+    }
+   ],
+   "symbol": "DrawLaserRing",
+   "token_twins": []
+  },
+  "st/rno1/EntityBackgroundBlock": {
+   "instructions": 101,
+   "name_twins": [
+    {
+     "file": "src/st/e_room_bg.h",
+     "function": "EntityBackgroundBlock"
+    },
+    {
+     "file": "src/st/no0/e_room_bg.c",
+     "function": "EntityBackgroundBlock"
+    },
+    {
+     "file": "src/st/no1/e_room_bg.c",
+     "function": "EntityBackgroundBlock"
+    },
+    {
+     "file": "src/st/rno0/e_room_bg.c",
+     "function": "EntityBackgroundBlock"
+    }
+   ],
+   "overlay": "st/rno1",
+   "shape_twins": [],
+   "symbol": "EntityBackgroundBlock",
+   "token_twins": []
+  },
+  "st/rno1/EntityBladeSoldierDeathParts": {
+   "instructions": 62,
+   "name_twins": [
+    {
+     "file": "src/st/are/e_blade_soldier.c",
+     "function": "EntityBladeSoldierDeathParts"
+    }
+   ],
+   "overlay": "st/rno1",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "st/rno0",
+     "symbol": "EntityBladeSoldierDeathParts"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "st/rno4",
+     "symbol": "EntityBladeSoldierDeathParts"
+    }
+   ],
+   "symbol": "EntityBladeSoldierDeathParts",
+   "token_twins": []
+  },
+  "st/rno1/EntityBreakable": {
+   "instructions": 214,
+   "name_twins": [
+    {
+     "file": "src/boss/bo1/e_breakable.c",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/are/e_breakable.h",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/cat/e_breakable.h",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/e_breakable.h",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/e_breakable_no4.h",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/e_breakable_with_debris.h",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/e_breakable_with_lighting.h",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/lib/e_breakable.c",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/no4/e_breakable.c",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/nz1/e_breakable.c",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/rnz1/e_breakable.c",
+     "function": "EntityBreakable"
+    }
+   ],
+   "overlay": "st/rno1",
+   "shape_twins": [],
+   "symbol": "EntityBreakable",
+   "token_twins": []
+  },
+  "st/rno1/EntityBreakableDebris": {
+   "instructions": 190,
+   "name_twins": [
+    {
+     "file": "src/st/are/e_breakable.h",
+     "function": "EntityBreakableDebris"
+    },
+    {
+     "file": "src/st/e_breakable_with_debris.h",
+     "function": "EntityBreakableDebris"
+    },
+    {
+     "file": "src/st/e_breakable_with_lighting.h",
+     "function": "EntityBreakableDebris"
+    },
+    {
+     "file": "src/st/lib/e_breakable.c",
+     "function": "EntityBreakableDebris"
+    },
+    {
+     "file": "src/st/nz1/e_breakable.c",
+     "function": "EntityBreakableDebris"
+    },
+    {
+     "file": "src/st/rnz1/e_breakable.c",
+     "function": "EntityBreakableDebris"
+    }
+   ],
+   "overlay": "st/rno1",
+   "shape_twins": [
+    {
+     "identical_constants": false,
+     "overlay": "st/rno2",
+     "symbol": "EntityBreakableDebris"
+    }
+   ],
+   "symbol": "EntityBreakableDebris",
+   "token_twins": []
+  },
+  "st/rno1/EntityExplosionVariants": {
+   "instructions": 60,
+   "name_twins": [
+    {
+     "file": "src/st/e_misc.h",
+     "function": "EntityExplosionVariants"
+    }
+   ],
+   "overlay": "st/rno1",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "boss/bo3",
+     "symbol": "EntityExplosionVariants"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "boss/bo7",
+     "symbol": "EntityExplosionVariants"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "st/rno2",
+     "symbol": "EntityExplosionVariants"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "st/rno4",
+     "symbol": "EntityExplosionVariants"
+    }
+   ],
+   "symbol": "EntityExplosionVariants",
+   "token_twins": []
+  },
+  "st/rno1/EntityGreyPuff": {
+   "instructions": 61,
+   "name_twins": [
+    {
+     "file": "src/st/e_misc.h",
+     "function": "EntityGreyPuff"
+    }
+   ],
+   "overlay": "st/rno1",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "boss/bo3",
+     "symbol": "EntityGreyPuff"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "boss/bo7",
+     "symbol": "EntityGreyPuff"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "st/rno2",
+     "symbol": "EntityGreyPuff"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "st/rno4",
+     "symbol": "EntityGreyPuff"
+    }
+   ],
+   "symbol": "EntityGreyPuff",
+   "token_twins": []
+  },
+  "st/rno1/EntityIsNearPlayer": {
+   "instructions": 30,
+   "name_twins": [
+    {
+     "file": "src/st/e_red_door.h",
+     "function": "EntityIsNearPlayer"
+    },
+    {
+     "file": "src/st/no1/e_red_door.c",
+     "function": "EntityIsNearPlayer"
+    }
+   ],
+   "overlay": "st/rno1",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "st/rno2",
+     "symbol": "func_us_801B5EE4"
+    },
+    {
+     "identical_constants": false,
+     "overlay": "st/rno2",
+     "symbol": "func_us_801B9458"
+    }
+   ],
+   "symbol": "EntityIsNearPlayer",
+   "token_twins": []
+  },
+  "st/rno1/EntityJackOBones": {
+   "instructions": 331,
+   "name_twins": [
+    {
+     "file": "src/st/rno3/e_jack_o_bones.c",
+     "function": "EntityJackOBones"
+    }
+   ],
+   "overlay": "st/rno1",
+   "shape_twins": [
+    {
+     "identical_constants": false,
+     "overlay": "st/rno0",
+     "symbol": "EntityJackOBones"
+    },
+    {
+     "identical_constants": false,
+     "overlay": "st/rno4",
+     "symbol": "EntityJackOBones"
+    }
+   ],
+   "symbol": "EntityJackOBones",
+   "token_twins": []
+  },
+  "st/rno1/EntityJackOBonesDeathParts": {
+   "instructions": 63,
+   "name_twins": [
+    {
+     "file": "src/st/rno0/unk_48100.c",
+     "function": "EntityJackOBonesDeathParts"
+    },
+    {
+     "file": "src/st/rno3/e_jack_o_bones.c",
+     "function": "EntityJackOBonesDeathParts"
+    }
+   ],
+   "overlay": "st/rno1",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "st/rno4",
+     "symbol": "EntityJackOBonesDeathParts"
+    }
+   ],
+   "symbol": "EntityJackOBonesDeathParts",
+   "token_twins": []
+  },
+  "st/rno1/EntityJackOBonesJack": {
+   "instructions": 177,
+   "name_twins": [
+    {
+     "file": "src/st/rno3/e_jack_o_bones.c",
+     "function": "EntityJackOBonesJack"
+    }
+   ],
+   "overlay": "st/rno1",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "st/rno0",
+     "symbol": "EntityJackOBonesJack"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "st/rno4",
+     "symbol": "EntityJackOBonesJack"
+    }
+   ],
+   "symbol": "EntityJackOBonesJack",
+   "token_twins": []
+  },
+  "st/rno1/EntityNovaLaser": {
+   "instructions": 305,
+   "name_twins": [
+    {
+     "file": "src/st/rno3/e_nova_skeleton.c",
+     "function": "EntityNovaLaser"
+    }
+   ],
+   "overlay": "st/rno1",
+   "shape_twins": [
+    {
+     "identical_constants": false,
+     "overlay": "st/rno0",
+     "symbol": "EntityNovaLaser"
+    },
+    {
+     "identical_constants": false,
+     "overlay": "st/rno4",
+     "symbol": "EntityNovaLaser"
+    }
+   ],
+   "symbol": "EntityNovaLaser",
+   "token_twins": []
+  },
+  "st/rno1/EntityNovaLaserPulse": {
+   "instructions": 86,
+   "name_twins": [
+    {
+     "file": "src/st/rno0/unk_48100.c",
+     "function": "EntityNovaLaserPulse"
+    },
+    {
+     "file": "src/st/rno3/e_nova_skeleton.c",
+     "function": "EntityNovaLaserPulse"
+    }
+   ],
+   "overlay": "st/rno1",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "st/rno4",
+     "symbol": "EntityNovaLaserPulse"
+    }
+   ],
+   "symbol": "EntityNovaLaserPulse",
+   "token_twins": []
+  },
+  "st/rno1/EntityNovaSkeleton": {
+   "instructions": 324,
+   "name_twins": [
+    {
+     "file": "src/st/rno3/e_nova_skeleton.c",
+     "function": "EntityNovaSkeleton"
+    }
+   ],
+   "overlay": "st/rno1",
+   "shape_twins": [
+    {
+     "identical_constants": false,
+     "overlay": "st/rno0",
+     "symbol": "EntityNovaSkeleton"
+    },
+    {
+     "identical_constants": false,
+     "overlay": "st/rno4",
+     "symbol": "EntityNovaSkeleton"
+    }
+   ],
+   "symbol": "EntityNovaSkeleton",
+   "token_twins": []
+  },
+  "st/rno1/EntityOlroxDrool": {
+   "instructions": 140,
+   "name_twins": [
+    {
+     "file": "src/st/e_misc.h",
+     "function": "EntityOlroxDrool"
+    }
+   ],
+   "overlay": "st/rno1",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "boss/bo3",
+     "symbol": "EntityOlroxDrool"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "boss/bo7",
+     "symbol": "EntityOlroxDrool"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "st/rno2",
+     "symbol": "EntityOlroxDrool"
+    }
+   ],
+   "symbol": "EntityOlroxDrool",
+   "token_twins": []
+  },
+  "st/rno1/EntityParanthropus": {
+   "instructions": 911,
+   "name_twins": [
+    {
+     "file": "src/st/are/e_paranthropus.c",
+     "function": "EntityParanthropus"
+    }
+   ],
+   "overlay": "st/rno1",
+   "shape_twins": [],
+   "symbol": "EntityParanthropus",
+   "token_twins": []
+  },
+  "st/rno1/EntityParanthropusBoneHitbox": {
+   "instructions": 57,
+   "name_twins": [
+    {
+     "file": "src/st/are/e_paranthropus.c",
+     "function": "EntityParanthropusBoneHitbox"
+    }
+   ],
+   "overlay": "st/rno1",
+   "shape_twins": [],
+   "symbol": "EntityParanthropusBoneHitbox",
+   "token_twins": []
+  },
+  "st/rno1/EntityParanthropusSkull": {
+   "instructions": 79,
+   "name_twins": [
+    {
+     "file": "src/st/are/e_paranthropus.c",
+     "function": "EntityParanthropusSkull"
+    }
+   ],
+   "overlay": "st/rno1",
+   "shape_twins": [],
+   "symbol": "EntityParanthropusSkull",
+   "token_twins": []
+  },
+  "st/rno1/EntityParanthropusThrownBone": {
+   "instructions": 50,
+   "name_twins": [
+    {
+     "file": "src/st/are/e_paranthropus.c",
+     "function": "EntityParanthropusThrownBone"
+    }
+   ],
+   "overlay": "st/rno1",
+   "shape_twins": [],
+   "symbol": "EntityParanthropusThrownBone",
+   "token_twins": []
+  },
+  "st/rno1/EntityRedDoor": {
+   "instructions": 864,
+   "name_twins": [
+    {
+     "file": "src/st/e_red_door.h",
+     "function": "EntityRedDoor"
+    },
+    {
+     "file": "src/st/no1/e_red_door.c",
+     "function": "EntityRedDoor"
+    }
+   ],
+   "overlay": "st/rno1",
+   "shape_twins": [],
+   "symbol": "EntityRedDoor",
+   "token_twins": []
+  },
+  "st/rno1/InitializeUnkEntity": {
+   "instructions": 51,
+   "name_twins": [
+    {
+     "file": "src/st/e_misc.h",
+     "function": "InitializeUnkEntity"
+    }
+   ],
+   "overlay": "st/rno1",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "boss/bo3",
+     "symbol": "InitializeUnkEntity"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "boss/bo7",
+     "symbol": "InitializeUnkEntity"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "st/rno2",
+     "symbol": "InitializeUnkEntity"
+    }
+   ],
+   "symbol": "InitializeUnkEntity",
+   "token_twins": []
+  },
+  "st/rno1/ParanthropusSetStep": {
+   "instructions": 13,
+   "name_twins": [
+    {
+     "file": "src/st/are/e_paranthropus.c",
+     "function": "ParanthropusSetStep"
+    }
+   ],
+   "overlay": "st/rno1",
+   "shape_twins": [],
+   "symbol": "ParanthropusSetStep",
+   "token_twins": []
+  },
+  "st/rno1/RNO1_DebugInputWait": {
+   "instructions": 25,
+   "name_twins": [
+    {
+     "file": "src/boss/bo6/us_3E79C.c",
+     "function": "BO6_DebugInputWait"
+    },
+    {
+     "file": "src/dra/42398.c",
+     "function": "DebugInputWait"
+    },
+    {
+     "file": "src/dra_psp/186E8.c",
+     "function": "DebugInputWait"
+    },
+    {
+     "file": "src/ric/pl_collision.c",
+     "function": "DebugInputWait"
+    },
+    {
+     "file": "src/st/no1/unk_381E8.c",
+     "function": "DebugInputWait"
+    },
+    {
+     "file": "src/weapon/w_010.c",
+     "function": "DebugInputWait"
+    },
+    {
+     "file": "src/weapon/w_018.c",
+     "function": "DebugInputWait"
+    },
+    {
+     "file": "src/weapon/w_027.c",
+     "function": "DebugInputWait"
+    },
+    {
+     "file": "src/weapon/w_042.c",
+     "function": "DebugInputWait"
+    }
+   ],
+   "overlay": "st/rno1",
+   "shape_twins": [],
+   "symbol": "RNO1_DebugInputWait",
+   "token_twins": []
+  },
+  "st/rno1/RNO1_DebugShowWaitInfo": {
+   "instructions": 41,
+   "name_twins": [
+    {
+     "file": "src/boss/bo6/us_3E79C.c",
+     "function": "BO6_DebugShowWaitInfo"
+    },
+    {
+     "file": "src/dra/42398.c",
+     "function": "DebugShowWaitInfo"
+    },
+    {
+     "file": "src/dra_psp/186E8.c",
+     "function": "DebugShowWaitInfo"
+    },
+    {
+     "file": "src/ric/pl_collision.c",
+     "function": "DebugShowWaitInfo"
+    },
+    {
+     "file": "src/st/no1/unk_381E8.c",
+     "function": "DebugShowWaitInfo"
+    },
+    {
+     "file": "src/weapon/w_010.c",
+     "function": "DebugShowWaitInfo"
+    },
+    {
+     "file": "src/weapon/w_018.c",
+     "function": "DebugShowWaitInfo"
+    },
+    {
+     "file": "src/weapon/w_027.c",
+     "function": "DebugShowWaitInfo"
+    },
+    {
+     "file": "src/weapon/w_042.c",
+     "function": "DebugShowWaitInfo"
+    }
+   ],
+   "overlay": "st/rno1",
+   "shape_twins": [],
+   "symbol": "RNO1_DebugShowWaitInfo",
+   "token_twins": []
+  },
+  "st/rno1/TryShoot": {
+   "instructions": 40,
+   "name_twins": [
+    {
+     "file": "src/st/rno0/unk_48100.c",
+     "function": "TryShoot"
+    },
+    {
+     "file": "src/st/rno3/e_nova_skeleton.c",
+     "function": "TryShoot"
+    }
+   ],
+   "overlay": "st/rno1",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "st/rno4",
+     "symbol": "TryShoot"
+    }
+   ],
+   "symbol": "TryShoot",
+   "token_twins": []
+  },
+  "st/rno1/TryThrow": {
+   "instructions": 41,
+   "name_twins": [
+    {
+     "file": "src/st/rno0/unk_48100.c",
+     "function": "TryThrow"
+    },
+    {
+     "file": "src/st/rno3/e_jack_o_bones.c",
+     "function": "TryThrow"
+    }
+   ],
+   "overlay": "st/rno1",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "st/rno4",
+     "symbol": "TryThrow"
+    }
+   ],
+   "symbol": "TryThrow",
+   "token_twins": []
+  },
+  "st/rno1/UnkRecursivePrimFunc1": {
+   "instructions": 376,
+   "name_twins": [
+    {
+     "file": "src/st/e_misc.h",
+     "function": "UnkRecursivePrimFunc1"
+    }
+   ],
+   "overlay": "st/rno1",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "boss/bo3",
+     "symbol": "UnkRecursivePrimFunc1"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "boss/bo7",
+     "symbol": "UnkRecursivePrimFunc1"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "st/rno2",
+     "symbol": "UnkRecursivePrimFunc1"
+    }
+   ],
+   "symbol": "UnkRecursivePrimFunc1",
+   "token_twins": []
+  },
+  "st/rno1/UnkRecursivePrimFunc2": {
+   "instructions": 448,
+   "name_twins": [
+    {
+     "file": "src/st/e_misc.h",
+     "function": "UnkRecursivePrimFunc2"
+    }
+   ],
+   "overlay": "st/rno1",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "boss/bo3",
+     "symbol": "UnkRecursivePrimFunc2"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "boss/bo7",
+     "symbol": "UnkRecursivePrimFunc2"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "st/rno2",
+     "symbol": "UnkRecursivePrimFunc2"
+    }
+   ],
+   "symbol": "UnkRecursivePrimFunc2",
+   "token_twins": []
+  },
+  "st/rno1/func_us_80198A18_from_rbo4": {
+   "instructions": 47,
+   "name_twins": [],
+   "overlay": "st/rno1",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "boss/rbo4",
+     "symbol": "func_us_80198A18"
+    }
+   ],
+   "symbol": "func_us_80198A18_from_rbo4",
+   "token_twins": []
+  },
+  "st/rno2/DrawFacade": {
+   "instructions": 132,
+   "name_twins": [
+    {
+     "file": "src/st/e_background_house.h",
+     "function": "DrawFacade"
+    }
+   ],
+   "overlay": "st/rno2",
+   "shape_twins": [],
+   "symbol": "DrawFacade",
+   "token_twins": []
+  },
+  "st/rno2/DrawRoof": {
+   "instructions": 97,
+   "name_twins": [
+    {
+     "file": "src/st/e_background_house.h",
+     "function": "DrawRoof"
+    }
+   ],
+   "overlay": "st/rno2",
+   "shape_twins": [],
+   "symbol": "DrawRoof",
+   "token_twins": []
+  },
+  "st/rno2/DrawSides": {
+   "instructions": 145,
+   "name_twins": [
+    {
+     "file": "src/st/e_background_house.h",
+     "function": "DrawSides"
+    }
+   ],
+   "overlay": "st/rno2",
+   "shape_twins": [],
+   "symbol": "DrawSides",
+   "token_twins": []
+  },
+  "st/rno2/Entity3DBackgroundHouse": {
+   "instructions": 214,
+   "name_twins": [
+    {
+     "file": "src/st/e_background_house.h",
+     "function": "Entity3DBackgroundHouse"
+    }
+   ],
+   "overlay": "st/rno2",
+   "shape_twins": [],
+   "symbol": "Entity3DBackgroundHouse",
+   "token_twins": []
+  },
+  "st/rno2/Entity3DHouseSpawner": {
+   "instructions": 60,
+   "name_twins": [
+    {
+     "file": "src/st/e_background_house.h",
+     "function": "Entity3DHouseSpawner"
+    }
+   ],
+   "overlay": "st/rno2",
+   "shape_twins": [],
+   "symbol": "Entity3DHouseSpawner",
+   "token_twins": []
+  },
+  "st/rno2/EntityBreakable": {
+   "instructions": 234,
+   "name_twins": [
+    {
+     "file": "src/boss/bo1/e_breakable.c",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/are/e_breakable.h",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/cat/e_breakable.h",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/e_breakable.h",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/e_breakable_no4.h",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/e_breakable_with_debris.h",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/e_breakable_with_lighting.h",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/lib/e_breakable.c",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/no4/e_breakable.c",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/nz1/e_breakable.c",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/rnz1/e_breakable.c",
+     "function": "EntityBreakable"
+    }
+   ],
+   "overlay": "st/rno2",
+   "shape_twins": [],
+   "symbol": "EntityBreakable",
+   "token_twins": []
+  },
+  "st/rno2/EntityBreakableDebris": {
+   "instructions": 190,
+   "name_twins": [
+    {
+     "file": "src/st/are/e_breakable.h",
+     "function": "EntityBreakableDebris"
+    },
+    {
+     "file": "src/st/e_breakable_with_debris.h",
+     "function": "EntityBreakableDebris"
+    },
+    {
+     "file": "src/st/e_breakable_with_lighting.h",
+     "function": "EntityBreakableDebris"
+    },
+    {
+     "file": "src/st/lib/e_breakable.c",
+     "function": "EntityBreakableDebris"
+    },
+    {
+     "file": "src/st/nz1/e_breakable.c",
+     "function": "EntityBreakableDebris"
+    },
+    {
+     "file": "src/st/rnz1/e_breakable.c",
+     "function": "EntityBreakableDebris"
+    }
+   ],
+   "overlay": "st/rno2",
+   "shape_twins": [
+    {
+     "identical_constants": false,
+     "overlay": "st/rno1",
+     "symbol": "EntityBreakableDebris"
+    }
+   ],
+   "symbol": "EntityBreakableDebris",
+   "token_twins": []
+  },
+  "st/rno2/EntityExplosionVariants": {
+   "instructions": 60,
+   "name_twins": [
+    {
+     "file": "src/st/e_misc.h",
+     "function": "EntityExplosionVariants"
+    }
+   ],
+   "overlay": "st/rno2",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "boss/bo3",
+     "symbol": "EntityExplosionVariants"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "boss/bo7",
+     "symbol": "EntityExplosionVariants"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "st/rno1",
+     "symbol": "EntityExplosionVariants"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "st/rno4",
+     "symbol": "EntityExplosionVariants"
+    }
+   ],
+   "symbol": "EntityExplosionVariants",
+   "token_twins": []
+  },
+  "st/rno2/EntityFlyingZombie1": {
+   "instructions": 392,
+   "name_twins": [
+    {
+     "file": "src/st/lib/e_flying_zombie.c",
+     "function": "EntityFlyingZombie1"
+    }
+   ],
+   "overlay": "st/rno2",
+   "shape_twins": [],
+   "symbol": "EntityFlyingZombie1",
+   "token_twins": []
+  },
+  "st/rno2/EntityFlyingZombie2": {
+   "instructions": 543,
+   "name_twins": [
+    {
+     "file": "src/st/lib/e_flying_zombie.c",
+     "function": "EntityFlyingZombie2"
+    }
+   ],
+   "overlay": "st/rno2",
+   "shape_twins": [],
+   "symbol": "EntityFlyingZombie2",
+   "token_twins": []
+  },
+  "st/rno2/EntityGreyPuff": {
+   "instructions": 61,
+   "name_twins": [
+    {
+     "file": "src/st/e_misc.h",
+     "function": "EntityGreyPuff"
+    }
+   ],
+   "overlay": "st/rno2",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "boss/bo3",
+     "symbol": "EntityGreyPuff"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "boss/bo7",
+     "symbol": "EntityGreyPuff"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "st/rno1",
+     "symbol": "EntityGreyPuff"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "st/rno4",
+     "symbol": "EntityGreyPuff"
+    }
+   ],
+   "symbol": "EntityGreyPuff",
+   "token_twins": []
+  },
+  "st/rno2/EntityKarasuman": {
+   "instructions": 1008,
+   "name_twins": [
+    {
+     "file": "src/st/nz1/e_karasuman.c",
+     "function": "EntityKarasuman"
+    }
+   ],
+   "overlay": "st/rno2",
+   "shape_twins": [],
+   "symbol": "EntityKarasuman",
+   "token_twins": []
+  },
+  "st/rno2/EntityKarasumanFeather": {
+   "instructions": 117,
+   "name_twins": [
+    {
+     "file": "src/st/nz1/e_karasuman.c",
+     "function": "EntityKarasumanFeather"
+    }
+   ],
+   "overlay": "st/rno2",
+   "shape_twins": [],
+   "symbol": "EntityKarasumanFeather",
+   "token_twins": []
+  },
+  "st/rno2/EntityKarasumanFeatherAttack": {
+   "instructions": 94,
+   "name_twins": [
+    {
+     "file": "src/st/nz1/e_karasuman.c",
+     "function": "EntityKarasumanFeatherAttack"
+    }
+   ],
+   "overlay": "st/rno2",
+   "shape_twins": [],
+   "symbol": "EntityKarasumanFeatherAttack",
+   "token_twins": []
+  },
+  "st/rno2/EntityKarasumanOrbAttack": {
+   "instructions": 174,
+   "name_twins": [
+    {
+     "file": "src/st/nz1/e_karasuman.c",
+     "function": "EntityKarasumanOrbAttack"
+    }
+   ],
+   "overlay": "st/rno2",
+   "shape_twins": [],
+   "symbol": "EntityKarasumanOrbAttack",
+   "token_twins": []
+  },
+  "st/rno2/EntityKarasumanRavenAbsorb": {
+   "instructions": 110,
+   "name_twins": [
+    {
+     "file": "src/st/nz1/e_karasuman.c",
+     "function": "EntityKarasumanRavenAbsorb"
+    }
+   ],
+   "overlay": "st/rno2",
+   "shape_twins": [],
+   "symbol": "EntityKarasumanRavenAbsorb",
+   "token_twins": []
+  },
+  "st/rno2/EntityKarasumanRavenAttack": {
+   "instructions": 231,
+   "name_twins": [
+    {
+     "file": "src/st/nz1/e_karasuman.c",
+     "function": "EntityKarasumanRavenAttack"
+    }
+   ],
+   "overlay": "st/rno2",
+   "shape_twins": [],
+   "symbol": "EntityKarasumanRavenAttack",
+   "token_twins": []
+  },
+  "st/rno2/EntityOlroxDrool": {
+   "instructions": 140,
+   "name_twins": [
+    {
+     "file": "src/st/e_misc.h",
+     "function": "EntityOlroxDrool"
+    }
+   ],
+   "overlay": "st/rno2",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "boss/bo3",
+     "symbol": "EntityOlroxDrool"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "boss/bo7",
+     "symbol": "EntityOlroxDrool"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "st/rno1",
+     "symbol": "EntityOlroxDrool"
+    }
+   ],
+   "symbol": "EntityOlroxDrool",
+   "token_twins": []
+  },
+  "st/rno2/EntityPrisoner": {
+   "instructions": 320,
+   "name_twins": [
+    {
+     "file": "src/st/e_prisoner.h",
+     "function": "EntityPrisoner"
+    }
+   ],
+   "overlay": "st/rno2",
+   "shape_twins": [],
+   "symbol": "EntityPrisoner",
+   "token_twins": []
+  },
+  "st/rno2/EntityRedDoor": {
+   "instructions": 788,
+   "name_twins": [
+    {
+     "file": "src/st/e_red_door.h",
+     "function": "EntityRedDoor"
+    },
+    {
+     "file": "src/st/no1/e_red_door.c",
+     "function": "EntityRedDoor"
+    }
+   ],
+   "overlay": "st/rno2",
+   "shape_twins": [],
+   "symbol": "EntityRedDoor",
+   "token_twins": []
+  },
+  "st/rno2/EntitySealedDoor": {
+   "instructions": 875,
+   "name_twins": [
+    {
+     "file": "src/st/e_sealed_door.h",
+     "function": "EntitySealedDoor"
+    },
+    {
+     "file": "src/st/no2/e_sealed_door.c",
+     "function": "EntitySealedDoor"
+    }
+   ],
+   "overlay": "st/rno2",
+   "shape_twins": [],
+   "symbol": "EntitySealedDoor",
+   "token_twins": []
+  },
+  "st/rno2/EntitySpikes": {
+   "instructions": 126,
+   "name_twins": [
+    {
+     "file": "src/st/e_spikes.h",
+     "function": "EntitySpikes"
+    }
+   ],
+   "overlay": "st/rno2",
+   "shape_twins": [],
+   "symbol": "EntitySpikes",
+   "token_twins": []
+  },
+  "st/rno2/EntitySpikesDamage": {
+   "instructions": 31,
+   "name_twins": [
+    {
+     "file": "src/st/e_spikes.h",
+     "function": "EntitySpikesDamage"
+    }
+   ],
+   "overlay": "st/rno2",
+   "shape_twins": [],
+   "symbol": "EntitySpikesDamage",
+   "token_twins": []
+  },
+  "st/rno2/EntitySpikesDust": {
+   "instructions": 45,
+   "name_twins": [
+    {
+     "file": "src/st/e_spikes.h",
+     "function": "EntitySpikesDust"
+    }
+   ],
+   "overlay": "st/rno2",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "st/rnz1",
+     "symbol": "EntitySpikesDust"
+    }
+   ],
+   "symbol": "EntitySpikesDust",
+   "token_twins": []
+  },
+  "st/rno2/EntitySpikesParts": {
+   "instructions": 133,
+   "name_twins": [
+    {
+     "file": "src/st/e_spikes.h",
+     "function": "EntitySpikesParts"
+    }
+   ],
+   "overlay": "st/rno2",
+   "shape_twins": [],
+   "symbol": "EntitySpikesParts",
+   "token_twins": []
+  },
+  "st/rno2/InitializeUnkEntity": {
+   "instructions": 51,
+   "name_twins": [
+    {
+     "file": "src/st/e_misc.h",
+     "function": "InitializeUnkEntity"
+    }
+   ],
+   "overlay": "st/rno2",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "boss/bo3",
+     "symbol": "InitializeUnkEntity"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "boss/bo7",
+     "symbol": "InitializeUnkEntity"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "st/rno1",
+     "symbol": "InitializeUnkEntity"
+    }
+   ],
+   "symbol": "InitializeUnkEntity",
+   "token_twins": []
+  },
+  "st/rno2/SpikesApplyDamage": {
+   "instructions": 43,
+   "name_twins": [
+    {
+     "file": "src/st/e_spikes.h",
+     "function": "SpikesApplyDamage"
+    }
+   ],
+   "overlay": "st/rno2",
+   "shape_twins": [],
+   "symbol": "SpikesApplyDamage",
+   "token_twins": []
+  },
+  "st/rno2/SpikesBreak": {
+   "instructions": 75,
+   "name_twins": [
+    {
+     "file": "src/st/e_spikes.h",
+     "function": "SpikesBreak"
+    }
+   ],
+   "overlay": "st/rno2",
+   "shape_twins": [],
+   "symbol": "SpikesBreak",
+   "token_twins": []
+  },
+  "st/rno2/UnkRecursivePrimFunc1": {
+   "instructions": 376,
+   "name_twins": [
+    {
+     "file": "src/st/e_misc.h",
+     "function": "UnkRecursivePrimFunc1"
+    }
+   ],
+   "overlay": "st/rno2",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "boss/bo3",
+     "symbol": "UnkRecursivePrimFunc1"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "boss/bo7",
+     "symbol": "UnkRecursivePrimFunc1"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "st/rno1",
+     "symbol": "UnkRecursivePrimFunc1"
+    }
+   ],
+   "symbol": "UnkRecursivePrimFunc1",
+   "token_twins": []
+  },
+  "st/rno2/UnkRecursivePrimFunc2": {
+   "instructions": 448,
+   "name_twins": [
+    {
+     "file": "src/st/e_misc.h",
+     "function": "UnkRecursivePrimFunc2"
+    }
+   ],
+   "overlay": "st/rno2",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "boss/bo3",
+     "symbol": "UnkRecursivePrimFunc2"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "boss/bo7",
+     "symbol": "UnkRecursivePrimFunc2"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "st/rno1",
+     "symbol": "UnkRecursivePrimFunc2"
+    }
+   ],
+   "symbol": "UnkRecursivePrimFunc2",
+   "token_twins": []
+  },
+  "st/rno2/func_us_801B4148_from_bo0": {
+   "instructions": 23,
+   "name_twins": [
+    {
+     "file": "src/st/rcen/unk_1F0D8.c",
+     "function": "func_us_801B4148_from_bo0"
+    }
+   ],
+   "overlay": "st/rno2",
+   "shape_twins": [],
+   "symbol": "func_us_801B4148_from_bo0",
+   "token_twins": []
+  },
+  "st/rno2/func_us_801B41A4_from_bo0": {
+   "instructions": 27,
+   "name_twins": [],
+   "overlay": "st/rno2",
+   "shape_twins": [],
+   "symbol": "func_us_801B41A4_from_bo0",
+   "token_twins": [
+    {
+     "file": "src/st/st0/prologue_scroll.c",
+     "function": "SetDisplayBufferColorsToBlack",
+     "score": 0.36
+    },
+    {
+     "file": "src/st/sel_psp/7D40.c",
+     "function": "SetDisplayBufferColorsToBlack",
+     "score": 0.36
+    },
+    {
+     "file": "src/st/sel/318CC.c",
+     "function": "SetDisplayBufferColorsToBlack",
+     "score": 0.36
+    }
+   ]
+  },
+  "st/rno2/func_us_801B5EE4": {
    "instructions": 30,
    "name_twins": [],
-   "overlay": "st/rno0",
+   "overlay": "st/rno2",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "st/rno1",
+     "symbol": "EntityIsNearPlayer"
+    },
+    {
+     "identical_constants": false,
+     "overlay": "st/rno2",
+     "symbol": "func_us_801B9458"
+    }
+   ],
+   "symbol": "func_us_801B5EE4",
+   "token_twins": []
+  },
+  "st/rno2/func_us_801B9458": {
+   "instructions": 30,
+   "name_twins": [],
+   "overlay": "st/rno2",
+   "shape_twins": [
+    {
+     "identical_constants": false,
+     "overlay": "st/rno1",
+     "symbol": "EntityIsNearPlayer"
+    },
+    {
+     "identical_constants": false,
+     "overlay": "st/rno2",
+     "symbol": "func_us_801B5EE4"
+    }
+   ],
+   "symbol": "func_us_801B9458",
+   "token_twins": []
+  },
+  "st/rno4/DrawLaserRing": {
+   "instructions": 140,
+   "name_twins": [
+    {
+     "file": "src/st/rno3/e_nova_skeleton.c",
+     "function": "DrawLaserRing"
+    }
+   ],
+   "overlay": "st/rno4",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "st/rno0",
+     "symbol": "DrawLaserRing"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "st/rno1",
+     "symbol": "DrawLaserRing"
+    }
+   ],
+   "symbol": "DrawLaserRing",
+   "token_twins": []
+  },
+  "st/rno4/EntityAlucardWaterEffect": {
+   "instructions": 670,
+   "name_twins": [
+    {
+     "file": "src/st/rno3/water_effects.c",
+     "function": "EntityAlucardWaterEffect"
+    },
+    {
+     "file": "src/st/water_effects.h",
+     "function": "EntityAlucardWaterEffect"
+    }
+   ],
+   "overlay": "st/rno4",
+   "shape_twins": [
+    {
+     "identical_constants": false,
+     "overlay": "st/rnz1",
+     "symbol": "EntityAlucardWaterEffect"
+    }
+   ],
+   "symbol": "EntityAlucardWaterEffect",
+   "token_twins": []
+  },
+  "st/rno4/EntityBladeSoldierDeathParts": {
+   "instructions": 62,
+   "name_twins": [
+    {
+     "file": "src/st/are/e_blade_soldier.c",
+     "function": "EntityBladeSoldierDeathParts"
+    }
+   ],
+   "overlay": "st/rno4",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "st/rno0",
+     "symbol": "EntityBladeSoldierDeathParts"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "st/rno1",
+     "symbol": "EntityBladeSoldierDeathParts"
+    }
+   ],
+   "symbol": "EntityBladeSoldierDeathParts",
+   "token_twins": []
+  },
+  "st/rno4/EntityBoatElevatorChains": {
+   "instructions": 279,
+   "name_twins": [
+    {
+     "file": "src/st/no4/e_ferryman.c",
+     "function": "EntityBoatElevatorChains"
+    }
+   ],
+   "overlay": "st/rno4",
+   "shape_twins": [],
+   "symbol": "EntityBoatElevatorChains",
+   "token_twins": []
+  },
+  "st/rno4/EntityBreakable": {
+   "instructions": 158,
+   "name_twins": [
+    {
+     "file": "src/boss/bo1/e_breakable.c",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/are/e_breakable.h",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/cat/e_breakable.h",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/e_breakable.h",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/e_breakable_no4.h",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/e_breakable_with_debris.h",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/e_breakable_with_lighting.h",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/lib/e_breakable.c",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/no4/e_breakable.c",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/nz1/e_breakable.c",
+     "function": "EntityBreakable"
+    },
+    {
+     "file": "src/st/rnz1/e_breakable.c",
+     "function": "EntityBreakable"
+    }
+   ],
+   "overlay": "st/rno4",
+   "shape_twins": [],
+   "symbol": "EntityBreakable",
+   "token_twins": []
+  },
+  "st/rno4/EntityBreakableCrystalFloor": {
+   "instructions": 189,
+   "name_twins": [
+    {
+     "file": "src/st/no4/e_secrets.c",
+     "function": "EntityBreakableCrystalFloor"
+    }
+   ],
+   "overlay": "st/rno4",
+   "shape_twins": [],
+   "symbol": "EntityBreakableCrystalFloor",
+   "token_twins": []
+  },
+  "st/rno4/EntityBreakableWall": {
+   "instructions": 173,
+   "name_twins": [
+    {
+     "file": "src/st/chi/en_breakable_wall.c",
+     "function": "EntityBreakableWall"
+    },
+    {
+     "file": "src/st/no4/e_secrets.c",
+     "function": "EntityBreakableWall"
+    },
+    {
+     "file": "src/st/nz1/e_secrets.c",
+     "function": "EntityBreakableWall"
+    },
+    {
+     "file": "src/st/rtop/20B48.c",
+     "function": "EntityBreakableWall"
+    },
+    {
+     "file": "src/st/top/e_breakable_wall.c",
+     "function": "EntityBreakableWall"
+    }
+   ],
+   "overlay": "st/rno4",
+   "shape_twins": [],
+   "symbol": "EntityBreakableWall",
+   "token_twins": []
+  },
+  "st/rno4/EntityBreakableWallDebris": {
+   "instructions": 98,
+   "name_twins": [
+    {
+     "file": "src/st/cat/e_secrets.c",
+     "function": "EntityBreakableWallDebris"
+    },
+    {
+     "file": "src/st/chi/en_breakable_wall.c",
+     "function": "EntityBreakableWallDebris"
+    },
+    {
+     "file": "src/st/chi_psp/en_breakable_wall.c",
+     "function": "EntityBreakableWallDebris"
+    },
+    {
+     "file": "src/st/e_breakable_wall_debris.h",
+     "function": "EntityBreakableWallDebris"
+    },
+    {
+     "file": "src/st/no4/e_secrets.c",
+     "function": "EntityBreakableWallDebris"
+    },
+    {
+     "file": "src/st/rcat/e_secrets.c",
+     "function": "EntityBreakableWallDebris"
+    }
+   ],
+   "overlay": "st/rno4",
+   "shape_twins": [],
+   "symbol": "EntityBreakableWallDebris",
+   "token_twins": []
+  },
+  "st/rno4/EntityExplosionVariants": {
+   "instructions": 60,
+   "name_twins": [
+    {
+     "file": "src/st/e_misc.h",
+     "function": "EntityExplosionVariants"
+    }
+   ],
+   "overlay": "st/rno4",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "boss/bo3",
+     "symbol": "EntityExplosionVariants"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "boss/bo7",
+     "symbol": "EntityExplosionVariants"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "st/rno1",
+     "symbol": "EntityExplosionVariants"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "st/rno2",
+     "symbol": "EntityExplosionVariants"
+    }
+   ],
+   "symbol": "EntityExplosionVariants",
+   "token_twins": []
+  },
+  "st/rno4/EntityFloatingIcePlatform": {
+   "instructions": 150,
+   "name_twins": [
+    {
+     "file": "src/st/no4/first_c_file.c",
+     "function": "EntityFloatingIcePlatform"
+    }
+   ],
+   "overlay": "st/rno4",
+   "shape_twins": [],
+   "symbol": "EntityFloatingIcePlatform",
+   "token_twins": []
+  },
+  "st/rno4/EntityGreyPuff": {
+   "instructions": 61,
+   "name_twins": [
+    {
+     "file": "src/st/e_misc.h",
+     "function": "EntityGreyPuff"
+    }
+   ],
+   "overlay": "st/rno4",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "boss/bo3",
+     "symbol": "EntityGreyPuff"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "boss/bo7",
+     "symbol": "EntityGreyPuff"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "st/rno1",
+     "symbol": "EntityGreyPuff"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "st/rno2",
+     "symbol": "EntityGreyPuff"
+    }
+   ],
+   "symbol": "EntityGreyPuff",
+   "token_twins": []
+  },
+  "st/rno4/EntityImp": {
+   "instructions": 812,
+   "name_twins": [
+    {
+     "file": "src/st/e_imp.h",
+     "function": "EntityImp"
+    }
+   ],
+   "overlay": "st/rno4",
+   "shape_twins": [],
+   "symbol": "EntityImp",
+   "token_twins": []
+  },
+  "st/rno4/EntityImpDeathParticle": {
+   "instructions": 137,
+   "name_twins": [
+    {
+     "file": "src/st/e_imp_death_particle.h",
+     "function": "EntityImpDeathParticle"
+    }
+   ],
+   "overlay": "st/rno4",
+   "shape_twins": [],
+   "symbol": "EntityImpDeathParticle",
+   "token_twins": []
+  },
+  "st/rno4/EntityImpSmoke": {
+   "instructions": 60,
+   "name_twins": [
+    {
+     "file": "src/st/e_imp_smoke.h",
+     "function": "EntityImpSmoke"
+    },
+    {
+     "file": "src/st/rnz0/e_imp.c",
+     "function": "EntityImpSmoke"
+    }
+   ],
+   "overlay": "st/rno4",
+   "shape_twins": [],
+   "symbol": "EntityImpSmoke",
+   "token_twins": []
+  },
+  "st/rno4/EntityIntenseExplosion": {
+   "instructions": 64,
+   "name_twins": [
+    {
+     "file": "src/boss/bo3/e_misc.c",
+     "function": "EntityIntenseExplosion"
+    },
+    {
+     "file": "src/boss/bo7/e_misc.c",
+     "function": "EntityIntenseExplosion"
+    },
+    {
+     "file": "src/st/e_misc.h",
+     "function": "EntityIntenseExplosion"
+    },
+    {
+     "file": "src/st/rno1/e_misc.c",
+     "function": "EntityIntenseExplosion"
+    },
+    {
+     "file": "src/st/rno2/e_misc.c",
+     "function": "EntityIntenseExplosion"
+    }
+   ],
+   "overlay": "st/rno4",
+   "shape_twins": [],
+   "symbol": "EntityIntenseExplosion",
+   "token_twins": []
+  },
+  "st/rno4/EntityJackOBones": {
+   "instructions": 331,
+   "name_twins": [
+    {
+     "file": "src/st/rno3/e_jack_o_bones.c",
+     "function": "EntityJackOBones"
+    }
+   ],
+   "overlay": "st/rno4",
+   "shape_twins": [
+    {
+     "identical_constants": false,
+     "overlay": "st/rno0",
+     "symbol": "EntityJackOBones"
+    },
+    {
+     "identical_constants": false,
+     "overlay": "st/rno1",
+     "symbol": "EntityJackOBones"
+    }
+   ],
+   "symbol": "EntityJackOBones",
+   "token_twins": []
+  },
+  "st/rno4/EntityJackOBonesDeathParts": {
+   "instructions": 63,
+   "name_twins": [
+    {
+     "file": "src/st/rno0/unk_48100.c",
+     "function": "EntityJackOBonesDeathParts"
+    },
+    {
+     "file": "src/st/rno3/e_jack_o_bones.c",
+     "function": "EntityJackOBonesDeathParts"
+    }
+   ],
+   "overlay": "st/rno4",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "st/rno1",
+     "symbol": "EntityJackOBonesDeathParts"
+    }
+   ],
+   "symbol": "EntityJackOBonesDeathParts",
+   "token_twins": []
+  },
+  "st/rno4/EntityJackOBonesJack": {
+   "instructions": 177,
+   "name_twins": [
+    {
+     "file": "src/st/rno3/e_jack_o_bones.c",
+     "function": "EntityJackOBonesJack"
+    }
+   ],
+   "overlay": "st/rno4",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "st/rno0",
+     "symbol": "EntityJackOBonesJack"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "st/rno1",
+     "symbol": "EntityJackOBonesJack"
+    }
+   ],
+   "symbol": "EntityJackOBonesJack",
+   "token_twins": []
+  },
+  "st/rno4/EntityKillerFish": {
+   "instructions": 209,
+   "name_twins": [
+    {
+     "file": "src/st/no4/e_killer_fish.c",
+     "function": "EntityKillerFish"
+    }
+   ],
+   "overlay": "st/rno4",
+   "shape_twins": [],
+   "symbol": "EntityKillerFish",
+   "token_twins": []
+  },
+  "st/rno4/EntityKillerFishDeathPuff": {
+   "instructions": 54,
+   "name_twins": [
+    {
+     "file": "src/st/no4/e_killer_fish.c",
+     "function": "EntityKillerFishDeathPuff"
+    }
+   ],
+   "overlay": "st/rno4",
+   "shape_twins": [],
+   "symbol": "EntityKillerFishDeathPuff",
+   "token_twins": []
+  },
+  "st/rno4/EntityNovaLaser": {
+   "instructions": 305,
+   "name_twins": [
+    {
+     "file": "src/st/rno3/e_nova_skeleton.c",
+     "function": "EntityNovaLaser"
+    }
+   ],
+   "overlay": "st/rno4",
+   "shape_twins": [
+    {
+     "identical_constants": false,
+     "overlay": "st/rno0",
+     "symbol": "EntityNovaLaser"
+    },
+    {
+     "identical_constants": false,
+     "overlay": "st/rno1",
+     "symbol": "EntityNovaLaser"
+    }
+   ],
+   "symbol": "EntityNovaLaser",
+   "token_twins": []
+  },
+  "st/rno4/EntityNovaLaserPulse": {
+   "instructions": 86,
+   "name_twins": [
+    {
+     "file": "src/st/rno0/unk_48100.c",
+     "function": "EntityNovaLaserPulse"
+    },
+    {
+     "file": "src/st/rno3/e_nova_skeleton.c",
+     "function": "EntityNovaLaserPulse"
+    }
+   ],
+   "overlay": "st/rno4",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "st/rno1",
+     "symbol": "EntityNovaLaserPulse"
+    }
+   ],
+   "symbol": "EntityNovaLaserPulse",
+   "token_twins": []
+  },
+  "st/rno4/EntityNovaSkeleton": {
+   "instructions": 324,
+   "name_twins": [
+    {
+     "file": "src/st/rno3/e_nova_skeleton.c",
+     "function": "EntityNovaSkeleton"
+    }
+   ],
+   "overlay": "st/rno4",
+   "shape_twins": [
+    {
+     "identical_constants": false,
+     "overlay": "st/rno0",
+     "symbol": "EntityNovaSkeleton"
+    },
+    {
+     "identical_constants": false,
+     "overlay": "st/rno1",
+     "symbol": "EntityNovaSkeleton"
+    }
+   ],
+   "symbol": "EntityNovaSkeleton",
+   "token_twins": []
+  },
+  "st/rno4/EntityRdaiUnk33": {
+   "instructions": 169,
+   "name_twins": [
+    {
+     "file": "src/st/e_rdai_unk33.h",
+     "function": "EntityRdaiUnk33"
+    }
+   ],
+   "overlay": "st/rno4",
+   "shape_twins": [],
+   "symbol": "EntityRdaiUnk33",
+   "token_twins": []
+  },
+  "st/rno4/EntitySideWaterSplash": {
+   "instructions": 231,
+   "name_twins": [
+    {
+     "file": "src/st/rno3/water_effects.c",
+     "function": "EntitySideWaterSplash"
+    },
+    {
+     "file": "src/st/water_effects.h",
+     "function": "EntitySideWaterSplash"
+    }
+   ],
+   "overlay": "st/rno4",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "st/rnz1",
+     "symbol": "EntitySideWaterSplash"
+    }
+   ],
+   "symbol": "EntitySideWaterSplash",
+   "token_twins": []
+  },
+  "st/rno4/EntitySmallWaterDrop": {
+   "instructions": 151,
+   "name_twins": [
+    {
+     "file": "src/st/rno3/water_effects.c",
+     "function": "EntitySmallWaterDrop"
+    },
+    {
+     "file": "src/st/water_effects.h",
+     "function": "EntitySmallWaterDrop"
+    }
+   ],
+   "overlay": "st/rno4",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "st/rnz1",
+     "symbol": "EntitySmallWaterDrop"
+    }
+   ],
+   "symbol": "EntitySmallWaterDrop",
+   "token_twins": []
+  },
+  "st/rno4/EntitySplashWater": {
+   "instructions": 581,
+   "name_twins": [
+    {
+     "file": "src/st/rno3/water_effects.c",
+     "function": "EntitySplashWater"
+    },
+    {
+     "file": "src/st/water_effects.h",
+     "function": "EntitySplashWater"
+    }
+   ],
+   "overlay": "st/rno4",
+   "shape_twins": [
+    {
+     "identical_constants": false,
+     "overlay": "st/rnz1",
+     "symbol": "EntitySplashWater"
+    }
+   ],
+   "symbol": "EntitySplashWater",
+   "token_twins": []
+  },
+  "st/rno4/EntitySurfacingWater": {
+   "instructions": 320,
+   "name_twins": [
+    {
+     "file": "src/st/rno3/water_effects.c",
+     "function": "EntitySurfacingWater"
+    },
+    {
+     "file": "src/st/water_effects.h",
+     "function": "EntitySurfacingWater"
+    }
+   ],
+   "overlay": "st/rno4",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "st/rnz1",
+     "symbol": "EntitySurfacingWater"
+    }
+   ],
+   "symbol": "EntitySurfacingWater",
+   "token_twins": []
+  },
+  "st/rno4/EntityVenusWeed": {
+   "instructions": 572,
+   "name_twins": [
+    {
+     "file": "src/st/e_venus_weed.h",
+     "function": "EntityVenusWeed"
+    }
+   ],
+   "overlay": "st/rno4",
+   "shape_twins": [],
+   "symbol": "EntityVenusWeed",
+   "token_twins": []
+  },
+  "st/rno4/EntityVenusWeedDart": {
+   "instructions": 226,
+   "name_twins": [
+    {
+     "file": "src/st/e_venus_weed.h",
+     "function": "EntityVenusWeedDart"
+    }
+   ],
+   "overlay": "st/rno4",
+   "shape_twins": [],
+   "symbol": "EntityVenusWeedDart",
+   "token_twins": []
+  },
+  "st/rno4/EntityVenusWeedFlower": {
+   "instructions": 471,
+   "name_twins": [
+    {
+     "file": "src/st/e_venus_weed.h",
+     "function": "EntityVenusWeedFlower"
+    }
+   ],
+   "overlay": "st/rno4",
+   "shape_twins": [],
+   "symbol": "EntityVenusWeedFlower",
+   "token_twins": []
+  },
+  "st/rno4/EntityVenusWeedSpike": {
+   "instructions": 131,
+   "name_twins": [
+    {
+     "file": "src/st/e_venus_weed.h",
+     "function": "EntityVenusWeedSpike"
+    }
+   ],
+   "overlay": "st/rno4",
+   "shape_twins": [],
+   "symbol": "EntityVenusWeedSpike",
+   "token_twins": []
+  },
+  "st/rno4/EntityVenusWeedTendril": {
+   "instructions": 293,
+   "name_twins": [
+    {
+     "file": "src/st/e_venus_weed.h",
+     "function": "EntityVenusWeedTendril"
+    }
+   ],
+   "overlay": "st/rno4",
+   "shape_twins": [],
+   "symbol": "EntityVenusWeedTendril",
+   "token_twins": []
+  },
+  "st/rno4/EntityWaterBox": {
+   "instructions": 134,
+   "name_twins": [
+    {
+     "file": "src/st/no4/first_c_file.c",
+     "function": "EntityWaterBox"
+    }
+   ],
+   "overlay": "st/rno4",
+   "shape_twins": [],
+   "symbol": "EntityWaterBox",
+   "token_twins": []
+  },
+  "st/rno4/EntityWaterDrop": {
+   "instructions": 169,
+   "name_twins": [
+    {
+     "file": "src/st/rno3/water_effects.c",
+     "function": "EntityWaterDrop"
+    },
+    {
+     "file": "src/st/water_effects.h",
+     "function": "EntityWaterDrop"
+    }
+   ],
+   "overlay": "st/rno4",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "st/rnz1",
+     "symbol": "EntityWaterDrop"
+    }
+   ],
+   "symbol": "EntityWaterDrop",
+   "token_twins": []
+  },
+  "st/rno4/LoadFerrymanGateTiles": {
+   "instructions": 28,
+   "name_twins": [
+    {
+     "file": "src/st/no4/e_ferryman.c",
+     "function": "LoadFerrymanGateTiles"
+    }
+   ],
+   "overlay": "st/rno4",
+   "shape_twins": [],
+   "symbol": "LoadFerrymanGateTiles",
+   "token_twins": []
+  },
+  "st/rno4/PlaySfxPositional": {
+   "instructions": 62,
+   "name_twins": [
+    {
+     "file": "src/boss/bo3/e_misc.c",
+     "function": "PlaySfxPositional"
+    },
+    {
+     "file": "src/boss/bo7/e_misc.c",
+     "function": "PlaySfxPositional"
+    },
+    {
+     "file": "src/st/e_misc.h",
+     "function": "PlaySfxPositional"
+    },
+    {
+     "file": "src/st/rno1/e_misc.c",
+     "function": "PlaySfxPositional"
+    },
+    {
+     "file": "src/st/rno2/e_misc.c",
+     "function": "PlaySfxPositional"
+    }
+   ],
+   "overlay": "st/rno4",
+   "shape_twins": [
+    {
+     "identical_constants": false,
+     "overlay": "st/rcen",
+     "symbol": "func_us_8019AA04"
+    }
+   ],
+   "symbol": "PlaySfxPositional",
+   "token_twins": []
+  },
+  "st/rno4/SetupPrimsForEntitySpriteParts": {
+   "instructions": 161,
+   "name_twins": [
+    {
+     "file": "src/st/e_venus_weed.h",
+     "function": "SetupPrimsForEntitySpriteParts"
+    }
+   ],
+   "overlay": "st/rno4",
+   "shape_twins": [],
+   "symbol": "SetupPrimsForEntitySpriteParts",
+   "token_twins": []
+  },
+  "st/rno4/StepTowards": {
+   "instructions": 27,
+   "name_twins": [
+    {
+     "file": "src/st/rno0/e_gorgon.c",
+     "function": "StepTowards"
+    },
+    {
+     "file": "src/st/step_towards.h",
+     "function": "StepTowards"
+    }
+   ],
+   "overlay": "st/rno4",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "st/rnz1",
+     "symbol": "StepTowards"
+    }
+   ],
+   "symbol": "StepTowards",
+   "token_twins": []
+  },
+  "st/rno4/TryShoot": {
+   "instructions": 40,
+   "name_twins": [
+    {
+     "file": "src/st/rno0/unk_48100.c",
+     "function": "TryShoot"
+    },
+    {
+     "file": "src/st/rno3/e_nova_skeleton.c",
+     "function": "TryShoot"
+    }
+   ],
+   "overlay": "st/rno4",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "st/rno1",
+     "symbol": "TryShoot"
+    }
+   ],
+   "symbol": "TryShoot",
+   "token_twins": []
+  },
+  "st/rno4/TryThrow": {
+   "instructions": 41,
+   "name_twins": [
+    {
+     "file": "src/st/rno0/unk_48100.c",
+     "function": "TryThrow"
+    },
+    {
+     "file": "src/st/rno3/e_jack_o_bones.c",
+     "function": "TryThrow"
+    }
+   ],
+   "overlay": "st/rno4",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "st/rno1",
+     "symbol": "TryThrow"
+    }
+   ],
+   "symbol": "TryThrow",
+   "token_twins": []
+  },
+  "st/rno4/func_pspeu_0924B480": {
+   "instructions": 76,
+   "name_twins": [],
+   "overlay": "st/rno4",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "st/rnz1",
+     "symbol": "func_pspeu_0924B480"
+    }
+   ],
+   "symbol": "func_pspeu_0924B480",
+   "token_twins": []
+  },
+  "st/rno4/func_us_801A071C_from_bo3": {
+   "instructions": 44,
+   "name_twins": [],
+   "overlay": "st/rno4",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "boss/bo3",
+     "symbol": "func_us_801A071C"
+    }
+   ],
+   "symbol": "func_us_801A071C_from_bo3",
+   "token_twins": []
+  },
+  "st/rno4/func_us_801BBE58_from_rnz1": {
+   "instructions": 511,
+   "name_twins": [],
+   "overlay": "st/rno4",
+   "shape_twins": [
+    {
+     "identical_constants": false,
+     "overlay": "st/rnz1",
+     "symbol": "func_us_801BBE58"
+    }
+   ],
+   "symbol": "func_us_801BBE58_from_rnz1",
+   "token_twins": []
+  },
+  "st/rno4/func_us_801BC650_from_rnz1": {
+   "instructions": 259,
+   "name_twins": [],
+   "overlay": "st/rno4",
+   "shape_twins": [
+    {
+     "identical_constants": false,
+     "overlay": "st/rnz1",
+     "symbol": "func_us_801BC650"
+    }
+   ],
+   "symbol": "func_us_801BC650_from_rnz1",
+   "token_twins": []
+  },
+  "st/rno4/func_us_801BCA5C_from_rnz1": {
+   "instructions": 80,
+   "name_twins": [],
+   "overlay": "st/rno4",
+   "shape_twins": [
+    {
+     "identical_constants": false,
+     "overlay": "st/rnz1",
+     "symbol": "func_us_801BCA5C"
+    }
+   ],
+   "symbol": "func_us_801BCA5C_from_rnz1",
+   "token_twins": []
+  },
+  "st/rno4/func_us_801BCB9C_from_rnz1": {
+   "instructions": 121,
+   "name_twins": [],
+   "overlay": "st/rno4",
+   "shape_twins": [
+    {
+     "identical_constants": false,
+     "overlay": "st/rnz1",
+     "symbol": "func_us_801BCB9C"
+    }
+   ],
+   "symbol": "func_us_801BCB9C_from_rnz1",
+   "token_twins": []
+  },
+  "st/rno4/func_us_801BCD80_from_rnz1": {
+   "instructions": 51,
+   "name_twins": [],
+   "overlay": "st/rno4",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "st/rnz1",
+     "symbol": "func_us_801BCD80"
+    }
+   ],
+   "symbol": "func_us_801BCD80_from_rnz1",
+   "token_twins": []
+  },
+  "st/rno4/func_us_801BCE4C_from_rnz1": {
+   "instructions": 95,
+   "name_twins": [],
+   "overlay": "st/rno4",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "st/rnz1",
+     "symbol": "func_us_801BCE4C"
+    }
+   ],
+   "symbol": "func_us_801BCE4C_from_rnz1",
+   "token_twins": []
+  },
+  "st/rno4/func_us_801BCFC8_from_rnz1": {
+   "instructions": 73,
+   "name_twins": [],
+   "overlay": "st/rno4",
+   "shape_twins": [
+    {
+     "identical_constants": false,
+     "overlay": "st/rnz1",
+     "symbol": "func_us_801BCFC8"
+    }
+   ],
+   "symbol": "func_us_801BCFC8_from_rnz1",
+   "token_twins": []
+  },
+  "st/rno4/func_us_801C123C_from_no4": {
+   "instructions": 29,
+   "name_twins": [
+    {
+     "file": "src/st/rcen/unk_1F0D8.c",
+     "function": "func_us_801C123C_from_no4"
+    }
+   ],
+   "overlay": "st/rno4",
+   "shape_twins": [
+    {
+     "identical_constants": false,
+     "overlay": "boss/bo3",
+     "symbol": "func_us_801C123C_from_no4"
+    }
+   ],
+   "symbol": "func_us_801C123C_from_no4",
+   "token_twins": []
+  },
+  "st/rno4/func_us_801C12B0_from_no4": {
+   "instructions": 210,
+   "name_twins": [],
+   "overlay": "st/rno4",
+   "shape_twins": [
+    {
+     "identical_constants": false,
+     "overlay": "boss/bo3",
+     "symbol": "func_us_801C12B0_from_no4"
+    }
+   ],
+   "symbol": "func_us_801C12B0_from_no4",
+   "token_twins": []
+  },
+  "st/rno4/func_us_801C37C8_from_no4": {
+   "instructions": 143,
+   "name_twins": [],
+   "overlay": "st/rno4",
+   "shape_twins": [
+    {
+     "identical_constants": false,
+     "overlay": "boss/bo3",
+     "symbol": "func_us_801C37C8_from_no4"
+    }
+   ],
+   "symbol": "func_us_801C37C8_from_no4",
+   "token_twins": []
+  },
+  "st/rno4/func_us_801C3CC4_from_no4": {
+   "instructions": 187,
+   "name_twins": [],
+   "overlay": "st/rno4",
+   "shape_twins": [
+    {
+     "identical_constants": false,
+     "overlay": "boss/bo3",
+     "symbol": "func_us_801C3CC4_from_no4"
+    }
+   ],
+   "symbol": "func_us_801C3CC4_from_no4",
+   "token_twins": []
+  },
+  "st/rno4/func_us_801C5518_from_no4": {
+   "instructions": 68,
+   "name_twins": [],
+   "overlay": "st/rno4",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "boss/bo3",
+     "symbol": "func_us_801C5518_from_no4"
+    }
+   ],
+   "symbol": "func_us_801C5518_from_no4",
+   "token_twins": []
+  },
+  "st/rnz1/EntityAlucardWaterEffect": {
+   "instructions": 670,
+   "name_twins": [
+    {
+     "file": "src/st/rno3/water_effects.c",
+     "function": "EntityAlucardWaterEffect"
+    },
+    {
+     "file": "src/st/water_effects.h",
+     "function": "EntityAlucardWaterEffect"
+    }
+   ],
+   "overlay": "st/rnz1",
+   "shape_twins": [
+    {
+     "identical_constants": false,
+     "overlay": "st/rno4",
+     "symbol": "EntityAlucardWaterEffect"
+    }
+   ],
+   "symbol": "EntityAlucardWaterEffect",
+   "token_twins": []
+  },
+  "st/rnz1/EntityBackgroundGears": {
+   "instructions": 132,
+   "name_twins": [
+    {
+     "file": "src/st/nz1/e_bg_gears.c",
+     "function": "EntityBackgroundGears"
+    }
+   ],
+   "overlay": "st/rnz1",
+   "shape_twins": [],
+   "symbol": "EntityBackgroundGears",
+   "token_twins": []
+  },
+  "st/rnz1/EntityBossDoorTrigger": {
+   "instructions": 256,
+   "name_twins": [
+    {
+     "file": "src/st/nz1/e_boss_doors.c",
+     "function": "EntityBossDoorTrigger"
+    }
+   ],
+   "overlay": "st/rnz1",
+   "shape_twins": [],
+   "symbol": "EntityBossDoorTrigger",
+   "token_twins": []
+  },
+  "st/rnz1/EntityBossDoors": {
+   "instructions": 195,
+   "name_twins": [
+    {
+     "file": "src/boss/rbo0/e_boss_doors.c",
+     "function": "EntityBossDoors"
+    },
+    {
+     "file": "src/st/are/e_boss_doors.c",
+     "function": "EntityBossDoors"
+    },
+    {
+     "file": "src/st/nz1/e_boss_doors.c",
+     "function": "EntityBossDoors"
+    },
+    {
+     "file": "src/st/rare/e_boss_doors.c",
+     "function": "EntityBossDoors"
+    }
+   ],
+   "overlay": "st/rnz1",
+   "shape_twins": [],
+   "symbol": "EntityBossDoors",
+   "token_twins": []
+  },
+  "st/rnz1/EntityBreakableWall": {
+   "instructions": 226,
+   "name_twins": [
+    {
+     "file": "src/st/chi/en_breakable_wall.c",
+     "function": "EntityBreakableWall"
+    },
+    {
+     "file": "src/st/no4/e_secrets.c",
+     "function": "EntityBreakableWall"
+    },
+    {
+     "file": "src/st/nz1/e_secrets.c",
+     "function": "EntityBreakableWall"
+    },
+    {
+     "file": "src/st/rtop/20B48.c",
+     "function": "EntityBreakableWall"
+    },
+    {
+     "file": "src/st/top/e_breakable_wall.c",
+     "function": "EntityBreakableWall"
+    }
+   ],
+   "overlay": "st/rnz1",
+   "shape_twins": [],
+   "symbol": "EntityBreakableWall",
+   "token_twins": []
+  },
+  "st/rnz1/EntityBreakableWallPartial": {
+   "instructions": 188,
+   "name_twins": [
+    {
+     "file": "src/st/nz1/e_secrets.c",
+     "function": "EntityBreakableWallPartial"
+    }
+   ],
+   "overlay": "st/rnz1",
+   "shape_twins": [],
+   "symbol": "EntityBreakableWallPartial",
+   "token_twins": []
+  },
+  "st/rnz1/EntityCloakedKnight": {
+   "instructions": 567,
+   "name_twins": [
+    {
+     "file": "src/st/nz1/e_cloaked_knight.c",
+     "function": "EntityCloakedKnight"
+    }
+   ],
+   "overlay": "st/rnz1",
+   "shape_twins": [],
+   "symbol": "EntityCloakedKnight",
+   "token_twins": []
+  },
+  "st/rnz1/EntityCloakedKnightAura": {
+   "instructions": 73,
+   "name_twins": [
+    {
+     "file": "src/st/nz1/e_cloaked_knight.c",
+     "function": "EntityCloakedKnightAura"
+    }
+   ],
+   "overlay": "st/rnz1",
+   "shape_twins": [],
+   "symbol": "EntityCloakedKnightAura",
+   "token_twins": []
+  },
+  "st/rnz1/EntityCloakedKnightCloak": {
+   "instructions": 76,
+   "name_twins": [
+    {
+     "file": "src/st/nz1/e_cloaked_knight.c",
+     "function": "EntityCloakedKnightCloak"
+    }
+   ],
+   "overlay": "st/rnz1",
+   "shape_twins": [],
+   "symbol": "EntityCloakedKnightCloak",
+   "token_twins": []
+  },
+  "st/rnz1/EntityCloakedKnightSword": {
+   "instructions": 177,
+   "name_twins": [
+    {
+     "file": "src/st/nz1/e_cloaked_knight.c",
+     "function": "EntityCloakedKnightSword"
+    }
+   ],
+   "overlay": "st/rnz1",
+   "shape_twins": [],
+   "symbol": "EntityCloakedKnightSword",
+   "token_twins": []
+  },
+  "st/rnz1/EntityFrozenShadeCrystal": {
+   "instructions": 19,
+   "name_twins": [
+    {
+     "file": "src/st/no4/e_frozen_shade.c",
+     "function": "EntityFrozenShadeCrystal"
+    }
+   ],
+   "overlay": "st/rnz1",
+   "shape_twins": [],
+   "symbol": "EntityFrozenShadeCrystal",
+   "token_twins": []
+  },
+  "st/rnz1/EntityGearHorizontal": {
+   "instructions": 66,
+   "name_twins": [
+    {
+     "file": "src/st/nz1/e_gear_horizontal.c",
+     "function": "EntityGearHorizontal"
+    }
+   ],
+   "overlay": "st/rnz1",
+   "shape_twins": [],
+   "symbol": "EntityGearHorizontal",
+   "token_twins": []
+  },
+  "st/rnz1/EntityGearSidewaysLarge": {
+   "instructions": 158,
+   "name_twins": [
+    {
+     "file": "src/st/nz1/e_gear_large.c",
+     "function": "EntityGearSidewaysLarge"
+    }
+   ],
+   "overlay": "st/rnz1",
+   "shape_twins": [],
+   "symbol": "EntityGearSidewaysLarge",
+   "token_twins": []
+  },
+  "st/rnz1/EntityGearSidewaysSmall": {
+   "instructions": 219,
+   "name_twins": [
+    {
+     "file": "src/st/nz1/e_gear_small.c",
+     "function": "EntityGearSidewaysSmall"
+    }
+   ],
+   "overlay": "st/rnz1",
+   "shape_twins": [],
+   "symbol": "EntityGearSidewaysSmall",
+   "token_twins": []
+  },
+  "st/rnz1/EntityGearVertical": {
+   "instructions": 138,
+   "name_twins": [
+    {
+     "file": "src/st/nz1/e_gear_vertical.c",
+     "function": "EntityGearVertical"
+    }
+   ],
+   "overlay": "st/rnz1",
+   "shape_twins": [],
+   "symbol": "EntityGearVertical",
+   "token_twins": []
+  },
+  "st/rnz1/EntityMedusaHeadBlue": {
+   "instructions": 114,
+   "name_twins": [
+    {
+     "file": "src/st/e_medusa_head.h",
+     "function": "EntityMedusaHeadBlue"
+    }
+   ],
+   "overlay": "st/rnz1",
+   "shape_twins": [],
+   "symbol": "EntityMedusaHeadBlue",
+   "token_twins": []
+  },
+  "st/rnz1/EntityMedusaHeadSpawner": {
+   "instructions": 116,
+   "name_twins": [
+    {
+     "file": "src/st/e_medusa_head.h",
+     "function": "EntityMedusaHeadSpawner"
+    }
+   ],
+   "overlay": "st/rnz1",
+   "shape_twins": [],
+   "symbol": "EntityMedusaHeadSpawner",
+   "token_twins": [
+    {
+     "file": "src/st/e_medusa_head.h",
+     "function": "EntityMedusaHeadYellow",
+     "score": 0.377
+    }
+   ]
+  },
+  "st/rnz1/EntityMedusaHeadYellow": {
+   "instructions": 9,
+   "name_twins": [
+    {
+     "file": "src/st/e_medusa_head.h",
+     "function": "EntityMedusaHeadYellow"
+    }
+   ],
+   "overlay": "st/rnz1",
+   "shape_twins": [],
+   "symbol": "EntityMedusaHeadYellow",
+   "token_twins": []
+  },
+  "st/rnz1/EntitySecretAreaDoor": {
+   "instructions": 186,
+   "name_twins": [
+    {
+     "file": "src/st/nz1/e_gear_puzzle.c",
+     "function": "EntitySecretAreaDoor"
+    }
+   ],
+   "overlay": "st/rnz1",
+   "shape_twins": [],
+   "symbol": "EntitySecretAreaDoor",
+   "token_twins": []
+  },
+  "st/rnz1/EntitySecretWallDebris": {
+   "instructions": 167,
+   "name_twins": [
+    {
+     "file": "src/st/nz0/e_left_secret_room_wall.c",
+     "function": "EntitySecretWallDebris"
+    },
+    {
+     "file": "src/st/nz1/e_secrets.c",
+     "function": "EntitySecretWallDebris"
+    },
+    {
+     "file": "src/st/rnz0/e_left_secret_room_wall.c",
+     "function": "EntitySecretWallDebris"
+    }
+   ],
+   "overlay": "st/rnz1",
+   "shape_twins": [],
+   "symbol": "EntitySecretWallDebris",
+   "token_twins": []
+  },
+  "st/rnz1/EntitySideWaterSplash": {
+   "instructions": 231,
+   "name_twins": [
+    {
+     "file": "src/st/rno3/water_effects.c",
+     "function": "EntitySideWaterSplash"
+    },
+    {
+     "file": "src/st/water_effects.h",
+     "function": "EntitySideWaterSplash"
+    }
+   ],
+   "overlay": "st/rnz1",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "st/rno4",
+     "symbol": "EntitySideWaterSplash"
+    }
+   ],
+   "symbol": "EntitySideWaterSplash",
+   "token_twins": []
+  },
+  "st/rnz1/EntitySmallWaterDrop": {
+   "instructions": 151,
+   "name_twins": [
+    {
+     "file": "src/st/rno3/water_effects.c",
+     "function": "EntitySmallWaterDrop"
+    },
+    {
+     "file": "src/st/water_effects.h",
+     "function": "EntitySmallWaterDrop"
+    }
+   ],
+   "overlay": "st/rnz1",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "st/rno4",
+     "symbol": "EntitySmallWaterDrop"
+    }
+   ],
+   "symbol": "EntitySmallWaterDrop",
+   "token_twins": []
+  },
+  "st/rnz1/EntitySpikes": {
+   "instructions": 101,
+   "name_twins": [
+    {
+     "file": "src/st/e_spikes.h",
+     "function": "EntitySpikes"
+    }
+   ],
+   "overlay": "st/rnz1",
+   "shape_twins": [],
+   "symbol": "EntitySpikes",
+   "token_twins": []
+  },
+  "st/rnz1/EntitySpikesDamage": {
+   "instructions": 28,
+   "name_twins": [
+    {
+     "file": "src/st/e_spikes.h",
+     "function": "EntitySpikesDamage"
+    }
+   ],
+   "overlay": "st/rnz1",
+   "shape_twins": [],
+   "symbol": "EntitySpikesDamage",
+   "token_twins": []
+  },
+  "st/rnz1/EntitySpikesDust": {
+   "instructions": 45,
+   "name_twins": [
+    {
+     "file": "src/st/e_spikes.h",
+     "function": "EntitySpikesDust"
+    }
+   ],
+   "overlay": "st/rnz1",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "st/rno2",
+     "symbol": "EntitySpikesDust"
+    }
+   ],
+   "symbol": "EntitySpikesDust",
+   "token_twins": []
+  },
+  "st/rnz1/EntitySpikesParts": {
+   "instructions": 176,
+   "name_twins": [
+    {
+     "file": "src/st/e_spikes.h",
+     "function": "EntitySpikesParts"
+    }
+   ],
+   "overlay": "st/rnz1",
+   "shape_twins": [],
+   "symbol": "EntitySpikesParts",
+   "token_twins": []
+  },
+  "st/rnz1/EntitySplashWater": {
+   "instructions": 581,
+   "name_twins": [
+    {
+     "file": "src/st/rno3/water_effects.c",
+     "function": "EntitySplashWater"
+    },
+    {
+     "file": "src/st/water_effects.h",
+     "function": "EntitySplashWater"
+    }
+   ],
+   "overlay": "st/rnz1",
+   "shape_twins": [
+    {
+     "identical_constants": false,
+     "overlay": "st/rno4",
+     "symbol": "EntitySplashWater"
+    }
+   ],
+   "symbol": "EntitySplashWater",
+   "token_twins": []
+  },
+  "st/rnz1/EntitySurfacingWater": {
+   "instructions": 320,
+   "name_twins": [
+    {
+     "file": "src/st/rno3/water_effects.c",
+     "function": "EntitySurfacingWater"
+    },
+    {
+     "file": "src/st/water_effects.h",
+     "function": "EntitySurfacingWater"
+    }
+   ],
+   "overlay": "st/rnz1",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "st/rno4",
+     "symbol": "EntitySurfacingWater"
+    }
+   ],
+   "symbol": "EntitySurfacingWater",
+   "token_twins": []
+  },
+  "st/rnz1/EntityValhallaKnight": {
+   "instructions": 515,
+   "name_twins": [
+    {
+     "file": "src/st/e_valhalla_knight.h",
+     "function": "EntityValhallaKnight"
+    }
+   ],
+   "overlay": "st/rnz1",
+   "shape_twins": [],
+   "symbol": "EntityValhallaKnight",
+   "token_twins": []
+  },
+  "st/rnz1/EntityWallGear": {
+   "instructions": 110,
+   "name_twins": [
+    {
+     "file": "src/st/nz1/e_gear_puzzle.c",
+     "function": "EntityWallGear"
+    }
+   ],
+   "overlay": "st/rnz1",
+   "shape_twins": [],
+   "symbol": "EntityWallGear",
+   "token_twins": []
+  },
+  "st/rnz1/EntityWaterDrop": {
+   "instructions": 169,
+   "name_twins": [
+    {
+     "file": "src/st/rno3/water_effects.c",
+     "function": "EntityWaterDrop"
+    },
+    {
+     "file": "src/st/water_effects.h",
+     "function": "EntityWaterDrop"
+    }
+   ],
+   "overlay": "st/rnz1",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "st/rno4",
+     "symbol": "EntityWaterDrop"
+    }
+   ],
+   "symbol": "EntityWaterDrop",
+   "token_twins": []
+  },
+  "st/rnz1/EntityWaterForeground": {
+   "instructions": 75,
+   "name_twins": [
+    {
+     "file": "src/st/nz1/e_water_fg.c",
+     "function": "EntityWaterForeground"
+    }
+   ],
+   "overlay": "st/rnz1",
+   "shape_twins": [],
+   "symbol": "EntityWaterForeground",
+   "token_twins": []
+  },
+  "st/rnz1/SpikesApplyDamage": {
+   "instructions": 17,
+   "name_twins": [
+    {
+     "file": "src/st/e_spikes.h",
+     "function": "SpikesApplyDamage"
+    }
+   ],
+   "overlay": "st/rnz1",
+   "shape_twins": [],
+   "symbol": "SpikesApplyDamage",
+   "token_twins": []
+  },
+  "st/rnz1/SpikesBreak": {
+   "instructions": 110,
+   "name_twins": [
+    {
+     "file": "src/st/e_spikes.h",
+     "function": "SpikesBreak"
+    }
+   ],
+   "overlay": "st/rnz1",
+   "shape_twins": [],
+   "symbol": "SpikesBreak",
+   "token_twins": []
+  },
+  "st/rnz1/StepTowards": {
+   "instructions": 27,
+   "name_twins": [
+    {
+     "file": "src/st/rno0/e_gorgon.c",
+     "function": "StepTowards"
+    },
+    {
+     "file": "src/st/step_towards.h",
+     "function": "StepTowards"
+    }
+   ],
+   "overlay": "st/rnz1",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "st/rno4",
+     "symbol": "StepTowards"
+    }
+   ],
+   "symbol": "StepTowards",
+   "token_twins": []
+  },
+  "st/rnz1/func_801CDC80": {
+   "instructions": 32,
+   "name_twins": [],
+   "overlay": "st/rnz1",
    "shape_twins": [
     {
      "identical_constants": true,
      "overlay": "boss/bo0",
-     "symbol": "func_us_801BB014"
+     "symbol": "func_us_801B15BC"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "boss/rbo2",
+     "symbol": "func_801CDC80"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "st/rlib",
+     "symbol": "func_us_801AE4B4"
+    },
+    {
+     "identical_constants": true,
+     "overlay": "st/rlib",
+     "symbol": "func_us_801AF3C8"
     }
    ],
-   "symbol": "func_us_801D289C",
+   "symbol": "func_801CDC80",
+   "token_twins": []
+  },
+  "st/rnz1/func_pspeu_0924B480": {
+   "instructions": 76,
+   "name_twins": [],
+   "overlay": "st/rnz1",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "st/rno4",
+     "symbol": "func_pspeu_0924B480"
+    }
+   ],
+   "symbol": "func_pspeu_0924B480",
+   "token_twins": []
+  },
+  "st/rnz1/func_us_801BBE58": {
+   "instructions": 511,
+   "name_twins": [],
+   "overlay": "st/rnz1",
+   "shape_twins": [
+    {
+     "identical_constants": false,
+     "overlay": "st/rno4",
+     "symbol": "func_us_801BBE58_from_rnz1"
+    }
+   ],
+   "symbol": "func_us_801BBE58",
+   "token_twins": []
+  },
+  "st/rnz1/func_us_801BC650": {
+   "instructions": 259,
+   "name_twins": [],
+   "overlay": "st/rnz1",
+   "shape_twins": [
+    {
+     "identical_constants": false,
+     "overlay": "st/rno4",
+     "symbol": "func_us_801BC650_from_rnz1"
+    }
+   ],
+   "symbol": "func_us_801BC650",
+   "token_twins": []
+  },
+  "st/rnz1/func_us_801BCA5C": {
+   "instructions": 80,
+   "name_twins": [],
+   "overlay": "st/rnz1",
+   "shape_twins": [
+    {
+     "identical_constants": false,
+     "overlay": "st/rno4",
+     "symbol": "func_us_801BCA5C_from_rnz1"
+    }
+   ],
+   "symbol": "func_us_801BCA5C",
+   "token_twins": []
+  },
+  "st/rnz1/func_us_801BCB9C": {
+   "instructions": 121,
+   "name_twins": [],
+   "overlay": "st/rnz1",
+   "shape_twins": [
+    {
+     "identical_constants": false,
+     "overlay": "st/rno4",
+     "symbol": "func_us_801BCB9C_from_rnz1"
+    }
+   ],
+   "symbol": "func_us_801BCB9C",
+   "token_twins": []
+  },
+  "st/rnz1/func_us_801BCD80": {
+   "instructions": 51,
+   "name_twins": [],
+   "overlay": "st/rnz1",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "st/rno4",
+     "symbol": "func_us_801BCD80_from_rnz1"
+    }
+   ],
+   "symbol": "func_us_801BCD80",
+   "token_twins": []
+  },
+  "st/rnz1/func_us_801BCE4C": {
+   "instructions": 95,
+   "name_twins": [],
+   "overlay": "st/rnz1",
+   "shape_twins": [
+    {
+     "identical_constants": true,
+     "overlay": "st/rno4",
+     "symbol": "func_us_801BCE4C_from_rnz1"
+    }
+   ],
+   "symbol": "func_us_801BCE4C",
+   "token_twins": []
+  },
+  "st/rnz1/func_us_801BCFC8": {
+   "instructions": 73,
+   "name_twins": [],
+   "overlay": "st/rnz1",
+   "shape_twins": [
+    {
+     "identical_constants": false,
+     "overlay": "st/rno4",
+     "symbol": "func_us_801BCFC8_from_rnz1"
+    }
+   ],
+   "symbol": "func_us_801BCFC8",
    "token_twins": []
   },
   "st/sel/func_801B9C80": {
@@ -1485,7 +7018,7 @@
    ]
   }
  },
- "unmatched_stubs": 202,
+ "unmatched_stubs": 683,
  "version": "us",
- "with_candidates": 90
+ "with_candidates": 335
 }
