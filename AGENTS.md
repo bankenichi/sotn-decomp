@@ -43,7 +43,7 @@ These are absolute. Each exists because breaking it cost real work.
 7. **Subagents never build.** Builds take an exclusive BuildLock; a subagent
    build corrupts the lock state for the session that owns it.
 8. **No em dashes and no emojis**, in code, comments, commits or documents.
-9. **Verify before claiming.** A match is `verify_build` returning 81/81 and
+9. **Verify before claiming.** A match is `verify_build` returning 113/113 and
    nothing else.
 10. **Archive before replacement.** Superseded plans, prompts and records move
     under `docs/archive/`; they are evidence and are not silently deleted.
@@ -98,10 +98,10 @@ is not recoverable.
 ```
 list_allowed          what this connector can actually do
 git_state             branch, HEAD, upstream, dirty summary
-verify_build          is the baseline 81/81 before you touch anything
+verify_build          is the baseline 113/113 before you touch anything
 ```
 
-If `verify_build` is not 81/81 at the start, stop and find out why. Do not build
+If `verify_build` is not 113/113 at the start, stop and find out why. Do not build
 on a red tree.
 
 ### Landing a match

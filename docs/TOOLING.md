@@ -13,8 +13,8 @@ For the mechanisms that land matches, read `automation/README.md`.
 | live authority | current value |
 |---|---|
 | Build oracle | **113/113** from the artifacts on disk |
-| Decompiled | **97.0%**, 6386/6557 functions; 686 US `INCLUDE_ASM` stubs remain |
-| Queue | 471 records: 300 matched, 122 escalated, 43 deferred, 6 near |
+| Decompiled | **97.0%**, 6386/6557 functions; 683 US `INCLUDE_ASM` stubs remain |
+| Queue | 983 records: 300 matched, 512 todo, 122 escalated, 43 deferred, 6 near |
 | Provenance | upstream-harvest 45, shim-segment 9, shim-header 55, transplant 19, twin-port 29, permuter 18, claude-manual 4, model-fleet 56, unknown 65 |
 | Automation | 84 modules, 28 suites plus 35 module self-tests, 90 tools, 68 diagnostics |
 
@@ -32,7 +32,7 @@ named here does not exist.
 
 ```
 git_state                     where am I, is the tree clean
-verify_build                  is the baseline still 81/81
+verify_build                  is the baseline still 113/113
   ... do the work ...
 make_build  ->  verify_build   the oracle, in that order, always
 queue_report                  record the outcome with proof
@@ -67,10 +67,10 @@ Four rules that are not negotiable, each because breaking them has cost a day:
 | `make_reports` | duplicates report plus function finder in one pass | mid-session; it is slow |
 | `make_duplicates_report` | hunting private copies of shared code | as evidence on its own; confirm with `asm_twin_finder.py` |
 
-`verify_build` is **the** oracle: 81 SHA-1s in `config/check.us.sha`. Nothing
+`verify_build` is **the** oracle: 113 SHA-1s in `config/check.us.sha`. Nothing
 else in this repository is authoritative. A permuter score of 0, a clean
 `asm_diff`, a confident model, a green compile: none of them are a match until
-`verify_build` says 81/81.
+`verify_build` says 113/113.
 
 ## 2. Diagnosing a miss
 

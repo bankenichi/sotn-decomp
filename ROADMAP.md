@@ -19,8 +19,8 @@ mistake impossible twice.
 | live authority | current value |
 |---|---|
 | Build oracle | **113/113** from the artifacts on disk |
-| Decompiled | **97.0%**, 6386/6557 functions; 686 US `INCLUDE_ASM` stubs remain |
-| Queue | 471 records: 300 matched, 122 escalated, 43 deferred, 6 near |
+| Decompiled | **97.0%**, 6386/6557 functions; 683 US `INCLUDE_ASM` stubs remain |
+| Queue | 983 records: 300 matched, 512 todo, 122 escalated, 43 deferred, 6 near |
 | Provenance | upstream-harvest 45, shim-segment 9, shim-header 55, transplant 19, twin-port 29, permuter 18, claude-manual 4, model-fleet 56, unknown 65 |
 | Automation | 84 modules, 28 suites plus 35 module self-tests, 90 tools, 68 diagnostics |
 
@@ -95,7 +95,7 @@ structural debt.
 
 These are cheap, and skipping them is how a good tree quietly becomes a bad one.
 
-1. **Verify 81/81 before and after every session.** `verify_build` hashes what is
+1. **Verify 113/113 before and after every session.** `verify_build` hashes what is
    on disk, so always build immediately before verifying. A 77/77 result now
    means a stale tree, not a healthy one.
 2. **Rebuild the index after every upstream merge**, and re-point `UPSTREAM_REF`
@@ -1241,4 +1241,4 @@ Status: **done**, **open**, **partial**, **void** (turned out unnecessary),
 | 250 | **open** | Run the terminal queue-closure audit after #237 through #249. Require zero blind and stale records, zero claimed records, no unknown escalations, no invalidated deferred verdicts, immutable evidence for every near or rejected body, and an explicit matched or evidence-backed hard disposition for all 177 records |
 | 251 | **open** | Extend upstream discovery beyond merged `upstream/master` to inspect explicitly supplied open-PR heads and pinned commits through a read-only, provenance-preserving lane. Report exact current queue overlaps, already-matched functions and binaries absent from this fork's current build scope. RETRACTION: the initial 2026-08-24 audit treated PRs #3529 and #3617 as out of scope; #253 confirms their RBO1, RBO7 and RBO8 binaries belong in the intended scope. Commit 91498064 and PRs #3617 and #3529 remain the acceptance corpus |
 | 252 | **open** | After queue closure, evaluate independently vendoring PR #3518's `itemdefs` asset extractor and generated equipment/accessory tables. Archive the hand-maintained baseline first, retain this fork's no-upstream-PR policy, and adopt only if extraction round-trips current assets without changing the 81/81 oracle |
-| 253 | **partial** | RDAI was confirmed already checksum-covered. Vendored all sixteen missing US binaries from pinned `upstream/master` `85c3717eb`: RBO1, RBO2, RBO4, RBO6, RBO7, RBO8, BO1, BO2, BO3, BO5, BO7, RLIB, RNO1, RNO2, RNO4 and RNZ1, with each normal/F pair, config, symbol file and translation unit. Follow-up shared-header provenance is `d4d3d998c` for RLIB, `ff3eeb0bc` for RNZ1, `882fa97bc` for BO5 breakables and `1add9021a` for BO5 cutscene events. Named C definitions such as `PrizeDrops` remain primary; zero-byte aliases serve only legacy assembly references. The exact upstream US oracle is now 113/113. `queue_coverage.py` enforces equality with all 113 artifacts and 62 configs so omission or silent scope growth cannot report clean. Source commit and additive queue seeding remain before this task is done |
+| 253 | done | RDAI was confirmed already checksum-covered. Source commit `3dadc6c8` vendors all sixteen missing US binaries from pinned `upstream/master` `85c3717eb`: RBO1, RBO2, RBO4, RBO6, RBO7, RBO8, BO1, BO2, BO3, BO5, BO7, RLIB, RNO1, RNO2, RNO4 and RNZ1, with each normal/F pair, config, symbol file and translation unit. Follow-up shared-header provenance is `d4d3d998c` for RLIB, `ff3eeb0bc` for RNZ1, `882fa97bc` for BO5 breakables and `1add9021a` for BO5 cutscene events. Named C definitions such as `PrizeDrops` remain primary; zero-byte aliases serve only legacy assembly references. The exact upstream US oracle verifies 113/113. `queue_coverage.py` now enforces equality with all 113 artifacts and 62 configs and can generate a deterministic additive seed without writing the live queue. Seed `automation/seed.us.scope-2026-08-24.txt` added all 512 newly visible stubs; final coverage is 683 stubs, 0 blind and 0 stale across 24 overlays. Recovery snapshot `queue.20260824-214203.3dadc6c.jsonl` preserves all 983 records at SHA-256 `88c68807a70a30c6d2535dfe8d6d8b4247ef960c3847c0f5f8d37d1cffe5c344` | 

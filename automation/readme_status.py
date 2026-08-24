@@ -52,6 +52,7 @@ import sys
 from pathlib import Path
 
 import run_selftests as selftest_runner
+from queue_coverage import us_src_dirs
 
 REPO = Path(__file__).resolve().parent.parent
 AUTO = REPO / "automation"
@@ -131,15 +132,6 @@ def oracle() -> tuple[int, int, bool]:
     return (int(m.group(1)), int(m.group(2)), True)
 
 
-# Areas that are not part of the `us` build this README measures. Counting
-# them took the figure from 775 to 2734, four fifths of it Saturn -- a port by
-# an external team that the queue, the oracle and every other number here
-# exclude by design. A status line that silently changes what it counts is
-# worse than a stale one, because it looks like progress in reverse.
-NON_US = ("saturn",)
-NON_US_SUFFIX = ("_psp",)
-
-
 def stub_counts(us_only: bool = True) -> tuple[int, dict[str, int]]:
     """INCLUDE_ASM stubs left in src/, by top-level area.
 
@@ -148,12 +140,13 @@ def stub_counts(us_only: bool = True) -> tuple[int, dict[str, int]]:
     what stops the next reader assuming the figure shrank.
     """
     rx = re.compile(r"^\s*INCLUDE_ASM\(", re.M)
+    compiled_dirs = us_src_dirs() if us_only else set()
     per: dict[str, int] = {}
     total = 0
     for p in (REPO / "src").rglob("*.c"):
-        parts = p.relative_to(REPO / "src").parts
-        if us_only and (parts[0] in NON_US or any(
-                seg.endswith(NON_US_SUFFIX) for seg in parts[:-1])):
+        rel = p.relative_to(REPO).as_posix()
+        if compiled_dirs and not any(
+                rel.startswith(d.rstrip("/") + "/") for d in compiled_dirs):
             continue
         try:
             n = len(rx.findall(p.read_text(errors="ignore")))
@@ -489,6 +482,9 @@ def completion_block() -> str:
 # decision and not a quiet way to make the check shut up.
 DRIFT_EXEMPT = {
     "docs/audit": "audit files record what was true when they were written",
+    "docs/benchmarks": "benchmark receipts preserve the measured baseline",
+    "docs/queue-evidence-recovery-2026-08-17.md": "recovery receipts preserve the verified baseline",
+    "docs/superpowers/specs": "dated design records preserve their acceptance baseline",
     "SOTN-Orchestration-Stack.md": "2026-06 design doc, predates the harness",
     "SOTN-Orchestration-Action-Plan.md": "2026-06 design doc, same",
     "ORCHESTRATOR.local.md": "names the legacy path to identify it as legacy",
@@ -518,8 +514,21 @@ _CTX = 2
 
 
 def _historical(lines: list[str], i: int) -> bool:
+    # A completed roadmap ledger row is durable outcome evidence, not a live
+    # assertion. Its then-current oracle result must survive later scope growth.
+    if re.match(r"^\|\s*\d+\s*\|\s*(?:done|void|superseded)\s*\|",
+                lines[i], re.I):
+        return True
     lo, hi = max(0, i - _CTX), min(len(lines), i + _CTX + 1)
-    return any(RX_HISTORICAL.search(ln) for ln in lines[lo:hi])
+    if any(RX_HISTORICAL.search(ln) for ln in lines[lo:hi]):
+        return True
+    # Snapshot headings can be several table lines above the ratio they govern.
+    # Stop at the nearest heading so a historical section cannot exempt a later
+    # live section merely because both are in the same document.
+    for j in range(i, -1, -1):
+        if lines[j].lstrip().startswith("#"):
+            return bool(RX_HISTORICAL.search(lines[j]))
+    return False
 
 
 # Pruned during the walk, not filtered after it: rglob descends into .git and

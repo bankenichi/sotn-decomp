@@ -117,7 +117,7 @@ makes this far safer than it sounds, but only if the process is followed.
 
 ## Acceptance criteria
 
-- `verify_build` reports **81/81** after every single step.
+- `verify_build` reports **113/113** after every single step.
 - `overlay_size_check` reports **0 shifted symbols** across all 43 overlays.
 - No stage other than the one being changed alters by a single byte. The
   clock-room change proved this is achievable.

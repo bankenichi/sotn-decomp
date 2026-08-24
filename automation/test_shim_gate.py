@@ -198,6 +198,7 @@ def main() -> int:
     idx = json.loads((REPO / "automation" / "index.us.json").read_text())
     inc = re.compile(r'INCLUDE_ASM\("([^"]+)",\s*(\w+)\)')
     deferred = generated = 0
+    deferred_paths = []
     for c in (REPO / "src" / "st").glob("*/*.c"):
         n = len(inc.findall(c.read_text(errors="replace")))
         if not n:
@@ -206,20 +207,26 @@ def main() -> int:
         d, _ = wd.shim_gate({"src_rel": rel})
         if d:
             deferred += n
+            deferred_paths.append(f"{rel} ({n})")
         else:
             generated += n
     print(f"\n  population: {deferred} stubs deferred, {generated} still generated")
-    # ZERO is the correct answer today, and that is the finding, not a bug.
-    #
+    if deferred_paths:
+        print("  deferred paths: " + ", ".join(deferred_paths))
     # The gate first reported 8 shimmable stubs. Every one was a false positive:
     # 4 were different implementations (size divergence), 2 were psp targets the
     # us oracle cannot verify, and the rest need stage data tables with no
-    # '.data, <stem>' segment to hold them. There are currently NO free shims.
+    # '.data, <stem>' segment to hold them. Scope expansion later admitted RNO1's
+    # two red-door stubs. They are the audited exception: the shared header owns
+    # its static UV data and the existing e_red_door C segment owns both code and
+    # data, so no separate stage-data segment is required.
     #
-    # The gate is still live and will fire the moment a stage gains the missing
-    # segment. The bound below is what protects the fleet: if a future change
-    # makes this eager again, this fails long before the queue stalls.
-    check("no stub is falsely claimed shimmable", deferred == 0, str(deferred))
+    # Any new path must be audited before it can be accepted here. A subset is
+    # allowed because landing the approved shim removes it from the population.
+    approved = {"src/st/rno1/e_red_door.c (2)"}
+    unaudited = set(deferred_paths) - approved
+    check("no unaudited stub is claimed shimmable", not unaudited,
+          ", ".join(sorted(unaudited)))
     check("deferrals could never stall the fleet", deferred < generated * 0.10,
           f"{deferred} vs {generated}")
 

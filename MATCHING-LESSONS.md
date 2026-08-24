@@ -251,7 +251,7 @@ so `git status` showing modified files is normal and does **not** by itself mean
 is broken. Confirm with the oracle instead:
 
 ```
-make_build VERSION=us   then   verify_build us   ->  expect 81/81 OK
+make_build VERSION=us   then   verify_build us   ->  expect 113/113 OK
 ```
 
 A worker killed mid-run cannot execute its own `restore()`, so orphaned edits are
@@ -328,7 +328,7 @@ only symptom was that 33 matched functions carry zero explanatory comments.
 Everything matched before 2026-07-20 is unannotated, and 64 machine-generated
 identifiers remain across `src/st/rno0/` and `src/boss/bo6/`. Backfilling is ideal
 haiku work: it is mechanical, and since comments and local names cannot affect
-codegen, a full `verify_build` after each file should still return 81/81. If it
+codegen, a full `verify_build` after each file should still return 113/113. If it
 ever does not, something other than a comment was changed.
 
 ## 8b. Running the decomp-permuter (first working procedure, 2026-07-20)
@@ -366,7 +366,7 @@ worked at all. Both are committed; you should not have to repeat them.
    It is worth a build, not yet a match. Anything above 0 is a near miss; lower
    is closer after relocation aliases have been normalized.
 5. Always revert the seed C to the stub afterwards unless you got a real match,
-   then `make_build` + `verify_build` to confirm 81/81.
+   then `make_build` + `verify_build` to confirm 113/113.
 
 **Operational rule:** run searches with `job_start(action="permuter", ...)` and
 poll `job_status`. Debug mode is bounded and may run synchronously. Do not

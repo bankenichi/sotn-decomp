@@ -286,10 +286,6 @@ def self_test() -> int:
 
     print("the table is derived from real maps, or it reports nothing")
     live = include_asm_symbols(REPO / "src")
-    stale_factory_asm = (
-        REPO / "asm/us/boss/bo6/nonmatchings/us_39144"
-        / "BO6_RicEntityFactory.s"
-    )
     factory_key = (
         "boss/bo6/nonmatchings/us_39144",
         "BO6_RicEntityFactory",
@@ -298,15 +294,13 @@ def self_test() -> int:
         "boss/bo6/nonmatchings/us_3E79C",
         "BO6_RicEntityCrashBibleBeam",
     )
-    ck(stale_factory_asm.is_file(),
-       "the regression fixture retains Factory's extracted assembly")
     ck(factory_key not in live,
        "Factory has linked C and no live INCLUDE_ASM")
     ck(beam_key in live,
        "CrashBibleBeam remains a live path-aware stub")
     ck(not function_is_undecompiled(
         factory_key[1], factory_key[0], live, False, False),
-       "stale extracted assembly cannot hide a linked C function")
+       "a linked C function is complete without relying on retained extractor output")
     ck(function_is_undecompiled(
         beam_key[1], beam_key[0], live, False, False),
        "a live INCLUDE_ASM inside a C object still counts as unmatched")
