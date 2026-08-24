@@ -60,6 +60,8 @@ PYTHON = os.environ.get("SOTN_PYTHON", sys.executable)
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from deferred_triage import defines_in_own_overlay  # noqa: E402
 from artifact_store import publish_versioned_artifact  # noqa: E402
+from data_declarations import declaration as retained_data_declaration  # noqa: E402
+from ext_demand import analyse as analyse_ext_demand  # noqa: E402
 from member_types import _declared_type_at, _declared_type_ranges  # noqa: E402
 from quality_audit import _mask_c_comments_and_literals  # noqa: E402
 
@@ -82,7 +84,12 @@ _CLASSES = [
     # Matched before `symbol` deliberately: several of these notes say
     # "`Entity` has no member `unk80`", which would otherwise be read as a
     # compiler diagnostic rather than as our own reviewer talking.
-    ("quality", re.compile(r"quality reject", re.I)),
+    ("quality", re.compile(
+        r"quality reject|SYMBOL_DISPOSITION #241: quality", re.I)),
+    # A durable disposition is evidence that the old compiler receipt has been
+    # read and is no longer an unresolved symbol lookup. It must outrank the
+    # historical diagnostic retained later in the same note.
+    ("real", re.compile(r"SYMBOL_DISPOSITION #241: real", re.I)),
     ("harness", re.compile(
         r"INCLUDE_ASM stub not found|BUILD DIRTY|stub not parsed", re.I)),
     ("nocode", re.compile(
@@ -512,6 +519,38 @@ def _cross_overlay(rec_id: str, decl_path: str) -> bool:
     return bool(a and b and a != b)
 
 
+def _data_overlay_of(record_id: str) -> str:
+    """Return the complete queue overlay key used by retained-data evidence."""
+    parts = record_id.split(":", 2)
+    return parts[1] if len(parts) == 3 else ""
+
+
+def _retained_data_fix(name: str, record_id: str) -> dict | None:
+    """Resolve one raw label without borrowing another overlay's address."""
+    found = retained_data_declaration(name, _data_overlay_of(record_id))
+    if not found:
+        return None
+    declared_head = found.split(";", 1)[0]
+    if re.search(rf"\b{re.escape(name)}\b", declared_head):
+        return {
+            "invented": name,
+            "kind": "retained-data-declaration",
+            "declaration": found,
+            "executable": True,
+            "likely": f"retained overlay data proves `{found}`",
+            "why": ("the target overlay's retained assembly fixes the label, "
+                    "storage unit and byte span"),
+        }
+    return {
+        "invented": name,
+        "kind": "address-alias-diagnostic",
+        "executable": False,
+        "likely": found,
+        "why": ("configured address anchors identify the object, but the "
+                "candidate still needs the raw label replaced by that path"),
+    }
+
+
 def _source_line(source: str, repo_root: Path = REPO) -> str:
     """Read the exact physical source line named by a path:line receipt."""
     path_text, sep, line_text = source.rpartition(":")
@@ -609,6 +648,7 @@ def triage(records: list[dict]) -> list[dict]:
             # RCHI defines its own. The record sat deferred for want of one
             # line that a directory listing would have found.
             own = defines_in_own_overlay(b, rec["id"])
+            data_fix = _retained_data_fix(b, rec["id"])
             if where and _cross_overlay(rec["id"], where):
                 if own:
                     if _internal_linkage(own):
@@ -625,6 +665,9 @@ def triage(records: list[dict]) -> list[dict]:
                                f"{where}, a DIFFERENT overlay, and borrowing "
                                f"it would name a different object; the "
                                f"definition here is the right one"})
+                    continue
+                if data_fix:
+                    fixes.append(data_fix)
                     continue
                 unknowns.append(
                     f"{b} (only declared in another overlay at {where}; "
@@ -655,6 +698,9 @@ def triage(records: list[dict]) -> list[dict]:
                               f"declaration to this file",
                     "why": "symbol EXISTS elsewhere, so this is a missing "
                            "declaration, not a wrong name"})
+                continue
+            if data_fix:
+                fixes.append(data_fix)
                 continue
             path = suggest_struct_path(b, known)
             if path:
@@ -867,8 +913,13 @@ def repair_candidate_text(row: dict, text: str,
             text = text[:span[0]] + text[span[1]:]
             changes.append(f"retract unsafe generated {old}")
             continue
-        if kind in {"declaration", "declaration-definition"}:
-            declaration = declaration_from_source(fix["source"], name, repo_root)
+        if kind in {"declaration", "declaration-definition",
+                    "retained-data-declaration"}:
+            if kind == "retained-data-declaration":
+                declaration = fix["declaration"].strip()
+            else:
+                declaration = declaration_from_source(
+                    fix["source"], name, repo_root)
             existing = re.search(
                 rf"(?m)^[ \t]*extern\b[^;\n]*\b{re.escape(name)}\b[^;\n]*;"
                 rf"[ \t]*(?:\n|$)", text)
@@ -1060,6 +1111,145 @@ def requeue(rows: list[dict], apply: bool = False) -> int:
 
 # ---------------------------------------------------------------------------
 
+_LOCAL_PLACEHOLDER = re.compile(
+    r"^(?:self|temp(?:_[A-Za-z0-9]+)*|code)$", re.I)
+
+
+def _current_artifact(record_id: str) -> Path | None:
+    """Prefer a compiling candidate, then the latest preserved reject."""
+    stem = re.sub(r"[^A-Za-z0-9_.-]+", "_", record_id) + ".c"
+    for directory in (REPO / "automation" / "candidates",
+                      REPO / "automation" / "rejected"):
+        path = directory / stem
+        if path.is_file():
+            return path
+    return None
+
+
+def _wrong_receiver_member(row: dict, text: str) -> list[str]:
+    """Names applied to a provably non-Entity receiver in preserved C."""
+    if not text:
+        return []
+    masked = _mask_c_comments_and_literals(text)
+    ranges = _declared_type_ranges(masked)
+    wrong = []
+    for name in row.get("bad_identifiers", []):
+        access = re.compile(
+            rf"\b(?P<receiver>[A-Za-z_]\w*)\s*->\s*{re.escape(name)}\b")
+        for match in access.finditer(masked):
+            receiver = match.group("receiver")
+            declared = _declared_type_at(ranges, receiver, match.start())
+            if declared and declared != "Entity":
+                wrong.append(f"{receiver}:{declared}->{name}")
+                break
+    return wrong
+
+
+def symbol_disposition(row: dict, record: dict) -> tuple[str, str]:
+    """Close one old symbol label with evidence, without claiming a match."""
+    note = record.get("notes", record.get("note", ""))
+    artifact = _current_artifact(row["id"])
+    text = artifact.read_text(errors="replace") if artifact else ""
+    bad = row.get("bad_identifiers", [])
+    wrong_receiver = _wrong_receiver_member(row, text)
+
+    if (not bad and "parse error before" in note.lower()) or any(
+            _LOCAL_PLACEHOLDER.fullmatch(name) for name in row.get("unresolved", [])):
+        target = "quality"
+        why = ("the retained compiler receipt describes malformed C syntax or "
+               "a local placeholder, not an external symbol")
+    elif wrong_receiver:
+        target = "quality"
+        why = ("member_types proves the rejected name was applied to the wrong "
+               "receiver type: " + ", ".join(wrong_receiver[:4]))
+    else:
+        target = "real"
+        kinds = sorted({fix.get("kind", "") for fix in row.get("resolvable", [])
+                        if fix.get("kind")})
+        if row.get("unresolved"):
+            why = ("the remaining names require semantic reconstruction from "
+                   "the target assembly: " + ", ".join(row["unresolved"][:6]))
+        elif kinds:
+            why = ("all compiler names now have typed evidence; remaining "
+                   "work is candidate semantics/codegen, with fix kinds " +
+                   ", ".join(kinds))
+        else:
+            why = ("the historical symbol label has no unresolved identifier; "
+                   "the retained failure is a candidate/codegen problem")
+
+    if artifact:
+        rel = artifact.relative_to(REPO).as_posix()
+        evidence = f" Current artifact: {rel}."
+        score = re.search(
+            r"(?m)^\s*score\s*:\s*(\d+)\s*$", text[:1600])
+        receipt = re.search(
+            r"(?m)^\s*receipt\s*:\s*([^\n]+)$", text[:1600])
+        if score:
+            evidence += f" Isolated score: {score.group(1)}."
+        if receipt:
+            evidence += f" Receipt: {receipt.group(1).strip()}."
+        demand = analyse_ext_demand([artifact])
+        if demand:
+            ext_row = demand[0]
+            offsets = ", ".join(
+                f"0x{off:02X}" for off in sorted(ext_row["offsets"]))
+            if ext_row["fits"]:
+                evidence += (
+                    f" ext_demand: {offsets}; {len(ext_row['fits'])} existing "
+                    "Ext variants cover every offset, so no header expansion "
+                    "is needed.")
+            elif ext_row["uncovered"]:
+                gaps = ", ".join(
+                    f"0x{off:02X}" for off in ext_row["uncovered"])
+                evidence += (
+                    f" ext_demand: {offsets}; uncovered offsets {gaps} require "
+                    "a header task before codegen.")
+            else:
+                evidence += (
+                    f" ext_demand: {offsets}; fields exist but are split across "
+                    "variants, so assembly must identify one coherent variant.")
+    else:
+        evidence = (" No generated body survives; the complete compiler receipt "
+                    "remains in this queue record.")
+    return target, why + evidence
+
+
+def resolve_symbols(rows: list[dict], records: list[dict],
+                    apply: bool = False) -> int:
+    """Append one durable disposition to every current symbol escalation."""
+    by_id = {rec["id"]: rec for rec in records}
+    symbols = [row for row in rows if row.get("class") == "symbol"]
+    print(f"{len(symbols)} symbol disposition(s)"
+          + ("" if apply else "  [DRY RUN, nothing written]"))
+    ok = bad = 0
+    for row in symbols:
+        record = by_id[row["id"]]
+        target, evidence = symbol_disposition(row, record)
+        note = f"SYMBOL_DISPOSITION #241: {target}. {evidence}"
+        if not apply:
+            print(f"  {target:7} {row['id']} | {evidence}")
+            continue
+        result = subprocess.run(
+            [PYTHON, str(REPO / "automation" / "scheduler.py"), "report",
+             "--id", row["id"], "--status", "escalated", "--keep-note",
+             "--notes", note],
+            capture_output=True, text=True, timeout=120, cwd=str(REPO))
+        if result.returncode == 0:
+            ok += 1
+            print(f"  {target:7} {row['id']}")
+        else:
+            bad += 1
+            err = (result.stderr or result.stdout or "").strip().splitlines()
+            print(f"  FAILED {row['id']}: {err[-1] if err else result.returncode}")
+    if apply:
+        print(f"\n{ok} dispositions recorded, {bad} failed")
+    else:
+        print("\nRe-run with --apply to append them to the live queue.")
+    return 1 if bad else 0
+
+
+# ---------------------------------------------------------------------------
+
 def self_test() -> int:
     fails = []
 
@@ -1100,6 +1290,21 @@ def self_test() -> int:
     for note, want in cases:
         got = classify(note)
         ck(got == want, f"{want:8} <- {note[:52]!r} (got {got})")
+
+    print("\ndurable symbol dispositions outrank retained compiler receipts")
+    ck(classify("SYMBOL_DISPOSITION #241: real. evidence || "
+                "BUILD FAILED: `foo' undeclared") == "real",
+       "a real disposition closes the historical symbol label")
+    ck(classify("SYMBOL_DISPOSITION #241: quality. evidence || "
+                "structure has no member named `code'") == "quality",
+       "a quality disposition closes the historical symbol label")
+    local_row = {"id": "us:TEST:f", "bad_identifiers": ["temp"],
+                 "unresolved": ["temp"], "resolvable": []}
+    local_rec = {"id": "us:TEST:f",
+                 "notes": "BUILD FAILED: `temp' undeclared"}
+    disposition, reason = symbol_disposition(local_row, local_rec)
+    ck(disposition == "quality" and "local placeholder" in reason,
+       "an undeclared generated local is quality, not a symbol lookup")
 
     print("\nharness beats BUILD FAILED when a note carries both")
     ck(classify("BUILD FAILED ... INCLUDE_ASM stub not found") == "harness",
@@ -1160,6 +1365,28 @@ def self_test() -> int:
     ck(not union_unk["resolvable"][0]["executable"],
        "an invented Ext member is never auto-repaired as an Entity field")
 
+    print("\nretained overlay data closes raw-label declaration failures")
+    ck(_data_overlay_of("us:BOSS/BO0:Function") == "BOSS/BO0",
+       "the complete queue overlay key is preserved")
+    data_fix = _retained_data_fix(
+        "D_us_801A5ED4", "us:BOSS/BO0:func_us_801B13A8")
+    ck(bool(data_fix) and data_fix["kind"] == "retained-data-declaration",
+       "a BO0 retained-data label yields a typed declaration")
+    ck(bool(data_fix) and data_fix["executable"],
+       "a declaration that names the rejected label is executable")
+    data_row = triage([{
+        "id": "us:BOSS/BO0:func_us_801B13A8",
+        "note": "BUILD FAILED: `D_us_801A5ED4' undeclared",
+    }])[0]
+    ck(not data_row["unresolved"] and
+       data_row["resolvable"][0]["kind"] == "retained-data-declaration",
+       "triage consults retained data before giving up on a raw label")
+    alias_fix = _retained_data_fix(
+        "D_80073510", "us:ST/RCEN:func_us_8019FE9C")
+    ck(bool(alias_fix) and alias_fix["kind"] == "address-alias-diagnostic" and
+       not alias_fix["executable"],
+       "an address alias stays diagnostic until the candidate path is replaced")
+
     print("\nmechanical candidate repair has a narrow write boundary")
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
@@ -1185,6 +1412,20 @@ def self_test() -> int:
         ck("self->zPriority" in repaired and "self->unk24" not in repaired,
            "an exact Entity offset is replaced in candidate text")
         ck(len(changes) == 2, "every applied repair is recorded")
+        retained_row = {
+            "id": "us:BOSS/BO0:func_us_801B13A8", "class": "symbol",
+            "unresolved": [], "resolvable": [data_fix],
+        }
+        retained_original = (
+            "void func_us_801B13A8(void) {\n"
+            "    D_us_801A5ED4[0] = 0;\n"
+            "}\n")
+        retained_fixed, retained_changes = repair_candidate_text(
+            retained_row, retained_original)
+        ck("extern s32 D_us_801A5ED4[];" in retained_fixed,
+           "immutable candidate repair inserts the retained-data declaration")
+        ck(len(retained_changes) == 1,
+           "the retained-data insertion is recorded")
         wrong = "extern u8 D_us_80180000[];\n" + original
         corrected, corrected_changes = repair_candidate_text(row, wrong, root)
         ck("extern s16 D_us_80180000[];" in corrected and
@@ -1437,17 +1678,21 @@ def main() -> int:
                     help="repair only fully mechanical symbol failures in "
                          "preserved rejected candidates. DRY RUN unless "
                          "--apply is also given; never edits src/ or the queue")
+    ap.add_argument("--resolve-symbols", action="store_true",
+                    help="append evidence-backed real/quality dispositions to "
+                         "current symbol escalations; dry run unless --apply")
     ap.add_argument("--apply", action="store_true",
-                    help="apply the selected --requeue or --repair-candidates mode")
+                    help="apply the selected write mode")
     a = ap.parse_args()
 
     if a.self_test:
         return self_test()
-    if a.requeue and a.repair_candidates:
-        print("choose either --requeue or --repair-candidates, not both",
-              file=sys.stderr)
+    modes = sum(bool(mode) for mode in
+                (a.requeue, a.repair_candidates, a.resolve_symbols))
+    if modes > 1:
+        print("choose exactly one write mode", file=sys.stderr)
         return 2
-    if a.apply and not (a.requeue or a.repair_candidates):
+    if a.apply and not modes:
         print("--apply does nothing on its own", file=sys.stderr)
         return 2
 
@@ -1506,6 +1751,12 @@ def main() -> int:
 
     if a.repair_candidates:
         return repair_candidates(rows, apply=a.apply)
+    if a.resolve_symbols:
+        if a.notes_file:
+            print("\n--resolve-symbols needs complete live queue records.",
+                  file=sys.stderr)
+            return 2
+        return resolve_symbols(rows, recs, apply=a.apply)
     if a.requeue:
         if a.notes_file:
             print("\n--requeue needs the live queue; it is meaningless "

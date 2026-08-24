@@ -18,8 +18,10 @@ WHY THIS EXISTS
 WHAT THIS DOES
     For every unmatched record in the queue, asks whether upstream/master has
     a REAL definition rather than an INCLUDE_ASM stub, and reports the ones it
-    does. Read-only: prints a harvest list, writes nothing, touches neither
-    the tree nor the queue.
+    does. The default report is read-only. `--publish <record-id> --apply`
+    substitutes only that definition into the target translation unit and
+    publishes the complete, declaration-ready result into the immutable
+    candidate store. It never edits src/, builds or mutates the queue.
 
 WHY IT SHELLS OUT TO GIT
     The comparison is against a ref, not the working tree, so `search_repo`
@@ -36,6 +38,8 @@ Usage:
     python3 automation/upstream_harvest.py
     python3 automation/upstream_harvest.py --overlay rno0
     python3 automation/upstream_harvest.py --show <function>
+    python3 automation/upstream_harvest.py --overlay ST/RNO0 \
+        --publish <function> --apply
     python3 automation/upstream_harvest.py --self-test
 """
 from __future__ import annotations
@@ -52,6 +56,9 @@ if not Path(PYTHON).exists():                                # pragma: no cover
     PYTHON = sys.executable
 
 UPSTREAM = "upstream/master"
+
+sys.path.insert(0, str(REPO / "automation"))
+from artifact_store import candidate_path, publish_versioned_artifact  # noqa: E402
 
 # A definition, not a declaration and not a stub.
 RX_INCLUDE_ASM = re.compile(r'INCLUDE_ASM\([^)]*?,\s*(\w+)\s*\)')
@@ -89,6 +96,7 @@ def unmatched_records() -> list[tuple[str, str, str]]:
 
 
 _UF_CACHE: dict[str, dict[str, str]] = {}
+_UF_PATHS: dict[str, list[str]] | None = None
 _US_CACHE: set[str] | None = None
 
 
@@ -101,22 +109,36 @@ def upstream_files(overlay_hint: str = "") -> dict[str, str]:
     # CACHED. Each call is a git grep over the whole upstream tree, roughly
     # 30 seconds. transplant --scan asks per record, so without this a scan of
     # 250 records spends over two hours re-reading the same ref.
+    global _UF_PATHS
     if overlay_hint in _UF_CACHE:
         return _UF_CACHE[overlay_hint]
-    # `git grep -n` over a ref searches that ref's tree without checking it out.
-    pattern = r"^[A-Za-z_][A-Za-z0-9_ \t*]*\b\w+\s*\("
-    raw = _git("grep", "-nE", pattern, UPSTREAM, "--", "src/", timeout=300)
+    if _UF_PATHS is None:
+        # `git grep -n` over a ref searches that ref's tree without checking it
+        # out. Preserve every path: the first global definition may be a
+        # structurally different shared helper while the target overlay has its
+        # own exact body.
+        pattern = r"^[A-Za-z_][A-Za-z0-9_ \t*]*\b\w+\s*\("
+        raw = _git("grep", "-nE", pattern, UPSTREAM, "--", "src/", timeout=300)
+        paths: dict[str, list[str]] = {}
+        rx = re.compile(
+            r"^[^:]+:(?P<path>[^:]+):\d+:"
+            r"[A-Za-z_][A-Za-z0-9_ \t*]*?\b(?P<fn>\w+)\s*\([^;]*$")
+        for line in raw.splitlines():
+            m = rx.match(line)
+            if not m:
+                continue
+            paths.setdefault(m.group("fn"), []).append(m.group("path"))
+        _UF_PATHS = paths
+    token = overlay_hint.rsplit("/", 1)[-1].lower()
     defs: dict[str, str] = {}
-    rx = re.compile(
-        r"^[^:]+:(?P<path>[^:]+):\d+:"
-        r"[A-Za-z_][A-Za-z0-9_ \t*]*?\b(?P<fn>\w+)\s*\([^;]*$")
-    for line in raw.splitlines():
-        m = rx.match(line)
-        if not m:
-            continue
-        if overlay_hint and overlay_hint not in m.group("path"):
-            continue
-        defs.setdefault(m.group("fn"), m.group("path"))
+    for fn, paths in _UF_PATHS.items():
+        if token:
+            exact = [path for path in paths
+                     if f"/{token}/" in f"/{path.lower()}/"]
+            if exact:
+                defs[fn] = exact[0]
+        elif paths:
+            defs[fn] = paths[0]
     _UF_CACHE[overlay_hint] = defs
     return defs
 
@@ -145,7 +167,7 @@ def harvest(overlay: str = "") -> list[tuple[str, str, str]]:
         base = re.sub(r"_from_\w+$", "", fn)
         if base in stubs:
             continue            # upstream has not decompiled it either
-        path = defs.get(base)
+        path = upstream_files(ovl).get(base) or defs.get(base)
         if path:
             out.append((base, ovl, path))
     return sorted(set(out))
@@ -198,6 +220,78 @@ def show(fn: str) -> int:
         return 1
     print(f"=== {UPSTREAM}:{path} ===\n")
     print(body)
+    return 0
+
+
+def _candidate_body(source: str, base: str, target: str) -> str:
+    """Extract one body with the visibility required by a live queue symbol."""
+    body = _extract(source, base)
+    if not body:
+        return ""
+    if target != base:
+        body = re.sub(rf"\b{re.escape(base)}\b", target, body)
+    # Upstream may make a helper static after decompiling every caller into the
+    # same translation unit. This fork can still have assembly callers in other
+    # objects, and an INCLUDE_ASM queue symbol must retain external visibility
+    # until those callers move. Static changes no function instructions, but it
+    # makes the partial-tree linker unable to satisfy the preserved call.
+    body = re.sub(r"(?m)^static\s+(?=[A-Za-z_])", "", body, count=1)
+    return body
+
+
+def publish(record_id: str, apply: bool = False) -> int:
+    """Publish one exact upstream definition as immutable candidate evidence."""
+    records = {rid: (overlay, fn) for rid, overlay, fn in unmatched_records()}
+    if record_id not in records:
+        print("record is not an exact unmatched queue id")
+        return 1
+    overlay, fn = records[record_id]
+    base = re.sub(r"_from_\w+$", "", fn)
+    path = (upstream_files(overlay).get(base) or
+            upstream_files().get(base))
+    if not path:
+        print(f"upstream has no definition for {base}")
+        return 1
+    source = _git("show", f"{UPSTREAM}:{path}")
+    body = _candidate_body(source, base, fn)
+    if not body:
+        print(f"could not extract {base} from {path}")
+        return 1
+    import permuter_supervisor as ps  # type: ignore
+    found = ps.find_stub(fn, overlay)
+    if found is None:
+        print(f"no exact live INCLUDE_ASM stub for {record_id}")
+        return 1
+    target_path, asm_rel, _stub = found
+    target_rel = target_path.resolve().relative_to(REPO.resolve()).as_posix()
+    sys.path.insert(0, str(REPO / "automation" / "win"))
+    import worker_direct as wd  # type: ignore
+    ctx = {"src_rel": target_rel, "asm_rel": asm_rel}
+    whole = wd.virtual_apply(ctx, fn, body)
+    if not whole:
+        print(f"candidate no longer replaces the exact stub in {target_rel}")
+        return 1
+    whole = wd._declare_stub_siblings(whole, body)
+    provenance = (
+        "/* UPSTREAM CANDIDATE -- complete target translation unit.\n"
+        f"   record : {record_id}\n"
+        f"   source : {UPSTREAM}:{path}\n"
+        f"   target : {target_rel}\n"
+        "   content: WHOLE FILE (stub substituted, declarations complete)\n"
+        "   verdict: candidate evidence only; isolated score and verify_build "
+        "remain required. */\n")
+    artifact = provenance + whole
+    stable = candidate_path(record_id, REPO)
+    print(f"record: {record_id}")
+    print(f"source: {UPSTREAM}:{path}")
+    print(f"target: {target_rel}")
+    print(f"stable: {stable.relative_to(REPO).as_posix()}")
+    if not apply:
+        print("dry run: re-run with --apply to publish immutable evidence")
+        return 0
+    version = publish_versioned_artifact(
+        stable, artifact, "upstream candidate", REPO)
+    print(f"immutable: {version}")
     return 0
 
 
@@ -401,9 +495,29 @@ def self_test() -> int:
     ck(re.sub(r"_from_\w+$", "", "EntityBreakable") == "EntityBreakable",
        "a name without the suffix is untouched")
 
+    print("\noverlay-local definitions outrank same-named global helpers")
+    saved_paths, saved_cache = _UF_PATHS, dict(_UF_CACHE)
+    try:
+        globals()["_UF_PATHS"] = {
+            "target": ["src/st/e_shared.h", "src/st/rno0/e_target.c"]}
+        _UF_CACHE.clear()
+        ck(upstream_files("ST/RNO0")["target"] ==
+           "src/st/rno0/e_target.c",
+           "RNO0 selects its own definition")
+        ck(upstream_files()["target"] == "src/st/e_shared.h",
+           "the global fallback remains available")
+    finally:
+        globals()["_UF_PATHS"] = saved_paths
+        _UF_CACHE.clear()
+        _UF_CACHE.update(saved_cache)
+
     print("\ngit is reached through the repo, never the sandbox")
     src = Path(__file__).read_text(errors="ignore")
     ck('cwd=str(REPO)' in src, "every git call is cwd-pinned to the repo")
+    ck("wd.virtual_apply" in src and "wd._declare_stub_siblings" in src,
+       "publication reuses whole-file substitution and declaration completion")
+    ck("content: WHOLE FILE" in src,
+       "the published artifact states its complete translation-unit boundary")
     # Check the CALL SITES, not the file text. The first version searched the
     # whole source for "merge" and matched the word in this module's own
     # docstring, failing a module that does nothing of the kind. A test that
@@ -427,6 +541,11 @@ def self_test() -> int:
                  "void* tbl[] = { target, other };\n")
     ck(_extract(decl_only, "target") == "",
        f"a declaration alone yields nothing ({_extract(decl_only, 'target')[:40]!r})")
+    static_body = _candidate_body(
+        "static void target(void) { target(); }", "target", "target_from_src")
+    ck(static_body.startswith("void target_from_src") and
+       "target_from_src();" in static_body,
+       "a queued suffix is applied and partial-tree external visibility is kept")
 
     print("\nthe comparison metric is the one our own metrics cannot see")
     # Both sides match the same asm, so semantics agree and only naming can
@@ -458,6 +577,10 @@ def main() -> int:
         formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--overlay", default="", help="filter, e.g. rno0")
     ap.add_argument("--show", help="print upstream's file for one function")
+    ap.add_argument("--publish",
+                    help="unmatched function to publish; requires --overlay")
+    ap.add_argument("--apply", action="store_true",
+                    help="write the selected --publish candidate")
     ap.add_argument("--compare-matched", action="store_true",
                     help="our matched C vs upstream's independent version")
     ap.add_argument("--limit", type=int, default=0)
@@ -467,6 +590,15 @@ def main() -> int:
         return self_test()
     if a.show:
         return show(a.show)
+    if a.publish:
+        record_id = a.publish
+        if ":" not in record_id:
+            if not a.overlay:
+                ap.error("--publish requires --overlay")
+            record_id = f"us:{a.overlay.upper()}:{record_id}"
+        return publish(record_id, a.apply)
+    if a.apply:
+        ap.error("--apply requires --publish")
     if a.compare_matched:
         return compare_matched(a.limit)
     return report(a.overlay)

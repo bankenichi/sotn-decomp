@@ -1,36 +1,37 @@
-/* REJECTED CANDIDATE -- did NOT compile. Kept on purpose.
+/* PERMUTER SEED -- deterministic isolated-score candidate.
    record : us:ST/RNO0:func_us_801B7104
-   attempt: 4/4
-   from   : mimo-v2.5-free
+   score  : 5750
+   receipt: nonmatchings/.adapt-scores/20260824-195225-1950-050609/func_us_801B7104/adapt-score.json
+   producer: compiled-donor transplant, no model
+   content: WHOLE FILE (isolated adaptable draft)
    origin : src/st/rno0/func_us_801b7104.c
-   verdict: BUILD FAILED:
-5:src/st/rno0/func_us_801b7104.c:25: `RNO0_EInitCommon' undeclared (first use this function)
-6:src/st/rno0/func_us_801b7104.c:25: (Each undeclared identifier is reported only once
-7:src/st/rno0/func_us_801b7104.c:25: for each function it appears in.)
-8:src/st/rno0/func_us_801b7104.c:36: `D_us_80180FDC' undeclared (first use this function)
-9:src/st/rno0/func_us_801b7104.c:53: `D_us_80180FE8' undeclared (first use this function)
-10-[4/159] psx cc src/weapon/w_019.c
-11-[5/159] psx cc src/weapon/w_014.c
+   asm    : asm/us/st/rno0/nonmatchings/func_us_801b7104/func_us_801B7104.s
+   verdict: the exact target function compiled under the project
+            compiler and flags but did not score zero. A full game
+            build was intentionally not run. Import and search via
+            permuter_supervisor.py; never treat this as a match. */
+// SPDX-License-Identifier: AGPL-3.0-or-later
+#include "rno0.h"
 
-   This is NOT a permuter seed and must never be treated as
-   one: it has never built. automation/candidates/ is for
-   code that builds and merely misses on bytes.
+/* Added by the permuter-seed writer. The permuter parses the complete
+   translation unit, so every call needs typemap evidence. INCLUDE_ASM
+   disappears under PERMUTER, and C89 implicit calls have no declaration.
+   Either case otherwise raises KeyError when a mutation touches the call. */
+/* Declared by the tree: */
+void InitializeEntity(u16 arg0[]);
+extern s16 (*g_api_AllocPrimitives)(PrimitiveType type, s32 count);
+void DestroyEntity(Entity*);
+/* End permuter-seed writer declarations. */
 
-   Why it is kept: the escalation path used to record only
-   the compiler's message, so a record like `g_EInitCommon
-   undeclared` described code nobody could look at any more.
-   Twelve such records were assumed to be one extern away
-   from building, and turned out to need a full re-attempt
-   because the candidate had been discarded.
+/* Declarations injected by the worker: used by the candidate
+   below and absent from this file. Copied verbatim from the
+   tree, same overlay or a shared header, never another
+   overlay's. */
+extern Primitive g_PrimBuf[];
 
-   Do NOT apply this to the tree. Read it, fix what the
-   verdict names, and re-attempt. */
-/* Mechanical symbol repair from escalation_triage.py. */
 extern EInit RNO0_EInitCommon;
-
-/* Mechanical symbol repair from escalation_triage.py. */
-extern u8 D_us_80180FDC[]; /* retained ST/RNO0 data asm/us/st/rno0/data/ED0.data.s, size 0xc */
-extern s16 D_us_80180FE8[]; /* retained ST/RNO0 data asm/us/st/rno0/data/ED0.data.s, size 0x60 */
+extern u8 D_us_80180FDC[];
+extern s16 D_us_80180FE8[];
 
 void func_us_801B7104(Entity* self) {
     Primitive* prim;

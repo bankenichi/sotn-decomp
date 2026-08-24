@@ -1,6 +1,16 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #include "rno0.h"
 
+/* Added by the permuter-seed writer. The permuter parses the complete
+   translation unit, so every call needs typemap evidence. INCLUDE_ASM
+   disappears under PERMUTER, and C89 implicit calls have no declaration.
+   Either case otherwise raises KeyError when a mutation touches the call. */
+/* Declared by the tree: */
+int rcos(int a);
+int rsin(int a);
+int abs(int x);
+/* End permuter-seed writer declarations. */
+
 INCLUDE_ASM("st/rno0/nonmatchings/e_gorgon", func_801CD78C_801CEB40);
 
 /* Declarations injected by the worker: used by the candidate

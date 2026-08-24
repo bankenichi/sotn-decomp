@@ -64,6 +64,7 @@ Usage:
     python3 automation/ext_demand.py                # ranked demand report
     python3 automation/ext_demand.py --variants     # inventory of ET_ variants
     python3 automation/ext_demand.py --function NAME
+    python3 automation/ext_demand.py --record us:ST/RCEN:EntityShaft
     python3 automation/ext_demand.py --self-test
 """
 from __future__ import annotations
@@ -253,6 +254,21 @@ def _gen_files() -> list[Path]:
     return out
 
 
+def record_file_key(record_id: str) -> str:
+    """Return the artifact-store stem for one exact queue id or stable key."""
+    if re.fullmatch(r"[A-Za-z0-9_.-]+", record_id):
+        return record_id
+    return re.sub(r"[^A-Za-z0-9_.-]+", "_", record_id)
+
+
+def files_for_record(record_id: str) -> list[Path]:
+    """Prefer the current candidate, then rejected body, for an exact record."""
+    stem = record_file_key(record_id) + ".c"
+    found = [directory / stem for directory in GEN_DIRS
+             if (directory / stem).is_file()]
+    return found[:1]
+
+
 def analyse(files: list[Path] | None = None) -> list[dict]:
     """Per-file demand, with covering variants and the offsets nothing covers."""
     variants = parse_variants()
@@ -342,8 +358,11 @@ def main() -> int:
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--variants", action="store_true",
                     help="inventory every ET_ variant and its extent")
-    ap.add_argument("--function", default="",
-                    help="report on generated files matching this name")
+    select = ap.add_mutually_exclusive_group()
+    select.add_argument("--function", default="",
+                        help="report on generated files matching this name")
+    select.add_argument("--record", default="",
+                        help="exact queue id or normalized artifact key, never a name substring")
     ap.add_argument("--self-test", action="store_true")
     a = ap.parse_args()
     if a.self_test:
@@ -360,6 +379,26 @@ def main() -> int:
             print(f"  {name:32s} ends 0x{v['end']:02X}  "
                   f"{len(v['fields']):2d} fields  "
                   f"{rev.get(name, '(UNREACHABLE)')}{over}")
+        return 0
+    if a.record:
+        selected = files_for_record(a.record)
+        if not selected:
+            print(f"no generated artifact for record {a.record!r}")
+            return 0
+        rows = analyse(selected)
+        if not rows:
+            print(f"{selected[0].name}: current artifact has no Ext demand")
+            return 0
+        for r in rows:
+            print(f"{r['file']}")
+            print("  wants " + " ".join(f"0x{o:02X}" for o in sorted(r["offsets"])))
+            print("  fits  " + (", ".join(r["fits"]) or "NOTHING: header change"))
+            for off, expressions in sorted(r["expressions"].items()):
+                if expressions:
+                    print(f"  0x{off:02X} named " + ", ".join(expressions[:8]))
+            if r["uncovered"]:
+                print("  unnamed anywhere: "
+                      + " ".join(f"0x{o:02X}" for o in r["uncovered"]))
         return 0
     if a.function:
         rows = analyse([p for p in _gen_files() if a.function in p.name])
@@ -458,6 +497,18 @@ def self_test() -> int:
        "worker_direct uses when it rewrites the placeholder")
     ck(demanded_offsets("x->ext.ILLEGAL.s16[2]")[0x80] == 1,
         "and element width is honoured, so s16[2] is 0x80 not 0x7E")
+
+    print("\nexact queue ids do not collide on duplicate function names")
+    ck(record_file_key("us:ST/RCEN:EntityShaft") ==
+       "us_ST_RCEN_EntityShaft",
+       "queue ids normalize to the artifact store's stable stem")
+    ck(record_file_key("us_ST_RCEN_EntityShaft") ==
+       "us_ST_RCEN_EntityShaft",
+       "connector-safe stable keys remain exact")
+    shaft_files = files_for_record("us:ST/RCEN:EntityShaft")
+    ck(not shaft_files or all("us_ST_RCEN_EntityShaft" in p.name
+                              for p in shaft_files),
+       "record selection cannot silently return BO6 EntityShaft")
 
     print("\nraw Entity-base offsets are evidence, not invisible pointer arithmetic")
     raw_code = "void f(Entity* self) { use(&((u8*)g_CurrentEntity)[0x90]); }"

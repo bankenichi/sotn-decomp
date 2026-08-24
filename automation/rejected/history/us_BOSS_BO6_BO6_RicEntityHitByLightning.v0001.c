@@ -34,9 +34,6 @@ extern void DestroyEntity(Entity* entity);
 extern u16 RIC_zPriority;
 extern s32 g_Entities_64;
 
-/* Mechanical symbol repair from escalation_triage.py. */
-extern s16 D_us_80181E74[]; /* retained BOSS/BO6 data asm/us/boss/bo6/data/us_39144.data.s, size 0x4 */
-
 void BO6_RicEntityHitByLightning(Entity* self) {
     s32 shouldDestroy;
     s32 primIndex;

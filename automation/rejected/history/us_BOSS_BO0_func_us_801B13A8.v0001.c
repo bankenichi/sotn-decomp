@@ -27,9 +27,6 @@ extern Entity* g_CurrentEntity;
 
 /* Reads boss animation frame data, calculates hitbox dimensions and position offsets,
    then applies them to the target entity based on facing direction. */
-/* Mechanical symbol repair from escalation_triage.py. */
-extern s32 D_us_801A5ED4[]; /* retained BOSS/BO0 data asm/us/boss/bo0/data/2614.data.s, size 0x88 */
-
 void func_us_801B13A8(Entity* target) {
     Entity* self = g_CurrentEntity;
     u16 unk5A = self->unk5A;

@@ -24,9 +24,6 @@
 
    Do NOT apply this to the tree. Read it, fix what the
    verdict names, and re-attempt. */
-/* Mechanical symbol repair from escalation_triage.py. */
-extern s32 D_us_8018091C[]; /* retained ST/RCEN data asm/us/st/rcen/data/68C.data.s, size 0x30 */
-
 void func_us_8019D330(Entity* self) {
     s32 angle;
     s32 velocityMultiplier;

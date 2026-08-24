@@ -24,9 +24,6 @@
 
    Do NOT apply this to the tree. Read it, fix what the
    verdict names, and re-attempt. */
-/* Mechanical symbol repair from escalation_triage.py. */
-extern u8 D_us_801832E4[]; /* retained ST/RNO0 data asm/us/st/rno0/data/32B4.data.s, size 0x20 */
-
 void func_us_801D0CFC(Entity* self) {
     Collider collider;
     s16 sp40;

@@ -24,9 +24,6 @@
 
    Do NOT apply this to the tree. Read it, fix what the
    verdict names, and re-attempt. */
-/* Mechanical symbol repair from escalation_triage.py. */
-extern s32 D_us_80180708[]; /* retained BOSS/BO0 data asm/us/boss/bo0/data/0.data.s, size 0xc */
-
 void func_us_801B6CA4(Entity* self) {
     Primitive* prim;
     s32 primIndex;
