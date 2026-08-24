@@ -1169,12 +1169,21 @@ files:
     src_path: src/st/rdai
     splat_config_path: config/splat.us.strdai.yaml
   - target: disks/us/ST/RLIB/RLIB.BIN
+    asset_path: assets/st/rlib
+    src_path: src/st/rlib
+    splat_config_path: config/splat.us.strlib.yaml
   - target: disks/us/ST/RNO0/RNO0.BIN
     asset_path: assets/st/rno0
     src_path: src/st/rno0
     splat_config_path: config/splat.us.strno0.yaml
   - target: disks/us/ST/RNO1/RNO1.BIN
+    asset_path: assets/st/rno1
+    src_path: src/st/rno1
+    splat_config_path: config/splat.us.strno1.yaml
   - target: disks/us/ST/RNO2/RNO2.BIN
+    asset_path: assets/st/rno2
+    src_path: src/st/rno2
+    splat_config_path: config/splat.us.strno2.yaml
   - target: disks/us/ST/RNO3/RNO3.BIN
     asset_path: assets/st/rno3
     src_path: src/st/rno3
@@ -1216,6 +1225,17 @@ files:
           - [0x10E68, palette, pal_dodo, 16]
           - [0x10E88, skip]
   - target: disks/us/ST/RNO4/RNO4.BIN
+    asset_path: assets/st/rno4
+    src_path: src/st/rno4
+    splat_config_path: config/splat.us.strno4.yaml
+    segments:
+      - start: 0
+        vram: 0x80180000
+        assets:
+          - [0x134, layers, layers]
+          - [0x960, skip]
+          - [0x2C00, rooms, rooms]
+          - [0x2D58, skip]
   - target: disks/us/ST/RNZ0/RNZ0.BIN
     asset_path: assets/st/rnz0
     src_path: src/st/rnz0
@@ -1270,6 +1290,16 @@ files:
           - [0x144CC, palette, D_801944CC, 16]
           - [0x1450C, skip]
   - target: disks/us/ST/RNZ1/RNZ1.BIN
+    asset_path: assets/st/rnz1
+    src_path: src/st/rnz1
+    splat_config_path: config/splat.us.strnz1.yaml
+    segments:
+      - start: 0
+        vram: 0x80180000
+        assets:
+          - [0x40, skip] # sprite banks and palette definition remain raw
+          - [0x840, layout, entity_layouts]
+          - [0x9E8, skip]
   - target: disks/us/ST/RTOP/RTOP.BIN
     asset_path: assets/st/rtop
     src_path: src/st/rtop
@@ -1365,8 +1395,74 @@ files:
         assets:
           - [0x0, skip]
   - target: disks/us/BOSS/BO1/BO1.BIN
+    asset_path: assets/boss/bo1
+    src_path: src/boss/bo1
+    splat_config_path: config/splat.us.bobo1.yaml
+    segments:
+      - start: 0
+        vram: 0x80180000
+        assets:
+          - [0x2C, sprite_banks, us/sprite_banks]
+          - [0x8C, palette, pal_8C, 16]
+          - [0xAC, palette, pal_AC, 16]
+          - [0xCC, palette, pal_CC, 16]
+          - [0x12C, palette, pal_12C, 16]
+          - [0x18C, palette, pal_18C, 16]
+          - [0x1EC, palette, pal_1EC, 16]
+          - [0x24C, palette, pal_24C, 16]
+          - [0x26C, palette, pal_26C, 16]
+          - [0x2CC, palette, pal_2CC, 16]
+          - [0x2EC, palette, pal_2EC, 16]
+          - [0x30C, palette, pal_30C, 16]
+          - [0x32C, palette, pal_32C, 16]
+          - [0x34C, palette, pal_34C, 16]
+          - [0x38C, palette, pal_38C, 16]
+          - [0x3CC, palette, pal_3CC, 16]
+          - [0x3EC, palette, pal_3EC, 16]
+          - [0x40C, palette, pal_40C, 16]
+          - [0x4CC, palette, pal_4CC, 16]
+          - [0x58C, paldef, palette_def]
+          - [0x6D4, layers, layers]
+          - [0x70C, gfx_banks, graphics_banks]
+          - [0x850, layout, entity_layouts]
+          - [0x9F8, skip]
+          - [0x1B5C, rooms, rooms]
+          - [0x1B78, skip]
+          - [0x1D84, cmpgfx, gfx_1D84, 128, 128, 4, 0x14938]
+          - [0x2F38, cmpgfx, gfx_2F38, 128, 128, 4, 0x14918]
+          - [0x3BA4, cmpgfx, gfx_3BA4, 128, 128, 4, 0x14938]
+          - [0x4858, cmpgfx, gfx_4858, 128, 128, 4, 0x14938]
+          - [0x5844, cmpgfx, gfx_5844, 128, 128, 4, 0x14938]
+          - [0x6934, cmpgfx, gfx_6934, 128, 128, 4, 0x14938]
+          - [0x7704, cmpgfx, gfx_7704, 128, 128, 4, 0x14938]
+          - [0x872C, cmpgfx, gfx_872C, 128, 128, 4, 0x14938]
+          - [0x966C, cmpgfx, gfx_966C, 128, 128, 4, 0x14938]
+          - [0xA73C, cmpgfx, gfx_A73C, 128, 128, 4, 0x14938]
+          - [0xB4E8, cmpgfx, gfx_B4E8, 128, 128, 4, 0x14938]
+          - [0xC214, cmpgfx, gfx_C214, 128, 128, 4, 0x14938]
+          - [0xD264, cmpgfx, gfx_D264, 128, 128, 4, 0x14938]
+          - [0xE170, cmpgfx, gfx_E170, 128, 128, 4, 0x14938]
+          - [0xF658, cmpgfx, gfx_F658, 128, 128, 4, 0x14938]
+          - [0x108E0, cmpgfx, gfx_108E0, 128, 128, 4, 0x14938]
+          - [0x11A08, cmpgfx, gfx_11A08, 128, 128, 4, 0x149D8]
+          - [0x12984, cmpgfx, gfx_12984, 128, 128, 4, 0x149D8]
+          - [0x13330, cmpgfx, gfx_13330, 128, 128, 4, 0x149D8]
+          - [0x14228, cmpgfx, gfx_14228, 128, 128, 4, 0x149D8]
+          - [0x14918, palette, pal_granfaloon, 16]
+          - [0x149D8, palette, pal_explosion_flame, 16]
+          - [0x14BD8, palette, pal_14BD8, 16] # unused
+          - [0x14C98, skip] # the two tilemaps referenced by the layers
+          - [0x15C98, tiledef, load] # 0x100 tiles per section
+          - [0x160A8, tiledef, save] # 0x1000 tiles per section
+          - [0x1A0B8, skip] # the tile definition referenced by the layers
   - target: disks/us/BOSS/BO2/BO2.BIN
+    asset_path: assets/boss/bo2
+    src_path: src/boss/bo2
+    splat_config_path: config/splat.us.bobo2.yaml
   - target: disks/us/BOSS/BO3/BO3.BIN
+    asset_path: assets/boss/bo3
+    src_path: src/boss/bo3
+    splat_config_path: config/splat.us.bobo3.yaml
   - target: disks/us/BOSS/BO4/BO4.BIN
     asset_path: assets/boss/bo4
     src_path: src/boss/bo4
@@ -1395,6 +1491,9 @@ files:
           - [0x2C288, palette, D_us_801AC288, 16]
           - [0x2C668, skip]
   - target: disks/us/BOSS/BO5/BO5.BIN
+    asset_path: assets/boss/bo5
+    src_path: src/boss/bo5
+    splat_config_path: config/splat.us.bobo5.yaml
   - target: disks/us/BOSS/BO6/BO6.BIN
     asset_path: assets/boss/bo6
     src_path: src/boss/bo6
@@ -1410,6 +1509,9 @@ files:
             - [0x1204, rooms, rooms]
             - [0x1210, skip]
   - target: disks/us/BOSS/BO7/BO7.BIN
+    asset_path: assets/boss/bo7
+    src_path: src/boss/bo7
+    splat_config_path: config/splat.us.bobo7.yaml
   - target: disks/us/BOSS/RBO0/RBO0.BIN
     asset_path: assets/boss/rbo0
     src_path: src/boss/rbo0

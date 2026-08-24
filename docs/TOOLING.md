@@ -12,8 +12,8 @@ For the mechanisms that land matches, read `automation/README.md`.
 
 | live authority | current value |
 |---|---|
-| Build oracle | **81/81** from the artifacts on disk |
-| Decompiled | **97.0%**, 6386/6557 functions; 174 US `INCLUDE_ASM` stubs remain |
+| Build oracle | **113/113** from the artifacts on disk |
+| Decompiled | **97.0%**, 6386/6557 functions; 686 US `INCLUDE_ASM` stubs remain |
 | Queue | 471 records: 300 matched, 122 escalated, 43 deferred, 6 near |
 | Provenance | upstream-harvest 45, shim-segment 9, shim-header 55, transplant 19, twin-port 29, permuter 18, claude-manual 4, model-fleet 56, unknown 65 |
 | Automation | 84 modules, 28 suites plus 35 module self-tests, 90 tools, 68 diagnostics |

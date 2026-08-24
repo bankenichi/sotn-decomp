@@ -52,7 +52,7 @@ static void RunCutsceneEvents(void) {
             break;
         case CSEV_WAIT_FOR_FLAG:
             if (!((g_CutsceneFlags >> *g_Dialogue.eventCur) & 1)) {
-#ifdef STAGE_IS_DRE
+#if defined(STAGE_IS_DRE) || defined(CUTSCENE_WAIT_FOR_FLAG_REWIND)
                 g_Dialogue.timer--;
                 g_Dialogue.eventCur -= 3;
 #else

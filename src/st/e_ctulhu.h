@@ -19,6 +19,9 @@ typedef enum {
     CTULHU_DEBUG = 255
 } CtulhuSteps;
 
+#ifdef STAGE_IS_RNO2
+static u16 sensors_unused[] = {0, 40, 8, 0};
+#endif
 static u16 sensors_unk[] = {0, 72, 8, 0};
 static u16 sensors_ground[][2] = {{0, 40}, {0, 4}, {8, -4}, {-16, 0}};
 
@@ -622,6 +625,8 @@ void EntityCtulhuFireball(Entity* self) {
         self->ext.prim = prim;
 #ifdef STAGE_IS_RNZ0
         prim->tpage = 0x12;
+#elif defined(CTULHU_TPAGE)
+        prim->tpage = CTULHU_TPAGE;
 #else
         prim->tpage = 0x14;
 #endif

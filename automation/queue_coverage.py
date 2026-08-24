@@ -20,6 +20,7 @@ WHY THIS EXISTS
     the other. The gap was 73 functions.
 
 WHAT IT REPORTS, per overlay
+    scope        required US binaries and their splat configs are present
     stubs        INCLUDE_ASM stubs in HEAD under that overlay's src dir
     records      queue records for that overlay, any status
     BLIND        stubs with no queue record at all. The number that matters.
@@ -71,6 +72,76 @@ sys.path.insert(0, str(HERE))
 # about the same tree, which is precisely the failure this tool exists to
 # detect in the queue.
 from matched_audit import stubs_in, overlay_dir, _run, PYTHON  # noqa: E402
+
+FORWARD_STAGES = (
+    "ARE", "CAT", "CEN", "CHI", "DAI", "DRE", "LIB", "MAD", "NO0",
+    "NO1", "NO2", "NO3", "NO4", "NP3", "NZ0", "NZ1", "ST0", "TOP",
+    "WRP",
+)
+REVERSE_STAGES = (
+    "RARE", "RCAT", "RCEN", "RCHI", "RDAI", "RLIB", "RNO0", "RNO1",
+    "RNO2", "RNO3", "RNO4", "RNZ0", "RNZ1", "RTOP", "RWRP",
+)
+REQUIRED_US_ARTIFACTS = (
+    "main.exe", "DRA.BIN", "RIC.BIN",
+    *(name for stage in FORWARD_STAGES
+      for name in (f"{stage}.BIN", f"F_{stage}.BIN")),
+    "SEL.BIN",
+    *(name for stage in REVERSE_STAGES
+      for name in (f"{stage}.BIN", f"F_{stage}.BIN")),
+    *(name for n in range(8) for name in (f"BO{n}.BIN", f"F_BO{n}.BIN")),
+    "MAR.BIN",
+    *(name for n in range(9) for name in (f"RBO{n}.BIN", f"F_RBO{n}.BIN")),
+    *(f"TT_{n:03}.BIN" for n in range(5)),
+    "WEAPON0.BIN",
+)
+REQUIRED_US_CONFIGS = (
+    "splat.us.main.yaml", "splat.us.dra.yaml", "splat.us.ric.yaml",
+    *(f"splat.us.st{stage.lower()}.yaml" for stage in FORWARD_STAGES),
+    "splat.us.stsel.yaml",
+    *(f"splat.us.st{stage.lower()}.yaml" for stage in REVERSE_STAGES),
+    *(f"splat.us.bobo{n}.yaml" for n in range(8)),
+    "splat.us.bomar.yaml",
+    *(f"splat.us.borbo{n}.yaml" for n in range(9)),
+    *(f"splat.us.tt_{n:03}.yaml" for n in range(5)),
+    "splat.us.weapon.yaml",
+)
+
+
+def required_scope_gaps(
+        manifest_text: str | None = None,
+        config_names: set[str] | None = None) -> list[str]:
+    """Missing artifacts/configs from the fork's declared US scope.
+
+    Source and queue scans can only see directories already named by a splat
+    config. Without this independent policy boundary, omitting an entire
+    binary makes queue coverage report a false clean result.
+    """
+    if manifest_text is None:
+        try:
+            manifest_text = (REPO / "config" / "check.us.sha").read_text(
+                errors="ignore")
+        except OSError:
+            manifest_text = ""
+    if config_names is None:
+        config_names = {
+            p.name for p in (REPO / "config").glob("splat.us.*.yaml")
+        }
+    artifacts = {
+        line.split()[-1].rsplit("/", 1)[-1]
+        for line in manifest_text.splitlines() if line.split()
+    }
+    required_artifacts = set(REQUIRED_US_ARTIFACTS)
+    required_configs = set(REQUIRED_US_CONFIGS)
+    gaps = [f"artifact:{name}" for name in REQUIRED_US_ARTIFACTS
+            if name not in artifacts]
+    gaps.extend(f"config:{name}" for name in REQUIRED_US_CONFIGS
+                if name not in config_names)
+    gaps.extend(f"unexpected-artifact:{name}"
+                for name in sorted(artifacts - required_artifacts))
+    gaps.extend(f"unexpected-config:{name}"
+                for name in sorted(config_names - required_configs))
+    return gaps
 
 
 def us_src_dirs() -> set[str]:
@@ -162,6 +233,15 @@ def collect() -> dict:
 
 
 def report(only: str = "") -> int:
+    scope_gaps = required_scope_gaps()
+    if scope_gaps:
+        print("refusing to judge queue coverage: required US binary scope is "
+              "incomplete")
+        for gap in scope_gaps:
+            print(f"  MISSING {gap}")
+        print(f"\nSUMMARY  {len(scope_gaps)} REQUIRED-SCOPE gap(s)")
+        return 2
+
     by = collect()
     if not by:
         print("refusing to judge: no stubs and no records were found, which "
@@ -261,6 +341,28 @@ def self_test() -> int:
        "reported 3 permanently blind functions the us oracle cannot check")
     ck(any(d.rstrip("/") == "src/st/rchi" for d in real_us),
        "while a genuine us overlay dir IS present")
+
+    print("\nwhole-binary omissions cannot masquerade as clean queue coverage")
+    complete_manifest = "\n".join(
+        f"{'0' * 40}  build/us/{name}" for name in REQUIRED_US_ARTIFACTS)
+    complete_configs = set(REQUIRED_US_CONFIGS)
+    ck(len(REQUIRED_US_ARTIFACTS) == 113,
+       "the exact upstream US oracle contains 113 artifacts")
+    ck(required_scope_gaps(complete_manifest, complete_configs) == [],
+       "all 113 artifacts and their 62 configs form a complete required scope")
+    missing = required_scope_gaps(
+        complete_manifest.replace(
+            f"{'0' * 40}  build/us/RBO8.BIN\n", ""),
+        complete_configs - {"splat.us.borbo7.yaml"})
+    ck(missing == [
+        "artifact:RBO8.BIN", "config:splat.us.borbo7.yaml"],
+       f"an omitted binary and config are both visible ({missing})")
+    unexpected = required_scope_gaps(
+        complete_manifest + f"\n{'0' * 40}  build/us/FUTURE.BIN",
+        complete_configs | {"splat.us.future.yaml"})
+    ck(unexpected == [
+        "unexpected-artifact:FUTURE.BIN", "unexpected-config:splat.us.future.yaml"],
+       f"scope growth cannot bypass an explicit policy update ({unexpected})")
 
     print("\nmatched records are not mistaken for stale ones")
     # A matched record SHOULD have no stub. Counting that as an anomaly would

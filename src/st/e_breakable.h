@@ -43,6 +43,15 @@ void EntityBreakable(Entity* entity) {
         entity->blendMode = blend_modes[breakableType];
         entity->hitboxHeight = g_eBreakableHitboxes[breakableType];
         entity->animSet = g_eBreakableanimSets[breakableType];
+#ifdef STAGE_IS_BO5
+        entity->hitboxOffX = 8;
+        entity->hitboxOffY = 8;
+        if (!breakableType) {
+            entity->hitboxWidth = 4;
+            entity->hitboxOffX = 2;
+            entity->hitboxOffY = 2;
+        }
+#endif
 #if defined(STAGE_IS_RNO3)
         entity->drawFlags = ENTITY_ROTATE;
         entity->rotate = ROT(180);
