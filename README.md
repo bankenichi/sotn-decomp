@@ -96,12 +96,12 @@ history rather than anyone's recollection:
 
 | source | count | share | what it means |
 |---|---|---|---|
-| upstream-harvest | 44 | 15% | upstream had already decompiled it; copied and verified here, **not** produced by this fork |
+| upstream-harvest | 45 | 15% | upstream had already decompiled it; copied and verified here, **not** produced by this fork |
 | shim-segment | 9 | 3% | shared header plus splat segment work |
 | shim-header | 55 | 18% | body copied from a shared header |
 | transplant | 19 | 6% | transplant.py moved a twin body in mechanically |
 | twin-port | 29 | 10% | ported from a sibling overlay or RIC, by hand |
-| permuter | 19 | 6% | decomp-permuter search reached 0 |
+| permuter | 18 | 6% | decomp-permuter search reached 0 |
 | claude-manual | 4 | 1% | written or repaired by hand |
 | model-fleet | 56 | 19% | an OpenCode or llama worker wrote it |
 | unknown | 65 | 22% | evidence insufficient; **not** a guess |

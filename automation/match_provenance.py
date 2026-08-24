@@ -132,7 +132,8 @@ _PATTERNS = (
     # happened to the first two transplants before the transplant pattern was
     # added, and the lesson is to register the method WITH the method.
     ("upstream-harvest", re.compile(
-        r"METHOD=UPSTREAM-HARVEST|\bupstream[- ]harvest\w*\b|"
+        r"METHOD=UPSTREAM-HARVEST|\bUPSTREAM_OVERLAY_HARVEST\b|"
+        r"\bupstream[- ]harvest\w*\b|"
         r"\bfrom upstream/master\b|\bharvested from upstream\b", re.I)),
     ("shim-segment", re.compile(
         r"\bshimmed via\b|\bsplat \.data\b|\badded \.data\b|\.bss segment|"
@@ -514,6 +515,10 @@ def self_test() -> int:
     print("\nreal queue notes are classified the way a reader would")
     # Every string here is copied from an actual matched record.
     cases = [
+        ("METHOD=UPSTREAM-HARVEST. Imported from upstream/master.",
+         "upstream-harvest"),
+        ("UPSTREAM_OVERLAY_HARVEST #241: selected target-local definition.",
+         "upstream-harvest"),
         ("Verbatim copy from st_common.h:426-430.", "shim-header"),
         ("Relocated verbatim from giantbro_helpers.h, no changes needed.",
          "shim-header"),

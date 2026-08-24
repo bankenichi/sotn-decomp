@@ -274,6 +274,7 @@ def publish(record_id: str, apply: bool = False) -> int:
     whole = wd._declare_stub_siblings(whole, body)
     provenance = (
         "/* UPSTREAM CANDIDATE -- complete target translation unit.\n"
+        "   method : METHOD=UPSTREAM-HARVEST\n"
         f"   record : {record_id}\n"
         f"   source : {UPSTREAM}:{path}\n"
         f"   target : {target_rel}\n"
@@ -518,6 +519,8 @@ def self_test() -> int:
        "publication reuses whole-file substitution and declaration completion")
     ck("content: WHOLE FILE" in src,
        "the published artifact states its complete translation-unit boundary")
+    ck("METHOD=UPSTREAM-HARVEST" in src,
+       "the published artifact carries the canonical provenance marker")
     # Check the CALL SITES, not the file text. The first version searched the
     # whole source for "merge" and matched the word in this module's own
     # docstring, failing a module that does nothing of the kind. A test that
