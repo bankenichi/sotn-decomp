@@ -27,7 +27,7 @@ upstream_harvest.py                 what does upstream have that we do not
   -> job_start make_build ; verify_build    THE ORACLE DECIDES
   -> fn_diff --overlay X --function Y       if it missed, why
   -> git_add (explicit paths) ; git_commit
-  -> queue_report status=matched proof="81/81 OK"  notes=METHOD=UPSTREAM-HARVEST
+  -> queue_report status=matched proof="all expected artifacts OK"  notes=METHOD=UPSTREAM-HARVEST
 ```
 
 Every step has a tool. The two that did not exist before this work are

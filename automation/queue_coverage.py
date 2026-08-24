@@ -145,6 +145,38 @@ def required_scope_gaps(
     return gaps
 
 
+def required_config_readiness_gaps() -> list[str]:
+    """Missing paths or routing fields in the exact required config set."""
+    gaps = []
+    basenames = set()
+    required = ("basename", "build_path", "target_path", "asm_path",
+                "src_path", "ld_script_path")
+    for name in REQUIRED_US_CONFIGS:
+        path = REPO / "config" / name
+        if not path.is_file():
+            gaps.append(f"{name}:missing")
+            continue
+        values = {}
+        for line in path.read_text(errors="ignore").splitlines():
+            stripped = line.strip()
+            for key in required:
+                if stripped.startswith(key + ":"):
+                    values[key] = stripped.split(":", 1)[1].strip().strip("'\"")
+        for key in required:
+            if not values.get(key):
+                gaps.append(f"{name}:missing-option:{key}")
+        basename = values.get("basename")
+        if basename:
+            if basename in basenames:
+                gaps.append(f"{name}:duplicate-basename:{basename}")
+            basenames.add(basename)
+        for key in ("target_path", "asm_path", "src_path", "ld_script_path"):
+            value = values.get(key)
+            if value and not (REPO / value).exists():
+                gaps.append(f"{name}:missing-path:{key}:{value}")
+    return gaps
+
+
 def us_src_dirs() -> set[str]:
     """The src/ directories that the `us` build actually compiles.
 
@@ -404,6 +436,10 @@ def self_test() -> int:
        "the exact upstream US oracle contains 113 artifacts")
     ck(required_scope_gaps(complete_manifest, complete_configs) == [],
        "all 113 artifacts and their 62 configs form a complete required scope")
+    readiness = required_config_readiness_gaps()
+    ck(not readiness,
+       "every required config has complete routing fields and live paths",
+       f"gaps: {readiness[:6]}")
     missing = required_scope_gaps(
         complete_manifest.replace(
             f"{'0' * 40}  build/us/RBO8.BIN\n", ""),

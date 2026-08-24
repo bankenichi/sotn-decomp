@@ -298,7 +298,7 @@ expensive or uncertain, and so that each stage's output improves the next.
 **Stage 0 — harvest the free work (no model calls).**
 Land `EntityGaibonLeg`. Requeue the 13 stale `ILLEGAL` rejects and the
 interrupted-build false escalation. Run `permuter_promote.py` against the 5
-`.stale-*` dirs to recover the better bases. Verify 81/81 after each landing,
+`.stale-*` dirs to recover the better bases. Verify every expected artifact after each landing,
 not at the end.
 
 **Stage 1 — close the tooling gaps (items 1 to 5).**

@@ -94,7 +94,7 @@ makes this far safer than it sounds, but only if the process is followed.
 1. **Default to today's behaviour.** Every new knob is `#ifndef`-guarded so a
    stage that does not opt in emits identical bytes.
 2. **Verify the whole tree, not the stage you care about.** `verify_build` must
-   report 81/81. A green rno0 with a broken no2 is a regression.
+   report every expected artifact. A green rno0 with a broken no2 is a regression.
 3. **Introduce one parameter at a time.** With 20+ dependents, a failed build
    carrying three new knobs is far more expensive to bisect than three builds.
 4. **Prefer the escape hatch to a new `STAGE_IS_*` branch** when the stage's
@@ -117,7 +117,7 @@ makes this far safer than it sounds, but only if the process is followed.
 
 ## Acceptance criteria
 
-- `verify_build` reports **113/113** after every single step.
+- `verify_build` reports every expected artifact after every single step.
 - `overlay_size_check` reports **0 shifted symbols** across all 43 overlays.
 - No stage other than the one being changed alters by a single byte. The
   clock-room change proved this is achievable.

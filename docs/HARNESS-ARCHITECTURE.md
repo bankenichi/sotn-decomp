@@ -15,7 +15,7 @@ in each case so you can tell a deliberate choice from an accident.
 | live authority | current value |
 |---|---|
 | Build oracle | **113/113** from the artifacts on disk |
-| Decompiled | **97.0%**, 6386/6557 functions; 683 US `INCLUDE_ASM` stubs remain |
+| Decompiled | **93.7%**, 8059/8742 functions; 683 US `INCLUDE_ASM` stubs remain |
 | Queue | 983 records: 300 matched, 512 todo, 122 escalated, 43 deferred, 6 near |
 | Provenance | upstream-harvest 45, shim-segment 9, shim-header 55, transplant 19, twin-port 29, permuter 18, claude-manual 4, model-fleet 56, unknown 65 |
 | Automation | 84 modules, 28 suites plus 35 module self-tests, 90 tools, 68 diagnostics |
@@ -509,7 +509,7 @@ a dying process winning a lock race. If the replay fails, the result carries
 
 ## 10. Invariants
 
-1. The tree is left clean and at 81/81 after every unit of work. On failure,
+1. The tree is left clean with every expected artifact verified after every unit of work. On failure,
    revert and re-verify before doing anything else.
 2. `scheduler.py` is the only writer of the queue, which lives at
    `~/sotn-work/queue.jsonl` (NOT `work/queue.jsonl`, which is the legacy path

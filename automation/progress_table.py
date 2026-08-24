@@ -34,6 +34,7 @@ import os
 import sys
 from pathlib import Path
 
+from queue_coverage import REQUIRED_US_CONFIGS, required_scope_gaps
 from source_index import include_asm_symbols
 
 REPO = Path(__file__).resolve().parent.parent
@@ -53,38 +54,43 @@ except ImportError as e:                                    # pragma: no cover
           file=sys.stderr)
     raise SystemExit(2)
 
-# module -> (path, pretty binary name). Mirrors tools/progress.py's list; the
-# pretty name is what the README table shows.
-MODULES: list[tuple[str, str, str]] = [
-    ("main", "main", "SLUS_000.67"),
-    ("dra", "dra", "DRA.BIN"),
-    ("ric", "ric", "BIN/RIC"),
-    ("maria", "maria", "BOSS/MAR"),
-    ("stare", "st/are", "ST/ARE"), ("stcat", "st/cat", "ST/CAT"),
-    ("stcen", "st/cen", "ST/CEN"), ("stchi", "st/chi", "ST/CHI"),
-    ("stdai", "st/dai", "ST/DAI"), ("stdre", "st/dre", "ST/DRE"),
-    ("stlib", "st/lib", "ST/LIB"), ("stmad", "st/mad", "ST/MAD"),
-    ("stno0", "st/no0", "ST/NO0"), ("stno1", "st/no1", "ST/NO1"),
-    ("stno2", "st/no2", "ST/NO2"), ("stno3", "st/no3", "ST/NO3"),
-    ("stno4", "st/no4", "ST/NO4"), ("stnp3", "st/np3", "ST/NP3"),
-    ("stnz0", "st/nz0", "ST/NZ0"), ("stnz1", "st/nz1", "ST/NZ1"),
-    ("stsel", "st/sel", "ST/SEL"), ("stst0", "st/st0", "ST/ST0"),
-    ("sttop", "st/top", "ST/TOP"), ("stwrp", "st/wrp", "ST/WRP"),
-    ("strare", "st/rare", "ST/RARE"), ("strcat", "st/rcat", "ST/RCAT"),
-    ("strcen", "st/rcen", "ST/RCEN"), ("strchi", "st/rchi", "ST/RCHI"),
-    ("strdai", "st/rdai", "ST/RDAI"), ("strno0", "st/rno0", "ST/RNO0"),
-    ("strno3", "st/rno3", "ST/RNO3"), ("strnz0", "st/rnz0", "ST/RNZ0"),
-    ("strtop", "st/rtop", "ST/RTOP"), ("strwrp", "st/rwrp", "ST/RWRP"),
-    ("bobo0", "boss/bo0", "BOSS/BO0"), ("bobo4", "boss/bo4", "BOSS/BO4"),
-    ("bobo6", "boss/bo6", "BOSS/BO6"), ("borbo0", "boss/rbo0", "BOSS/RBO0"),
-    ("borbo3", "boss/rbo3", "BOSS/RBO3"), ("borbo5", "boss/rbo5", "BOSS/RBO5"),
-    ("tt_000", "servant/tt_000", "SERVANT/TT_000"),
-    ("tt_001", "servant/tt_001", "SERVANT/TT_001"),
-    ("tt_002", "servant/tt_002", "SERVANT/TT_002"),
-    ("tt_003", "servant/tt_003", "SERVANT/TT_003"),
-    ("tt_004", "servant/tt_004", "SERVANT/TT_004"),
-    ("sd", "sd", "SD"),
-]
+def _pretty_target(target_path: str) -> str:
+    """Render a config target as the compact binary label used in docs."""
+    parts = Path(target_path).parts
+    try:
+        parts = parts[parts.index("us") + 1:]
+    except ValueError:
+        pass
+    if not parts:
+        return target_path
+    final = Path(parts[-1])
+    if len(parts) == 1:
+        return final.name
+    stem = final.stem
+    if final.suffix.upper() == ".BIN" and stem.upper() == parts[-2].upper():
+        return "/".join(parts[:-1])
+    if final.suffix.upper() == ".BIN":
+        return "/".join((*parts[:-1], stem))
+    return "/".join(parts)
+
+
+def configured_modules(version: str) -> list[tuple[str, str, str]]:
+    """Discover module, source path and display name from the scope authority."""
+    names = (REQUIRED_US_CONFIGS if version == "us" else tuple(
+        p.name for p in sorted((REPO / "config").glob(f"splat.{version}.*.yaml"))))
+    modules = []
+    for name in names:
+        cfg_path = REPO / "config" / name
+        if not cfg_path.is_file():
+            continue
+        opts = (yaml.safe_load(cfg_path.read_text(encoding="utf-8")) or {}).get(
+            "options", {})
+        module = str(opts.get("basename") or name.removesuffix(".yaml").split(".")[-1])
+        src = str(opts.get("src_path", f"src/{module}"))
+        path = src.removeprefix("src/").rstrip("/")
+        pretty = _pretty_target(str(opts.get("target_path", module)))
+        modules.append((module, path, pretty))
+    return modules
 
 
 class Stats:
@@ -143,15 +149,20 @@ def collect(
         return st
     opts = (yaml.safe_load(cfg_path.read_text(encoding="utf-8")) or {}).get(
         "options", {})
-    map_path = REPO / f"{opts.get('build_path', f'build/{version}')}/{module}.map"
-    if not map_path.is_file():
-        map_path = REPO / f"build/{version}/{path}.map"
-    if not map_path.is_file():
+    build_path = REPO / opts.get("build_path", f"build/{version}")
+    map_paths = [build_path / f"{module}.map"]
+    fallback = REPO / f"build/{version}/{path}.map"
+    if fallback not in map_paths:
+        map_paths.append(fallback)
+    map_paths = [p for p in map_paths if p.is_file()]
+    if not map_paths:
+        # WEAPON0 is one checksum artifact made from many independently linked
+        # overlays, so its maps live below build/us/weapon/ rather than beside
+        # weapon.ld. Config discovery must not make this artifact disappear.
+        map_paths = sorted((build_path / path).glob("*.map"))
+    if not map_paths:
         return st
     st.exists = True
-
-    mf = mapfile_parser.MapFile()
-    mf.readMapFile(map_path)
     asm_path = REPO / opts.get("asm_path", f"asm/{version}")
     nm = _nonmatchings(asm_path, opts)
     version_asm_root = REPO / "asm" / version
@@ -159,53 +170,57 @@ def collect(
         live_stubs = include_asm_symbols(REPO / "src")
     depth = 4 + path.count("/")
 
-    text = mf.filterBySectionType(".text")
-    for file in [f for seg in text for f in seg]:
-        if len(file) == 0:
-            continue
-        rel = Path(*file.filepath.parts[depth:])
-        stem = rel
-        while stem.suffix:
-            stem = stem.with_suffix("")
-        whole_file_asm = (asm_path / stem.with_suffix(".s")).exists()
-        try:
-            asm_dir = (nm / stem).relative_to(version_asm_root).as_posix()
-        except ValueError:
-            asm_dir = (nm / stem).as_posix()
-        for func in file:
-            if func.name.endswith(".NON_MATCHING"):
+    for map_path in map_paths:
+        mf = mapfile_parser.MapFile()
+        mf.readMapFile(map_path)
+        text = mf.filterBySectionType(".text")
+        for file in [f for seg in text for f in seg]:
+            if len(file) == 0:
                 continue
-            st.fn_total += 1
-            size = func.size or 0
-            undecomped = function_is_undecompiled(
-                func.name,
-                asm_dir,
-                live_stubs,
-                mf.findSymbolByName(
-                    f"{func.name}.NON_MATCHING") is not None,
-                whole_file_asm,
-            )
-            if undecomped:
-                st.code_total += size
-            else:
-                st.fn_done += 1
-                st.code_done += size
-                st.code_total += size
+            rel = Path(*file.filepath.parts[depth:])
+            stem = rel
+            while stem.suffix:
+                stem = stem.with_suffix("")
+            whole_file_asm = (asm_path / stem.with_suffix(".s")).exists()
+            try:
+                asm_dir = (nm / stem).relative_to(version_asm_root).as_posix()
+            except ValueError:
+                asm_dir = (nm / stem).as_posix()
+            for func in file:
+                if func.name.endswith(".NON_MATCHING"):
+                    continue
+                st.fn_total += 1
+                size = func.size or 0
+                undecomped = function_is_undecompiled(
+                    func.name,
+                    asm_dir,
+                    live_stubs,
+                    mf.findSymbolByName(
+                        f"{func.name}.NON_MATCHING") is not None,
+                    whole_file_asm,
+                )
+                if undecomped:
+                    st.code_total += size
+                else:
+                    st.fn_done += 1
+                    st.code_done += size
+                    st.code_total += size
 
-    for sect in (".data", ".rodata", ".bss"):
-        for file in [f for seg in mf.filterBySectionType(sect) for f in seg]:
-            if "dra_data" in str(file.filepath):   # the VAB chunk at DRA's end
-                continue
-            st.data_total += file.size
-            if "src/" in str(file.filepath) or "assets/" in str(file.filepath):
-                st.data_done += file.size
+        for sect in (".data", ".rodata", ".bss"):
+            for file in [f for seg in mf.filterBySectionType(sect) for f in seg]:
+                if "dra_data" in str(file.filepath): # the VAB chunk at DRA's end
+                    continue
+                st.data_total += file.size
+                if "src/" in str(file.filepath) or "assets/" in str(file.filepath):
+                    st.data_done += file.size
     return st
 
 
 def gather(version: str) -> list[Stats]:
     live_stubs = include_asm_symbols(REPO / "src")
     return [s for s in (
-        collect(m, p, n, version, live_stubs) for m, p, n in MODULES)
+        collect(m, p, n, version, live_stubs)
+        for m, p, n in configured_modules(version))
             if s.exists and s.code_total]
 
 
@@ -228,15 +243,6 @@ def print_table(rows: list[Stats]) -> None:
     print("-" * 48)
     cp, _fp, fd, ft = totals(rows)
     print(f"{'OVERALL':<18}{cp:>7.1f}%{f'{fd}/{ft}':>14}")
-
-
-README_NOTES = {
-    "ST/RCEN": "harness target",
-    "ST/RCHI": "harness target",
-    "ST/RNO0": "harness target",
-    "BOSS/BO6": "harness target",
-    "BOSS/BO0": "harness target",
-}
 
 
 def markdown(rows: list[Stats]) -> str:
@@ -266,7 +272,7 @@ def markdown(rows: list[Stats]) -> str:
         for r in sorted(part, key=lambda r: -r.code_pct):
             lines.append(
                 f"| `{r.pretty}` | {r.code_pct:.1f}% "
-                f"| {r.fn_done}/{r.fn_total} | {README_NOTES.get(r.pretty, '')} |"
+                f"| {r.fn_done}/{r.fn_total} | |"
             )
     return "\n".join(lines)
 
@@ -308,9 +314,23 @@ def self_test() -> int:
         "WholeFileFunction", "boss/bo6/whole_file", live, False, True),
        "a configured whole-file extracted assembly segment remains unmatched")
     rows = gather("us")
+    modules = configured_modules("us")
+    ck(not required_scope_gaps(),
+       "the required artifact and config scope is exact")
+    ck(len(modules) == len(REQUIRED_US_CONFIGS),
+       f"every required US config supplies a progress module ({len(modules)})")
+    ck(len({m for m, _p, _n in modules}) == len(modules),
+       "configured progress module names are unique")
+    ck(len({n for _m, _p, n in modules}) == len(modules),
+       "configured progress display names are unique")
     ck(bool(rows), f"maps were found and parsed ({len(rows)} binaries). "
                    f"If this fails, run a build first.")
     if rows:
+        missing_rows = sorted(set(m for m, _p, _n in modules)
+                              - {r.name for r in rows})
+        ck(len(rows) == len(modules),
+           f"every configured US module has a populated linker map ({len(rows)}; "
+           f"missing {missing_rows})")
         ck(all(r.code_total > 0 for r in rows),
            "every reported binary has a non-zero code total, so no row can "
            "show a percentage computed from nothing")

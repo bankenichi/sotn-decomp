@@ -102,7 +102,7 @@ and `rdai` are all second-castle overlays and all shim this header unmodified.
 
 ## Acceptance criteria
 
-- `config/check.us.sha` verifies **113/113**. Anything less is a revert.
+- `config/check.us.sha` verifies every expected artifact. Anything less is a revert.
 - `EntityRedDoor` no longer appears in any `INCLUDE_ASM`; queue record
   `us:ST/RNO0:EntityRedDoor` moves to `matched`.
 - `src/st/rno0/unk_39A8C.c` is gone and `func_us_801B9A8C` appears nowhere in

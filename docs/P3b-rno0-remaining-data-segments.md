@@ -224,7 +224,7 @@ header will want under real names.
 
 ## Acceptance criteria, per stem
 
-- `verify_build` reports **113/113**. Anything less reverts.
+- `verify_build` reports every expected artifact. Anything less reverts.
 - `automation/overlay_size_check.py` reports **0 shifted symbols**.
 - The stem's `INCLUDE_ASM` count drops to 0 and its queue records move to
   `matched`.

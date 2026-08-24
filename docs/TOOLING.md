@@ -13,7 +13,7 @@ For the mechanisms that land matches, read `automation/README.md`.
 | live authority | current value |
 |---|---|
 | Build oracle | **113/113** from the artifacts on disk |
-| Decompiled | **97.0%**, 6386/6557 functions; 683 US `INCLUDE_ASM` stubs remain |
+| Decompiled | **93.7%**, 8059/8742 functions; 683 US `INCLUDE_ASM` stubs remain |
 | Queue | 983 records: 300 matched, 512 todo, 122 escalated, 43 deferred, 6 near |
 | Provenance | upstream-harvest 45, shim-segment 9, shim-header 55, transplant 19, twin-port 29, permuter 18, claude-manual 4, model-fleet 56, unknown 65 |
 | Automation | 84 modules, 28 suites plus 35 module self-tests, 90 tools, 68 diagnostics |
@@ -32,7 +32,7 @@ named here does not exist.
 
 ```
 git_state                     where am I, is the tree clean
-verify_build                  is the baseline still 113/113
+verify_build                  is the complete baseline still green
   ... do the work ...
 make_build  ->  verify_build   the oracle, in that order, always
 queue_report                  record the outcome with proof
@@ -70,7 +70,7 @@ Four rules that are not negotiable, each because breaking them has cost a day:
 `verify_build` is **the** oracle: 113 SHA-1s in `config/check.us.sha`. Nothing
 else in this repository is authoritative. A permuter score of 0, a clean
 `asm_diff`, a confident model, a green compile: none of them are a match until
-`verify_build` says 113/113.
+`verify_build` says every expected artifact matches.
 
 ## 2. Diagnosing a miss
 
@@ -305,7 +305,7 @@ All of it goes through the connector. Push to `origin` only.
 | `git_add_all` | effectively never; it sweeps harness scratch into your commit |
 | `git_commit` | landing work. It regenerates every managed living document and stages those fixed paths individually; it refuses if any has unstaged prose |
 | `git_commit_amend` | fixing the message or tip, with the same documentation synchronization as `git_commit` |
-| `git_push` | after verifying 81/81. It is read-only and refuses if generated documentation has drifted |
+| `git_push` | after verifying every expected artifact. It is read-only and refuses if generated documentation has drifted |
 | `git_fetch` | before comparing against upstream |
 | `git_diff` | review before staging |
 | `git_diff_stat` | scope of a change |

@@ -15,7 +15,7 @@ evidence, not active instructions.
 | live authority | current value |
 |---|---|
 | Build oracle | **113/113** from the artifacts on disk |
-| Decompiled | **97.0%**, 6386/6557 functions; 683 US `INCLUDE_ASM` stubs remain |
+| Decompiled | **93.7%**, 8059/8742 functions; 683 US `INCLUDE_ASM` stubs remain |
 | Queue | 983 records: 300 matched, 512 todo, 122 escalated, 43 deferred, 6 near |
 | Provenance | upstream-harvest 45, shim-segment 9, shim-header 55, transplant 19, twin-port 29, permuter 18, claude-manual 4, model-fleet 56, unknown 65 |
 | Automation | 84 modules, 28 suites plus 35 module self-tests, 90 tools, 68 diagnostics |
@@ -76,7 +76,7 @@ Start every working session with:
 5. poll `job_status`
 6. `verify_build(version="us")`
 
-Stop if the oracle is not 113/113. A green compiler is not a match.
+Stop if the oracle does not verify every expected artifact. A green compiler is not a match.
 
 Before a deliberate backup or recovery checkpoint, once for the whole work
 batch (see `automation/queue/snapshots/README.md`):
@@ -227,7 +227,7 @@ Use the cheapest evidence first:
 For a candidate, the root agent applies one class of change, runs the managed
 build, checks `asm_diff`, and reverts a regression through the connector. A
 score of zero in an isolated permuter compile means only that a full build is
-worth trying. The match exists only when `verify_build` reports 113/113.
+worth trying. The match exists only when `verify_build` reports every expected artifact.
 
 ## 8. Recording and landing
 
@@ -248,7 +248,7 @@ Before landing automation changes:
 1. run `automation/test_connector_surfaces.py` after connector edits
 2. run `automation/run_selftests.py` after automation edits
 3. run a managed build
-4. verify 113/113
+4. verify every expected artifact
 5. review the diff
 6. stage each intended path individually
 7. commit and push to `origin`
