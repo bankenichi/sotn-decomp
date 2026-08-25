@@ -1,3 +1,15 @@
+/* PERMUTER SEED -- deterministic isolated-score candidate.
+   record : us:ST/RNZ1:func_us_801AB16C
+   score  : 0
+   receipt: nonmatchings/.adapt-scores/20260825-211839-17183-549981/func_us_801AB16C/adapt-score.json
+   producer: compiled-donor transplant, no model
+   content: WHOLE FILE (isolated adaptable draft)
+   origin : src/st/rnz1/unk_29914.c
+   asm    : asm/us/st/rnz1/nonmatchings/unk_29914/func_us_801AB16C.s
+   verdict: the exact target function compiled under the project
+            compiler and flags but did not score zero. A full game
+            build was intentionally not run. Import and search via
+            permuter_supervisor.py; never treat this as a match. */
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #include "rnz1.h"
 
@@ -36,8 +48,8 @@ void func_801B2CF8(Primitive* prim) {
 void func_us_801AB16C(s32* src, s32* dst, s32 count) {
     s32 i;
 
-    // CODEGEN: The target overwrites incoming a2 with 13, then uses a register
-    // slt. Keeping the bound in the third parameter preserves that exact shape.
+
+
     count = 13;
 
     for (i = 0; i < count; i++) {
