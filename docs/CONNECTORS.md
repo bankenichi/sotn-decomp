@@ -23,9 +23,9 @@ under any MCP client.
 | live authority | current value |
 |---|---|
 | Build oracle | **113/113** from the artifacts on disk |
-| Decompiled | **94.0%**, 8167/8734 functions; 567 US `INCLUDE_ASM` stubs remain |
-| Queue | 983 records: 416 matched, 397 todo, 122 escalated, 42 deferred, 6 near |
-| Provenance | upstream-harvest 45, shim-segment 9, shim-header 55, transplant 134, twin-port 29, permuter 18, claude-manual 5, model-fleet 56, unknown 65 |
+| Decompiled | **94.0%**, 8168/8734 functions; 566 US `INCLUDE_ASM` stubs remain |
+| Queue | 983 records: 417 matched, 396 todo, 122 escalated, 42 deferred, 6 near |
+| Provenance | upstream-harvest 45, shim-segment 9, shim-header 55, transplant 134, twin-port 29, permuter 18, claude-manual 6, model-fleet 56, unknown 65 |
 | Automation | 86 modules, 29 suites plus 36 module self-tests, 90 tools, 69 diagnostics |
 
 This block is regenerated from the same queue, checksum manifest, linker maps, provenance classifier, and connector inventory as `README.md`.
