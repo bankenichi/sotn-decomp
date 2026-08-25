@@ -1313,7 +1313,7 @@ REGISTRY = {
     #
     # No --force, no --delete, no --mirror, no --all, no `src:dst` refspec: none
     # of them are reachable, because none of them are expressible.
-    "git_push":    lambda: ["git", "push", "origin", "HEAD"],
+    "git_push":    lambda: [PYTHON, "automation/mcp/verified_push.py"],
 }
 
 
@@ -1471,46 +1471,6 @@ def _sync_managed_docs_for_commit() -> dict:
             "generator": sync.stdout.strip()}
 
 
-def _managed_doc_drift_gate() -> dict:
-    """Refuse a push when any generated living document is stale."""
-    try:
-        p = subprocess.run(
-            [PYTHON, "automation/readme_status.py", "--drift"], cwd=str(REPO),
-            capture_output=True, text=True, timeout=600)
-    except (OSError, subprocess.SubprocessError) as exc:
-        return {"ok": False, "error": f"documentation drift gate failed: {exc}"}
-    return {"ok": p.returncode == 0,
-            "report": (p.stdout or p.stderr).strip(),
-            "returncode": p.returncode}
-
-
-def _push_gate() -> dict:
-    """A push starts only from generated, committed, inspectable state."""
-    docs = _managed_doc_drift_gate()
-    if not docs.get("ok"):
-        return {
-            "ok": False,
-            "documentation_drift": docs,
-            "error": "generated living documents are stale",
-        }
-    try:
-        state = subprocess.run(
-            ["git", "status", "--porcelain"], cwd=str(REPO),
-            capture_output=True, text=True, timeout=120)
-    except (OSError, subprocess.SubprocessError) as exc:
-        return {"ok": False, "error": f"git status failed: {exc}"}
-    if state.returncode != 0 or state.stdout.strip():
-        return {
-            "ok": False,
-            "error": (
-                "background push requires a clean worktree and index; "
-                "commit or remove every pending path first"),
-            "git_status": state.stdout[-MAX_OUT:],
-            "git_status_stderr": state.stderr[-MAX_OUT:],
-        }
-    return {"ok": True, "documentation_drift": docs}
-
-
 def run(action: str, timeout: float = 3600, **kwargs) -> dict:
     # LINE SLICING, for git_show_file only. Popped BEFORE build_argv, because
     # these are not git arguments: they post-filter git's output.
@@ -1592,16 +1552,6 @@ def run(action: str, timeout: float = 3600, **kwargs) -> dict:
             out = {"action": action, "argv": argv, "dry_run": False,
                    "refused": True, "documentation_sync": doc_gate,
                    "error": "REFUSED: " + doc_gate.get("error", "documentation sync failed")}
-            if lock_note:
-                out["index_lock"] = lock_note
-            return out
-    elif action == "git_push":
-        doc_gate = _push_gate()
-        if not doc_gate.get("ok"):
-            out = {"action": action, "argv": argv, "dry_run": False,
-                   "refused": True, **doc_gate,
-                   "error": "REFUSED: " + doc_gate.get(
-                       "error", "push preflight failed")}
             if lock_note:
                 out["index_lock"] = lock_note
             return out
@@ -1720,18 +1670,6 @@ def start_job(action: str, **kwargs) -> dict:
     argv = build_argv(action, **kwargs)
     if DRYRUN:
         return {"action": action, "argv": argv, "dry_run": True, "started": False}
-    if action == "git_push":
-        gate = _push_gate()
-        if not gate.get("ok"):
-            return {
-                "action": action,
-                "argv": argv,
-                "started": False,
-                "refused": True,
-                **gate,
-                "error": "REFUSED: " + gate.get(
-                    "error", "push preflight failed"),
-            }
     # The permuter owns its work_dir and shares nothing: it compiles into that
     # directory, never writes build/, and never runs make. So N seeds can be
     # searched at once, and serialising them wasted the most valuable pool the

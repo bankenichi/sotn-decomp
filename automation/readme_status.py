@@ -51,6 +51,7 @@ import json
 import re
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import run_selftests as selftest_runner
@@ -648,7 +649,25 @@ def _md_lines() -> list[tuple[Path, list[str]]]:
 
 
 def _md_files() -> list[Path]:
-    """Markdown we author, minus exempt paths."""
+    """Tracked Markdown we author, minus exempt paths.
+
+    Walking from REPO recursively stats every candidate and history directory.
+    On the Windows-mounted tree that took over 106 seconds. Git already owns the
+    tracked-file index, so ask it for the exact Markdown set. Keep the directory
+    walk only as a portability fallback when git is unavailable.
+    """
+    listed = _run(["git", "ls-files", "--", "*.md"], timeout=30)
+    if listed:
+        out = []
+        for rel in listed.splitlines():
+            rel = rel.strip()
+            if not rel or any(part in rel for part in DRIFT_EXEMPT):
+                continue
+            p = REPO / rel
+            if p.is_file():
+                out.append(p)
+        return sorted(out)
+
     out, stack = [], [REPO]
     while stack:
         d = stack.pop()
@@ -842,16 +861,19 @@ DRIFT_CHECKS = (
 )
 
 
-def drift_report() -> tuple[str, int]:
+def drift_report(timings: bool = False) -> tuple[str, int]:
     """(text, number of findings). Read-only; never builds."""
     lines, total = [], 0
     for name, fn in DRIFT_CHECKS:
+        started = time.perf_counter()
         try:
             found = fn()
         except Exception as e:                              # noqa: BLE001
             found = [f"check itself failed: {e!r}"]
+        elapsed = time.perf_counter() - started
         total += len(found)
-        lines.append(f"{name}: {'clean' if not found else str(len(found)) + ' finding(s)'}")
+        suffix = f" [{elapsed:.3f}s]" if timings else ""
+        lines.append(f"{name}: {'clean' if not found else str(len(found)) + ' finding(s)'}{suffix}")
         lines.extend("  " + f for f in found)
     lines.append("")
     lines.append(f"{total} finding(s). These are the invariants with a single "
@@ -889,6 +911,8 @@ def main() -> int:
                     help="check docs against code for the four invariants "
                           "that have actually rotted; exit 1 if any drifted")
     ap.add_argument("--self-test", action="store_true")
+    ap.add_argument("--timings", action="store_true",
+                    help="include per-check elapsed time in --drift output")
     ap.add_argument("--managed-paths", action="store_true",
                     help="print managed document paths and exit")
     a = ap.parse_args()
@@ -898,7 +922,7 @@ def main() -> int:
     if a.self_test:
         return self_test()
     if a.drift:
-        text, n = drift_report()
+        text, n = drift_report(timings=a.timings)
         print(text)
         # Non-zero so this can gate a commit. The first three checks inspect
         # hand-written claims; the fourth proves generated blocks were refreshed.
@@ -958,6 +982,15 @@ def self_test() -> int:
        f"stale: {_extra}")
 
     print("\nthe drift checks are anchored to code, not to a remembered number")
+    _md_source = Path(__file__).read_text(encoding="utf-8")
+    _md_start = _md_source.index("def _md_files(")
+    _md_end = _md_source.index("\\ndef ", _md_start + 1)
+    _md_body = _md_source[_md_start:_md_end]
+    ck('["git", "ls-files", "--", "*.md"]' in _md_body
+       and _md_body.index('["git", "ls-files", "--", "*.md"]')
+           < _md_body.index("out, stack = [], [REPO]"),
+       "Markdown discovery uses the tracked-file index before its fallback walk")
+
     truth = _oracle_truth()
     ck(truth > 0, "the oracle hash count is read from config/check.us.sha",
        f"got {truth}")
@@ -1172,8 +1205,10 @@ def self_test() -> int:
     # documentation as often as behaviour.
     spawned = re.findall(r"_run\(\[([^\]]*)\]", src_self)
     ck(spawned, f"the subprocess call sites are findable ({len(spawned)})")
-    ck(all("scheduler.py" in s for s in spawned),
-       f"and every one of them runs scheduler.py, nothing else ({spawned})")
+    ck(all("scheduler.py" in call or '"git", "ls-files"' in call
+           for call in spawned),
+       f"and each one is either scheduler stats or tracked Markdown discovery "
+       f"({spawned})")
     ck("verify_checksums" in src_self,
        "the oracle is read by hashing artifacts already on disk")
 

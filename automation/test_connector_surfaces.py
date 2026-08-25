@@ -248,14 +248,22 @@ def main() -> int:
           "git_push takes no arguments, so no caller can choose the remote")
     check("git_push" in cc.LONG_ACTIONS,
           "large pushes can run as observable background jobs")
-    gate_i = cc_src.find("def _push_gate(")
-    gate_j = cc_src.find("\ndef ", gate_i + 1)
-    push_gate = cc_src[gate_i:gate_j]
-    check('if action == "git_push":' in sjb
-          and "_push_gate()" in sjb
-          and "_managed_doc_drift_gate()" in push_gate
-          and '["git", "status", "--porcelain"]' in push_gate,
-          "background push refuses stale docs or a dirty tree before starting")
+    _push_argv = cc.REGISTRY["git_push"]()
+    check(_push_argv == [cc.PYTHON, "automation/mcp/verified_push.py"],
+          "git_push starts the fixed verified-push runner")
+    check("_managed_doc_drift_gate()" not in sjb
+          and "subprocess.run(" not in sjb,
+          "job_start performs no synchronous preflight before returning a job id")
+    _verified_push = (MCP / "verified_push.py").read_text(encoding="utf-8")
+    check('["git", "status", "--porcelain"]' in _verified_push
+          and '[sys.executable, str(README_STATUS), "--drift"]' in _verified_push
+          and '["git", "diff", "--check", "HEAD^", "HEAD"]' in _verified_push
+          and '["git", "push", "origin", "HEAD"]' in _verified_push,
+          "the background runner gates cleanliness, drift, and commit whitespace "
+          "before its fixed origin push")
+    check("len(sys.argv) != 1" in _verified_push
+          and "shell=True" not in _verified_push,
+          "the verified-push runner accepts no arguments and invokes no shell")
 
     print("\nconnector writes are atomic and retry transient drvfs failures")
     real_replace = cc.os.replace
@@ -306,12 +314,6 @@ def main() -> int:
             ["git", "add", "--", "README.md"],
             ["git", "add", "--", "ROADMAP.md"],
         ], "generated documents are staged one explicit path at a time")
-    with _patch.object(cc.subprocess, "run") as _run:
-        _run.return_value = _cp([], 1, "1 finding(s)\n", "")
-        _drift = cc._managed_doc_drift_gate()
-        check(not _drift["ok"] and _drift["returncode"] == 1,
-              "push gate propagates generated-document drift")
-
     print("\nevery git_* capability is on BOTH surfaces")
     # REGISTRY and @mcp.tool() are separate lists. A name in one but not the
     # other is uncallable, and it fails at call time rather than at load time,
