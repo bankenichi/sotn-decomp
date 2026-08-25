@@ -63,6 +63,7 @@ import argparse
 import subprocess
 import sys
 from pathlib import Path
+from typing import Literal
 
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parent
@@ -72,7 +73,13 @@ sys.path.insert(0, str(HERE))
 # Re-deriving either here is how the two tools would drift into disagreeing
 # about the same tree, which is precisely the failure this tool exists to
 # detect in the queue.
-from matched_audit import stubs_in, overlay_dir, _run, PYTHON  # noqa: E402
+from matched_audit import (  # noqa: E402
+    PYTHON,
+    _run,
+    overlay_dir,
+    stub_paths_in,
+    stubs_in,
+)
 
 FORWARD_STAGES = (
     "ARE", "CAT", "CEN", "CHI", "DAI", "DRE", "LIB", "MAD", "NO0",
@@ -243,9 +250,45 @@ def queue_records() -> list[tuple[str, str, str]]:
     return out
 
 
-def collect() -> dict:
-    """{overlay: {"stubs": set, "records": {fn: status}}}"""
-    head = stubs_in("HEAD")
+SourceView = Literal["head", "index", "worktree"]
+
+
+def stubs_for_source(source: SourceView) -> set[tuple[str, str]]:
+    """Read stubs from committed HEAD, the staged index, or the worktree."""
+    if source == "head":
+        return stubs_in("HEAD")
+    if source == "index":
+        return stubs_in(None, cached=True)
+    if source == "worktree":
+        return stubs_in(None)
+    raise ValueError(f"unknown source view: {source}")
+
+
+def stub_paths_for_source(source: SourceView, repo: Path = REPO) -> list[str]:
+    """Return one path per source-level stub-macro opening in a Git view.
+
+    Coverage needs function names, so ``stubs_for_source`` uses the shared
+    multiline parser. Status totals need every occurrence, including forms the
+    function-name parser deliberately cannot classify, so they count anchored
+    macro openings directly from the same Git source view.
+    """
+    if source == "head":
+        return stub_paths_in("HEAD", repo=repo)
+    if source == "index":
+        return stub_paths_in(None, cached=True, repo=repo)
+    if source == "worktree":
+        return stub_paths_in(None, repo=repo)
+    raise ValueError(f"unknown source view: {source}")
+
+
+def collect(source: SourceView = "head") -> dict:
+    """Return queue coverage for one explicit Git source view.
+
+    The standalone coverage audit intentionally defaults to committed HEAD.
+    Living documents synchronized before a commit request the index, which is
+    the exact source state Git will commit even when the worktree is dirty.
+    """
+    head = stubs_for_source(source)
     us_dirs = us_src_dirs()
     by: dict[str, dict] = {}
     for path, fn in head:
@@ -464,9 +507,16 @@ def self_test() -> int:
     # absent from the stub set is stale BY DEFINITION, so the fixture has to
     # actually stub the record it claims is healthy. The first run of this
     # test caught exactly that omission.
-    globals()["stubs_in"] = lambda rev: {("src/st/rdai/a.c", "OnlyAStub"),
-                                         ("src/st/rdai/a.c",
-                                          "QueuedAndStubbed")}
+    seen_sources = []
+
+    def fake_stubs(rev, *, cached=False):
+        seen_sources.append((rev, cached))
+        return {
+            ("src/st/rdai/a.c", "OnlyAStub"),
+            ("src/st/rdai/a.c", "QueuedAndStubbed"),
+        }
+
+    globals()["stubs_in"] = fake_stubs
     globals()["queue_records"] = lambda: [
         ("matched", "ST/RDAI", "AlreadyDone"),
         ("todo", "ST/RDAI", "QueuedAndStubbed"),
@@ -474,6 +524,8 @@ def self_test() -> int:
     ]
     try:
         by = collect()
+        collect("index")
+        collect("worktree")
         stubs = by["ST/RDAI"]["stubs"]
         recs = by["ST/RDAI"]["records"]
         blind = stubs - set(recs)
@@ -490,6 +542,9 @@ def self_test() -> int:
        f"an unmatched record with no stub IS stale ({sorted(stale)})")
     ck("QueuedAndStubbed" not in blind and "QueuedAndStubbed" not in stale,
        "a record that matches its stub is in neither bucket")
+    ck(seen_sources == [("HEAD", False), (None, True), (None, False)],
+       "coverage distinguishes committed HEAD, index, and worktree",
+       f"sources: {seen_sources}")
 
     print("\nthe stub rule is imported, not reinvented")
     ck("from matched_audit import" in src_self, "imported from matched_audit")

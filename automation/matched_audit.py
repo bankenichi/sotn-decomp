@@ -58,9 +58,9 @@ if not Path(PYTHON).exists():                                # pragma: no cover
     PYTHON = sys.executable
 
 
-def _run(argv, timeout=300):
+def _run(argv, timeout=300, cwd=REPO):
     try:
-        return subprocess.run(argv, cwd=str(REPO), capture_output=True,
+        return subprocess.run(argv, cwd=str(cwd), capture_output=True,
                               text=True, timeout=timeout)
     except (OSError, subprocess.SubprocessError) as e:       # pragma: no cover
         class _R:
@@ -84,7 +84,8 @@ def overlay_dir(rec_id: str) -> str:
     return "src/" + parts[1].lower()
 
 
-def stubs_in(rev: str | None) -> set[tuple[str, str]]:
+def stubs_in(rev: str | None, *, cached: bool = False,
+             repo: Path = REPO) -> set[tuple[str, str]]:
     """{(path, function)} for every INCLUDE_ASM stub under src/.
 
     -A1 because clang-format wraps a stub whose name is long enough:
@@ -97,11 +98,16 @@ def stubs_in(rev: str | None) -> set[tuple[str, str]]:
     a false all-clear, which is the worst possible direction for this tool.
     Six real stubs in us_3E79C.c have exactly that shape.
     """
-    argv = ["git", "grep", "-n", "-A1", "INCLUDE_ASM("]
+    if cached and rev is not None:
+        raise ValueError("cached stub search cannot also name a revision")
+    argv = ["git", "grep"]
+    if cached:
+        argv.append("--cached")
+    argv += ["-n", "-A1", "INCLUDE_ASM("]
     if rev:
         argv.append(rev)
     argv += ["--", "src"]
-    r = _run(argv, timeout=300)
+    r = _run(argv, timeout=300, cwd=repo)
     out: set[tuple[str, str]] = set()
     # Lines look like `HEAD:src/a/b.c:12:text` or `src/a/b.c-13-text`.
     rx = re.compile(r"^(?:[^:]*:)?(src/[^:\-]+)[:\-](\d+)[:\-](.*)$")
@@ -139,6 +145,34 @@ def stubs_in(rev: str | None) -> set[tuple[str, str]]:
             for fn in RX_STUB.findall("\n".join(chunk)):
                 out.add((path, fn))
     return out
+
+
+def stub_paths_in(rev: str | None, *, cached: bool = False,
+                  repo: Path = REPO) -> list[str]:
+    """Return one path per anchored INCLUDE_ASM opening in a Git source view.
+
+    Status totals need every occurrence, including unusual macro arguments the
+    function-name parser cannot classify. This deliberately counts openings
+    without defining a second function parser.
+    """
+    if cached and rev is not None:
+        raise ValueError("cached stub search cannot also name a revision")
+    argv = ["git", "grep"]
+    if cached:
+        argv.append("--cached")
+    argv += ["-n", "^[[:space:]]*INCLUDE_ASM("]
+    if rev:
+        argv.append(rev)
+    argv += ["--", "src"]
+    result = _run(argv, timeout=300, cwd=repo)
+    paths = []
+    for line in (result.stdout or "").splitlines():
+        if rev:
+            _rev, _sep, line = line.partition(":")
+        path, sep, _tail = line.partition(":")
+        if sep and path.startswith("src/"):
+            paths.append(path)
+    return paths
 
 
 def matched_records() -> list[tuple[str, str]]:
@@ -345,6 +379,35 @@ def self_test() -> int:
         globals()["_run"] = _real_run
     ck(got == {"RealStub", "OtherStub"},
        f"both real stubs are found and nothing is invented ({sorted(got)})")
+
+    print("\nthe staged index is distinct from the dirty worktree")
+    import tempfile
+    with tempfile.TemporaryDirectory() as d:
+        fixture_repo = Path(d)
+        subprocess.run(["git", "init", "--quiet"], cwd=d, check=True,
+                       capture_output=True, text=True)
+        fixture_src = fixture_repo / "src"
+        fixture_src.mkdir()
+        fixture = fixture_src / "fixture.c"
+        fixture.write_text(
+            'INCLUDE_ASM("fixture", StagedStub);\n'
+            'INCLUDE_ASM("fixture", StagedOther);\n', encoding="utf-8")
+        subprocess.run(["git", "add", "--", "src/fixture.c"], cwd=d,
+                       check=True, capture_output=True, text=True)
+        fixture.write_text(
+            'INCLUDE_ASM("fixture", WorktreeStub);\n', encoding="utf-8")
+        staged = {f for _p, f in stubs_in(None, cached=True,
+                                          repo=fixture_repo)}
+        dirty = {f for _p, f in stubs_in(None, repo=fixture_repo)}
+        staged_paths = stub_paths_in(None, cached=True, repo=fixture_repo)
+        dirty_paths = stub_paths_in(None, repo=fixture_repo)
+    ck(staged == {"StagedStub", "StagedOther"}
+       and dirty == {"WorktreeStub"},
+       "cached search reads staged blobs despite a conflicting same-file edit",
+       f"index={sorted(staged)}, worktree={sorted(dirty)}")
+    ck(len(staged_paths) == 2 and len(dirty_paths) == 1,
+       "status totals count every opening from the selected Git view",
+       f"index={staged_paths}, worktree={dirty_paths}")
 
     print("\nand the verdict survives a truncated tail")
     ck("SUMMARY  present" in code,

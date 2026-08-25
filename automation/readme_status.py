@@ -60,6 +60,7 @@ from queue_coverage import (
     REQUIRED_US_CONFIGS,
     collect as queue_coverage_collect,
     required_scope_gaps,
+    stub_paths_for_source as queue_stub_paths,
     us_src_dirs,
 )
 
@@ -144,31 +145,27 @@ def oracle() -> tuple[int, int, bool]:
     return (int(m.group(1)), int(m.group(2)), True)
 
 
-def stub_counts(us_only: bool = True) -> tuple[int, dict[str, int]]:
-    """INCLUDE_ASM stubs left in src/, by top-level area.
+def stub_counts(us_only: bool = True, source="index",
+                stub_source=queue_stub_paths) -> tuple[int, dict[str, int]]:
+    """INCLUDE_ASM stubs in a Git source view, by top-level area.
 
     us_only=False is used ONLY to state, in the README, how much bigger the
     number gets when the non-us trees are included. Quoting the difference is
-    what stops the next reader assuming the figure shrank.
+    what stops the next reader assuming the figure shrank. Generated documents
+    default to the index so every stub total describes the pending commit.
     """
-    rx = re.compile(r"^\s*INCLUDE_ASM\(", re.M)
     compiled_dirs = us_src_dirs() if us_only else set()
     per: dict[str, int] = {}
     total = 0
-    for p in (REPO / "src").rglob("*.c"):
-        rel = p.relative_to(REPO).as_posix()
+    for rel in stub_source(source):
+        if not rel.endswith(".c"):
+            continue
         if compiled_dirs and not any(
                 rel.startswith(d.rstrip("/") + "/") for d in compiled_dirs):
             continue
-        try:
-            n = len(rx.findall(p.read_text(errors="ignore")))
-        except OSError:
-            continue
-        if not n:
-            continue
-        total += n
-        area = p.relative_to(REPO / "src").parts[0]
-        per[area] = per.get(area, 0) + n
+        total += 1
+        area = Path(rel).relative_to("src").parts[0]
+        per[area] = per.get(area, 0) + 1
     return total, per
 
 
@@ -404,11 +401,19 @@ def live_status_block() -> str:
     ])
 
 
-def work_scope_block() -> str:
-    """Exact per-overlay workload from queue coverage's scope authority."""
+def work_scope_block(collect_fn=queue_coverage_collect) -> str:
+    """Exact per-overlay workload from the pending source and live queue.
+
+    Commit synchronization runs before the new commit becomes ``HEAD``. Asking
+    queue coverage for its default committed view here made the synchronized
+    documents stale immediately after every stub removal, so the push gate then
+    correctly refused the commit. The index is the exact pending commit even
+    when the worktree has unrelated or partially staged edits; standalone queue
+    coverage continues to default to HEAD.
+    """
     from collections import Counter
 
-    by = queue_coverage_collect()
+    by = collect_fn("index")
     rows = []
     blind_total = stale_total = 0
     for overlay in sorted(by):
@@ -1117,12 +1122,31 @@ def self_test() -> int:
     print("\nthe live work-scope block uses the exact queue authority")
     ck(not required_scope_gaps(),
        "all required artifacts and configs are present with no extras")
-    scope = work_scope_block()
+    scope_refs = []
+
+    def capture_scope(ref):
+        scope_refs.append(ref)
+        return queue_coverage_collect(ref)
+
+    scope = work_scope_block(capture_scope)
+    ck(scope_refs == ["index"],
+       "pre-commit work-scope generation reads the staged index",
+       f"sources: {scope_refs}")
     ck(f"{len(REQUIRED_US_ARTIFACTS)} checksum artifacts" in scope
        and f"{len(REQUIRED_US_CONFIGS)} splat configs" in scope,
        "scope counts come from the required policy tuples")
     ck("0 scope gaps, 0 blind stubs, 0 stale active records" in scope,
        "live queue coverage is exact")
+    stub_refs = []
+
+    def capture_stubs(source):
+        stub_refs.append(source)
+        return ["src/st/rdai/a.c", "src/boss/bo6/a.c"]
+
+    counted, _areas = stub_counts(stub_source=capture_stubs)
+    ck(stub_refs == ["index"] and counted == 2,
+       "every generated stub total also reads the staged index",
+       f"sources: {stub_refs}, count: {counted}")
     roadmap_text = (REPO / "ROADMAP.md").read_text(encoding="utf-8")
     ck(roadmap_text.count(WORK_SCOPE_BEGIN) == 1
        and roadmap_text.count(WORK_SCOPE_END) == 1,

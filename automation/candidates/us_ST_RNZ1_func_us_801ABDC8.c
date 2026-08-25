@@ -5,9 +5,7 @@
    receipt after destination-scope filtering. */
 int abs(int x);
 
-#include "../approach_s16.h"
-
-
+#include "src/st/approach_s16.h"
 
 INCLUDE_ASM("st/rnz1/nonmatchings/unk_29914", func_us_801A9994);
 
@@ -31,8 +29,6 @@ void func_801B2CF8(Primitive* prim) {
     }
 }
 
-
-
 INCLUDE_ASM("st/rnz1/nonmatchings/unk_29914", func_us_801AB16C);
 
 INCLUDE_ASM("st/rnz1/nonmatchings/unk_29914", func_us_801AB198);
@@ -51,7 +47,6 @@ void func_us_801ABDC8(s32* values) {
     values[0] -= 0x400;
     values[5] -= 0x400;
 }
-
 
 INCLUDE_RODATA("st/rnz1/nonmatchings/unk_29914", D_us_801A6050);
 
