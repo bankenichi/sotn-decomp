@@ -20,6 +20,7 @@ Run: python3 automation/test_connector_surfaces.py
 """
 from __future__ import annotations
 
+import errno
 import json
 import re
 import subprocess
@@ -27,6 +28,7 @@ import sys
 import tempfile
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from unittest.mock import patch as _patch
 
 REPO = Path(__file__).resolve().parent.parent
 MCP = REPO / "automation" / "mcp"
@@ -161,8 +163,10 @@ def main() -> int:
     # cc.start_job("permuter") raised on the missing positional.
     check('elif action != "permuter"' not in body,
           "the branch that silently dropped permuter's argument is gone")
-    for act in ("permuter", "run_automation", "run_analysis"):
+    for act in ("permuter", "run_automation", "run_analysis", "git_push"):
         check(act in body, f"job_start still handles {act}")
+    check('elif action == "git_push"' in body and 'kw = {}' in body,
+          "background git_push forwards no caller-controlled arguments")
 
     print("\nthe generic automation runner states and bounds its real authority")
     check("run_automation" in cc.REGISTRY,
@@ -237,14 +241,46 @@ def main() -> int:
     check("_paths(job_id)[0].exists()" in jobs_src,
           "job ids are bumped on collision, so two runs cannot share a log")
 
-    print("\npush remains unparameterised")
+    print("\npush remains unparameterised and background-safe")
     import inspect
     sig = inspect.signature(cc.REGISTRY["git_push"])
     check(not sig.parameters,
           "git_push takes no arguments, so no caller can choose the remote")
+    check("git_push" in cc.LONG_ACTIONS,
+          "large pushes can run as observable background jobs")
+    gate_i = cc_src.find("def _push_gate(")
+    gate_j = cc_src.find("\ndef ", gate_i + 1)
+    push_gate = cc_src[gate_i:gate_j]
+    check('if action == "git_push":' in sjb
+          and "_push_gate()" in sjb
+          and "_managed_doc_drift_gate()" in push_gate
+          and '["git", "status", "--porcelain"]' in push_gate,
+          "background push refuses stale docs or a dirty tree before starting")
+
+    print("\nconnector writes are atomic and retry transient drvfs failures")
+    real_replace = cc.os.replace
+    calls = []
+    with tempfile.TemporaryDirectory(
+            prefix="connector-write-", dir=REPO / "automation") as td:
+        target = Path(td) / "probe.txt"
+        rel = target.relative_to(REPO).as_posix()
+
+        def flaky_replace(src, dst):
+            calls.append((src, dst))
+            if len(calls) == 1:
+                raise OSError(errno.EINVAL, "simulated transient drvfs error")
+            return real_replace(src, dst)
+
+        with _patch.object(cc.os, "replace", side_effect=flaky_replace):
+            written = cc.fs_write(rel, "durable payload")
+        check(target.read_text() == "durable payload",
+              "a transient EINVAL preserves and eventually writes the payload")
+        check(written.get("write_attempts") == 2,
+              "the successful response reports the bounded retry")
+        check(not list(target.parent.glob(".*.sotn-write-*")),
+              "failed temporary write files are cleaned up")
 
     print("\ncommit synchronizes living documents without sweeping prose")
-    from unittest.mock import patch as _patch
     _cp = subprocess.CompletedProcess
     with _patch.object(
             cc, "_managed_doc_paths",
@@ -483,21 +519,24 @@ def main() -> int:
     _was = _cc_mod.DRYRUN
     try:
         _pend.mkdir(parents=True, exist_ok=True)
-        # STATE THE PRECONDITION. This check went pass/fail/pass/pass across
-        # four runs of unchanged code on 2026-08-10, and the failing run was
-        # self-contradictory: the file WAS restored byte-for-byte and the
-        # journal WAS consumed, but restored_files came back 0.
-        #
-        # replay_pending_journals() walks the WHOLE pending directory, so any
-        # other process that replays first legitimately takes this journal and
-        # leaves fleet_stop nothing to count. That makes the assertion below a
-        # statement about global state unless the directory starts empty. Say
-        # so rather than letting a leftover turn into a mystery failure.
+        # A successful transaction now deliberately retains an empty committed
+        # journal until the next replay. That makes the rename which disarms a
+        # transaction durable without depending on a second unlink. Such a
+        # record is harmless and fleet_stop consumes it before replaying the
+        # fixture below; only an actionable leftover violates the precondition.
         _stray = sorted(p.name for p in _pend.glob("*.json"))
-        check(not _stray,
-              f"the pending dir is empty before this test writes to it; a "
-              f"leftover journal would be replayed by this same call and "
-              f"change the count ({_stray})")
+        _actionable = []
+        for _name in _stray:
+            try:
+                _record = _j.loads((_pend / _name).read_text(encoding="utf-8"))
+                if _record.get("files") or _record.get("state") != "committed":
+                    _actionable.append(_name)
+            except (OSError, ValueError):
+                _actionable.append(_name)
+        check(not _actionable,
+              f"the pending dir contains no actionable journal before this "
+              f"test writes one; empty committed records are expected "
+              f"({_actionable})")
         _victim.write_text(_orig, encoding="utf-8")
         _jf.write_text(_j.dumps({
             "src_rel": "automation/logs/selftest-victim.c",

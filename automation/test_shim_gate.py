@@ -84,7 +84,20 @@ def main() -> int:
         d2, why2 = wd.shim_gate({"src_rel": "src/st/rchi/e_breakable.c"})
         check("size divergence still vetoes a 'viable' record", not d2,
               why2[:110])
-        d3, why3 = wd.shim_gate({"src_rel": "src/st/rno0/e_breakable.c"})
+        saved_idx = wd._IDX_JSON
+        wd._IDX_JSON = {
+            "shared_impls": {
+                "e_breakable": {
+                    "working_shim_files": ["src/st/no0/e_breakable.c"]
+                }
+            },
+            "splat_segments": {},
+        }
+        try:
+            d3, why3 = wd.shim_gate(
+                {"src_rel": "src/st/rno9/e_breakable.c"})
+        finally:
+            wd._IDX_JSON = saved_idx
         check("stage-data obligation still vetoes a 'viable' record", not d3,
               why3[:110])
     finally:
@@ -92,19 +105,25 @@ def main() -> int:
 
     # --- the stage-data obligation -----------------------------------------
     #
-    # src/st/e_breakable.h defines NO data of its own, so shim_viable's
-    # blocker 4 stays quiet, yet it reads g_eBreakableAnimations,
-    # g_eBreakableHitboxes, g_eBreakableExplosionTypes, g_eBreakableanimSets
-    # and blend_modes. Every stage that shims it declares those `static` above
-    # the include, so they are .data belonging to e_breakable and the stage
-    # needs a '.data, e_breakable' segment. rno0 has only a `c` segment.
-    d, why = wd.shim_gate({"src_rel": "src/st/rno0/e_breakable.c"})
-    check("rno0/e_breakable: stage-data obligation blocks the shim", not d,
-          why[:110])
-    check("rno0/e_breakable: reason names the missing .data segment",
+    # Keep this deterministic instead of binding it to one live splat config.
+    # RNO0 gained a named e_breakable data segment, which correctly removed the
+    # old blocker. A synthetic stage with no named segment must still be blocked
+    # using a current shim file as peer evidence.
+    synthetic_idx = {
+        "shared_impls": {
+            "e_breakable": {
+                "working_shim_files": ["src/st/no0/e_breakable.c"]
+            }
+        },
+        "splat_segments": {},
+    }
+    why = wd.shim_needs_stage_data("rno9", "e_breakable", synthetic_idx)
+    check("stage-data obligation blocks a stage without a named segment",
+          bool(why), why[:110])
+    check("stage-data reason names the missing .data segment",
           "'.data, e_breakable'" in why, why[:140])
-    check("rno0/e_breakable: reason cites a peer that proves it",
-          "src/st/" in why and "/e_breakable.c" in why, why[:140])
+    check("stage-data reason cites a current peer",
+          "src/st/no0/e_breakable.c" in why, why[:140])
 
     # --- FALSE POSITIVES the size check must catch -------------------------
     #
@@ -140,16 +159,15 @@ def main() -> int:
           wd.shim_size_divergence("rno0", "no_such_stem", idx_for(wd)) == "")
 
     # --- blocked must NOT be deferred, only annotated ----------------------
-    # rno0/e_blade has no shared impl to defer to; rno0/collision has one but
-    # is blocked on a missing .data segment. Neither may stall.
-    for stage, stem in (("rno0", "collision"), ("rno0", "e_collect")):
-        d, why = wd.shim_gate({"src_rel": f"src/st/{stage}/{stem}.c"})
-        check(f"{stage}/{stem}: blocked but NOT deferred", not d, why[:90])
-        check(f"{stage}/{stem}: blocker is still reported",
-              "blocked" in why.lower(), why[:90])
+    # RCHI's e_breakable is a measured different implementation, so the live
+    # size blocker must keep it on the generation path.
+    d, why = wd.shim_gate({"src_rel": "src/st/rchi/e_breakable.c"})
+    check("rchi/e_breakable: blocked but NOT deferred", not d, why[:90])
+    check("rchi/e_breakable: blocker is still reported",
+          "blocked" in why.lower(), why[:90])
 
     # --- files with no shared implementation are silent ---------------------
-    d, why = wd.shim_gate({"src_rel": "src/st/rno0/e_blade.c"})
+    d, why = wd.shim_gate({"src_rel": "src/st/rno0/no_such_stem.c"})
     check("no shared impl: not deferred", not d, why[:90])
 
     # --- paths outside src/st/<stage>/<stem>.c are out of scope -------------
@@ -213,17 +231,19 @@ def main() -> int:
     print(f"\n  population: {deferred} stubs deferred, {generated} still generated")
     if deferred_paths:
         print("  deferred paths: " + ", ".join(deferred_paths))
-    # The gate first reported 8 shimmable stubs. Every one was a false positive:
-    # 4 were different implementations (size divergence), 2 were psp targets the
-    # us oracle cannot verify, and the rest need stage data tables with no
-    # '.data, <stem>' segment to hold them. Scope expansion later admitted RNO1's
-    # two red-door stubs. They are the audited exception: the shared header owns
-    # its static UV data and the existing e_red_door C segment owns both code and
-    # data, so no separate stage-data segment is required.
+    # The gate first reported 8 shimmable stubs. Most were false positives:
+    # different implementations, non-US targets, or missing stage-data slots.
+    # The audited live exceptions are RNO1's two red-door stubs plus RNO0's
+    # e_breakable and e_collect stubs. RNO0 now has named data segments for both,
+    # so the regenerated index correctly removes their former placement blocker.
     #
     # Any new path must be audited before it can be accepted here. A subset is
     # allowed because landing the approved shim removes it from the population.
-    approved = {"src/st/rno1/e_red_door.c (2)"}
+    approved = {
+        "src/st/rno0/e_breakable.c (1)",
+        "src/st/rno0/e_collect.c (1)",
+        "src/st/rno1/e_red_door.c (2)",
+    }
     unaudited = set(deferred_paths) - approved
     check("no unaudited stub is claimed shimmable", not unaudited,
           ", ".join(sorted(unaudited)))

@@ -1,0 +1,523 @@
+{
+  "generator": "automation/find_data_segment.py --shim-report",
+  "source": "automation/shim-viability.us.json",
+  "source_sha256": "f3d0fc1d144e4cd91b118af8d74b03955017855d7ab4e4e6b712e04c223dde15",
+  "oracle_manifest": "config/check.us.sha",
+  "oracle_manifest_sha256": "74e161179bee70336d310c8a488aaf6e5b23d47919aa8d0f85eaafd73e5fd75f",
+  "results": [
+    {
+      "overlay": "rno2",
+      "stem": "e_spikes",
+      "header": "src/st/e_spikes.h",
+      "source_file": "src/st/rno2/e_spikes.c",
+      "covered": [
+        "EntitySpikesDust",
+        "EntitySpikesParts",
+        "SpikesBreak",
+        "SpikesApplyDamage",
+        "EntitySpikes",
+        "EntitySpikesDamage"
+      ],
+      "result": {
+        "ok": false,
+        "calibrated": false,
+        "oracle_verified": true,
+        "inputs": [
+          {
+            "stage": "rno2",
+            "path": "build/us/RNO2.BIN",
+            "expected_sha1": "e92dc877e03e4785414a72bf1b3603345eade364",
+            "actual_sha1": "e92dc877e03e4785414a72bf1b3603345eade364",
+            "oracle_match": true
+          },
+          {
+            "stage": "cat",
+            "path": "build/us/CAT.BIN",
+            "expected_sha1": "02ac6d5a2cd2db5a402aa9ceaab98574539c095d",
+            "actual_sha1": "02ac6d5a2cd2db5a402aa9ceaab98574539c095d",
+            "oracle_match": true
+          },
+          {
+            "stage": "dai",
+            "path": "build/us/DAI.BIN",
+            "expected_sha1": "4189c2f709ce229e48f5cd93a20af40579bda26b",
+            "actual_sha1": "4189c2f709ce229e48f5cd93a20af40579bda26b",
+            "oracle_match": true
+          },
+          {
+            "stage": "no2",
+            "path": "build/us/NO2.BIN",
+            "expected_sha1": "b048fd4c7825130724c524c0d3e7304044502db4",
+            "actual_sha1": "b048fd4c7825130724c524c0d3e7304044502db4",
+            "oracle_match": true
+          },
+          {
+            "stage": "nz1",
+            "path": "build/us/NZ1.BIN",
+            "expected_sha1": "c0aef5c7a2c3260005478b6a4c950d28680ce031",
+            "actual_sha1": "c0aef5c7a2c3260005478b6a4c950d28680ce031",
+            "oracle_match": true
+          }
+        ],
+        "why": "calibration FAILED, so the bytes are not stage-independent for e_spikes. Do not trust a hit in rno2. (dai: expected 0xea4, found ['0xea0']; no2: expected 0xd38, found nothing; nz1: expected 0x1100, found nothing)"
+      }
+    },
+    {
+      "overlay": "rnz1",
+      "stem": "e_spikes",
+      "header": "src/st/e_spikes.h",
+      "source_file": "src/st/rnz1/e_spikes.c",
+      "covered": [
+        "EntitySpikesDust",
+        "EntitySpikesParts",
+        "SpikesBreak",
+        "SpikesApplyDamage",
+        "EntitySpikes",
+        "EntitySpikesDamage"
+      ],
+      "result": {
+        "ok": false,
+        "calibrated": false,
+        "oracle_verified": true,
+        "inputs": [
+          {
+            "stage": "rnz1",
+            "path": "build/us/RNZ1.BIN",
+            "expected_sha1": "5983e19c68916c4c008c29ac3e384af988ec5ed8",
+            "actual_sha1": "5983e19c68916c4c008c29ac3e384af988ec5ed8",
+            "oracle_match": true
+          },
+          {
+            "stage": "cat",
+            "path": "build/us/CAT.BIN",
+            "expected_sha1": "02ac6d5a2cd2db5a402aa9ceaab98574539c095d",
+            "actual_sha1": "02ac6d5a2cd2db5a402aa9ceaab98574539c095d",
+            "oracle_match": true
+          },
+          {
+            "stage": "dai",
+            "path": "build/us/DAI.BIN",
+            "expected_sha1": "4189c2f709ce229e48f5cd93a20af40579bda26b",
+            "actual_sha1": "4189c2f709ce229e48f5cd93a20af40579bda26b",
+            "oracle_match": true
+          },
+          {
+            "stage": "no2",
+            "path": "build/us/NO2.BIN",
+            "expected_sha1": "b048fd4c7825130724c524c0d3e7304044502db4",
+            "actual_sha1": "b048fd4c7825130724c524c0d3e7304044502db4",
+            "oracle_match": true
+          },
+          {
+            "stage": "nz1",
+            "path": "build/us/NZ1.BIN",
+            "expected_sha1": "c0aef5c7a2c3260005478b6a4c950d28680ce031",
+            "actual_sha1": "c0aef5c7a2c3260005478b6a4c950d28680ce031",
+            "oracle_match": true
+          }
+        ],
+        "why": "calibration FAILED, so the bytes are not stage-independent for e_spikes. Do not trust a hit in rnz1. (dai: expected 0xea4, found ['0xea0']; no2: expected 0xd38, found nothing; nz1: expected 0x1100, found nothing)"
+      }
+    },
+    {
+      "overlay": "rno4",
+      "stem": "e_venus_weed",
+      "header": "src/st/e_venus_weed.h",
+      "source_file": "src/st/rno4/e_blue_venus_weed.c",
+      "covered": [
+        "SetupPrimsForEntitySpriteParts",
+        "EntityVenusWeed",
+        "EntityVenusWeedFlower",
+        "EntityVenusWeedTendril",
+        "EntityVenusWeedDart",
+        "EntityVenusWeedSpike"
+      ],
+      "result": {
+        "ok": false,
+        "why": "need 2+ peers with a '.data, e_venus_weed' segment to calibrate, found 0"
+      }
+    },
+    {
+      "overlay": "rno2",
+      "stem": "e_background_house",
+      "header": "src/st/e_background_house.h",
+      "source_file": "src/st/rno2/e_background_house.c",
+      "covered": [
+        "DrawFacade",
+        "DrawSides",
+        "DrawRoof",
+        "Entity3DHouseSpawner",
+        "Entity3DBackgroundHouse"
+      ],
+      "result": {
+        "ok": false,
+        "calibrated": false,
+        "oracle_verified": true,
+        "inputs": [
+          {
+            "stage": "rno2",
+            "path": "build/us/RNO2.BIN",
+            "expected_sha1": "e92dc877e03e4785414a72bf1b3603345eade364",
+            "actual_sha1": "e92dc877e03e4785414a72bf1b3603345eade364",
+            "oracle_match": true
+          },
+          {
+            "stage": "dre",
+            "path": "build/us/DRE.BIN",
+            "expected_sha1": "e42976f45b47d1c4912a198ae486b77ee6d77c9c",
+            "actual_sha1": "e42976f45b47d1c4912a198ae486b77ee6d77c9c",
+            "oracle_match": true
+          },
+          {
+            "stage": "no2",
+            "path": "build/us/NO2.BIN",
+            "expected_sha1": "b048fd4c7825130724c524c0d3e7304044502db4",
+            "actual_sha1": "b048fd4c7825130724c524c0d3e7304044502db4",
+            "oracle_match": true
+          }
+        ],
+        "why": "calibration FAILED, so the bytes are not stage-independent for e_background_house. Do not trust a hit in rno2. (no2: expected 0xbb8, found nothing)"
+      }
+    },
+    {
+      "overlay": "rbo6",
+      "stem": "prim_helpers",
+      "header": "src/st/prim_helpers.h",
+      "source_file": "src/boss/rbo6/prim_helpers.c",
+      "covered": [
+        "UnkPrimHelper",
+        "PrimDecreaseBrightness"
+      ],
+      "result": {
+        "ok": false,
+        "why": "boss overlay naming is not supported by the stage binary locator"
+      }
+    },
+    {
+      "overlay": "rno1",
+      "stem": "e_red_door",
+      "header": "src/st/e_red_door.h",
+      "source_file": "src/st/rno1/e_red_door.c",
+      "covered": [
+        "EntityIsNearPlayer",
+        "EntityRedDoor"
+      ],
+      "result": {
+        "ok": true,
+        "calibrated": true,
+        "oracle_verified": true,
+        "inputs": [
+          {
+            "stage": "rno1",
+            "path": "build/us/RNO1.BIN",
+            "expected_sha1": "5902c1f2464a08a1a8a8d7902d5a5cc7654f67da",
+            "actual_sha1": "5902c1f2464a08a1a8a8d7902d5a5cc7654f67da",
+            "oracle_match": true
+          },
+          {
+            "stage": "are",
+            "path": "build/us/ARE.BIN",
+            "expected_sha1": "d1b52f3ee4c96055e22a327ca7c6992471e3e551",
+            "actual_sha1": "d1b52f3ee4c96055e22a327ca7c6992471e3e551",
+            "oracle_match": true
+          },
+          {
+            "stage": "cat",
+            "path": "build/us/CAT.BIN",
+            "expected_sha1": "02ac6d5a2cd2db5a402aa9ceaab98574539c095d",
+            "actual_sha1": "02ac6d5a2cd2db5a402aa9ceaab98574539c095d",
+            "oracle_match": true
+          },
+          {
+            "stage": "cen",
+            "path": "build/us/CEN.BIN",
+            "expected_sha1": "42226b6d9ed24448eed61b3c6cd2949e96bebab6",
+            "actual_sha1": "42226b6d9ed24448eed61b3c6cd2949e96bebab6",
+            "oracle_match": true
+          },
+          {
+            "stage": "dai",
+            "path": "build/us/DAI.BIN",
+            "expected_sha1": "4189c2f709ce229e48f5cd93a20af40579bda26b",
+            "actual_sha1": "4189c2f709ce229e48f5cd93a20af40579bda26b",
+            "oracle_match": true
+          }
+        ],
+        "pattern_from": "are",
+        "calibrated_on": [
+          "cat",
+          "cen",
+          "dai"
+        ],
+        "size": 24,
+        "addr": 3372,
+        "vaddr": 2149059884,
+        "end": 3396
+      }
+    },
+    {
+      "overlay": "rnz1",
+      "stem": "e_medusa_head",
+      "header": "src/st/e_medusa_head.h",
+      "source_file": "src/st/rnz1/e_medusa_head.c",
+      "covered": [
+        "EntityMedusaHeadSpawner",
+        "EntityMedusaHeadBlue"
+      ],
+      "result": {
+        "ok": true,
+        "calibrated": true,
+        "oracle_verified": true,
+        "inputs": [
+          {
+            "stage": "rnz1",
+            "path": "build/us/RNZ1.BIN",
+            "expected_sha1": "5983e19c68916c4c008c29ac3e384af988ec5ed8",
+            "actual_sha1": "5983e19c68916c4c008c29ac3e384af988ec5ed8",
+            "oracle_match": true
+          },
+          {
+            "stage": "no1",
+            "path": "build/us/NO1.BIN",
+            "expected_sha1": "41ccd886308d5527684ae2c41164ecf6c554721f",
+            "actual_sha1": "41ccd886308d5527684ae2c41164ecf6c554721f",
+            "oracle_match": true
+          },
+          {
+            "stage": "nz1",
+            "path": "build/us/NZ1.BIN",
+            "expected_sha1": "c0aef5c7a2c3260005478b6a4c950d28680ce031",
+            "actual_sha1": "c0aef5c7a2c3260005478b6a4c950d28680ce031",
+            "oracle_match": true
+          },
+          {
+            "stage": "rno0",
+            "path": "build/us/RNO0.BIN",
+            "expected_sha1": "125003c7fe5d3510fddee22d4f5e5390fe507acf",
+            "actual_sha1": "125003c7fe5d3510fddee22d4f5e5390fe507acf",
+            "oracle_match": true
+          },
+          {
+            "stage": "rno2",
+            "path": "build/us/RNO2.BIN",
+            "expected_sha1": "e92dc877e03e4785414a72bf1b3603345eade364",
+            "actual_sha1": "e92dc877e03e4785414a72bf1b3603345eade364",
+            "oracle_match": true
+          }
+        ],
+        "pattern_from": "no1",
+        "calibrated_on": [
+          "nz1",
+          "rno0",
+          "rno2"
+        ],
+        "size": 120,
+        "addr": 7988,
+        "vaddr": 2149064500,
+        "end": 8108
+      }
+    },
+    {
+      "overlay": "rchi",
+      "stem": "e_breakable_with_lighting",
+      "header": "src/st/e_breakable_with_lighting.h",
+      "source_file": "src/st/rchi/e_breakable.c",
+      "covered": [
+        "EntityBreakable",
+        "EntityBreakableDebris"
+      ],
+      "result": {
+        "ok": false,
+        "why": "need 2+ peers with a '.data, e_breakable_with_lighting' segment to calibrate, found 0"
+      }
+    },
+    {
+      "overlay": "rno0",
+      "stem": "e_collect",
+      "header": "src/st/e_collect.h",
+      "source_file": "src/st/rno0/e_collect.c",
+      "covered": [
+        "EntityRelicOrb"
+      ],
+      "result": {
+        "ok": false,
+        "calibrated": false,
+        "oracle_verified": true,
+        "inputs": [
+          {
+            "stage": "rno0",
+            "path": "build/us/RNO0.BIN",
+            "expected_sha1": "125003c7fe5d3510fddee22d4f5e5390fe507acf",
+            "actual_sha1": "125003c7fe5d3510fddee22d4f5e5390fe507acf",
+            "oracle_match": true
+          },
+          {
+            "stage": "are",
+            "path": "build/us/ARE.BIN",
+            "expected_sha1": "d1b52f3ee4c96055e22a327ca7c6992471e3e551",
+            "actual_sha1": "d1b52f3ee4c96055e22a327ca7c6992471e3e551",
+            "oracle_match": true
+          },
+          {
+            "stage": "cat",
+            "path": "build/us/CAT.BIN",
+            "expected_sha1": "02ac6d5a2cd2db5a402aa9ceaab98574539c095d",
+            "actual_sha1": "02ac6d5a2cd2db5a402aa9ceaab98574539c095d",
+            "oracle_match": true
+          },
+          {
+            "stage": "cen",
+            "path": "build/us/CEN.BIN",
+            "expected_sha1": "42226b6d9ed24448eed61b3c6cd2949e96bebab6",
+            "actual_sha1": "42226b6d9ed24448eed61b3c6cd2949e96bebab6",
+            "oracle_match": true
+          },
+          {
+            "stage": "dai",
+            "path": "build/us/DAI.BIN",
+            "expected_sha1": "4189c2f709ce229e48f5cd93a20af40579bda26b",
+            "actual_sha1": "4189c2f709ce229e48f5cd93a20af40579bda26b",
+            "oracle_match": true
+          }
+        ],
+        "why": "calibration FAILED, so the bytes are not stage-independent for e_collect. Do not trust a hit in rno0. (cat: expected 0x1e50, found nothing; cen: expected 0xdbc, found nothing; dai: expected 0x1674, found nothing)"
+      }
+    },
+    {
+      "overlay": "bo3",
+      "stem": "e_misc",
+      "header": "src/st/e_misc.h",
+      "source_file": "src/boss/bo3/e_misc.c",
+      "covered": [
+        "EntityUnkId13"
+      ],
+      "result": {
+        "ok": false,
+        "why": "boss overlay naming is not supported by the stage binary locator"
+      }
+    },
+    {
+      "overlay": "bo7",
+      "stem": "e_misc",
+      "header": "src/st/e_misc.h",
+      "source_file": "src/boss/bo7/e_misc.c",
+      "covered": [
+        "EntityBigRedFireball"
+      ],
+      "result": {
+        "ok": false,
+        "why": "boss overlay naming is not supported by the stage binary locator"
+      }
+    },
+    {
+      "overlay": "rbo6",
+      "stem": "entity_lock_camera",
+      "header": "src/st/entity_lock_camera.h",
+      "source_file": "src/boss/rbo6/e_lock_camera.c",
+      "covered": [
+        "EntityLockCamera"
+      ],
+      "result": {
+        "ok": false,
+        "why": "boss overlay naming is not supported by the stage binary locator"
+      }
+    },
+    {
+      "overlay": "bo3",
+      "stem": "e_explosion_puff_opaque",
+      "header": "src/st/e_explosion_puff_opaque.h",
+      "source_file": "src/boss/bo3/e_explosion_puff_opaque.c",
+      "covered": [
+        "CreateExplosionPuff"
+      ],
+      "result": {
+        "ok": false,
+        "why": "boss overlay naming is not supported by the stage binary locator"
+      }
+    },
+    {
+      "overlay": "bo5",
+      "stem": "e_clouds",
+      "header": "src/st/e_clouds.h",
+      "source_file": "src/boss/bo5/e_clouds.c",
+      "covered": [
+        "EntityClouds"
+      ],
+      "result": {
+        "ok": false,
+        "why": "boss overlay naming is not supported by the stage binary locator"
+      }
+    },
+    {
+      "overlay": "bo5",
+      "stem": "e_clouds_keep",
+      "header": "src/st/e_clouds_keep.h",
+      "source_file": "src/boss/bo5/e_clouds.c",
+      "covered": [
+        "EntityClouds"
+      ],
+      "result": {
+        "ok": false,
+        "why": "boss overlay naming is not supported by the stage binary locator"
+      }
+    },
+    {
+      "overlay": "rnz1",
+      "stem": "e_valhalla_knight",
+      "header": "src/st/e_valhalla_knight.h",
+      "source_file": "src/st/rnz1/e_valhalla_knight.c",
+      "covered": [
+        "EntityValhallaKnight"
+      ],
+      "result": {
+        "ok": true,
+        "calibrated": true,
+        "oracle_verified": true,
+        "inputs": [
+          {
+            "stage": "rnz1",
+            "path": "build/us/RNZ1.BIN",
+            "expected_sha1": "5983e19c68916c4c008c29ac3e384af988ec5ed8",
+            "actual_sha1": "5983e19c68916c4c008c29ac3e384af988ec5ed8",
+            "oracle_match": true
+          },
+          {
+            "stage": "are",
+            "path": "build/us/ARE.BIN",
+            "expected_sha1": "d1b52f3ee4c96055e22a327ca7c6992471e3e551",
+            "actual_sha1": "d1b52f3ee4c96055e22a327ca7c6992471e3e551",
+            "oracle_match": true
+          },
+          {
+            "stage": "no2",
+            "path": "build/us/NO2.BIN",
+            "expected_sha1": "b048fd4c7825130724c524c0d3e7304044502db4",
+            "actual_sha1": "b048fd4c7825130724c524c0d3e7304044502db4",
+            "oracle_match": true
+          }
+        ],
+        "pattern_from": "are",
+        "calibrated_on": [
+          "no2"
+        ],
+        "size": 372,
+        "addr": 8108,
+        "vaddr": 2149064620,
+        "end": 8480
+      }
+    },
+    {
+      "overlay": "rno0",
+      "stem": "e_breakable_with_lighting",
+      "header": "src/st/e_breakable_with_lighting.h",
+      "source_file": "src/st/rno0/e_breakable.c",
+      "covered": [
+        "EntityBreakable"
+      ],
+      "result": {
+        "ok": false,
+        "why": "need 2+ peers with a '.data, e_breakable_with_lighting' segment to calibrate, found 0"
+      }
+    }
+  ]
+}

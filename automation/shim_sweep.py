@@ -42,6 +42,7 @@ Usage:
     python3 automation/shim_sweep.py                  # ranked report
     python3 automation/shim_sweep.py --overlay rno0
     python3 automation/shim_sweep.py --min-peers 5 --json
+    python3 automation/shim_sweep.py --json-out automation/shim-viability.us.json
 """
 from __future__ import annotations
 
@@ -165,6 +166,8 @@ def main() -> int:
                          "count as PEERS, which is correct, because a PSP stage "
                          "shimming a header is real evidence the header works.")
     ap.add_argument("--json", action="store_true")
+    ap.add_argument("--json-out", default="", metavar="PATH",
+                    help="write the same deterministic JSON report in-repo")
     a = ap.parse_args()
 
     headers = shared_headers()
@@ -219,8 +222,21 @@ def main() -> int:
 
     hits.sort(key=lambda h: (-len(h["covered"]), -h["peers"], h["file"]))
 
+    rendered = json.dumps(hits, indent=2) + "\n"
+    if a.json_out:
+        out = (REPO / a.json_out).resolve()
+        try:
+            out.relative_to(REPO.resolve())
+        except ValueError:
+            print("json-out must stay inside the repository")
+            return 1
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(rendered, encoding="utf-8")
+        print(f"wrote {out.relative_to(REPO)}: {len(hits)} candidate(s), "
+              f"{sum(len(hit['covered']) for hit in hits)} covered stub(s)")
     if a.json:
-        print(json.dumps(hits, indent=2))
+        print(rendered, end="")
+    if a.json or a.json_out:
         return 0
 
     if not hits:

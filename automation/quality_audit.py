@@ -33,6 +33,7 @@ Usage:
 """
 from __future__ import annotations
 import argparse
+import hashlib
 import json
 import re
 import subprocess
@@ -49,6 +50,7 @@ REPO = Path(__file__).resolve().parent.parent
 UPSTREAM_DEFAULT = "upstream/master"
 
 INDEX = REPO / "automation" / "index.us.json"
+DUPLICATE_PROVENANCE = REPO / "automation" / "duplicate-provenance.us.json"
 
 
 def _index() -> dict:
@@ -68,6 +70,30 @@ def _index() -> dict:
 # --------------------------------------------------------------------------
 # ground truth loaded from the index
 # --------------------------------------------------------------------------
+
+def _symbol_scope_for_source(path: Path) -> str:
+    """Return the config symbol scope for one source translation unit."""
+    try:
+        parts = path.relative_to(REPO).parts
+    except ValueError:
+        return ""
+    if len(parts) < 2 or parts[0] != "src":
+        return ""
+    if parts[1] == "boss" and len(parts) >= 3:
+        return f"bo{parts[2]}"
+    if parts[1] == "st" and len(parts) >= 3:
+        return f"st{parts[2]}"
+    return parts[1]
+
+
+def scoped_addr_to_name(idx: dict, path: Path) -> dict[str, str]:
+    """Named addresses visible in this file's overlay, never another overlay."""
+    by_scope = idx.get("symbols", {}).get("by_scope", {})
+    out = dict(by_scope.get("global", {}).get("addr_to_name", {}))
+    scope = _symbol_scope_for_source(path)
+    out.update(by_scope.get(scope, {}).get("addr_to_name", {}))
+    return out
+
 
 def load_symbol_addresses(idx: dict | None = None) -> dict[str, int]:
     """name -> address, from the index's upstream-derived symbol table."""
@@ -700,8 +726,9 @@ def extract_functions(path: Path) -> dict[str, str]:
     return out
 
 
-def find_duplicates(added_fns: dict[str, tuple[Path, str]],
-                    all_files: list[Path]) -> list[dict]:
+def find_duplicates(
+        added_fns: dict[tuple[Path, str], str],
+        all_files: list[Path], root: Path = REPO) -> list[dict]:
     """Flag added functions whose body already exists elsewhere.
 
     Upstream's complaint: 'almost every function you have decompiled here is
@@ -713,21 +740,181 @@ def find_duplicates(added_fns: dict[str, tuple[Path, str]],
         for name, body in extract_functions(p).items():
             sig = normalise_body(body)
             if len(sig) > 80:                      # ignore trivial stubs
-                index[sig].append(f"{p.relative_to(REPO)}:{name}")
+                index[sig].append(f"{p.relative_to(root)}:{name}")
     dups = []
-    for name, (path, body) in added_fns.items():
+    for (path, name), body in added_fns.items():
         sig = normalise_body(body)
         if len(sig) <= 80:
             continue
         others = [x for x in index.get(sig, [])
-                  if not x.endswith(f":{name}") or not x.startswith(str(path.relative_to(REPO)))]
-        others = [o for o in others if o != f"{path.relative_to(REPO)}:{name}"]
+                  if not x.endswith(f":{name}") or not x.startswith(str(path.relative_to(root)))]
+        others = [o for o in others if o != f"{path.relative_to(root)}:{name}"]
         if others:
-            dups.append({"file": str(path.relative_to(REPO)), "function": name,
+            dups.append({"file": str(path.relative_to(root)), "function": name,
                          "kind": "duplicate", "detail": "identical body exists",
                          "fix": f"reuse/share with {others[0]}",
                          "matches": others[:3], "line": 0, "code": ""})
     return dups
+
+
+# --------------------------------------------------------------------------
+# exact duplicate provenance
+# --------------------------------------------------------------------------
+
+_DUPLICATE_DISPOSITIONS = {
+    "shared-header-needs-boundary-calibration",
+    "target-copy-needs-shared-extraction",
+}
+
+
+def _body_sha256(body: str) -> str:
+    return hashlib.sha256(normalise_body(body).encode()).hexdigest()
+
+
+def _duplicate_disposition(finding: dict) -> str:
+    donor = finding.get("matches", [""])[0]
+    donor_path = donor.rsplit(":", 1)[0]
+    if donor_path.endswith(".h"):
+        return "shared-header-needs-boundary-calibration"
+    return "target-copy-needs-shared-extraction"
+
+
+def build_duplicate_provenance(findings: list[dict]) -> dict:
+    """Record exact donors and the later roadmap lane that owns consolidation."""
+    entries = []
+    for finding in findings:
+        if finding.get("kind") != "duplicate":
+            continue
+        matches = finding.get("matches", [])
+        if not matches:
+            continue
+        donor = matches[0]
+        donor_file, donor_function = donor.rsplit(":", 1)
+        target_file = finding["file"]
+        target_function = finding["function"]
+        target_body = extract_functions(REPO / target_file).get(target_function)
+        donor_body = extract_functions(REPO / donor_file).get(donor_function)
+        if target_body is None or donor_body is None:
+            continue
+        if normalise_body(target_body) != normalise_body(donor_body):
+            continue
+        entries.append({
+            "target_file": target_file,
+            "target_function": target_function,
+            "donor": donor,
+            "target_body_sha256": _body_sha256(target_body),
+            "donor_body_sha256": _body_sha256(donor_body),
+            "disposition": _duplicate_disposition(finding),
+            "roadmap": "#264",
+        })
+    entries.sort(key=lambda entry: (
+        entry["target_file"], entry["target_function"], entry["donor"]))
+    counts: dict[str, int] = defaultdict(int)
+    for entry in entries:
+        counts[entry["disposition"]] += 1
+    return {
+        "schema": 1,
+        "generator": "automation/quality_audit.py "
+                     "--record-duplicate-provenance",
+        "summary": {
+            "entries": len(entries),
+            "by_disposition": dict(sorted(counts.items())),
+        },
+        "entries": entries,
+    }
+
+
+def _archive_before_replacement(path: Path) -> Path | None:
+    if not path.exists():
+        return None
+    history = REPO / "automation" / "history"
+    history.mkdir(parents=True, exist_ok=True)
+    version = 1
+    while True:
+        archived = history / (
+            f"{path.stem}.v{version:04d}{path.suffix}")
+        if not archived.exists():
+            archived.write_bytes(path.read_bytes())
+            return archived
+        version += 1
+
+
+def write_duplicate_provenance(path_text: str, findings: list[dict]) -> Path:
+    path = Path(path_text)
+    if not path.is_absolute():
+        path = REPO / path
+    path = path.resolve()
+    try:
+        path.relative_to(REPO)
+    except ValueError as exc:
+        raise ValueError(
+            "duplicate provenance must stay inside the repo") from exc
+    payload = json.dumps(
+        build_duplicate_provenance(findings), indent=2) + "\n"
+    if path.exists() and path.read_text(errors="ignore") == payload:
+        return path
+    _archive_before_replacement(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(payload)
+    return path
+
+
+def load_duplicate_provenance(
+        path: Path = DUPLICATE_PROVENANCE) -> dict:
+    try:
+        payload = json.loads(path.read_text())
+    except (OSError, ValueError):
+        return {}
+    return {
+        f"{entry.get('target_file')}:{entry.get('target_function')}": entry
+        for entry in payload.get("entries", [])
+    }
+
+
+def _duplicate_entry_valid(
+        finding: dict, entry: dict, target_body: str,
+        donor_body: str) -> bool:
+    donor = entry.get("donor")
+    return (
+        donor in finding.get("matches", [])
+        and entry.get("disposition") in _DUPLICATE_DISPOSITIONS
+        and entry.get("roadmap") == "#264"
+        and normalise_body(target_body) == normalise_body(donor_body)
+        and entry.get("target_body_sha256") == _body_sha256(target_body)
+        and entry.get("donor_body_sha256") == _body_sha256(donor_body)
+    )
+
+
+def reconcile_duplicate_provenance(
+        findings: list[dict], provenance: dict | None = None
+        ) -> tuple[list[dict], list[dict]]:
+    """Accept only duplicates whose target and donor hashes remain exact."""
+    provenance = provenance if provenance is not None else (
+        load_duplicate_provenance())
+    kept = []
+    accepted = []
+    for finding in findings:
+        if finding.get("kind") != "duplicate":
+            kept.append(finding)
+            continue
+        key = f"{finding['file']}:{finding['function']}"
+        entry = provenance.get(key)
+        if not entry:
+            kept.append(finding)
+            continue
+        donor_file, donor_function = entry.get(
+            "donor", ":").rsplit(":", 1)
+        target_body = extract_functions(
+            REPO / finding["file"]).get(finding["function"])
+        donor_body = extract_functions(
+            REPO / donor_file).get(donor_function)
+        if (target_body is None or donor_body is None or
+                not _duplicate_entry_valid(
+                    finding, entry, target_body, donor_body)):
+            kept.append(finding)
+            continue
+        accepted.append(entry)
+    return kept, accepted
 
 
 # --------------------------------------------------------------------------
@@ -795,11 +982,16 @@ def _parse_changed_line_scopes(
     return added, structural
 
 
+def _diff_argv_since(commit: str) -> list[str]:
+    """Compare the current index and worktree directly against `commit`."""
+    return ["git", "diff", "-U0", commit, "--", "src/"]
+
+
 def changed_line_scopes_since(
         commit: str) -> tuple[dict[str, set[int]], dict[str, set[int]]]:
-    """Return ordinary added-line scope plus structural change boundaries."""
+    """Return added lines and structural boundaries through the live worktree."""
     try:
-        diff = subprocess.run(["git", "diff", "-U0", f"{commit}..HEAD", "--", "src/"],
+        diff = subprocess.run(_diff_argv_since(commit),
                               cwd=REPO, capture_output=True, text=True,
                               timeout=120).stdout
     except (subprocess.SubprocessError, OSError):
@@ -972,6 +1164,79 @@ diff --git a/src/demo.c b/src/demo.c
         print("FAIL deletion scope: zero-width hunk lost structural boundaries")
         return 1
 
+    if _diff_argv_since("HEAD") != [
+            "git", "diff", "-U0", "HEAD", "--", "src/"]:
+        print("FAIL live scope: staged and unstaged changes would be omitted")
+        return 1
+
+    duplicate_body = "{ value += 100; return value; }"
+    duplicate_finding = {
+        "matches": ["src/shared.h:Donor"],
+    }
+    duplicate_entry = {
+        "donor": "src/shared.h:Donor",
+        "target_body_sha256": _body_sha256(duplicate_body),
+        "donor_body_sha256": _body_sha256(duplicate_body),
+        "disposition": "shared-header-needs-boundary-calibration",
+        "roadmap": "#264",
+    }
+    if not _duplicate_entry_valid(
+            duplicate_finding, duplicate_entry,
+            duplicate_body, duplicate_body):
+        print("FAIL duplicate provenance: exact donor was rejected")
+        return 1
+    stale_entry = dict(duplicate_entry)
+    stale_entry["target_body_sha256"] = "stale"
+    if _duplicate_entry_valid(
+            duplicate_finding, stale_entry,
+            duplicate_body, duplicate_body):
+        print("FAIL duplicate provenance: stale hash was accepted")
+        return 1
+
+    with tempfile.TemporaryDirectory() as td:
+        duplicate_root = Path(td)
+        first = duplicate_root / "first.c"
+        second = duplicate_root / "second.c"
+        source = (
+            "int SameName(int value) { value += 100; value *= 3; "
+            "value -= 7; value ^= 0x55; value += 200; value *= 5; "
+            "value -= 11; value ^= 0xAA; value += 300; value *= 7; "
+            "return value; }\n")
+        first.write_text(source)
+        second.write_text(source)
+        duplicate_fixture = {
+            (first, "SameName"): extract_functions(first)["SameName"],
+            (second, "SameName"): extract_functions(second)["SameName"],
+        }
+        duplicate_hits = find_duplicates(
+            duplicate_fixture, [first, second], root=duplicate_root)
+        if len(duplicate_hits) != 2:
+            print(
+                "FAIL duplicate scope: same-named functions collapsed "
+                "across files")
+            return 1
+
+    scope_fixture = {
+        "symbols": {
+            "by_scope": {
+                "bobo0": {
+                    "addr_to_name": {"0x801806C0": "g_EInitBloodyZombie"}
+                },
+                "bobo5": {"addr_to_name": {}},
+            }
+        }
+    }
+    if scoped_addr_to_name(
+            scope_fixture, REPO / "src/boss/bo0/test.c").get(
+                "0x801806C0") != "g_EInitBloodyZombie":
+        print("FAIL symbol scope: same-overlay name was lost")
+        return 1
+    if scoped_addr_to_name(
+            scope_fixture, REPO / "src/boss/bo5/test.c").get(
+                "0x801806C0") is not None:
+        print("FAIL symbol scope: cross-overlay VRAM collision leaked")
+        return 1
+
     inherited = {"if (step_s) {", "D_80000000 = 1;"}
     sample = [
         {"kind": "empty_control_body", "code": "if (step_s) {"},
@@ -993,6 +1258,11 @@ def main() -> int:
     ap.add_argument("--file", default="", help="audit one file, whole")
     ap.add_argument("--all", action="store_true", help="audit all of src/, whole")
     ap.add_argument("--json", default="")
+    ap.add_argument(
+        "--record-duplicate-provenance", nargs="?",
+        const=str(DUPLICATE_PROVENANCE.relative_to(REPO)), default="",
+        metavar="PATH",
+        help="write hash-validated duplicate routing")
     ap.add_argument("--limit", type=int, default=40)
     ap.add_argument("--self-test", action="store_true")
     a = ap.parse_args()
@@ -1001,7 +1271,6 @@ def main() -> int:
         return self_test()
 
     idx = _index()
-    addr_to_name = idx.get('symbols', {}).get('addr_to_name', {})
     syms = load_symbol_addresses(idx)
     layout, ent_size = load_entity_layout()
     ext_variants = load_ext_variants()
@@ -1017,14 +1286,14 @@ def main() -> int:
     if a.file:
         p = REPO / a.file
         findings += check_file(p, syms, layout, ent_size, ext_variants, bits,
-                               addr_to_name=addr_to_name)
+                               addr_to_name=scoped_addr_to_name(idx, p))
         scope = [p]
     elif a.all:
         scope = [p for p in (REPO / "src").rglob("*.c")
                  if "_psp" not in str(p) and "saturn" not in str(p)]
         for p in scope:
             findings += check_file(p, syms, layout, ent_size, ext_variants, bits,
-                                   addr_to_name=addr_to_name)
+                                   addr_to_name=scoped_addr_to_name(idx, p))
     else:
         changed, structural = changed_line_scopes_since(a.since)
         scope = []
@@ -1036,14 +1305,14 @@ def main() -> int:
             findings += check_file(p, syms, layout, ent_size, ext_variants,
                                    bits, only_lines=changed.get(rel, set()),
                                    structural_lines=structural.get(rel, set()),
-                                   addr_to_name=addr_to_name)
+                                   addr_to_name=scoped_addr_to_name(idx, p))
         print(f"scope: {len(scope)} files changed since {a.since}", file=sys.stderr)
 
     # duplicates: compare functions in scope against the whole tree
-    added: dict[str, tuple[Path, str]] = {}
+    added: dict[tuple[Path, str], str] = {}
     for p in scope:
         for name, body in extract_functions(p).items():
-            added[name] = (p, body)
+            added[(p, name)] = body
     # MUST include .h. src/st/ deduplicates by putting the shared implementation
     # in src/st/<name>.h and reducing each stage's .c to a 4-line
     # `#include "../st_common.h"` shim (25 stages do this). Globbing only .c
@@ -1052,7 +1321,20 @@ def main() -> int:
     # fork, missed because the corpus excluded the files that hold the originals.
     corpus = [p for p in (REPO / "src").rglob("*.[ch]")
               if "_psp" not in str(p) and "saturn" not in str(p)]
-    findings += find_duplicates(added, corpus)
+    duplicate_findings = find_duplicates(added, corpus)
+    findings += duplicate_findings
+    if a.record_duplicate_provenance:
+        written = write_duplicate_provenance(
+            a.record_duplicate_provenance, duplicate_findings)
+        print(
+            f"recorded duplicate provenance: {written.relative_to(REPO)}",
+            file=sys.stderr)
+    findings, accepted_duplicates = reconcile_duplicate_provenance(findings)
+    if accepted_duplicates:
+        print(
+            f"accepted {len(accepted_duplicates)} exact duplicate(s) with "
+            "hash-validated #264 provenance",
+            file=sys.stderr)
 
     # Drop anything upstream wrote verbatim; it is their convention, not our
     # defect. Duplicates are exempt: for those, existing upstream IS the point.

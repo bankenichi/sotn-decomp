@@ -12,6 +12,7 @@ Stdlib only, so it is importable and unit-testable anywhere.
 """
 from __future__ import annotations
 import datetime as dt
+import errno
 import json
 import os
 import shutil
@@ -1483,6 +1484,33 @@ def _managed_doc_drift_gate() -> dict:
             "returncode": p.returncode}
 
 
+def _push_gate() -> dict:
+    """A push starts only from generated, committed, inspectable state."""
+    docs = _managed_doc_drift_gate()
+    if not docs.get("ok"):
+        return {
+            "ok": False,
+            "documentation_drift": docs,
+            "error": "generated living documents are stale",
+        }
+    try:
+        state = subprocess.run(
+            ["git", "status", "--porcelain"], cwd=str(REPO),
+            capture_output=True, text=True, timeout=120)
+    except (OSError, subprocess.SubprocessError) as exc:
+        return {"ok": False, "error": f"git status failed: {exc}"}
+    if state.returncode != 0 or state.stdout.strip():
+        return {
+            "ok": False,
+            "error": (
+                "background push requires a clean worktree and index; "
+                "commit or remove every pending path first"),
+            "git_status": state.stdout[-MAX_OUT:],
+            "git_status_stderr": state.stderr[-MAX_OUT:],
+        }
+    return {"ok": True, "documentation_drift": docs}
+
+
 def run(action: str, timeout: float = 3600, **kwargs) -> dict:
     # LINE SLICING, for git_show_file only. Popped BEFORE build_argv, because
     # these are not git arguments: they post-filter git's output.
@@ -1568,11 +1596,12 @@ def run(action: str, timeout: float = 3600, **kwargs) -> dict:
                 out["index_lock"] = lock_note
             return out
     elif action == "git_push":
-        doc_gate = _managed_doc_drift_gate()
+        doc_gate = _push_gate()
         if not doc_gate.get("ok"):
             out = {"action": action, "argv": argv, "dry_run": False,
-                   "refused": True, "documentation_drift": doc_gate,
-                   "error": "REFUSED: generated living documents are stale"}
+                   "refused": True, **doc_gate,
+                   "error": "REFUSED: " + doc_gate.get(
+                       "error", "push preflight failed")}
             if lock_note:
                 out["index_lock"] = lock_note
             return out
@@ -1669,7 +1698,7 @@ LONG_ACTIONS = {
     # A worker's per-function budget is minutes: m2c, then up to three
     # model calls, each followed by a full build. It is never a run() call.
     "make_function_finder", "run_automation", "run_analysis", "permuter",
-    "worker_once",
+    "worker_once", "git_push",
 }
 
 
@@ -1691,6 +1720,18 @@ def start_job(action: str, **kwargs) -> dict:
     argv = build_argv(action, **kwargs)
     if DRYRUN:
         return {"action": action, "argv": argv, "dry_run": True, "started": False}
+    if action == "git_push":
+        gate = _push_gate()
+        if not gate.get("ok"):
+            return {
+                "action": action,
+                "argv": argv,
+                "started": False,
+                "refused": True,
+                **gate,
+                "error": "REFUSED: " + gate.get(
+                    "error", "push preflight failed"),
+            }
     # The permuter owns its work_dir and shares nothing: it compiles into that
     # directory, never writes build/, and never runs make. So N seeds can be
     # searched at once, and serialising them wasted the most valuable pool the
@@ -1762,8 +1803,48 @@ def fs_write(path: str, content: str) -> dict:
     if DRYRUN:
         return {"path": path, "dry_run": True, "would_write_bytes": len(enc)}
     rp.parent.mkdir(parents=True, exist_ok=True)
-    rp.write_bytes(enc)
-    return {"path": path, "dry_run": False, "bytes_written": len(enc)}
+
+    # Direct Path.write_bytes() truncates the destination before writing and
+    # intermittently returns EINVAL on the Windows-backed /mnt/c tree when a
+    # host process briefly holds the file. The identical call succeeds on an
+    # immediate retry, proving the validated path and payload are not the
+    # failure. Write beside the target, flush it, and atomically replace. Retry
+    # only the transient host-filesystem errors; all other failures remain loud.
+    mode = 0o644
+    try:
+        mode = rp.stat().st_mode & 0o777
+    except FileNotFoundError:
+        pass
+    transient = {errno.EACCES, errno.EBUSY, errno.EINVAL, errno.EPERM}
+    last_error = None
+    for attempt in range(4):
+        tmp = rp.with_name(
+            f".{rp.name}.sotn-write-{os.getpid()}-{time.time_ns()}")
+        try:
+            with tmp.open("wb") as f:
+                f.write(enc)
+                f.flush()
+                os.fsync(f.fileno())
+            os.chmod(tmp, mode)
+            os.replace(tmp, rp)
+            return {
+                "path": path,
+                "dry_run": False,
+                "bytes_written": len(enc),
+                "write_attempts": attempt + 1,
+            }
+        except OSError as exc:
+            last_error = exc
+            try:
+                tmp.unlink()
+            except FileNotFoundError:
+                pass
+            except OSError:
+                pass
+            if exc.errno not in transient or attempt == 3:
+                raise
+            time.sleep(0.02 * (2 ** attempt))
+    raise last_error  # pragma: no cover
 
 
 def fs_list(path: str = ".") -> dict:

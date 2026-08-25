@@ -3,13 +3,132 @@
 
 INCLUDE_ASM("boss/rbo6/nonmatchings/prim_helpers", UnkPrimHelper);
 
-INCLUDE_ASM("boss/rbo6/nonmatchings/prim_helpers", UpdateAnimation);
+s32 UpdateAnimation(u8* texAnimations, Primitive* prim) {
+    u16 sp0;
+    u16 tempUv;
+    s32 retVal = 0;
+    u8 index = prim->p1 * 5;
+    u8* nextAnimation = &texAnimations[index];
 
-INCLUDE_ASM("boss/rbo6/nonmatchings/prim_helpers", FindFirstUnkPrim);
+    if (!prim->p2) {
+        if (*nextAnimation) {
+            if (*nextAnimation == 0xFF) {
+                return 0;
+            }
+            prim->p2 = *nextAnimation++;
+            tempUv = nextAnimation[0] + (nextAnimation[1] << 8);
+            nextAnimation += 2;
+            sp0 = nextAnimation[0] + (nextAnimation[1] << 8);
+            LOH(prim->u0) = tempUv;
+            LOH(prim->u1) = tempUv + *((u8*)(&sp0));
+            LOH(prim->u2) = tempUv + (*((u8*)&sp0 + 1) << 8);
+            LOH(prim->u3) = tempUv + sp0;
+            prim->p1++;
+            retVal = (retVal | 0x80) & 0xFFFF;
+        } else {
+            prim->p1 = 0;
+            prim->p2 = 0;
+            nextAnimation = &texAnimations[0];
+            prim->p2 = *nextAnimation++;
+            tempUv = nextAnimation[0] + (nextAnimation[1] << 8);
+            nextAnimation += 2;
+            sp0 = nextAnimation[0] + (nextAnimation[1] << 8);
+            LOH(prim->u0) = tempUv;
+            LOH(prim->u1) = tempUv + (*(u8*)&sp0);
+            LOH(prim->u2) = tempUv + (*((u8*)&sp0 + 1) << 8);
+            LOH(prim->u3) = tempUv + sp0;
+            prim->p1++;
+            return 0;
+        }
+    }
 
-INCLUDE_ASM("boss/rbo6/nonmatchings/prim_helpers", FindFirstUnkPrim2);
+    prim->p2--;
+#ifndef VERSION_PSP
+    retVal |= 1;
+#endif
+    retVal = (retVal | 1) & 0xFFFF;
+    return retVal & 0xFF;
+}
 
-INCLUDE_ASM("boss/rbo6/nonmatchings/prim_helpers", PrimToggleVisibility);
+
+
+Primitive* FindFirstUnkPrim(Primitive* prim) {
+    Primitive* primLocal = prim;
+    while (primLocal != NULL) {
+        if (!primLocal->p3) {
+            return primLocal;
+        }
+        primLocal = primLocal->next;
+    }
+    return NULL;
+}
+
+
+
+Primitive* FindFirstUnkPrim2(Primitive* prim, u8 index) {
+    int i;
+    Primitive* primLocal = prim;
+
+    while (primLocal != NULL) {
+        if (!primLocal->p3) {
+            prim = primLocal;
+            for (i = 1; i < index; i++) {
+                primLocal = primLocal->next;
+                if (!primLocal) {
+                    return NULL;
+                }
+
+                if (primLocal->p3) {
+                    break;
+                }
+            }
+
+            if (i == index) {
+                return prim;
+            }
+        }
+        primLocal = primLocal->next;
+    }
+    return NULL;
+}
+
+
+
+/* CODEGEN: The constant-true wrapper below preserves the shared PSP helper's
+   control-flow shape, which the legacy PSX compiler also needs for this match. */
+Primitive* PrimToggleVisibility(Primitive* prim, s32 count) {
+    s32 i;
+    u8 isVisible;
+
+    if (prim->p3) {
+        prim->p3 = false;
+    } else {
+        prim->p3 = true;
+    }
+
+    for (i = 0; i < count; i++) {
+        if (prim->p3) {
+            prim->drawMode &= ~DRAW_HIDE;
+            isVisible = false;
+        } else {
+            prim->drawMode |= DRAW_HIDE;
+            isVisible = true;
+        }
+
+        prim = prim->next;
+        if (prim == NULL) {
+            if (true) {
+                return NULL;
+            }
+        }
+
+        prim->p3 = isVisible;
+    }
+
+    return prim;
+}
+
+
 
 void PrimResetNext(Primitive* prim) {
     prim->p1 = 0;
@@ -35,8 +154,24 @@ void PrimResetNext(Primitive* prim) {
     prim->next->y2 = 0;
 }
 
-INCLUDE_ASM("boss/rbo6/nonmatchings/prim_helpers", UnkPolyFunc2);
+void UnkPolyFunc2(Primitive* prim) {
+    PrimResetNext(prim);
+    prim->p3 = 8;
+    prim->next->p3 = 1;
+    prim->next->type = PRIM_LINE_G2;
+    prim->next->drawMode = DRAW_HIDE | DRAW_UNK02;
+}
 
-INCLUDE_ASM("boss/rbo6/nonmatchings/prim_helpers", UnkPolyFunc0);
+
+
+void UnkPolyFunc0(Primitive* prim) {
+    prim->p3 = 0;
+    prim->drawMode = DRAW_HIDE;
+    prim->next->p3 = 0;
+    prim->next->type = PRIM_GT4;
+    prim->next->drawMode = DRAW_HIDE;
+}
+
+
 
 INCLUDE_ASM("boss/rbo6/nonmatchings/prim_helpers", PrimDecreaseBrightness);

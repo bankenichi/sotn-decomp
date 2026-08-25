@@ -77,6 +77,59 @@ def main():
           "exactly once, not once per call site")
     check("6.3.2.2" in out, "and cites why that form is not a guess")
 
+    print("\nseed-only prefixes cannot cross the source-write boundary")
+    prefixed = ('#define PLAYER g_Entities[0]\n#define true 1\n'
+                'extern EInit g_EInitEnvironment;\n'
+                'extern EInit g_EInitEnvironment;\n'
+                'void Target(void) { (void)g_EInitEnvironment; }\n')
+    rejected = False
+    try:
+        wd._candidate_function_only(prefixed, "Target")
+    except RuntimeError as exc:
+        rejected = "file-scope scaffolding" in str(exc)
+    check(rejected, "macros and duplicate receipt declarations are rejected")
+    exact = 'void Target(void) { (void)g_EInitEnvironment; }\n'
+    old_symbol_declaration = wd._symbol_declaration
+    wd._symbol_declaration = lambda name, _src: (
+        "extern EInit g_EInitEnvironment;"
+        if name == "g_EInitEnvironment" else None)
+    try:
+        prepared = wd._prepare_candidate_body("", exact, "Target", "src/st/test.c")
+    finally:
+        wd._symbol_declaration = old_symbol_declaration
+    check("#define" not in prepared and prepared.count(
+        "extern EInit g_EInitEnvironment;") == 1 and "void Target" in prepared,
+          "the exact function receives one centrally derived declaration")
+
+    print("\na later declaration is not visible at the replaced stub")
+    later = ('#include "test.h"\n'
+             'INCLUDE_ASM("st/test/nonmatchings/file", Target);\n'
+             'u8 D_us_80180000[] = {1};\n')
+    later_body = 'void Target(void) { (void)D_us_80180000[0]; }\n'
+    old_symbol_declaration = wd._symbol_declaration
+    wd._symbol_declaration = lambda name, _src: (
+        "extern u8 D_us_80180000[];" if name == "D_us_80180000" else None)
+    try:
+        later_prepared = wd._prepare_candidate_body(
+            later, later_body, "Target", "src/st/test.c")
+    finally:
+        wd._symbol_declaration = old_symbol_declaration
+    check("extern u8 D_us_80180000[];" in later_prepared,
+          "a definition after Target cannot suppress its required extern")
+
+    print("\ntrusted receipt support is normalized at the write boundary")
+    supported = wd._prepare_candidate_body(
+        'INCLUDE_ASM("st/test/nonmatchings/file", Target);\n',
+        'void Target(void) { LaterCall(); }   \n',
+        "Target", "src/st/test.c",
+        support_declarations=["void LaterCall(void);"])
+    check("void LaterCall(void);" in supported
+          and supported.index("void LaterCall(void);")
+          < supported.index("void Target"),
+          "validated score context remains visible before the exact function")
+    check(not any(line.endswith(" ") for line in supported.splitlines()),
+          "receipt whitespace is normalized before it reaches src/")
+
     print("\nthe declaration lands after the includes, before the code")
     i_inc = out.index('#include "bo0.h"')
     i_dec = out.index("extern int func_us_801B171C();")
@@ -85,6 +138,13 @@ def main():
           "ordered include < declaration < first use")
     check(out.index('INCLUDE_ASM("boss/bo0') > i_dec,
           "the stub itself is left untouched below it")
+    local_include = ('#include "top.h"\n\nvoid f(void) {\n'
+                     '#include "function_local.h"\n'
+                     '    MissingCall();\n}\n')
+    local_out = wd._declare_stub_siblings(local_include, local_include)
+    check(local_out.index("extern int MissingCall();")
+          < local_out.index("void f(void)"),
+          "a function-local include cannot pull declarations into the body")
 
     print("\nnothing is invented beyond the implicit declaration")
     added = [l for l in out.splitlines()
@@ -192,12 +252,24 @@ def main():
 
     wd.lookup_declarations = real_lookup
 
+    print("\na non-static definition is authoritative declaration evidence")
+    derived = wd._repo_declaration(
+        "bool StepTowards(s16* val, s32 target, s32 step) { return true; }\n",
+        "StepTowards")
+    check(derived == "bool StepTowards(s16* val, s32 target, s32 step);",
+          f"the exact definition signature becomes a prototype ({derived})")
+    hidden = wd._repo_declaration(
+        "static bool StepTowards(s16* val, s32 target, s32 step) { return true; }\n",
+        "StepTowards")
+    check(hidden == "", "a static definition in another file is not exported")
+
     print("\nmultiline SDK prototypes win over implicit-int fallbacks")
     sdk = wd.lookup_declarations(["RotTransPers4", "LoadTPage"])
     check(any("long RotTransPers4(" in line for line in sdk),
           f"RotTransPers4 multiline prototype found ({sdk})")
-    check(any("extern u_short LoadTPage(" in line for line in sdk),
-          f"LoadTPage multiline prototype found ({sdk})")
+    check(any(re.search(r"(?:extern\s+)?u_short\s+LoadTPage\(", line)
+              for line in sdk),
+          f"LoadTPage typed declaration or definition found ({sdk})")
     sdk_seed = ('#include "rno0.h"\n'
                 'static void DrawLaserRing(void) {\n'
                 '    RotTransPers4(0, 0, 0, 0, 0, 0, 0, 0, 0);\n'
@@ -212,8 +284,8 @@ def main():
           "the SDK's LoadTPage type is not contradicted")
     check("long RotTransPers4(" in sdk_out,
           "the real multiline RotTransPers4 prototype is copied")
-    check("extern u_short LoadTPage(" in sdk_out,
-          "the real multiline LoadTPage prototype is copied")
+    check(bool(re.search(r"(?:extern\s+)?u_short\s+LoadTPage\(", sdk_out)),
+          "the real LoadTPage type is copied from a declaration or definition")
 
     print("\nglobals are recognised, locals and temporaries are not")
     rx = wd._RX_GLOBALISH
@@ -278,9 +350,9 @@ def main():
     for fname in ("def apply_code(", "def virtual_apply("):
         seg = wsrc[wsrc.index(fname):]
         seg = seg[:seg.index("\ndef ", 10)]
-        check("_declare_used_symbols(" in seg,
+        check("_prepare_candidate_body(" in seg,
               f"{fname.strip('def (')} injects")
-        check(seg.index("_declare_used_symbols") < seg.index("pattern.sub"),
+        check(seg.index("_prepare_candidate_body") < seg.index("pattern.sub"),
               "before the substitution, so it lands where the stub was")
 
     print("\nretained assembly resolves raw data without guessing semantics")

@@ -1625,6 +1625,14 @@ def _repo_declaration(text: str, name: str) -> str:
     if external:
         spans.append(external)
     declarations = [text[start:end].strip() for start, end in spans]
+    definition = _function_declaration_span(text, name, terminators="{")
+    if not declarations and definition:
+        candidate = text[definition[0]:definition[1]].strip()
+        # A definition in another translation unit is valid type evidence only
+        # when it has external linkage. Convert its exact signature into a
+        # prototype instead of falling back to C89 implicit int.
+        if not re.match(r"^static\b", candidate):
+            declarations.append(candidate[:-1].rstrip() + ";")
     declarations = [item for item in declarations if item]
     return min(declarations, key=len) if declarations else ""
 
@@ -1666,6 +1674,26 @@ def _undeclared_calls(whole: str, code: str, skip: set) -> list:
             continue
         out.append(name)
     return out
+
+
+def _last_top_level_include_line(whole: str) -> int:
+    """Find the last translation-unit include, excluding function-local ones."""
+    lines = whole.splitlines(keepends=True)
+    bare_lines = _strip_comments_and_strings(whole).splitlines()
+    depth = 0
+    last_include = -1
+    continued_directive = False
+    for index, line in enumerate(bare_lines):
+        stripped = line.lstrip()
+        directive = continued_directive or stripped.startswith("#")
+        if depth == 0 and not continued_directive and stripped.startswith("#include"):
+            last_include = index
+        if not directive:
+            depth += line.count("{") - line.count("}")
+            depth = max(depth, 0)
+        original = lines[index] if index < len(lines) else line
+        continued_directive = directive and original.rstrip().endswith("\\")
+    return last_include
 
 
 def _declare_stub_siblings(whole: str, code: str) -> str:
@@ -1754,8 +1782,7 @@ def _declare_stub_siblings(whole: str, code: str) -> str:
     block += ["/* End permuter-seed writer declarations. */"]
 
     lines = whole.splitlines(keepends=True)
-    last_inc = max((i for i, l in enumerate(lines)
-                    if l.lstrip().startswith("#include")), default=-1)
+    last_inc = _last_top_level_include_line(whole)
     return ("".join(lines[:last_inc + 1]) + "\n".join(block) + "\n"
             + "".join(lines[last_inc + 1:]))
 
@@ -3519,7 +3546,8 @@ def twin_for(function: str, overlay: str) -> str:
     twins = _load_twins()
     if not twins or not function:
         return ""
-    entry = twins.get(f"{overlay}/{function}")
+    overlay_key = (overlay or "").replace("\\", "/").strip("/").lower()
+    entry = twins.get(f"{overlay_key}/{function}")
     if entry is None:
         hits = [v for k, v in twins.items() if k.rsplit("/", 1)[-1] == function]
         if len(hits) != 1:
@@ -4293,8 +4321,18 @@ def _journal_path() -> str:
                         f"{WORKER_NAME}.json")
 
 
-def journal_write(src_rel: str, original: str) -> None:
-    """Record the pre-edit file contents BEFORE touching the source.
+def _fsync_parent(path: str) -> None:
+    """Durably commit a rename or unlink in ``path``'s parent directory."""
+    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+    fd = os.open(os.path.dirname(path), flags)
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+
+
+def journal_write_many(originals: dict[str, str]) -> bool:
+    """Record every pre-edit file BEFORE touching any source in a transaction.
 
     SIGKILL cannot be caught, so no in-process handler can guarantee a restore.
     A worker killed between apply and restore used to leave broken C in the tree:
@@ -4312,20 +4350,61 @@ def journal_write(src_rel: str, original: str) -> None:
             # pid is what makes replay safe. Without it a replay cannot tell an
             # abandoned journal from one whose owner is mid-edit right now, and
             # replaying a LIVE worker's journal reverts its edit underneath it.
-            json.dump({"src_rel": src_rel, "original": original,
+            json.dump({"files": [{"src_rel": src_rel, "original": original}
+                                  for src_rel, original in originals.items()],
                        "worker": WORKER_NAME, "pid": os.getpid(),
                        "at": time.time()}, f)
+            f.flush()
+            os.fsync(f.fileno())
         os.replace(tmp, _journal_path())
+        _fsync_parent(_journal_path())
+        return True
     except OSError as e:
         print(f"[worker] WARNING: could not write restore journal: {e}",
               file=sys.stderr)
+        return False
 
 
-def journal_clear() -> None:
+def journal_write(src_rel: str, original: str) -> bool:
+    """Backward-compatible one-file journal writer."""
+    return journal_write_many({src_rel: original})
+
+
+def _journal_files(journal: dict) -> list[dict]:
+    """Read current transaction journals and the legacy one-file shape."""
+    files = journal.get("files")
+    if isinstance(files, list):
+        return files
+    return [{"src_rel": journal["src_rel"], "original": journal["original"]}]
+
+
+def journal_clear() -> bool:
+    """Atomically and durably make this transaction non-replayable.
+
+    The empty committed record is retained. Unlinking it would require a second
+    directory durability boundary and creates no benefit: replay treats an
+    empty transaction as harmless and can clean it on the next startup.
+    """
+    path = _journal_path()
+    tmp = path + ".clear.tmp"
     try:
-        os.unlink(_journal_path())
-    except OSError:
-        pass
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump({"files": [], "state": "committed",
+                       "worker": WORKER_NAME, "pid": os.getpid(),
+                       "at": time.time()}, f)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, path)
+        _fsync_parent(path)
+    except OSError as e:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        print(f"[worker] WARNING: could not disarm restore journal: {e}",
+              file=sys.stderr)
+        return False
+    return True
 
 
 def _pid_alive(pid: int) -> bool:
@@ -4377,12 +4456,22 @@ def replay_pending_journals() -> int:
                     print(f"[worker] leaving {name}: owner pid {owner} is "
                           f"still running", file=sys.stderr)
                     continue
-                path = win_path(j["src_rel"])
-                with open(path, "w", encoding="utf-8", newline="") as f:
-                    f.write(j["original"])
+                entries = _journal_files(j)
+                if not entries:
+                    os.unlink(full)
+                    _fsync_parent(full)
+                    continue
+                for entry in entries:
+                    path = win_path(entry["src_rel"])
+                    with open(path, "w", encoding="utf-8", newline="") as f:
+                        f.write(entry["original"])
+                        f.flush()
+                        os.fsync(f.fileno())
                 os.unlink(full)
-                n += 1
-                print(f"[worker] restored {j['src_rel']} from journal left by "
+                _fsync_parent(full)
+                n += len(entries)
+                restored = ", ".join(entry["src_rel"] for entry in entries)
+                print(f"[worker] restored {restored} from journal left by "
                       f"{j.get('worker', '?')}", file=sys.stderr)
             except (OSError, ValueError, KeyError) as e:
                 print(f"[worker] could not replay {name}: {e}", file=sys.stderr)
@@ -4536,9 +4625,16 @@ def shim_needs_stage_data(stage: str, stem: str, idx: dict) -> str:
             or idx.get("bss_segments", {}).get(f"st{stage}") or {})
     if stem in (segs.get("named_data") or {}):
         return ""                      # already has its own .data segment
-    peers = idx.get("shared_impls", {}).get(stem, {}).get("shimmed_by", [])
-    for p in peers[:6]:                # a handful is plenty; these all agree
-        path = os.path.join(WIN_REPO, "src", "st", p, f"{stem}.c")
+    shared = idx.get("shared_impls", {}).get(stem, {})
+    peer_files = (shared.get("working_shim_files")
+                  or shared.get("shim_files", []))
+    if not peer_files:
+        peer_files = [
+            f"src/st/{peer}/{stem}.c"
+            for peer in shared.get("shimmed_by", [])
+        ]
+    for rel in peer_files:
+        path = os.path.join(WIN_REPO, *rel.split("/"))
         try:
             with open(path, encoding="utf-8", errors="replace") as f:
                 text = f.read()
@@ -4548,7 +4644,7 @@ def shim_needs_stage_data(stage: str, stem: str, idx: dict) -> str:
         if names:
             return (f"shimming {stem} obliges {stage} to define the stage data "
                     f"tables the header consumes ({', '.join(sorted(set(names))[:4])}"
-                    f"...), as src/st/{p}/{stem}.c does, but {stage} has no "
+                    f"...), as {rel} does, but {stage} has no "
                     f"'.data, {stem}' splat segment to pin them. shim_viable() "
                     f"misses this: it checks whether the HEADER defines data, "
                     f"not whether the header REQUIRES the stage to")
@@ -4749,7 +4845,7 @@ def virtual_apply(ctx: dict, fn: str, code: str) -> str:
     # In lockstep with apply_code, including the injected declarations. If the
     # gate inspected a file without them it would report link and linkage
     # findings about a state that is never built.
-    body = _declare_used_symbols(original, code, ctx["src_rel"]) + code
+    body = _prepare_candidate_body(original, code, fn, ctx["src_rel"])
     return pattern.sub(lambda _m: body.replace("\r\n", "\n"), original, count=1)
 
 
@@ -4807,6 +4903,8 @@ def review_gate(ctx: dict, fn: str, code: str) -> list[str]:
 _RX_GLOBALISH = re.compile(r"\b(g_[A-Za-z]\w*|D_us_[0-9A-Fa-f]{6,}|"
                            r"D_[0-9A-Fa-f]{6,})\b")
 _MAX_INJECTED = 8
+_SYMBOL_DECL_CACHE: dict[tuple[str, str], str] = {}
+_SYMBOL_DECL_HITS: dict[str, list[tuple[str, str]]] | None = None
 
 
 def _overlay_dir_of(src_rel: str) -> str:
@@ -4825,6 +4923,37 @@ def _overlay_dir_of(src_rel: str) -> str:
     return "/".join(p[:3]) if len(p) >= 4 and p[0] == "src" else ""
 
 
+def _symbol_declaration_hits() -> dict[str, list[tuple[str, str]]]:
+    """Index global-looking declaration lines in one source-tree pass.
+
+    _symbol_declaration formerly launched a recursive grep for every symbol.
+    Candidate publication therefore rescanned src/include hundreds of times.
+    The same physical-line evidence is stable within one worker process and is
+    cheap to index once.
+    """
+    global _SYMBOL_DECL_HITS
+    if _SYMBOL_DECL_HITS is not None:
+        return _SYMBOL_DECL_HITS
+    hits: dict[str, list[tuple[str, str]]] = {}
+    pattern = (r"(^|[^[:alnum:]_])(g_[A-Za-z][A-Za-z0-9_]*|"
+               r"D_us_[0-9A-Fa-f]{6,}|D_[0-9A-Fa-f]{6,})"
+               r"([^[:alnum:]_]|$)")
+    rc, output = wsl(
+        f"grep -rnE {shlex.quote(pattern)} src include "
+        f"--include='*.c' --include='*.h' 2>/dev/null",
+        timeout=120)
+    if rc == 0:
+        for hit in output.splitlines():
+            path, separator, rest = hit.partition(":")
+            _line_number, separator2, text = rest.partition(":")
+            if not separator or not separator2:
+                continue
+            for name in set(_RX_GLOBALISH.findall(text)):
+                hits.setdefault(name, []).append((path, text.strip()))
+    _SYMBOL_DECL_HITS = hits
+    return hits
+
+
 def _symbol_declaration(name: str, src_rel: str) -> str:
     """A declaration for `name` that is legitimate in src_rel, or "".
 
@@ -4841,26 +4970,27 @@ def _symbol_declaration(name: str, src_rel: str) -> str:
     right source for RCHI was a DEFINITION in its own e_init.c, which no
     extern-only search can see.
     """
-    pat = (r"^[[:space:]]*(extern[[:space:]]+)?[A-Za-z_][A-Za-z0-9_ \t*]*\b"
-           + re.escape(name) + r"\b[^;=]*[;=]")
-    rc, out = wsl(f"grep -rnE {shlex.quote(pat)} src include "
-                  f"--include='*.c' --include='*.h' 2>/dev/null | head -40",
-                  timeout=120)
-    if rc != 0:
-        return ""
+    cache_key = (name, _overlay_dir_of(src_rel))
+    if cache_key in _SYMBOL_DECL_CACHE:
+        return _SYMBOL_DECL_CACHE[cache_key]
     mine = _overlay_dir_of(src_rel)
     best = ""
-    for hit in (out or "").splitlines():
-        path, _, rest = hit.partition(":")
-        _lineno, _, text = rest.partition(":")
-        text = text.strip()
-        if not text or text.startswith("static"):
+    declaration_line = re.compile(
+        r"^\s*(?:extern\s+)?[A-Za-z_][A-Za-z0-9_ \t*]*\b"
+        + re.escape(name) + r"\b[^;=]*[;=]")
+    # Do not cap common symbols before overlay filtering. g_EInitCommon has
+    # declarations in dozens of overlays; an arbitrary first-N slice can omit
+    # the destination overlay and falsely report that no declaration exists.
+    for path, text in _symbol_declaration_hits().get(name, []):
+        if (not text or not declaration_line.search(text)
+                or text.startswith("static")):
             continue          # a static definition cannot be externed
         other = _overlay_dir_of(path)
         if other and mine and other != mine:
             continue          # another overlay: a different object
         if text.startswith("extern"):
             decl = text.split("=")[0].rstrip().rstrip(";") + ";"
+            _SYMBOL_DECL_CACHE[cache_key] = decl
             return decl       # an existing declaration is the best answer
         if "=" in text:
             # A definition. Derive the declaration from the text BEFORE the
@@ -4870,22 +5000,88 @@ def _symbol_declaration(name: str, src_rel: str) -> str:
                 continue
             if re.search(rf"\b{re.escape(name)}\b\s*(\[[^\]]*\])?$", head):
                 best = best or f"extern {head};"
+    _SYMBOL_DECL_CACHE[cache_key] = best
     return best
 
 
-def _declare_used_symbols(original: str, code: str, src_rel: str) -> str:
+def _target_prefix(original: str, fn: str) -> str:
+    """Translation-unit text lexically visible before ``fn``."""
+    positions = []
+    stub = re.search(
+        r'INCLUDE_ASM\(\s*"[^"]+"\s*,\s*' + re.escape(fn) +
+        r'\s*\)\s*;', original, re.S)
+    if stub:
+        positions.append(stub.start())
+    definition = _function_declaration_span(original, fn, terminators="{")
+    if definition:
+        positions.append(definition[0])
+    return original[:min(positions)] if positions else original
+
+
+def _destination_scope_text(original: str, fn: str, src_rel: str) -> str:
+    """Target prefix plus quoted headers reachable from that prefix."""
+    prefix = _target_prefix(original, fn) if fn else original
+    source_path = os.path.join(WIN_REPO, *src_rel.replace("\\", "/").split("/"))
+    pending = [(source_path, prefix)]
+    seen = {os.path.abspath(source_path)}
+    pieces = [prefix]
+    while pending and len(seen) < 64:
+        parent, text = pending.pop(0)
+        for include in re.findall(
+                r'^\s*#\s*include\s+"([^"]+)"', text, flags=re.M):
+            candidates = [
+                os.path.join(os.path.dirname(parent), include),
+                os.path.join(WIN_REPO, "src", include),
+                os.path.join(WIN_REPO, "include", include),
+            ]
+            found = next((os.path.abspath(path) for path in candidates
+                          if os.path.isfile(path)), None)
+            if found is None or found in seen:
+                continue
+            seen.add(found)
+            try:
+                with open(found, encoding="utf-8", errors="replace") as stream:
+                    header = stream.read()
+            except OSError:
+                continue
+            pieces.append(header)
+            pending.append((found, header))
+    return "\n".join(pieces)
+
+
+def _object_declared_in_text(text: str, name: str) -> bool:
+    bare = _strip_comments_and_strings(text)
+    return bool(re.search(
+        rf"(?m)^[ \t]*(?:extern[ \t]+)?"
+        rf"(?:[A-Za-z_]\w*[ \t*]+)+\b{re.escape(name)}\b"
+        rf"[ \t]*(?:\[[^\n;=]*\][ \t]*)*(?:[;=,])",
+        bare))
+
+
+def _symbol_visible_in_scope(text: str, name: str) -> bool:
+    bare = _strip_comments_and_strings(text)
+    return bool(re.search(
+        rf"(?m)^\s*#\s*define[ \t]+{re.escape(name)}\b", bare)
+        or _symbol_declared_in_text(bare, name)
+        or _object_declared_in_text(bare, name))
+
+
+def _declare_used_symbols(original: str, code: str, src_rel: str,
+                          fn: str = "", visible_extra: str = "") -> str:
     """Declarations this candidate needs that its destination file lacks.
 
     The twelve records this exists for each escalated on ONE undeclared
     global and nothing else. They were fixed by hand in 026f63e05; this is so
     the thirteenth does not need a human to notice.
     """
-    bare_file = _strip_comments_and_strings(original)
+    visible = _destination_scope_text(original, fn, src_rel)
+    if visible_extra:
+        visible += "\n" + visible_extra
     bare_code = _strip_comments_and_strings(code)
     out = []
     for name in dict.fromkeys(_RX_GLOBALISH.findall(bare_code)):
-        if re.search(rf"\b{re.escape(name)}\b", bare_file):
-            continue          # the file already mentions it; leave it alone
+        if _symbol_visible_in_scope(visible, name):
+            continue          # already visible before the exact insertion point
         decl = _symbol_declaration(name, src_rel)
         if decl:
             out.append(decl)
@@ -4897,6 +5093,75 @@ def _declare_used_symbols(original: str, code: str, src_rel: str) -> str:
             "   below and absent from this file. Copied verbatim from the\n"
             "   tree, same overlay or a shared header, never another\n"
             "   overlay's. */\n" + "\n".join(out) + "\n\n")
+
+
+def _candidate_function_only(code: str, fn: str) -> str:
+    """Accept exactly one target function and reject seed-only scaffolding."""
+    masked = _strip_comments_and_strings(code)
+    match = re.search(
+        rf"(?m)^[ \t]*(?:static\s+)?[A-Za-z_][\w \t\r\n\*]*"
+        rf"\b{re.escape(fn)}\s*\([^;{{]*\)\s*\{{",
+        masked)
+    if match is None:
+        raise RuntimeError(f"candidate has no definition of {fn}")
+    start = match.start()
+    brace = masked.index("{", match.start())
+    depth = 0
+    end = -1
+    for index in range(brace, len(masked)):
+        if masked[index] == "{":
+            depth += 1
+        elif masked[index] == "}":
+            depth -= 1
+            if depth == 0:
+                end = index + 1
+                break
+    if end < 0:
+        raise RuntimeError(f"candidate definition of {fn} has unbalanced braces")
+    residual = masked[:start] + masked[end:]
+    if residual.strip():
+        raise RuntimeError(
+            f"candidate for {fn} contains file-scope scaffolding; only the "
+            "target function may cross the source-write boundary")
+    exact = code[start:end].strip()
+    return "\n".join(line.rstrip() for line in exact.splitlines()) + "\n"
+
+
+def _validated_support_declarations(declarations: list[str] | None) -> list[str]:
+    """Narrow score-receipt context accepted at the source-write boundary."""
+    out = []
+    for raw in declarations or []:
+        item = raw.strip()
+        if item.startswith("#"):
+            if ("\n" in item or "\\" in item or not re.fullmatch(
+                    r"#define[ \t]+[A-Za-z_]\w*[ \t]+[^\r\n]+", item)):
+                raise RuntimeError("unsupported score-receipt macro declaration")
+        else:
+            item = re.sub(r"\s+", " ", item)
+            if (not item.endswith(";") or "{" in item or "}" in item
+                    or "#" in item or not re.match(
+                        r"^(?:extern[ \t]+)?[A-Za-z_]", item)):
+                raise RuntimeError("unsupported score-receipt C declaration")
+        if item not in out:
+            out.append(item)
+    return out
+
+
+def _prepare_candidate_body(original: str, code: str, fn: str,
+                            src_rel: str,
+                            support_declarations: list[str] | None = None) -> str:
+    exact = _candidate_function_only(code, fn)
+    support = _validated_support_declarations(support_declarations)
+    support_text = "\n".join(support)
+    derived = _declare_used_symbols(
+        original, exact, src_rel, fn=fn, visible_extra=support_text)
+    retained = ""
+    if support:
+        retained = (
+            "/* Compile-shaping declarations retained from the score-zero\n"
+            "   receipt after destination-scope filtering. */\n" +
+            support_text + "\n\n")
+    return retained + derived + exact
 
 
 def apply_code(ctx: dict, fn: str, code: str) -> str:
@@ -4914,20 +5179,73 @@ def apply_code(ctx: dict, fn: str, code: str) -> str:
     # would have been wrong: src/st/rdai/unk_3F6B4.c has an #include BELOW the
     # func_us_801BF830 stub, so a declaration placed after it is invisible to
     # exactly the function that needs it.
-    body = _declare_used_symbols(original, code, ctx["src_rel"]) + code
+    body = _prepare_candidate_body(original, code, fn, ctx["src_rel"])
     # The model emits LF; convert the insert to the file's own convention.
     body = body.replace("\r\n", "\n").replace("\n", nl)
-    journal_write(ctx["src_rel"], original)   # BEFORE the write, not after
+    if not journal_write(ctx["src_rel"], original):  # BEFORE the write, not after
+        raise RuntimeError("refusing source edit without a restore journal")
     with open(path, "w", encoding="utf-8", newline="") as f:
         f.write(pattern.sub(lambda _m: body, original, count=1))
     return original
 
 
+def apply_code_batch(items: list[tuple[dict, str, str]]) -> dict[str, str]:
+    """Apply several bodies as one crash-recoverable source transaction.
+
+    A batch may span files and may replace several stubs in one file. Every
+    final file is assembled in memory, then every original is journalled before
+    the first write. This is the primitive used to amortise the full oracle
+    across an overlay without weakening BuildLock or recovery guarantees.
+    """
+    originals: dict[str, str] = {}
+    updated: dict[str, str] = {}
+    newlines: dict[str, str] = {}
+    for ctx, fn, code in items:
+        src_rel = ctx["src_rel"]
+        if src_rel not in originals:
+            originals[src_rel], newlines[src_rel] = _read_raw(win_path(src_rel))
+            updated[src_rel] = originals[src_rel]
+        pattern = re.compile(
+            r'^[ \t]*INCLUDE_ASM\(\s*"' + re.escape(ctx["asm_rel"]) +
+            r'"\s*,\s*' + re.escape(fn) + r'\s*\);[ \t]*(?=\r?$)', re.M)
+        if not pattern.search(updated[src_rel]):
+            raise RuntimeError(
+                f"INCLUDE_ASM stub for {fn} not found in {src_rel}")
+        body = _prepare_candidate_body(updated[src_rel], code, fn, src_rel)
+        body = body.replace("\r\n", "\n").replace("\n", newlines[src_rel])
+        updated[src_rel] = pattern.sub(lambda _m: body, updated[src_rel], count=1)
+
+    if not journal_write_many(originals):
+        raise RuntimeError("refusing batch edit without a restore journal")
+    try:
+        for src_rel, content in updated.items():
+            with open(win_path(src_rel), "w", encoding="utf-8", newline="") as f:
+                f.write(content)
+    except OSError:
+        restored = True
+        for src_rel, original in originals.items():
+            try:
+                with open(win_path(src_rel), "w", encoding="utf-8", newline="") as f:
+                    f.write(original)
+            except OSError:
+                restored = False
+        if restored:
+            journal_clear()
+        raise
+    return originals
+
+
+def restore_many(originals: dict[str, str]) -> None:
+    """Restore a complete transaction, clearing its journal only on success."""
+    for src_rel, original in originals.items():
+        with open(win_path(src_rel), "w", encoding="utf-8", newline="") as f:
+            f.write(original)
+    journal_clear()
+
+
 def restore(ctx: dict, original: str) -> None:
     # newline="" so the original bytes go back exactly as they were read.
-    with open(win_path(ctx["src_rel"]), "w", encoding="utf-8", newline="") as f:
-        f.write(original)
-    journal_clear()
+    restore_many({ctx["src_rel"]: original})
 
 
 _COMPILE_FAIL_MARKS = (
@@ -5445,6 +5763,9 @@ def process_one(dry: bool = False, only: str | None = None) -> bool:
                             rec, code, attempt, detail, ctx, original)
                         print(f"  -> verified landing saved: {landing}",
                               flush=True)
+                        if not journal_clear():
+                            raise RuntimeError(
+                                "verified landing journal could not be disarmed")
                         sched("report", "--id", rec["id"], "--status", "matched",
                               "--score", "100", "--tier", "0",
                               "--proof", detail,
@@ -5467,10 +5788,11 @@ def process_one(dry: bool = False, only: str | None = None) -> bool:
                     # that stub back over the matched function while the queue
                     # still recorded `matched` with machine proof.
                     #
-                    # Clearing here, after the report, is the right moment: the
-                    # applied content is now the intended state, so there is
-                    # nothing left to recover.
-                    journal_clear()
+                    # The journal is atomically disarmed before the queue report.
+                    # If reporting then fails, the in-memory original is restored;
+                    # if the process dies, the verified landing snapshot and
+                    # orphan reconciliation retain the unmatched queue evidence.
+                    # The journal was atomically disarmed before queue report.
             # `best` is the LAST verdict; `best_build` is the BEST one.
             #
             # These were one assignment, so a later BUILD FAILED overwrote a

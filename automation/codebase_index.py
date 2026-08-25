@@ -33,6 +33,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import posixpath
 import os
 import re
 import subprocess
@@ -150,17 +151,49 @@ def _headers(ref: str = UPSTREAM_REF) -> list[str]:
 
 
 # ---------------------------------------------------------------- symbols
+def _reverse_symbols(name_to_addr: dict[str, int]) -> dict[str, str]:
+    """Address map that prefers a semantic name over a raw D_* alias."""
+    out: dict[str, str] = {}
+    for name, addr in sorted(name_to_addr.items()):
+        key = f"0x{addr:08X}"
+        current = out.get(key)
+        if current is None or (current.startswith("D_") and not name.startswith("D_")):
+            out[key] = name
+    return out
+
+
 def build_symbols() -> dict:
     name2addr: dict[str, int] = {}
+    by_scope: dict[str, dict[str, int]] = defaultdict(dict)
+    pattern = re.compile(r"^config/symbols\.us(?:\.([^.]+))?\.txt$")
     for p in _ref_files(UPSTREAM_REF):
-        if not (p.startswith("config/symbols.us") and p.endswith(".txt")):
+        scope_match = pattern.match(p)
+        if not scope_match:
             continue
+        scope = scope_match.group(1) or "global"
+        scoped = by_scope[scope]
         for line in read_source(p).splitlines():
             m = re.match(r"^\s*([A-Za-z_]\w*)\s*=\s*(0x[0-9A-Fa-f]+)", line)
             if m:
-                name2addr.setdefault(m.group(1), int(m.group(2), 16))
-    return {"name_to_addr": {k: f"0x{v:08X}" for k, v in sorted(name2addr.items())},
-            "addr_to_name": {f"0x{v:08X}": k for k, v in name2addr.items()}}
+                name = m.group(1)
+                addr = int(m.group(2), 16)
+                name2addr.setdefault(name, addr)
+                scoped.setdefault(name, addr)
+    return {
+        "name_to_addr": {
+            k: f"0x{v:08X}" for k, v in sorted(name2addr.items())
+        },
+        "addr_to_name": _reverse_symbols(name2addr),
+        "by_scope": {
+            scope: {
+                "name_to_addr": {
+                    k: f"0x{v:08X}" for k, v in sorted(symbols.items())
+                },
+                "addr_to_name": _reverse_symbols(symbols),
+            }
+            for scope, symbols in sorted(by_scope.items())
+        },
+    }
 
 
 # ---------------------------------------------------------------- structs
@@ -413,6 +446,14 @@ def build_shared_impls() -> dict:
     ref_files = _ref_files(UPSTREAM_REF)
     headers = [f for f in ref_files
                if re.fullmatch(r"src/st/[^/]+\.h", f)]
+    current_stage_sources = []
+    for path in sorted((REPO / "src" / "st").glob("*/*.c")):
+        try:
+            current_stage_sources.append((
+                path.relative_to(REPO).as_posix(),
+                path.read_text(errors="ignore")))
+        except OSError:
+            continue
 
     # THREE states, not two. A two-state shim/copy split reported "0 copies we
     # added" for rno0, because upstream also ships src/st/rno0/st_common.c and
@@ -420,12 +461,24 @@ def build_shared_impls() -> dict:
     # INCLUDE_ASM STUB; ours is 707 lines of implementation. Conflating "stub
     # awaiting work" with "private implementation" hides precisely the
     # stub -> private_impl transition that is the defect.
-    def _classify(stem: str, path: str, body: str) -> tuple[str, dict] | None:
+    def _includes_header(path: str, body: str, header: str) -> bool:
+        parent = posixpath.dirname(path)
+        for include in re.findall(
+                r'#\s*include\s+"([^"]+)"', body):
+            resolved = posixpath.normpath(
+                posixpath.join(parent, include))
+            if resolved == header:
+                return True
+        return False
+
+    def _classify(
+            stem: str, path: str, body: str, header: str
+            ) -> tuple[str, dict] | None:
         if not body:
             return None
         stage = path.split("/")[2]        # src/st/<stage>/<stem>.c
         info = {"stage": stage, "lines": body.count("\n") + 1}
-        if re.search(rf'#include\s+"\.\./{re.escape(stem)}\.h"', body):
+        if _includes_header(path, body, header):
             return "shim", info
         info["include_asm"] = len(re.findall(r"\bINCLUDE_ASM\b", body))
         info["bodies"] = len(fn_re.findall(body))
@@ -462,9 +515,7 @@ def build_shared_impls() -> dict:
         # ring-fenced as forbidden on the strength of a filename assumption.
         # Found by audit 2026-08-02.
         pat = re.compile(rf"src/st/[^/]+/[^/]+\.c")
-        inc = re.compile(rf'#\s*include\s+"(?:\.\./)?{re.escape(stem)}\.h"')
-
-        shims, up_copies, up_state = [], [], {}
+        shims, shim_files, up_copies, up_state = [], [], [], {}
         named = f"/{stem}.c"
         for path in ref_files:
             if not pat.fullmatch(path):
@@ -472,27 +523,37 @@ def build_shared_impls() -> dict:
             src_text = read_source(path)
             # Either named after the header (the old rule, still valid) or
             # actually including it (the rule that was missing).
-            if not path.endswith(named) and not inc.search(src_text):
+            if (not path.endswith(named) and
+                    not _includes_header(path, src_text, hdr)):
                 continue
-            r = _classify(stem, path, src_text)
+            r = _classify(stem, path, src_text, hdr)
             if not r:
                 continue
             up_state[r[1]["stage"]] = r
             if r[0] == "shim":
                 shims.append(r[1]["stage"])
+                shim_files.append(path)
             elif r[0] == "private_impl":
                 up_copies.append(r[1])
 
         # Ours: judged by the TRANSITION from upstream's state, not by presence.
-        our_copies = []
-        for path in sorted((REPO / "src" / "st").glob(f"*/{stem}.c")):
-            rel = path.relative_to(REPO).as_posix()
-            try:
-                body = path.read_text(errors="ignore")
-            except OSError:
+        # Scan every stage translation unit because a shim's filename need not
+        # match its header (e_lock_camera.c includes entity_lock_camera.h).
+        # Keep current shim paths separately: the worker must inspect files on
+        # disk for stage-data obligations, not paths that only described the
+        # upstream ref when the index was built.
+        our_copies, working_shim_files = [], []
+        for rel, body in current_stage_sources:
+            if (not rel.endswith(named) and
+                    not _includes_header(rel, body, hdr)):
                 continue
-            r = _classify(stem, rel, body)
-            if not r or r[0] != "private_impl":
+            r = _classify(stem, rel, body, hdr)
+            if not r:
+                continue
+            if r[0] == "shim":
+                working_shim_files.append(rel)
+                continue
+            if r[0] != "private_impl":
                 continue
             was = up_state.get(r[1]["stage"])
             if was and was[0] == "private_impl":
@@ -507,6 +568,8 @@ def build_shared_impls() -> dict:
             "functions": sorted(set(funcs)),
             "static_functions": sorted(set(statics)),
             "shimmed_by": sorted(shims),
+            "shim_files": sorted(shim_files),
+            "working_shim_files": sorted(working_shim_files),
             "upstream_copies": sorted(up_copies, key=lambda c: -c["lines"]),
             "our_copies": sorted(our_copies, key=lambda c: -c["lines"]),
         }

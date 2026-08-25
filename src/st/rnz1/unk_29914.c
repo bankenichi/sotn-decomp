@@ -1,7 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #include "rnz1.h"
 
-INCLUDE_ASM("st/rnz1/nonmatchings/unk_29914", func_801CDC80);
+/* Compile-shaping declarations retained from the score-zero
+   receipt after destination-scope filtering. */
+int abs(int x);
+
+#include "../approach_s16.h"
+
+
 
 INCLUDE_ASM("st/rnz1/nonmatchings/unk_29914", func_us_801A9994);
 
@@ -13,7 +19,19 @@ INCLUDE_ASM("st/rnz1/nonmatchings/unk_29914", func_us_801AAF00);
 
 INCLUDE_ASM("st/rnz1/nonmatchings/unk_29914", func_us_801AB04C);
 
-INCLUDE_ASM("st/rnz1/nonmatchings/unk_29914", func_801B2CF8);
+void func_801B2CF8(Primitive* prim) {
+    s32 i;
+    // Clear the complete object one word at a time, starting at its real first
+    // member. The target uses a word loop rather than individual fields.
+    s32* ptr = (s32*)&prim->next;
+    s32 size = sizeof(*prim) / sizeof(*ptr);
+
+    for (i = 0; i < size; i++) {
+        *ptr++ = 0;
+    }
+}
+
+
 
 INCLUDE_ASM("st/rnz1/nonmatchings/unk_29914", func_us_801AB16C);
 

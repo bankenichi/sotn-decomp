@@ -980,6 +980,13 @@ plausible wrong fix:
   replacement site under this C89 compiler. Isolated scoring must evaluate
   visibility at the stub insertion point, not over the whole translation unit,
   and must follow only the quoted-header graph reachable before that point.
+- A candidate artifact is a complete translation unit even when only one
+  function was harvested. Declaration completion must scan every preserved C
+  function in that artifact, because an older sibling can retain a C89 implicit
+  call that the real compiler accepts but the permuter typemap cannot mutate.
+  Repository prototypes remain authoritative; when none exists, a non-static
+  definition provides an exact prototype, while a static definition remains
+  confined to its own translation unit.
 
 All three failures passed a name-only check. The compiler was the cheap oracle
 that separated proof from resemblance, so mechanical repair must remain
@@ -1441,6 +1448,23 @@ writer-owned prelude, and regenerates it from the clean body. If the old boundar
 is ambiguous it refuses to guess. The repaired seed becomes a new immutable
 generation; the old bytes remain in history as the evidence for the defect.
 
+The destination check must model the compiler's lexical view, not search the
+whole file. A definition below an `INCLUDE_ASM` replacement is invisible above
+it, while a declaration in a quoted header reachable before that replacement is
+already visible. Treating the first as visible omits a required extern; ignoring
+the second can add a duplicate declaration whose import qualifier changes
+codegen. Both occurred during the 113-function receipt cleanup and made only
+RNO1 and RNO4 fail despite every extracted function body remaining unchanged.
+
+A score receipt's prefix is compile evidence, not source text to paste and not
+trash to discard. Re-run the existing destination-scope resolver over the raw
+receipt, retain only dependencies still required at the exact insertion point,
+and let the source-write boundary accept only validated declarations plus one
+exact function. Repairs must replace that owned span surgically so an unrelated
+working-tree edit survives. Archive the raw receipt and final landed body
+separately; a final full oracle can prove a documented source normalization
+without pretending the two texts were identical.
+
 After that repair, `DrawLaserRing` compiled at isolated score 0 and still changed
 the linked RNO0 checksum. That is the useful final separation: the declaration
 defect was fixed, and the preserved candidate was then proven to have a distinct
@@ -1464,3 +1488,60 @@ Exposing the targets also reached a dormant parser bug: objdump emits
 `R_MIPS_26` addends such as `1c8` as bare hexadecimal, which `int(value, 0)`
 rejects. Parse that relocation shape as hexadecimal and retain the addend. Both
 behaviors have direct regressions in `automation/test_permuter_settings.py`.
+
+
+## 27. Overlay VRAM is not a global symbol namespace
+
+US overlays reuse the same virtual address range. A reverse map built by merging
+every `config/symbols.us.*.txt` file therefore turns an address collision into a
+false alias. This made BO5 data at `0x801806C0` look like BO0's
+`g_EInitBloodyZombie`, and made RNO1 data at `0x801817E0` look like RNO0's
+`g_goldCollectTexts`. Renaming either would have replaced an unknown with a
+confidently wrong semantic name.
+
+The codebase index now preserves reverse maps per symbol-file scope in addition
+to its compatibility-wide map. A source audit derives `bobo5` from
+`src/boss/bo5`, `strno1` from `src/st/rno1`, and consults only that overlay
+plus the global symbol file. A raw address is a name candidate only inside the
+binary whose symbol table owns it.
+
+## 28. Duplicate evidence is keyed by translation unit, not function name
+
+Many overlays intentionally reuse names such as `func_801CDD00`. Storing the
+audit scope as `function name -> body` silently retained only the last file and
+hid 46 live duplicates in the 113-function batch. The identity of a function in
+this repository is at least `(source path, function name)`.
+
+An exact duplicate is also not automatically an immediately removable defect.
+A shared header may emit data whose splat boundary is not calibrated, or a
+mixed translation unit may still contain assembly stubs that prevent replacing
+the whole file. Conversely, a target-specific copy may have no shared header to
+include yet. `automation/duplicate-provenance.us.json` records both target and
+donor body hashes, the structural disposition, and the roadmap owner. The
+quality audit accepts that routing only while both bodies remain exact and the
+entry still points to #264. Any source or donor change invalidates the record
+and restores the finding.
+
+
+## 29. Shared-header peer evidence must follow exact current paths
+
+The shared-implementation index answers two different questions from two
+different provenances. Upstream state says whether a private implementation is
+normal in the baseline. Worker safety checks inspect the files that exist in
+the current tree. Reusing upstream shim paths for both silently loses local
+shims, especially after this fork converts a stub before upstream does.
+
+Resolve quoted includes relative to their translation unit. In
+`src/st/are/e_breakable.c`, `#include "e_breakable.h"` names
+`src/st/are/e_breakable.h`, not the shared `src/st/e_breakable.h`.
+Conversely, a shim may have a filename unrelated to the shared header, so
+filename matching alone is insufficient. The index therefore records exact
+`working_shim_files` separately from upstream `shim_files`.
+
+Do not inspect an arbitrary prefix of peers. The first six alphabetically can
+legitimately need no local tables while a later peer demonstrates the
+stage-data obligation. Read the complete bounded peer set. Tests for the
+structural blocker use a synthetic stage without a named data segment, while a
+separate live population assertion records which real stubs are currently
+approved for shim deferral. This keeps a splat-config improvement from turning
+a previously correct regression into stale policy.

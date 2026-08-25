@@ -19,10 +19,10 @@ mistake impossible twice.
 | live authority | current value |
 |---|---|
 | Build oracle | **113/113** from the artifacts on disk |
-| Decompiled | **93.7%**, 8061/8742 functions; 681 US `INCLUDE_ASM` stubs remain |
-| Queue | 983 records: 302 matched, 510 todo, 122 escalated, 43 deferred, 6 near |
-| Provenance | upstream-harvest 45, shim-segment 9, shim-header 55, transplant 21, twin-port 29, permuter 18, claude-manual 4, model-fleet 56, unknown 65 |
-| Automation | 84 modules, 28 suites plus 35 module self-tests, 90 tools, 68 diagnostics |
+| Decompiled | **94.0%**, 8166/8734 functions; 568 US `INCLUDE_ASM` stubs remain |
+| Queue | 983 records: 415 matched, 398 todo, 122 escalated, 42 deferred, 6 near |
+| Provenance | upstream-harvest 45, shim-segment 9, shim-header 55, transplant 134, twin-port 29, permuter 18, claude-manual 4, model-fleet 56, unknown 65 |
+| Automation | 84 modules, 28 suites plus 36 module self-tests, 90 tools, 68 diagnostics |
 
 This block is regenerated from the same queue, checksum manifest, linker maps, provenance classifier, and connector inventory as `README.md`.
 <!-- LIVE-STATUS:END -->
@@ -36,28 +36,28 @@ This block is regenerated from the same queue, checksum manifest, linker maps, p
 
 | overlay | stubs | todo | near | escalated | deferred | matched |
 |---|---:|---:|---:|---:|---:|---:|
-| `BOSS/BO0` | 51 | 0 | 1 | 31 | 19 | 16 |
+| `BOSS/BO0` | 50 | 0 | 1 | 31 | 18 | 17 |
 | `BOSS/BO2` | 15 | 15 | 0 | 0 | 0 | 0 |
-| `BOSS/BO3` | 60 | 60 | 0 | 0 | 0 | 0 |
-| `BOSS/BO5` | 23 | 23 | 0 | 0 | 0 | 0 |
+| `BOSS/BO3` | 45 | 45 | 0 | 0 | 0 | 15 |
+| `BOSS/BO5` | 21 | 21 | 0 | 0 | 0 | 2 |
 | `BOSS/BO6` | 43 | 0 | 2 | 34 | 7 | 80 |
-| `BOSS/BO7` | 21 | 21 | 0 | 0 | 0 | 0 |
-| `BOSS/RBO1` | 20 | 20 | 0 | 0 | 0 | 0 |
-| `BOSS/RBO2` | 28 | 28 | 0 | 0 | 0 | 0 |
+| `BOSS/BO7` | 13 | 13 | 0 | 0 | 0 | 8 |
+| `BOSS/RBO1` | 15 | 15 | 0 | 0 | 0 | 5 |
+| `BOSS/RBO2` | 20 | 20 | 0 | 0 | 0 | 8 |
 | `BOSS/RBO4` | 7 | 7 | 0 | 0 | 0 | 0 |
-| `BOSS/RBO6` | 43 | 43 | 0 | 0 | 0 | 1 |
+| `BOSS/RBO6` | 36 | 36 | 0 | 0 | 0 | 8 |
 | `BOSS/RBO7` | 9 | 9 | 0 | 0 | 0 | 0 |
-| `BOSS/RBO8` | 24 | 24 | 0 | 0 | 0 | 0 |
+| `BOSS/RBO8` | 20 | 20 | 0 | 0 | 0 | 4 |
 | `MAIN` | 2 | 0 | 0 | 2 | 0 | 0 |
 | `ST/RCEN` | 15 | 0 | 0 | 14 | 1 | 8 |
 | `ST/RCHI` | 10 | 0 | 0 | 7 | 3 | 5 |
 | `ST/RDAI` | 18 | 0 | 1 | 15 | 2 | 0 |
-| `ST/RLIB` | 22 | 22 | 0 | 0 | 0 | 0 |
+| `ST/RLIB` | 20 | 20 | 0 | 0 | 0 | 2 |
 | `ST/RNO0` | 31 | 0 | 2 | 18 | 11 | 188 |
-| `ST/RNO1` | 41 | 41 | 0 | 0 | 0 | 1 |
-| `ST/RNO2` | 48 | 48 | 0 | 0 | 0 | 0 |
-| `ST/RNO4` | 84 | 84 | 0 | 0 | 0 | 0 |
-| `ST/RNZ1` | 65 | 65 | 0 | 0 | 0 | 0 |
+| `ST/RNO1` | 26 | 26 | 0 | 0 | 0 | 16 |
+| `ST/RNO2` | 37 | 37 | 0 | 0 | 0 | 11 |
+| `ST/RNO4` | 65 | 65 | 0 | 0 | 0 | 19 |
+| `ST/RNZ1` | 49 | 49 | 0 | 0 | 0 | 16 |
 | `ST/SEL` | 1 | 0 | 0 | 1 | 0 | 0 |
 
 This table is generated from the checksum manifest, required config policy, live `INCLUDE_ASM` inventory, and scheduler-owned queue. Matched-only overlays are omitted because they carry no remaining work.
@@ -1295,13 +1295,13 @@ Status: **done**, **open**, **partial**, **void** (turned out unnecessary),
 | 253 | done | RDAI was confirmed already checksum-covered. Source commit `3dadc6c8` vendors all sixteen missing US binaries from pinned `upstream/master` `85c3717eb`: RBO1, RBO2, RBO4, RBO6, RBO7, RBO8, BO1, BO2, BO3, BO5, BO7, RLIB, RNO1, RNO2, RNO4 and RNZ1, with each normal/F pair, config, symbol file and translation unit. Follow-up shared-header provenance is `d4d3d998c` for RLIB, `ff3eeb0bc` for RNZ1, `882fa97bc` for BO5 breakables and `1add9021a` for BO5 cutscene events. Named C definitions such as `PrizeDrops` remain primary; zero-byte aliases serve only legacy assembly references. The exact upstream US oracle verifies 113/113. `queue_coverage.py` now enforces equality with all 113 artifacts and 62 configs and can generate a deterministic additive seed without writing the live queue. Seed `automation/seed.us.scope-2026-08-24.txt` added all 512 newly visible stubs; final coverage is 683 stubs, 0 blind and 0 stale across 24 overlays. Recovery snapshot `queue.20260824-214203.3dadc6c.jsonl` preserves all 983 records at SHA-256 `88c68807a70a30c6d2535dfe8d6d8b4247ef960c3847c0f5f8d37d1cffe5c344` | 
 | 254 | done | Living status now comes from shared provenance instead of refreshed prose. `progress_table.py` discovers every required config and aggregates WEAPON0's 59 nested maps; README and ROADMAP share an exact generated work matrix; six other living documents share the compact generated status. Operational oracle totals were replaced with numberless wording, historical receipts remain intact, and drift now rejects any future live total outside generator-owned markers. Current generated result: 93.7% code, 8059 of 8742 functions across 62 configured binaries |
 | 255 | done | Audited the scope-facing harness against all required checksum artifacts and configs. The only partial-scope allowlist was `progress_table.py`'s 44-row module table plus stale `sd`; it is gone. Config readiness now proves every required config supplies unique routing and live referenced paths, progress proves all 62 configs have populated maps, and queue coverage proves 683 stubs with zero blind and zero stale records across 24 overlays. Consolidated job `run_automation-165116-69` passed all 63/63 discovered suites |
-| 256 | **open** | Classify all 512 new todo records once with reusable tooling before dispatch. Run upstream and supplied-PR discovery, shared-header viability, exact-name and shape twins, transplant feasibility, declaration coverage, size and complexity ranking. Persist evidence to the queue without changing status, and produce deterministic wave inputs so workers never repeat the same discovery by hand |
-| 257 | **open** | Exhaust the 16 smallest new records as one bounded wave: BOSS/RBO4 7, then BOSS/RBO7 9. Land or evidence-back every record before advancing |
-| 258 | **open** | Exhaust BOSS/BO2 15, then BOSS/RBO1 20, for 35 records. Reuse shared boss and reverse-boss context across the wave and preserve every rejected candidate |
-| 259 | **open** | Exhaust BOSS/BO7 21, then ST/RLIB 22, for 43 records. Run header and segment checks before generating new bodies |
-| 260 | **open** | Exhaust BOSS/BO5 23, then BOSS/RBO8 24, for 47 records. Treat the vendored BO5 shared-header provenance as the starting corpus, not as optional reading |
-| 261 | **open** | Exhaust BOSS/RBO2 28, then ST/RNO1 42, for 70 records. Reuse existing forward/reverse stage twins and require target-assembly proof for every divergent constant or dispatch table |
-| 262 | **open** | Exhaust BOSS/RBO6 44, then ST/RNO2 48, for 92 records. Keep read-only Luna or Terra analysis separate from root-owned candidate publication, builds, queue writes and Git |
-| 263 | **open** | Exhaust ST/RNO4 84. Partition by translation unit and shared stage family so the largest single-overlay pool is parallelizable without conflicting writes |
-| 264 | **open** | Exhaust BOSS/BO3 60, then ST/RNZ1 65, for the final 125 newly admitted records. Preserve the RNZ1 shared-header provenance and close each overlay before crossing the boundary |
+| 256 | done | Reconciled the 512 admitted records to 510 live todo records, annotated 292 exact-name and shape twins, isolated every adaptable local and published-upstream donor, and landed 113 score-zero bodies across 35 source files through journaled overlay batches with 113/113 proof. The reusable repair lane now replaces only exact function-owned spans, preserves unrelated edits, completes declarations from the lexical prefix plus reachable headers, and normalizes trailing whitespace without altering receipt evidence. Four score-zero candidates were safely rejected and 14 were stale; 50 current score-1-to-35 bodies remain published for deterministic repair. The original score archive remains immutable; superseding `score-zero-receipts.repaired-20260825.us.json` preserves 127 applicable receipts, 121 exact bodies and six oracle-proven source normalizations, with durable v2 queue evidence for all 127. Journal recovery durably flushes file and directory metadata, and singleton checksum attribution now requires a green reverted baseline. Upstream candidate publication masks inactive US conditionals, can republish a closed record from its pinned source without reopening the queue, archives every generation, and reconciles 1,296 exact, 38 derived and zero unclassified artifacts; the malformed RNO4 `StepTowards` stable view was replaced by schema-v3 generation `v0002`. Complete-translation-unit declaration repair immutably upgraded 211 stable candidates from missing or implicit types to exact repository evidence; all 358 current seeds are now self-contained and typemap-complete. The remaining 398 todo records carry corrected classification notes without status changes. Worker-aligned declaration coverage proves 393 workable, five data-blocked and 256 fully covered. Generated reports preserve 22 shared-header candidates covering 46 stubs, 17 calibrated data-segment trials with three safe addresses, 32 tiny-closed, one tiny-one-gap, 103 small-closed, 16 small-one-gap, 45 multi-function translation units covering 371 records, and 51 exact same-translation-unit earlier-definition edges forming 31 groups across 82 records. Supplied open-PR discovery remains separately owned by #251. Recovery snapshots `queue.20260825-021345.df446be.jsonl` through `queue.20260825-032452.df446be.jsonl` preserve intermediate boundaries; they are explicitly superseded by final snapshot `queue.20260825-040409.df446be.jsonl`, which preserves all 983 records at SHA-256 `f24a2fc043e2af6132ec32d773ad6a02f636bd04271fcdda8423ad9d87257a2f` Final quality reconciliation corrected the audit's cross-overlay VRAM aliasing and same-named-function overwrite defects, replaced eight exact bodies with established shared includes, documented the required empty branch, and records the remaining 88 exact copies in `automation/duplicate-provenance.us.json`: 71 shared-header boundary calibrations and 17 shared extractions, each target/donor hash-bound to #264. A full RBO6 `prim_helpers.c` shim was oracle-rejected because its two remaining assembly stubs do not match the shared header; restoring the verified mixed translation unit returned the complete oracle to 113/113. The shim gate now resolves exact include paths, indexes current shim files separately from upstream evidence, scans the complete peer set for stage-data obligations, and tests structural blockers independently from live splat evolution. The audited live deferral population is four stubs: RNO0 `e_breakable`, RNO0 `e_collect`, and both RNO1 `e_red_door` records. Connector closure added atomic, mode-preserving scoped writes with bounded transient drvfs retries and made argument-free `git_push` an observable background job guarded by generated-document drift and a clean worktree/index. `AGENTS.md` now makes batch-specific `git_add_all` authority expire, requires exact untruncated commit and generated-store audits, mandates a fresh `make_build -> verify_build` before every background push, forbids blind synchronous retries, and requires process failures to become durable controls and tests. |
+| 257 | **open** | RESCOPED after #256. Exhaust all 32 `tiny-closed` records in `automation/mechanical-waves.us.json` in instruction-count order, batching same translation units under the journaled oracle and evidence-backing every rejection before advancing |
+| 258 | **open** | RESCOPED after #256. Exhaust the sole `tiny-one-gap` record, RBO2 `func_us_8019B430`, by resolving its exact `g_Entities_160` evidence. Do not model-dispatch or invent the alias while the retained/global entity-address lane remains available |
+| 259 | **open** | RESCOPED after #256. Exhaust all 103 `small-closed` records through isolated scoring and journaled oracle batches, ordered by instructions and translation unit. No model dispatch until the programmatic candidate lanes are exhausted |
+| 260 | **open** | RESCOPED after #256. Exhaust all 16 `small-one-gap` records, preserving the exact unresolved symbol for each and respecting every generated exact same-translation-unit earlier-definition edge that intersects the lane |
+| 261 | **open** | RESCOPED after #256. Apply and score the three calibrated shared-header data segments for RNO1 `e_red_door`, RNZ1 `e_medusa_head` and RNZ1 `e_valhalla_knight`, then evaluate the five no-data shim candidates. Every conditional divergence still requires target-assembly proof |
+| 262 | **open** | RESCOPED after #256. Exhaust the 50 current score-1-to-35 published candidates with deterministic asm-delta diagnosis and bounded local mutation before any random permuter search. Reconcile against records already closed by #257 through #261 |
+| 263 | **open** | RESCOPED after #256. Process the remaining 241-record `general` lane by the 45 generated multi-function translation units and 51 exact same-translation-unit earlier-definition edges forming 31 groups across 82 records. Preserve same-file context and use the multi-file journal so batching cannot corrupt adjacent work |
+| 264 | **open** | RESCOPED after #256. Generalize calibrated data-segment discovery to boss overlays and condition-specific shared data, then disposition every todo record not closed by #257 through #263. Unsafe calibration failures remain explicit evidence, never guessed addresses This task also owns all 88 exact-copy records in `automation/duplicate-provenance.us.json`: 71 shared-header boundary calibrations and 17 target-specific bodies requiring shared extraction. Every entry is invalidated automatically if either body hash changes. |
 | 265 | **open** | Run the terminal whole-queue audit after every earlier open task. Require exact 113-artifact and 62-config scope, every configured completion map present, zero todo, claimed, blind, stale and unknown records, no invalidated deferred verdict, immutable evidence for every near or rejected body, and an explicit matched or evidence-backed terminal disposition for all remaining records |

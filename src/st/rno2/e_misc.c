@@ -114,11 +114,142 @@ void EntityGreyPuffSpawner(
     }
 }
 
-INCLUDE_ASM("st/rno2/nonmatchings/e_misc", EntityExplosionVariants);
+/* Compile-shaping declarations retained from the score-zero
+   receipt after destination-scope filtering. */
+extern s32 D_us_801818D8[6];
+extern u8 D_us_801818F0[4];
+extern u16 D_us_801818F4[4];
 
-INCLUDE_ASM("st/rno2/nonmatchings/e_misc", EntityGreyPuff);
+void EntityExplosionVariants(Entity* self) {
+    if (!self->step) {
+        self->velocityY = D_us_801818D8[self->ext.destructAnim.index];
+        self->flags =
+            FLAG_UNK_2000 | FLAG_KEEP_ALIVE_OFFCAMERA | FLAG_POS_CAMERA_LOCKED;
+        self->palette = PAL_FLAG(PAL_UNK_195);
+        self->animSet = ANIMSET_DRA(2);
+        self->animCurFrame = D_us_801818F0[self->params];
+        self->blendMode = BLEND_TRANSP;
+        self->step++;
+    } else {
+        self->posY.val -= self->velocityY;
+        ++self->poseTimer;
+        if ((self->poseTimer % 2) == 0) {
+            self->animCurFrame++;
+        }
 
-INCLUDE_ASM("st/rno2/nonmatchings/e_misc", EntityOlroxDrool);
+        if (self->poseTimer > D_us_801818F4[self->params]) {
+            DestroyEntity(self);
+        }
+    }
+}
+
+
+
+/* Compile-shaping declarations retained from the score-zero
+   receipt after destination-scope filtering. */
+extern s16 D_us_801818B0[8];
+extern s32 D_us_801818C0[6];
+
+void EntityGreyPuff(Entity* self) {
+    if (!self->step) {
+        self->flags =
+            FLAG_UNK_2000 | FLAG_KEEP_ALIVE_OFFCAMERA | FLAG_POS_CAMERA_LOCKED;
+        self->palette = PAL_FLAG(PAL_UNK_195);
+        self->animSet = ANIMSET_DRA(5);
+        self->animCurFrame = 1;
+        self->blendMode = BLEND_TRANSP;
+        self->drawFlags = ENTITY_SCALEX | ENTITY_SCALEY;
+        self->scaleX = D_us_801818B0[self->params];
+        self->scaleY = self->scaleX;
+        self->velocityY = D_us_801818C0[self->params];
+        self->step++;
+    } else {
+        self->posY.val -= self->velocityY;
+        self->poseTimer++;
+        if ((self->poseTimer % 2) == 0) {
+            self->animCurFrame++;
+        }
+        if (self->poseTimer > 36) {
+            DestroyEntity(self);
+        }
+    }
+}
+
+
+
+/* Compile-shaping declarations retained from the score-zero
+   receipt after destination-scope filtering. */
+extern s16 D_us_801818FC[4];
+
+/* Declarations injected by the worker: used by the candidate
+   below and absent from this file. Copied verbatim from the
+   tree, same overlay or a shared header, never another
+   overlay's. */
+extern Primitive g_PrimBuf[];
+
+void EntityOlroxDrool(Entity* self) {
+    Primitive* prim;
+    s32 primIndex;
+    s32 i;
+
+    switch (self->step) {
+    case 0:
+        InitializeEntity(g_EInitParticle);
+        primIndex = g_api_AllocPrimitives(PRIM_LINE_G2, 1);
+        if (primIndex == -1) {
+            return;
+        }
+        self->primIndex = primIndex;
+        self->flags |= FLAG_HAS_PRIMS;
+        self->hitboxState = 0;
+        prim = &g_PrimBuf[primIndex];
+        self->ext.prim = prim;
+
+        for (i = 0; prim != NULL; i++, prim = prim->next) {
+            prim->x0 = prim->x1 = self->posX.i.hi;
+            prim->y0 = prim->y1 = self->posY.i.hi;
+            prim->r0 = 64;
+            prim->r1 = 0;
+            prim->g0 = 64;
+            prim->g1 = 0;
+            prim->b0 = 255;
+            prim->b1 = 16;
+            prim->priority = self->zPriority + 1;
+            prim->drawMode |= DRAW_TPAGE2 | DRAW_TPAGE | DRAW_COLORS |
+                              DRAW_UNK02 | DRAW_TRANSP;
+        }
+        break;
+
+    case 1:
+        prim = self->ext.prim;
+        if (CheckColliderOffsets(D_us_801818FC, 0)) {
+            prim->y1 += 2;
+            if (!self->step_s) {
+
+                EntityExplosionVariantsSpawner(self, 1, 2, 0, 0, 3, 0);
+                self->step_s = 1;
+            }
+        } else {
+            self->velocityY += FIX(1.0 / 64);
+            self->posY.val += self->velocityY;
+            if ((prim->y0 - prim->y1) > 8) {
+                prim->y1 = prim->y0 - 8;
+            }
+        }
+
+        prim->x0 = self->posX.i.hi;
+        prim->x1 = self->posX.i.hi;
+        prim->y0 = self->posY.i.hi;
+
+        if (prim->y0 < prim->y1) {
+            g_api_FreePrimitives(self->primIndex);
+            DestroyEntity(self);
+        }
+        break;
+    }
+}
+
+
 
 bool UnkCollisionFunc5(s16* pointXY) {
     Collider collider;
@@ -353,7 +484,36 @@ void EntityIntenseExplosion(Entity* self) {
     }
 }
 
-INCLUDE_ASM("st/rno2/nonmatchings/e_misc", InitializeUnkEntity);
+/* Compile-shaping declarations retained from the score-zero
+   receipt after destination-scope filtering. */
+extern u8 D_us_80181904[14];
+
+void InitializeUnkEntity(Entity* self) {
+    if (!self->step) {
+        InitializeEntity(g_EInitParticle);
+        self->zPriority += 16;
+        self->opacity = 0xF0;
+        self->scaleX = 0x1A0;
+        self->scaleY = 0x1A0;
+        self->animSet = ANIMSET_DRA(8);
+        self->animCurFrame = 1;
+
+        if (self->params) {
+            self->palette = self->params;
+        } else {
+            self->palette = PAL_FLAG(PAL_CC_FIRE_EFFECT);
+        }
+
+        self->step++;
+    } else {
+        MoveEntity();
+        if (!AnimateEntity(D_us_80181904, self)) {
+            DestroyEntity(self);
+        }
+    }
+}
+
+
 
 void MakeEntityFromId(u16 entityId, Entity* src, Entity* dst) {
     DestroyEntity(dst);
@@ -450,9 +610,217 @@ void EntityBigRedFireball(Entity* self) {
     }
 }
 
-INCLUDE_ASM("st/rno2/nonmatchings/e_misc", UnkRecursivePrimFunc1);
+/* Compile-shaping declarations retained from the score-zero
+   receipt after destination-scope filtering. */
+extern s16 D_us_80181914[16];
 
-INCLUDE_ASM("st/rno2/nonmatchings/e_misc", UnkRecursivePrimFunc2);
+Primitive* UnkRecursivePrimFunc1(
+    SVECTOR* p0, SVECTOR* p1, SVECTOR* p2, SVECTOR* p3, Primitive* srcPrim,
+    s32 iterations, Primitive* dstPrim, u8* dataPtr) {
+    long flag, p;
+    s32 i;
+    Primitive* tempPrim;
+    s16* indices;
+    s32 rotTransResult;
+    SVECTOR* points;
+    uvPair* uv_values;
+
+    if (dstPrim == NULL) {
+        return NULL;
+    }
+    tempPrim = (Primitive*)dataPtr;
+    dataPtr += sizeof(Primitive);
+    points = (SVECTOR*)dataPtr;
+    dataPtr += sizeof(SVECTOR) * 9;
+    uv_values = (uvPair*)dataPtr;
+    dataPtr += sizeof(uvPair) * 10;
+
+    points[0] = *p0;
+    points[2] = *p1;
+    points[6] = *p2;
+    points[8] = *p3;
+
+    points[1].vx = (points[0].vx + points[2].vx + 1) >> 1;
+    points[1].vy = (points[0].vy + points[2].vy + 1) >> 1;
+    points[1].vz = (points[0].vz + points[2].vz + 1) >> 1;
+    points[7].vx = (points[6].vx + points[8].vx + 1) >> 1;
+    points[7].vy = (points[6].vy + points[8].vy + 1) >> 1;
+    points[7].vz = (points[6].vz + points[8].vz + 1) >> 1;
+    points[3].vx = (points[0].vx + points[6].vx + 1) >> 1;
+    points[3].vy = (points[0].vy + points[6].vy + 1) >> 1;
+    points[3].vz = (points[0].vz + points[6].vz + 1) >> 1;
+    points[5].vx = (points[2].vx + points[8].vx + 1) >> 1;
+    points[5].vy = (points[2].vy + points[8].vy + 1) >> 1;
+    points[5].vz = (points[2].vz + points[8].vz + 1) >> 1;
+    points[4].vx = (points[3].vx + points[5].vx + 1) >> 1;
+    points[4].vy = (points[3].vy + points[5].vy + 1) >> 1;
+    points[4].vz = (points[3].vz + points[5].vz + 1) >> 1;
+
+    uv_values[0] = *(uvPair*)&srcPrim->u0;
+    uv_values[2] = *(uvPair*)&srcPrim->u1;
+    uv_values[6] = *(uvPair*)&srcPrim->u2;
+    uv_values[8] = *(uvPair*)&srcPrim->u3;
+    uv_values[1].u = (uv_values[0].u + uv_values[2].u + 1) >> 1;
+    uv_values[1].v = (uv_values[0].v + uv_values[2].v + 1) >> 1;
+    uv_values[7].u = (uv_values[6].u + uv_values[8].u + 1) >> 1;
+    uv_values[7].v = (uv_values[6].v + uv_values[8].v + 1) >> 1;
+    uv_values[3].u = (uv_values[0].u + uv_values[6].u + 1) >> 1;
+    uv_values[3].v = (uv_values[0].v + uv_values[6].v + 1) >> 1;
+    uv_values[5].u = (uv_values[2].u + uv_values[8].u + 1) >> 1;
+    uv_values[5].v = (uv_values[2].v + uv_values[8].v + 1) >> 1;
+    uv_values[4].u = (uv_values[3].u + uv_values[5].u + 1) >> 1;
+    uv_values[4].v = (uv_values[3].v + uv_values[5].v + 1) >> 1;
+
+    *tempPrim = *srcPrim;
+    indices = D_us_80181914;
+    for (i = 0; i < 4; i++) {
+        s32 idx1 = *indices++;
+        s32 idx2 = *indices++;
+        s32 idx3 = *indices++;
+        s32 idx4 = *indices++;
+        rotTransResult = RotTransPers4(
+            &points[idx1], &points[idx2], &points[idx3], &points[idx4],
+            (long*)&tempPrim->x0, (long*)&tempPrim->x1, (long*)&tempPrim->x2,
+            (long*)&tempPrim->x3, &p, &flag);
+        *(uvPair*)&tempPrim->u0 = uv_values[idx1];
+        *(uvPair*)&tempPrim->u1 = uv_values[idx2];
+        *(uvPair*)&tempPrim->u2 = uv_values[idx3];
+        *(uvPair*)&tempPrim->u3 = uv_values[idx4];
+        if (iterations == 1) {
+            if (rotTransResult > 0) {
+                Primitive* origNext = dstPrim->next;
+                *dstPrim = *tempPrim;
+                dstPrim->next = origNext;
+                dstPrim = dstPrim->next;
+                if (dstPrim == NULL) {
+                    return NULL;
+                }
+            }
+        } else {
+            dstPrim = UnkRecursivePrimFunc1(
+                &points[idx1], &points[idx2], &points[idx3], &points[idx4],
+                tempPrim, iterations - 1, dstPrim, dataPtr);
+        }
+    }
+    return dstPrim;
+}
+
+
+
+/* Compile-shaping declarations retained from the score-zero
+   receipt after destination-scope filtering. */
+extern s16 D_us_80181934[20];
+
+Primitive* UnkRecursivePrimFunc2(
+    Primitive* srcPrim, s32 iterations, Primitive* dstPrim, u8* dataPtr) {
+    s32 i;
+    Primitive* tempPrim;
+    Point16* points;
+    CVECTOR* colors;
+    uvPair* uv_values;
+    s16* indices;
+
+    if (dstPrim == NULL) {
+        return NULL;
+    }
+    tempPrim = (Primitive*)dataPtr;
+    dataPtr += sizeof(Primitive);
+    colors = (CVECTOR*)dataPtr;
+    dataPtr += sizeof(CVECTOR) * 9;
+
+    points = (Point16*)dataPtr;
+    dataPtr += sizeof(Point16) * 9;
+    uv_values = (uvPair*)dataPtr;
+    dataPtr += sizeof(uvPair) * 10;
+
+    colors[0] = *(CVECTOR*)&srcPrim->r0;
+    colors[2] = *(CVECTOR*)&srcPrim->r1;
+    colors[6] = *(CVECTOR*)&srcPrim->r2;
+    colors[8] = *(CVECTOR*)&srcPrim->r3;
+    colors[1].r = ((colors[0].r + colors[2].r + 1) >> 1);
+    colors[1].g = ((colors[0].g + colors[2].g + 1) >> 1);
+    colors[1].b = ((colors[0].b + colors[2].b + 1) >> 1);
+    colors[7].r = ((colors[6].r + colors[8].r + 1) >> 1);
+    colors[7].g = ((colors[6].g + colors[8].g + 1) >> 1);
+    colors[7].b = ((colors[6].b + colors[8].b + 1) >> 1);
+    colors[3].r = ((colors[0].r + colors[6].r + 1) >> 1);
+    colors[3].g = ((colors[0].g + colors[6].g + 1) >> 1);
+    colors[3].b = ((colors[0].b + colors[6].b + 1) >> 1);
+    colors[5].r = ((colors[2].r + colors[8].r + 1) >> 1);
+    colors[5].g = ((colors[2].g + colors[8].g + 1) >> 1);
+    colors[5].b = ((colors[2].b + colors[8].b + 1) >> 1);
+    colors[4].r = ((colors[3].r + colors[5].r + 1) >> 1);
+    colors[4].g = ((colors[3].g + colors[5].g + 1) >> 1);
+    colors[4].b = ((colors[3].b + colors[5].b + 1) >> 1);
+
+    uv_values[0] = *(uvPair*)&srcPrim->u0;
+    uv_values[2] = *(uvPair*)&srcPrim->u1;
+    uv_values[6] = *(uvPair*)&srcPrim->u2;
+    uv_values[8] = *(uvPair*)&srcPrim->u3;
+    uv_values[1].u = (uv_values[0].u + uv_values[2].u + 1) >> 1;
+    uv_values[1].v = (uv_values[0].v + uv_values[2].v + 1) >> 1;
+    uv_values[7].u = (uv_values[6].u + uv_values[8].u + 1) >> 1;
+    uv_values[7].v = (uv_values[6].v + uv_values[8].v + 1) >> 1;
+    uv_values[3].u = (uv_values[0].u + uv_values[6].u + 1) >> 1;
+    uv_values[3].v = (uv_values[0].v + uv_values[6].v + 1) >> 1;
+    uv_values[5].u = (uv_values[2].u + uv_values[8].u + 1) >> 1;
+    uv_values[5].v = (uv_values[2].v + uv_values[8].v + 1) >> 1;
+    uv_values[4].u = (uv_values[3].u + uv_values[5].u + 1) >> 1;
+    uv_values[4].v = (uv_values[3].v + uv_values[5].v + 1) >> 1;
+
+    points[0] = *(Point16*)&srcPrim->x0;
+    points[2] = *(Point16*)&srcPrim->x1;
+    points[6] = *(Point16*)&srcPrim->x2;
+    points[8] = *(Point16*)&srcPrim->x3;
+    points[1].x = ((points[0].x + points[2].x + 1) >> 1);
+    points[1].y = ((points[0].y + points[2].y + 1) >> 1);
+    points[7].x = ((points[6].x + points[8].x + 1) >> 1);
+    points[7].y = ((points[6].y + points[8].y + 1) >> 1);
+    points[3].x = ((points[0].x + points[6].x + 1) >> 1);
+    points[3].y = ((points[0].y + points[6].y + 1) >> 1);
+    points[5].x = ((points[2].x + points[8].x + 1) >> 1);
+    points[5].y = ((points[2].y + points[8].y + 1) >> 1);
+    points[4].x = ((points[3].x + points[5].x + 1) >> 1);
+    points[4].y = ((points[3].y + points[5].y + 1) >> 1);
+
+    *tempPrim = *srcPrim;
+    indices = D_us_80181934;
+    for (i = 0; i < 4; i++) {
+        s32 idx1 = *indices++;
+        s32 idx2 = *indices++;
+        s32 idx3 = *indices++;
+        s32 idx4 = *indices++;
+        *(uvPair*)&tempPrim->u0 = uv_values[idx1];
+        *(uvPair*)&tempPrim->u1 = uv_values[idx2];
+        *(uvPair*)&tempPrim->u2 = uv_values[idx3];
+        *(uvPair*)&tempPrim->u3 = uv_values[idx4];
+        *(Point16*)&tempPrim->x0 = points[idx1];
+        *(Point16*)&tempPrim->x1 = points[idx2];
+        *(Point16*)&tempPrim->x2 = points[idx3];
+        *(Point16*)&tempPrim->x3 = points[idx4];
+        *(CVECTOR*)&tempPrim->r0 = colors[idx1];
+        *(CVECTOR*)&tempPrim->r1 = colors[idx2];
+        *(CVECTOR*)&tempPrim->r2 = colors[idx3];
+        *(CVECTOR*)&tempPrim->r3 = colors[idx4];
+
+        tempPrim->type = srcPrim->type;
+        if (iterations == 1) {
+            Primitive* origNext = dstPrim->next;
+            *dstPrim = *tempPrim;
+            dstPrim->next = origNext;
+            dstPrim = dstPrim->next;
+            if (dstPrim == NULL) {
+                return NULL;
+            }
+        } else {
+            dstPrim = UnkRecursivePrimFunc2(
+                tempPrim, iterations - 1, dstPrim, dataPtr);
+        }
+    }
+    return dstPrim;
+}
+
+
 
 void ClutLerp(RECT* rect, u16 palIdxA, u16 palIdxB, s32 steps, u16 offset) {
     u16 buf[COLORS_PER_PAL];

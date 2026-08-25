@@ -23,10 +23,10 @@ under any MCP client.
 | live authority | current value |
 |---|---|
 | Build oracle | **113/113** from the artifacts on disk |
-| Decompiled | **93.7%**, 8061/8742 functions; 681 US `INCLUDE_ASM` stubs remain |
-| Queue | 983 records: 302 matched, 510 todo, 122 escalated, 43 deferred, 6 near |
-| Provenance | upstream-harvest 45, shim-segment 9, shim-header 55, transplant 21, twin-port 29, permuter 18, claude-manual 4, model-fleet 56, unknown 65 |
-| Automation | 84 modules, 28 suites plus 35 module self-tests, 90 tools, 68 diagnostics |
+| Decompiled | **94.0%**, 8166/8734 functions; 568 US `INCLUDE_ASM` stubs remain |
+| Queue | 983 records: 415 matched, 398 todo, 122 escalated, 42 deferred, 6 near |
+| Provenance | upstream-harvest 45, shim-segment 9, shim-header 55, transplant 134, twin-port 29, permuter 18, claude-manual 4, model-fleet 56, unknown 65 |
+| Automation | 84 modules, 28 suites plus 36 module self-tests, 90 tools, 68 diagnostics |
 
 This block is regenerated from the same queue, checksum manifest, linker maps, provenance classifier, and connector inventory as `README.md`.
 <!-- LIVE-STATUS:END -->
@@ -34,8 +34,10 @@ This block is regenerated from the same queue, checksum manifest, linker maps, p
 Commit and push also enforce documentation cohesion. `git_commit` runs the
 existing `automation/readme_status.py --write` pipeline and explicitly stages
 only its declared managed paths. It refuses when one of those documents already
-has an unstaged edit. `git_push` never writes; it runs the generator's drift gate
-and refuses stale status instead.
+has an unstaged edit. `git_push` never edits repository files; it runs the generator's drift gate
+and refuses stale status or any dirty worktree/index instead. Large evidence
+commits use `job_start(action="git_push")` so packing and upload remain
+observable beyond the MCP transport deadline.
 
 ---
 
@@ -198,11 +200,27 @@ job_status(<id>)                                       -> poll
 ```
 
 `argv` still comes from `build_argv`, so the allowlist remains the only way to
-construct a command.
+construct a command. Large pushes use the same path:
+
+```
+job_start(action="git_push")                          -> job id
+job_status(<id>)                                      -> poll through completion
+```
+
+The push job accepts no remote, refspec, or flags. It runs the generated-document
+drift gate and requires a clean worktree and index before starting.
 
 `elapsed_s` on a job **includes queue wait**, so it is not a runtime. Jobs are
 exclusive; the same call has measured 82s and 271s depending on what else was
 queued.
+
+### Scoped writes on Windows-backed trees
+
+`write_file` writes a same-directory temporary file, flushes it, preserves the
+target mode, and atomically replaces the destination. The `/mnt/c` bridge can
+transiently return `EINVAL`, `EBUSY`, `EACCES`, or `EPERM` while a Windows
+process holds a file, so only those errors receive four bounded retries. Other
+errors remain immediate failures, and failed temporary files are removed.
 
 ## 6. Running the connector under a debugger or a test
 

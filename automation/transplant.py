@@ -36,8 +36,10 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -826,9 +828,11 @@ def _destination_scope_sources(dest: Path,
     return out
 
 
-def _destination_visible(dest: Path, name: str, defining: str = "") -> bool:
+def _destination_visible(dest: Path, name: str, defining: str = "",
+                         destination_text: str | None = None) -> bool:
     """Whether a dependency is declared before the destination insertion point."""
-    destination = dest.read_text(errors="ignore")
+    destination = (destination_text if destination_text is not None
+                   else dest.read_text(errors="ignore"))
     if defining:
         stub = re.search(
             rf"\bINCLUDE_(?:ASM|RODATA)\s*\(\s*\"[^\"]*\"\s*,\s*"
@@ -923,7 +927,9 @@ def _enum_values(source: str) -> dict[str, int]:
 
 
 def donor_scope_decls(body: str, donor: Path, dest: Path,
-                      defining: str = "") -> tuple[list[str], list[str]]:
+                      defining: str = "",
+                      destination_text: str | None = None
+                      ) -> tuple[list[str], list[str]]:
     """Compile-only declarations for donor-local dependencies of a near twin.
 
     These declarations make the isolated scorer reject or score the actual C
@@ -947,7 +953,8 @@ def donor_scope_decls(body: str, donor: Path, dest: Path,
         for match in _DONOR_OBJECT.finditer(source_text):
             name = match.group("name")
             if (name in claimed or name not in used or name == defining
-                    or _destination_visible(dest, name, defining)):
+                    or _destination_visible(
+                        dest, name, defining, destination_text)):
                 continue
             array = _complete_array_shape(source_text, match)
             declaration = f"extern {match.group('type').strip()} {name}{array};"
@@ -960,7 +967,8 @@ def donor_scope_decls(body: str, donor: Path, dest: Path,
             name = match.group("name")
             if (name in claimed or name not in used or name == defining
                     or not re.search(rf"\b{re.escape(name)}\s*\(", body)
-                    or _destination_visible(dest, name, defining)):
+                    or _destination_visible(
+                        dest, name, defining, destination_text)):
                 continue
             storage = "extern " if "extern" in match.group("storage").split() else ""
             declaration = (f"{storage}{match.group('type').strip()} {name}"
@@ -983,7 +991,8 @@ def donor_scope_decls(body: str, donor: Path, dest: Path,
         pending.remove(name)
         item = macros.get(name)
         if (not item or name in added_macros
-                or _destination_visible(dest, name, defining)):
+                or _destination_visible(
+                    dest, name, defining, destination_text)):
             continue
         value, source_path = item
         if not value:
@@ -998,7 +1007,8 @@ def donor_scope_decls(body: str, donor: Path, dest: Path,
 
     enum_values = _enum_values(source)
     for name in sorted(required):
-        if (name not in enum_values or _destination_visible(dest, name, defining)
+        if (name not in enum_values or _destination_visible(
+                dest, name, defining, destination_text)
                 or name in added_macros):
             continue
         declaration = f"#define {name} {enum_values[name]}"
@@ -1457,6 +1467,79 @@ def score_one(fn: str, mapping: list[str] | None = None,
     return 0 if score is not None else 1
 
 
+def score_published_file(path_text: str, limit: int = 0,
+                         overlay: str = "") -> int:
+    """Isolated-score published upstream candidates in one cached process."""
+    path = (REPO / path_text).resolve()
+    try:
+        path.relative_to(REPO.resolve())
+    except ValueError:
+        print("score-published-file must stay inside the repository")
+        return 1
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        ids = _harv().publish_ids(data)
+    except (OSError, ValueError) as exc:
+        print(f"could not read score-published-file: {exc}")
+        return 1
+
+    rows: list[dict] = []
+    attempted = 0
+    for record_id in ids:
+        bits = record_id.split(":", 2)
+        if len(bits) != 3:
+            continue
+        _version, record_overlay, fn = bits
+        if overlay and overlay.lower() not in record_overlay.lower():
+            continue
+        stable = artifact_store.candidate_path(record_id, REPO)
+        if not stable.is_file():
+            continue
+        raw = stable.read_text(encoding="utf-8")
+        if ("METHOD=UPSTREAM-HARVEST" not in raw
+                or f"record : {record_id}" not in raw):
+            continue
+        found = _sup().find_stub(fn, record_overlay)
+        if found is None:
+            continue
+        if limit and attempted >= limit:
+            break
+        attempted += 1
+        print(f"[upstream-score] {record_id}", flush=True)
+        try:
+            body, rel = load_score_body(fn, str(stable.relative_to(REPO)),
+                                        record_overlay)
+            result = score_draft(
+                fn, body=body,
+                detail=f"published upstream candidate: {rel}",
+                overlay=record_overlay)
+        except (OSError, ValueError) as exc:
+            result = {"function": fn, "score": None,
+                      "status": "body-file-failed", "archive": "",
+                      "detail": f"{type(exc).__name__}: {exc}"}
+        result["overlay"] = record_overlay
+        result["record_id"] = record_id
+        rows.append(result)
+
+    ranked = sorted(rows, key=lambda row: (
+        row.get("score") is None,
+        row.get("score") if row.get("score") is not None else 10**18,
+        row["record_id"]))
+    print(f"\n{len(ranked)} published upstream candidate score result(s). "
+          "Nothing touched the queue or invoked a game build.\n")
+    print(f"{'score':>8}  {'record':64} status")
+    print("-" * 100)
+    for row in ranked:
+        value = str(row["score"]) if row.get("score") is not None else "-"
+        print(f"{value:>8}  {row['record_id'][:63]:64} "
+              f"{row.get('status', '')}")
+        if row.get("archive"):
+            print(f"          evidence: {row['archive']}")
+        if row.get("score") is None:
+            print(f"          detail: {row.get('detail', '')[:160]}")
+    return 1 if score_scan_failed(ranked) else 0
+
+
 def score_scan_preflight_status(ok: bool, detail: str) -> str:
     """Render every exact preflight outcome instead of silently dropping it."""
     if ok and detail.startswith("adaptable draft:"):
@@ -1569,8 +1652,9 @@ def _load_score_receipt(path: Path, root: Path = SCORE_ROOT,
     body_path = path.parent / "transplant-body.c"
     if not body_path.is_file():
         raise ValueError(f"receipt has no transplant-body.c: {path}")
-    body = body_path.read_text(encoding="utf-8")
-    if not re.search(rf"\b{re.escape(fn)}\s*\(", body):
+    receipt_body = body_path.read_text(encoding="utf-8")
+    body = _sup().extract_function(receipt_body, fn)
+    if not body:
         raise ValueError(f"scored body does not contain {fn}: {body_path}")
     asm_rel = str(data["asm"]).replace("\\", "/")
     expected_leaf = f"/{fn}.s"
@@ -1586,6 +1670,9 @@ def _load_score_receipt(path: Path, root: Path = SCORE_ROOT,
         "stub_asm": asm_rel[:-len(expected_leaf)],
         "receipt": path.resolve().relative_to(repo.resolve()).as_posix(),
         "body_path": body_path,
+        "receipt_body": receipt_body,
+        "discarded_scaffolding_sha256": hashlib.sha256(
+            receipt_body.replace(body, "", 1).encode("utf-8")).hexdigest(),
         "body": body,
     }
 
@@ -1616,6 +1703,32 @@ def latest_score_receipts(root: Path = SCORE_ROOT,
     return sorted(rows, key=lambda row: row["record_id"])
 
 
+def best_score_receipts(root: Path = SCORE_ROOT,
+                        repo: Path = REPO) -> list[dict]:
+    """Lowest complete archived score per record, newest receipt on a tie.
+
+    A record can now have independent local-twin and upstream bodies. The later
+    experiment must not hide an older score zero merely because its receipt was
+    written last. Incomplete historical receipts are evidence, but cannot own a
+    landing body and are skipped here.
+    """
+    best: dict[str, tuple[int, tuple[int, str], dict]] = {}
+    if not root.is_dir():
+        return []
+    for path in root.glob("*/*/adapt-score.json"):
+        try:
+            row = _load_score_receipt(path, root=root, repo=repo)
+        except (OSError, ValueError, KeyError, json.JSONDecodeError):
+            continue
+        order = (path.stat().st_mtime_ns, path.as_posix())
+        prior = best.get(row["record_id"])
+        if (prior is None or row["score"] < prior[0]
+                or (row["score"] == prior[0] and order > prior[1])):
+            best[row["record_id"]] = (row["score"], order, row)
+    return sorted((item[2] for item in best.values()),
+                  key=lambda row: row["record_id"])
+
+
 def select_score_receipts(rows: list[dict], min_score: int, max_score: int,
                           overlay: str = "", function: str = "",
                           limit: int = 0) -> list[dict]:
@@ -1635,7 +1748,7 @@ def _selected_score_receipts(min_score: int, max_score: int,
                              overlay: str = "", function: str = "",
                              limit: int = 0) -> list[dict]:
     return select_score_receipts(
-        latest_score_receipts(), min_score, max_score,
+        best_score_receipts(), min_score, max_score,
         overlay=overlay, function=function, limit=limit)
 
 
@@ -1700,11 +1813,12 @@ def publish_low_scores(apply: bool, min_score: int = 1, max_score: int = 35,
         return 0
 
     failed = 0
+    stale = 0
     for row in rows:
         valid, why = _validate_receipt_target(row)
         if not valid:
-            print(f"REFUSED {row['record_id']}: {why}")
-            failed += 1
+            print(f"SKIPPED STALE {row['record_id']}: {why}")
+            stale += 1
             continue
         try:
             seed, _artifact = _isolated_seed_artifact(row)
@@ -1714,7 +1828,39 @@ def publish_low_scores(apply: bool, min_score: int = 1, max_score: int = 35,
             continue
         print(f"PUBLISHED {row['record_id']} score={row['score']} "
               f"seed={seed} receipt={row['receipt']}")
+    print(f"SUMMARY {len(rows) - stale - failed} published, {stale} stale, "
+          f"{failed} failed")
     return 1 if failed else 0
+
+
+def _dirty_ownership_delta(before: set[str], after: set[str],
+                           expected: set[str]) -> tuple[set[str], set[str]]:
+    """Unexpected new dirt and expected paths absent after a green landing."""
+    return (after - before - expected, expected - after)
+
+
+def _snapshot_expected_paths(paths: set[str],
+                             root: Path = REPO) -> dict[str, bytes | None]:
+    """Capture receipt-owned bytes so an already-dirty path cannot hide a no-op."""
+    return {
+        path: (root / path).read_bytes() if (root / path).is_file() else None
+        for path in paths
+    }
+
+
+def _expected_path_change_failures(
+        before: dict[str, bytes | None],
+        root: Path = REPO) -> tuple[set[str], set[str]]:
+    """Return missing and byte-unchanged receipt-owned paths after a landing."""
+    missing: set[str] = set()
+    unchanged: set[str] = set()
+    for path, old_content in before.items():
+        target = root / path
+        if not target.is_file():
+            missing.add(path)
+        elif old_content is not None and target.read_bytes() == old_content:
+            unchanged.add(path)
+    return missing, unchanged
 
 
 def land_score_zeros(apply: bool, overlay: str = "", function: str = "",
@@ -1737,6 +1883,7 @@ def land_score_zeros(apply: bool, overlay: str = "", function: str = "",
         return 1
     landed: set[str] = set()
     failed = 0
+    stale = 0
     for index, row in enumerate(rows, 1):
         unexpected = _dirty_files() - landed
         if unexpected:
@@ -1744,16 +1891,33 @@ def land_score_zeros(apply: bool, overlay: str = "", function: str = "",
             return 1
         valid, why = _validate_receipt_target(row)
         if not valid:
-            print(f"REFUSED {row['record_id']}: {why}")
-            return 1
+            print(f"SKIPPED STALE {row['record_id']}: {why}")
+            stale += 1
+            continue
         print(f"\n[{index}/{len(rows)}] {row['record_id']}\n"
               f"  receipt: {row['receipt']}", flush=True)
+        expected = {row["source"]}
+        before_bytes = _snapshot_expected_paths(expected)
         good, verdict = _sup().land_match(
             Path("."), row["function"], body=row["body"],
             rec_id=row["record_id"])
         if good:
-            landed |= (_dirty_files() - landed)
-            result = "MATCHED"
+            dirty_now = _dirty_files()
+            unexpected, missing = _dirty_ownership_delta(
+                landed, dirty_now, expected)
+            byte_missing, unchanged = _expected_path_change_failures(before_bytes)
+            missing |= byte_missing
+            if unexpected or missing or unchanged:
+                failed += 1
+                result = "UNSAFE"
+                verdict = ("GREEN touched paths outside its receipt ownership: "
+                           f"expected={sorted(expected)} "
+                           f"unexpected={sorted(unexpected)} "
+                           f"missing={sorted(missing)} "
+                           f"unchanged={sorted(unchanged)}")
+            else:
+                landed |= expected
+                result = "MATCHED"
         else:
             result = "NOT_MATCHED"
             if (verdict.startswith("INTERNAL ERROR")
@@ -1766,7 +1930,463 @@ def land_score_zeros(apply: bool, overlay: str = "", function: str = "",
         if failed:
             print("STOPPING after an unpreserved or unattributable outcome")
             break
+    print(f"\nSUMMARY {len(landed)} source file(s) changed, {stale} stale "
+          f"receipt(s) skipped, {failed} unsafe failure(s)")
     return 1 if failed else 0
+
+
+def land_score_zero_batches(apply: bool, overlay: str = "",
+                            function: str = "", limit: int = 0) -> int:
+    """Oracle score-zero receipts by overlay, then bisect failed batches.
+
+    Initial batches are all attempted before any failure isolation. A green
+    overlay stays applied. A failed overlay is restored atomically and queued
+    for recursive bisection, so the common case costs one game build per
+    checksum artifact rather than one build per function.
+    """
+    rows = _selected_score_receipts(0, 0, overlay, function, limit)
+    live: list[dict] = []
+    stale = 0
+    for row in rows:
+        valid, why = _validate_receipt_target(row)
+        if valid:
+            live.append(row)
+        else:
+            stale += 1
+            print(f"SKIPPED STALE {row['record_id']}: {why}")
+    if not live:
+        print("no current score-zero receipts")
+        return 0
+
+    groups: dict[str, list[dict]] = {}
+    for row in live:
+        groups.setdefault(row["overlay"], []).append(row)
+    batches = [groups[key] for key in sorted(groups)]
+    print(f"{len(live)} live score-zero receipt(s) in {len(batches)} "
+          f"overlay batch(es); {stale} stale skipped")
+    for batch_rows in batches:
+        print(f"  {batch_rows[0]['overlay']}: {len(batch_rows)} receipt(s)")
+    if not apply:
+        print("\nDRY RUN. Nothing built. Re-run with --apply.")
+        return 0
+
+    start_dirty = _dirty_files()
+    if start_dirty:
+        print(f"src/ is not clean to begin with: {sorted(start_dirty)}")
+        return 1
+
+    landed: set[str] = set()
+    matched: list[dict] = []
+    rejected: list[tuple[dict, str]] = []
+    failed_batches: list[list[dict]] = []
+    unsafe = ""
+
+    def verify_tree_state() -> bool:
+        nonlocal unsafe
+        unexpected = _dirty_files() - landed
+        if unexpected:
+            unsafe = f"unexpected src/ change in {sorted(unexpected)}"
+            print(f"STOPPING: {unsafe}")
+            return False
+        return True
+
+    def run_batch(batch_rows: list[dict], phase: str) -> tuple[bool, str]:
+        nonlocal landed, unsafe
+        if not verify_tree_state():
+            return False, unsafe
+        label = batch_rows[0]["overlay"]
+        expected = {row["source"] for row in batch_rows}
+        before_dirty = _dirty_files()
+        before_expected = _snapshot_expected_paths(expected)
+        protected = {
+            path: (REPO / path).read_bytes()
+            for path in landed - expected
+        }
+        print(f"\n[{phase}] {label}: {len(batch_rows)} receipt(s)", flush=True)
+        entries = [{"record_id": row["record_id"],
+                    "function": row["function"], "body": row["body"]}
+                   for row in batch_rows]
+        good, verdict = _sup().land_match_batch(entries)
+        print(f"BATCH RESULT {label} size={len(batch_rows)} "
+              f"{'GREEN' if good else 'FAILED'} verdict={verdict}", flush=True)
+        if good:
+            after_dirty = _dirty_files()
+            unexpected, missing = _dirty_ownership_delta(
+                before_dirty, after_dirty, expected)
+            byte_missing, unchanged = _expected_path_change_failures(
+                before_expected)
+            missing |= byte_missing
+            changed_protected = [
+                path for path, content in protected.items()
+                if not (REPO / path).is_file()
+                or (REPO / path).read_bytes() != content
+            ]
+            if unexpected or missing or unchanged or changed_protected:
+                unsafe = ("GREEN batch touched paths outside receipt ownership: "
+                           f"expected={sorted(expected)} "
+                           f"unexpected={sorted(unexpected)} "
+                           f"missing={sorted(missing)} "
+                           f"unchanged={sorted(unchanged)} "
+                           f"changed_prior={sorted(changed_protected)}")
+                print(f"STOPPING: {unsafe}")
+                return False, unsafe
+            landed |= expected
+        elif (verdict.startswith("INTERNAL")
+              or verdict.startswith("TREE ALREADY BROKEN")
+              or "REVERT FAILED" in verdict):
+            unsafe = verdict
+        return good, verdict
+
+    print("\n=== initial overlay batches ===")
+    for index, batch_rows in enumerate(batches, 1):
+        good, _verdict = run_batch(batch_rows, f"overlay {index}/{len(batches)}")
+        if unsafe:
+            break
+        if good:
+            matched.extend(batch_rows)
+        else:
+            failed_batches.append(batch_rows)
+
+    if not unsafe and failed_batches:
+        print("\n=== failed-batch isolation ===")
+        pending: list[list[dict]] = []
+        for batch_rows in failed_batches:
+            if len(batch_rows) == 1:
+                pending.append(batch_rows)
+                continue
+            middle = len(batch_rows) // 2
+            pending.append(batch_rows[:middle])
+            pending.append(batch_rows[middle:])
+        isolated = 0
+        while pending and not unsafe:
+            batch_rows = pending.pop(0)
+            isolated += 1
+            good, verdict = run_batch(batch_rows, f"isolate {isolated}")
+            if unsafe:
+                break
+            if good:
+                matched.extend(batch_rows)
+            elif len(batch_rows) == 1:
+                rejected.append((batch_rows[0], verdict))
+            else:
+                middle = len(batch_rows) // 2
+                pending.append(batch_rows[:middle])
+                pending.append(batch_rows[middle:])
+
+    print("\n=== score-zero oracle results ===")
+    for row in matched:
+        print(f"RESULT {row['record_id']} MATCHED receipt={row['receipt']}")
+    for row, verdict in rejected:
+        print(f"RESULT {row['record_id']} NOT_MATCHED receipt={row['receipt']} "
+              f"verdict={verdict}")
+    print(f"SUMMARY {len(matched)} matched, {len(rejected)} rejected, "
+          f"{stale} stale, {len(landed)} source file(s) changed")
+    if unsafe:
+        print(f"UNSAFE STOP: {unsafe}")
+        return 1
+    return 0
+
+
+def list_applied_score_zeros() -> int:
+    """List queue-live zero receipts whose exact function body is now in src/.
+
+    Batched landing intentionally leaves queue reporting until the consolidated
+    oracle is green. This read-only reconciliation avoids scraping a long job
+    log and excludes historical receipts whose queue records already closed.
+    """
+    queue_live = {record_id for record_id, _overlay, _fn
+                  in _harv().unmatched_records()}
+    applied: list[dict] = []
+    for row in _selected_score_receipts(0, 0):
+        if row["record_id"] not in queue_live:
+            continue
+        found = _sup().find_stub(row["function"], row["overlay"])
+        if found is not None:
+            continue
+        source = REPO / row["source"]
+        if not source.is_file():
+            continue
+        actual = _sup().extract_function(
+            source.read_text(encoding="utf-8", errors="replace"),
+            row["function"])
+        expected = _sup().extract_function(row["body"], row["function"])
+        normalize = lambda text: text.replace("\r\n", "\n").strip()
+        if expected and normalize(actual) == normalize(expected):
+            applied.append(row)
+    for row in sorted(applied, key=lambda item: item["record_id"]):
+        print(f"APPLIED {row['record_id']} receipt={row['receipt']}")
+    print(f"SUMMARY {len(applied)} applied score-zero queue record(s)")
+    return 0
+
+
+def _record_score_zero_archive(rel_output: str, entries: list[dict],
+                               oracle_detail: str) -> int:
+    """Append one immutable archive's evidence without rewriting the archive."""
+    sys.path.insert(0, str(REPO / "automation"))
+    import scheduler  # type: ignore
+
+    by_id = {entry["record"]: entry for entry in entries}
+
+    def append_evidence(records: list[dict]):
+        updated = 0
+        for record in records:
+            entry = by_id.get(record.get("id"))
+            if entry is None or record.get("status") != "matched":
+                continue
+            marker = (f"durable_score_zero_v2={rel_output} record={entry['record']} "
+                      f"entry_sha256={entry['entry_sha256']} "
+                      f"receipt_sha256={entry['ignored_receipt_sha256']} "
+                      f"landed_body_sha256={entry['function_body_sha256']} "
+                      f"scored_body_sha256={entry['scored_body_sha256']}")
+            if marker not in record.get("notes", ""):
+                prior = record.get("notes", "").strip()
+                record["notes"] = marker + (" || " + prior if prior else "")
+            proof_marker = f"{marker}; scheduler-batch-verified: {oracle_detail}"
+            if proof_marker not in record.get("proof", ""):
+                prior_proof = record.get("proof", "").strip()
+                record["proof"] = (proof_marker
+                                   + (" || " + prior_proof if prior_proof else ""))
+            record["verified_at"] = scheduler._now()
+            updated += 1
+        return records, updated
+
+    updated = scheduler.Queue().transaction(append_evidence)
+    print(f"queue evidence appended for {updated}/{len(entries)} matched records")
+    return 0 if updated == len(entries) else 1
+
+
+def archive_applied_score_zeros(path_text: str,
+                                record_queue: bool = False) -> int:
+    """Preserve ignored score-zero receipts and bodies in one durable manifest."""
+    output = (REPO / path_text).resolve()
+    try:
+        output.relative_to(REPO.resolve())
+    except ValueError:
+        print("score-zero archive must stay inside the repository")
+        return 1
+    if output.exists() and not record_queue:
+        print("refusing to overwrite immutable score-zero archive: "
+              + output.relative_to(REPO).as_posix())
+        return 1
+    if output.exists() and record_queue:
+        document = json.loads(output.read_text(encoding="utf-8"))
+        entries = document.get("entries", [])
+        oracle_ok, oracle_detail = _sup().verify_checksums("us")
+        if not oracle_ok or oracle_detail != document.get("oracle"):
+            print("refusing queue record for stale score-zero archive: "
+                  + oracle_detail)
+            return 1
+        rel_output = output.relative_to(REPO).as_posix()
+        return _record_score_zero_archive(rel_output, entries, oracle_detail)
+
+    sys.path.insert(0, str(REPO / "automation"))
+    import scheduler  # type: ignore
+
+    queue_records = scheduler.Queue()._read()
+    matched = {row["id"] for row in queue_records
+               if row.get("status") == "matched"}
+    entries = []
+    normalize = lambda text: "\n".join(
+        line.rstrip() for line in text.replace("\r\n", "\n").strip().splitlines())
+    exact_count = 0
+    for row in _selected_score_receipts(0, 0):
+        if row["record_id"] not in matched:
+            continue
+        source = REPO / row["source"]
+        if not source.is_file():
+            continue
+        actual = _sup().extract_function(
+            source.read_text(encoding="utf-8", errors="replace"),
+            row["function"])
+        expected = _sup().extract_function(row["body"], row["function"])
+        if not expected or not actual:
+            continue
+        scored_body = normalize(expected)
+        landed_body = normalize(actual)
+        same_body = landed_body == scored_body
+        exact_count += int(same_body)
+        receipt_path = REPO / row["receipt"]
+        receipt_bytes = receipt_path.read_bytes()
+        receipt_data = json.loads(receipt_bytes)
+        entry = {
+            "record": row["record_id"],
+            "source": row["source"],
+            "source_file_sha256": hashlib.sha256(source.read_bytes()).hexdigest(),
+            "function_body_sha256": hashlib.sha256(
+                landed_body.encode("utf-8")).hexdigest(),
+            "scored_body_sha256": hashlib.sha256(
+                scored_body.encode("utf-8")).hexdigest(),
+            "landed_matches_scored_body": same_body,
+            "ignored_receipt": row["receipt"],
+            "ignored_receipt_sha256": hashlib.sha256(receipt_bytes).hexdigest(),
+            "receipt": receipt_data,
+            "receipt_body": row.get("receipt_body", row["body"]),
+            "exact_body": row["body"],
+            "landed_body": actual,
+        }
+        canonical = json.dumps(entry, sort_keys=True, separators=(",", ":"))
+        entry["entry_sha256"] = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+        entries.append(entry)
+    entries.sort(key=lambda item: item["record"])
+
+    oracle_ok, oracle_detail = _sup().verify_checksums("us")
+    if not oracle_ok:
+        print("refusing score-zero archive on a red oracle: " + oracle_detail)
+        return 1
+    document = {
+        "generator": "automation/transplant.py --archive-applied-score-zeros",
+        "oracle": oracle_detail,
+        "oracle_manifest": "config/check.us.sha",
+        "oracle_manifest_sha256": hashlib.sha256(
+            (REPO / "config" / "check.us.sha").read_bytes()).hexdigest(),
+        "summary": {
+            "matched_applied_score_zero_receipts": len(entries),
+            "landed_body_exactly_scored_after_whitespace_normalization": exact_count,
+            "oracle_proven_source_normalizations": len(entries) - exact_count,
+        },
+        "entries": entries,
+    }
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
+    rel_output = output.relative_to(REPO).as_posix()
+    print(f"wrote {rel_output}: {len(entries)} applied score-zero receipts; "
+          f"oracle {oracle_detail}")
+    if not entries:
+        return 1
+    if not record_queue:
+        print("queue unchanged; add --record-archive after reviewing the manifest")
+        return 0
+
+    return _record_score_zero_archive(rel_output, entries, oracle_detail)
+
+
+_GENERATED_SUPPORT_MARKERS = (
+    "/* Declarations injected by the worker:",
+    "/* Compile-shaping declarations retained from the score-zero",
+)
+
+
+def _landed_function_span(text: str, fn: str, expected: str) -> tuple[int, int]:
+    """Exact landed definition plus an immediately adjacent generated block."""
+    actual = _sup().extract_function(text, fn)
+    normalize = lambda value: value.replace("\r\n", "\n").strip()
+    if not actual or normalize(actual) != normalize(expected):
+        raise ValueError(f"current definition of {fn} is not the scored body")
+    starts = [match.start() for match in re.finditer(re.escape(actual), text)]
+    if len(starts) != 1:
+        raise ValueError(f"current definition of {fn} is not uniquely owned")
+    start = starts[0]
+    prefix = text[:start]
+    marker = max((prefix.rfind(item) for item in _GENERATED_SUPPORT_MARKERS),
+                 default=-1)
+    if marker >= 0:
+        bridge = prefix[marker:]
+        comment_end = bridge.find("*/")
+        remainder = bridge[comment_end + 2:] if comment_end >= 0 else bridge
+        lines = [line.strip() for line in remainder.splitlines()
+                 if line.strip()]
+        declarations_only = all(
+            (line.startswith("#define ") and "\\" not in line)
+            or (line.endswith(";") and "{" not in line and "}" not in line)
+            for line in lines)
+        if comment_end >= 0 and declarations_only:
+            start = marker
+    return start, starts[0] + len(actual)
+
+
+def _replace_landed_function(text: str, fn: str, expected: str,
+                             replacement: str) -> str:
+    """Replace only one owned landing, preserving every unrelated byte."""
+    start, end = _landed_function_span(text, fn, expected)
+    return text[:start] + replacement + text[end:]
+
+
+def repair_landed_score_zero_sources(apply: bool,
+                                     source_scope: list[str] | None = None) -> int:
+    """Surgically normalize landed receipt functions and their dependencies."""
+    sys.path.insert(0, str(REPO / "automation" / "win"))
+    import scheduler  # type: ignore
+    import worker_direct as wd  # type: ignore
+
+    matched = {record["id"] for record in scheduler.Queue()._read()
+               if record.get("status") == "matched"}
+    rows = [row for row in _selected_score_receipts(0, 0)
+            if row["record_id"] in matched]
+    if source_scope:
+        wanted = {Path(item).as_posix() for item in source_scope}
+        rows = [row for row in rows if row["source"] in wanted]
+        missing = sorted(wanted - {row["source"] for row in rows})
+        if missing:
+            print("repair source scope has no matched score receipt: "
+                  + ", ".join(missing))
+            return 1
+    grouped: dict[str, list[dict]] = {}
+    for row in rows:
+        source = row["source"]
+        current = (REPO / source).read_text(
+            encoding="utf-8", errors="replace")
+        current_body = _sup().extract_function(current, row["function"])
+        if current_body.strip() == row["body"].strip():
+            grouped.setdefault(source, []).append(row)
+
+    repaired: dict[str, str] = {}
+    originals: dict[str, str] = {}
+    function_count = 0
+    for source, source_rows in sorted(grouped.items()):
+        current = (REPO / source).read_text(
+            encoding="utf-8", errors="replace")
+        rendered = current
+        positions = []
+        for row in source_rows:
+            actual = _sup().extract_function(rendered, row["function"])
+            positions.append((rendered.find(actual), row))
+        for _position, row in sorted(positions):
+            stub = f'INCLUDE_ASM("{row["stub_asm"]}", {row["function"]});\n'
+            try:
+                visibility_text = _replace_landed_function(
+                    rendered, row["function"], row["body"], stub)
+            except ValueError as exc:
+                print(f"refusing source repair for {row['record_id']}: {exc}")
+                return 1
+            declarations, _notes = donor_scope_decls(
+                row["body"], Path(row["body_path"]), REPO / source,
+                defining=row["function"],
+                destination_text=visibility_text)
+            body = wd._prepare_candidate_body(
+                visibility_text, row["body"], row["function"], source,
+                support_declarations=declarations)
+            rendered = _replace_landed_function(
+                rendered, row["function"], row["body"], body)
+            function_count += 1
+        if rendered != current:
+            originals[source] = current
+            repaired[source] = rendered
+
+    print(f"score-zero source repair: {function_count} exact function(s), "
+          f"{len(repaired)} source file(s)")
+    for source in repaired:
+        print(f"  {source}")
+    if not repaired:
+        return 0
+    if not apply:
+        print("DRY RUN. Re-run with --apply after reviewing the exact scope.")
+        return 0
+    if not wd.journal_write_many(originals):
+        print("refusing repair without a multi-file restore journal")
+        return 1
+    try:
+        for source, content in repaired.items():
+            (REPO / source).write_text(content, encoding="utf-8", newline="")
+    except OSError as exc:
+        wd.restore_many(originals)
+        print(f"repair write failed and was restored: {exc}")
+        return 1
+    if not wd.journal_clear():
+        wd.restore_many(originals)
+        print("repair journal could not be disarmed; restored prior sources")
+        return 1
+    print("score-zero scaffolding removed; build verification still required")
+    return 0
 
 
 def list_all() -> int:
@@ -1992,7 +2612,9 @@ def self_test() -> int:
     tree = _ast.parse(src)
     tree.body = [n for n in tree.body
                  if not (isinstance(n, _ast.FunctionDef)
-                         and n.name == "self_test")]
+                          and n.name in {"self_test",
+                                        "archive_applied_score_zeros",
+                                        "repair_landed_score_zero_sources"})]
     for node in _ast.walk(tree):
         if isinstance(node, _ast.Call):
             f = node.func
@@ -2135,6 +2757,22 @@ def self_test() -> int:
        and "extern u8 D_fixtureAnim[];" in fixture_decls
        and "extern u16 g_fixturePressed;" in fixture_decls,
        "only headers reachable before a multiline stub suppress score declarations")
+    landed_fixture = (
+        "/* unrelated operator edit */\n"
+        "/* Declarations injected by the worker: used by the candidate\n"
+        "   below and absent from this file. */\n"
+        "extern u8 D_fixture[];\n\n"
+        "void Fixture(void) { (void)D_fixture[0]; }\n"
+        "/* unrelated tail edit */\n")
+    replaced_fixture = _replace_landed_function(
+        landed_fixture, "Fixture",
+        "void Fixture(void) { (void)D_fixture[0]; }",
+        "void Fixture(void) { return; }\n")
+    ck("unrelated operator edit" in replaced_fixture
+       and "unrelated tail edit" in replaced_fixture
+       and "Declarations injected" not in replaced_fixture
+       and "void Fixture(void) { return; }" in replaced_fixture,
+       "score repair changes only the owned landing and preserves unrelated edits")
     try:
         load_score_body("func_801904B8", "../outside.c")
     except ValueError:
@@ -2533,15 +3171,44 @@ def self_test() -> int:
                 "source": "src/st/test/file.c",
                 "status": "scored",
             }), encoding="utf-8")
+            prefix = ("#define PLAYER g_Entities[0]\n"
+                      "extern EInit g_EInitEnvironment;\n"
+                      "extern EInit g_EInitEnvironment;\n"
+                      if marker == "new" else "")
             (receipt_dir / "transplant-body.c").write_text(
-                f"void FixtureFunction(void) {{ /* {marker} */ }}\n",
+                prefix + f"void FixtureFunction(void) {{ /* {marker} */ }}\n",
                 encoding="utf-8")
         receipt_rows = latest_score_receipts(fake_root, fake_repo)
         ck(len(receipt_rows) == 1 and receipt_rows[0]["score"] == 0,
            "a superseded incomplete receipt cannot block the newest one")
         ck("new" in receipt_rows[0]["body"]
-           and "old" not in receipt_rows[0]["body"],
-           "the selected body is byte-for-byte from the newest receipt")
+           and "old" not in receipt_rows[0]["body"]
+           and "#define" not in receipt_rows[0]["body"],
+           "landing selects only the newest receipt's exact function")
+        ck("#define PLAYER" in receipt_rows[0]["receipt_body"]
+           and receipt_rows[0]["receipt_body"].count(
+               "extern EInit g_EInitEnvironment;") == 2,
+           "discarded receipt scaffolding remains preserved as evidence")
+        for stamp, score, marker in [
+                ("20260818-030000-1-1", 0, "older-zero"),
+                ("20260818-040000-1-1", 25, "newer-worse")]:
+            receipt_dir = fake_root / stamp / "SecondFunction"
+            receipt_dir.mkdir(parents=True)
+            archive = receipt_dir.relative_to(fake_repo).as_posix()
+            (receipt_dir / "adapt-score.json").write_text(json.dumps({
+                "archive": archive,
+                "asm": "st/test/nonmatchings/file/SecondFunction.s",
+                "function": "SecondFunction", "score": score,
+                "source": "src/st/test/file.c", "status": "scored",
+            }), encoding="utf-8")
+            (receipt_dir / "transplant-body.c").write_text(
+                f"void SecondFunction(void) {{ /* {marker} */ }}\n",
+                encoding="utf-8")
+        best_rows = best_score_receipts(fake_root, fake_repo)
+        second = next(row for row in best_rows
+                      if row["function"] == "SecondFunction")
+        ck(second["score"] == 0 and "older-zero" in second["body"],
+           "a newer worse experiment cannot hide an owned score zero")
     ck(receipt_rows[0]["record_id"]
        == "us:ST/TEST:FixtureFunction",
        "the queue id is derived from the exact receipt overlay")
@@ -2564,6 +3231,53 @@ def self_test() -> int:
     ck("artifact_store.publish_versioned_artifact" in publishing_src
        and "content: WHOLE FILE" in publishing_src,
        "low scores publish an immutable whole-file supervisor seed")
+    batch_landing_src = src[src.index("def land_score_zero_batches"):]
+    batch_landing_src = batch_landing_src[:batch_landing_src.index("\ndef list_all")]
+    ck("land_match_batch" in batch_landing_src,
+       "batched oracle work delegates to the hardened supervisor")
+    ck(batch_landing_src.index("=== initial overlay batches ===")
+       < batch_landing_src.index("=== failed-batch isolation ==="),
+       "every initial overlay batch runs before failure isolation")
+    ck("middle = len(batch_rows) // 2" in batch_landing_src,
+       "failed batches are bisected instead of discarded")
+    ck("pending = list(failed_batches)" not in batch_landing_src,
+       "isolation does not rebuild an already-red parent batch")
+    ck("groups.setdefault(row[\"overlay\"]" in batch_landing_src,
+       "initial batches never cross checksum artifacts")
+    unexpected, missing = _dirty_ownership_delta(
+        {"src/already.c"},
+        {"src/already.c", "src/owned.c", "src/foreign.c"},
+        {"src/owned.c"})
+    ck(unexpected == {"src/foreign.c"} and not missing,
+       "a green batch cannot absorb a non-receipt source edit")
+    unexpected, missing = _dirty_ownership_delta(
+        set(), {"src/foreign.c"}, {"src/owned.c"})
+    ck(unexpected == {"src/foreign.c"} and missing == {"src/owned.c"},
+       "a green batch must dirty every receipt-owned source")
+    with tempfile.TemporaryDirectory() as td:
+        fixture_root = Path(td)
+        shared = fixture_root / "src/shared.c"
+        shared.parent.mkdir(parents=True)
+        shared.write_bytes(b"first\n")
+        first_before = _snapshot_expected_paths({"src/shared.c"}, fixture_root)
+        shared.write_bytes(b"first plus landed receipt\n")
+        first_missing, first_unchanged = _expected_path_change_failures(
+            first_before, fixture_root)
+        ck(not first_missing and not first_unchanged,
+           "the first receipt in a shared source proves its byte change")
+        second_before = _snapshot_expected_paths({"src/shared.c"}, fixture_root)
+        second_missing, second_unchanged = _expected_path_change_failures(
+            second_before, fixture_root)
+        ck(not second_missing and second_unchanged == {"src/shared.c"},
+           "a later same-source no-op is rejected during bisection")
+    reconciliation_src = src[src.index("def list_applied_score_zeros"):]
+    reconciliation_src = reconciliation_src[:reconciliation_src.index("\ndef list_all")]
+    ck("unmatched_records" in reconciliation_src,
+       "reconciliation excludes queue records that already closed")
+    ck(reconciliation_src.count("extract_function") >= 2,
+       "reconciliation compares the archived and applied function bodies")
+    ck("queue_report" not in reconciliation_src,
+       "reconciliation is read-only until the consolidated oracle is reviewed")
 
     print("\na constant the C reaches through a MACRO is rewritten as an arg")
     # ANIMSET_OVL(x) is `(x) | 0x8000`, so ANIMSET_OVL(1) assembles to -0x7FFF.
@@ -2725,10 +3439,31 @@ def main() -> int:
     ap.add_argument("--body-file", default="",
                     help="score the named function from an existing in-repo C "
                          "file instead of generating a donor draft")
+    ap.add_argument("--score-published-file", default="", metavar="PATH",
+                    help="isolated-score every live upstream candidate named "
+                         "by one JSON priority map or exact-ID list")
     ap.add_argument("--publish-low-scores", action="store_true",
                     help="publish newest isolated scores as immutable seeds")
     ap.add_argument("--land-score-zeros", action="store_true",
                     help="full-build newest exact score-zero receipt bodies")
+    ap.add_argument("--land-score-zero-batches", action="store_true",
+                    help="full-build score-zero receipts by overlay and bisect "
+                         "only failed batches")
+    ap.add_argument("--list-applied-score-zeros", action="store_true",
+                    help="read-only reconciliation of queue-live score-zero "
+                          "bodies now present in src")
+    ap.add_argument("--archive-applied-score-zeros", default="", metavar="PATH",
+                    help="preserve ignored applied score-zero receipts and bodies")
+    ap.add_argument("--repair-landed-score-zero-sources", action="store_true",
+                    help="surgically normalize exact landed receipt functions")
+    ap.add_argument("--repair-source", action="append", default=[], metavar="PATH",
+                    help="limit score-zero repair to an explicit source; repeatable")
+    ap.add_argument("--repair-sources", default="", metavar="PATHS",
+                    help="comma-separated explicit source scope for connector use")
+    ap.add_argument("--repair-source-file", default="", metavar="PATH",
+                    help="in-repo JSON array containing an explicit source scope")
+    ap.add_argument("--record-archive", action="store_true",
+                    help="append the durable score-zero manifest hashes to queue")
     ap.add_argument("--score-min", type=int, default=1)
     ap.add_argument("--score-max", type=int, default=35)
     ap.add_argument("--apply", action="store_true",
@@ -2737,6 +3472,9 @@ def main() -> int:
     a = ap.parse_args()
     if a.self_test:
         return self_test()
+    if a.score_published_file:
+        return score_published_file(
+            a.score_published_file, a.limit, a.overlay)
     pairs = list(a.map)
     for chunk in a.maps:
         pairs += [x for x in chunk.split("/") if x.strip()]
@@ -2752,6 +3490,36 @@ def main() -> int:
             a.apply, a.score_min, a.score_max, a.overlay, a.function, a.limit)
     if a.land_score_zeros:
         return land_score_zeros(a.apply, a.overlay, a.function, a.limit)
+    if a.land_score_zero_batches:
+        return land_score_zero_batches(
+            a.apply, a.overlay, a.function, a.limit)
+    if a.list_applied_score_zeros:
+        return list_applied_score_zeros()
+    if a.archive_applied_score_zeros:
+        return archive_applied_score_zeros(
+            a.archive_applied_score_zeros, a.record_archive)
+    if a.repair_landed_score_zero_sources:
+        repair_sources = list(a.repair_source)
+        repair_sources += [item for item in a.repair_sources.split(",")
+                           if item.strip()]
+        if a.repair_source_file:
+            scope_path = (REPO / a.repair_source_file).resolve()
+            try:
+                scope_path.relative_to(REPO.resolve())
+            except ValueError:
+                print("repair source file must stay inside the repository")
+                return 2
+            scope_data = json.loads(scope_path.read_text(encoding="utf-8"))
+            if (not isinstance(scope_data, list)
+                    or not all(isinstance(item, str) for item in scope_data)):
+                print("repair source file must contain a JSON string array")
+                return 2
+            repair_sources += scope_data
+        return repair_landed_score_zero_sources(a.apply, repair_sources)
+    if a.record_archive:
+        print("--record-archive requires --archive-applied-score-zeros",
+              file=sys.stderr)
+        return 2
     if a.list:
         return list_all()
     if a.scan:

@@ -683,7 +683,8 @@ def _import_locked(path: Path, original: str, m, body: str, asm_rel: str,
     import worker_direct as wd                              # type: ignore
     src_rel = str(path.relative_to(REPO))
     try:
-        wd.journal_write(src_rel, original)
+        if not wd.journal_write(src_rel, original):
+            raise RuntimeError("refusing staged import without a restore journal")
         staged = staged_seed_source(original, m, body, replace_whole_file)
         path.write_text(staged)
         # wd.asm_dir, not a second copy of the rule: src/st/mad/D8C8.c uses
@@ -1357,7 +1358,10 @@ def land_match(work: Path, fn: str, build: str = "us",
                     # over the match we just verified, silently un-landing it.
                     # worker_direct hit this exact bug and documents it at its
                     # own journal_clear() call site.
-                    wd.journal_clear()
+                    if not wd.journal_clear():
+                        wd.restore(ctx, original)
+                        return False, ("INTERNAL ERROR: verified landing journal "
+                                       "could not be disarmed; source restored")
                     return True, f"GREEN: {detail}; {vdetail}"
                 wd.restore(ctx, original)
                 bad = _assert_reverted(path, original)
@@ -1367,7 +1371,12 @@ def land_match(work: Path, fn: str, build: str = "us",
                 # a seed that is no longer in src/. Leaving those behind is
                 # exactly the stale-artefact condition that produced the
                 # disagreement in the first place.
-                wd.build_and_check(rec)
+                ok2, baseline_detail = wd.build_and_check(rec)
+                if not ok2:
+                    return False, ("TREE ALREADY BROKEN: the reverted singleton "
+                                   f"baseline failed for {rec['id']} after checksum "
+                                   f"verification failed ({baseline_detail[:150]}). "
+                                   "Nothing attributed.")
                 return False, f"VERIFY FAILED: {vdetail}"
 
             if "CHECKSUM MISMATCH" in detail:
@@ -1449,6 +1458,111 @@ def land_match(work: Path, fn: str, build: str = "us",
             # function, never a verdict about the function being landed, and the
             # caller routes it accordingly.
             return False, f"INTERNAL ERROR: {type(e).__name__}: {e}"
+
+
+def land_match_batch(entries: list[dict], build: str = "us",
+                     lock=None) -> tuple[bool, str]:
+    """Apply and verify one overlay batch as a recoverable transaction.
+
+    Score zero is still only a preflight. This amortises the full-game build and
+    checksum oracle across several exact receipts in one source-overlay family
+    while preserving the same
+    BuildLock, independent checksum verification, crash journal, exact restore,
+    and reverted-baseline attribution used by :func:`land_match`.
+
+    A failed batch is deliberately unattributed. The caller must bisect it and
+    eventually pass singleton leaves through ``land_match`` so rejected bodies
+    and compiles-differs seeds retain their per-function evidence.
+    """
+    if not entries:
+        return False, "empty landing batch"
+    if len(entries) == 1:
+        entry = entries[0]
+        return land_match(Path("."), entry["function"], build=build, lock=lock,
+                          body=entry["body"], rec_id=entry["record_id"])
+
+    prepared: list[tuple[dict, str, str]] = []
+    originals: dict[str, str] | None = None
+    paths: dict[str, Path] = {}
+    overlays: set[str] = set()
+    ids: list[str] = []
+    for entry in entries:
+        fn = entry["function"]
+        record_id = entry["record_id"]
+        bits = record_id.split(":", 2)
+        overlay_hint = bits[1] if len(bits) == 3 else ""
+        found = find_stub(fn, overlay_hint)
+        if not found:
+            return False, f"stale batch receipt: no exact live stub for {record_id}"
+        path, asm_rel, _stub = found
+        src_rel = str(path.relative_to(REPO))
+        overlay = asm_rel.split("/nonmatchings/")[0]
+        overlays.add(overlay)
+        paths[src_rel] = path
+        ids.append(record_id)
+        prepared.append(({"src_rel": src_rel, "asm_rel": asm_rel},
+                         fn, entry["body"]))
+    if len(overlays) != 1:
+        return False, ("batch crosses source-overlay/checksum families: "
+                       + ", ".join(sorted(overlays)))
+
+    overlay = next(iter(overlays))
+    rec = {"build": build, "overlay": overlay,
+           "function": entries[0]["function"], "id": entries[0]["record_id"]}
+    label = f"{len(entries)} receipts in {overlay}: " + ", ".join(ids)
+
+    sys.path.insert(0, str(Path(__file__).resolve().parent / "win"))
+    import worker_direct as wd                              # type: ignore
+
+    def restore_and_assert() -> str:
+        assert originals is not None
+        wd.restore_many(originals)
+        failures = [_assert_reverted(paths[src_rel], original)
+                    for src_rel, original in originals.items()]
+        return "; ".join(item for item in failures if item)
+
+    with (lock or _build_lock())():
+        try:
+            originals = wd.apply_code_batch(prepared)
+            ok, detail = wd.build_and_check(rec)
+            if ok:
+                vok, vdetail = verify_checksums(build)
+                if vok:
+                    if not wd.journal_clear():
+                        bad = restore_and_assert()
+                        return False, (bad or "INTERNAL BATCH ERROR: verified "
+                                      "landing journal could not be disarmed; "
+                                      "source restored")
+                    return True, f"GREEN BATCH: {label}; {detail}; {vdetail}"
+                bad = restore_and_assert()
+                if bad:
+                    return False, f"{bad} (after BATCH VERIFY FAILED: {vdetail})"
+                ok2, baseline_detail = wd.build_and_check(rec)
+                if not ok2:
+                    return False, ("TREE ALREADY BROKEN: the reverted batch "
+                                   f"baseline failed for {label} after checksum "
+                                   f"verification failed ({baseline_detail[:150]}). "
+                                   "Nothing attributed.")
+                return False, f"BATCH VERIFY FAILED: {label}; {vdetail}"
+
+            bad = restore_and_assert()
+            if bad:
+                return False, f"{bad} (original batch failure: {detail[:150]})"
+            ok2, _ = wd.build_and_check(rec)
+            if not ok2:
+                return False, ("TREE ALREADY BROKEN: the reverted batch baseline "
+                               f"failed for {label}. Nothing attributed.")
+            return False, f"BATCH {classify_build_failure(detail)}: {label}"
+        except Exception as exc:                            # noqa: BLE001
+            if originals is not None:
+                try:
+                    bad = restore_and_assert()
+                    if bad:
+                        return False, (f"{bad} while handling batch "
+                                       f"{type(exc).__name__}: {exc}")
+                except OSError:
+                    pass
+            return False, f"INTERNAL BATCH ERROR: {type(exc).__name__}: {exc}"
 
 
 def require_clean_src() -> str:
@@ -2599,6 +2713,22 @@ def self_test() -> int:
        "and the whole apply/build/revert happens under the fleet's lock")
     ck(lm.index("build_and_check") < lm.index("return True"),
        "there is no path that returns success without having built")
+
+    print("\nbatched landing keeps the hardened oracle transaction")
+    lb = src_sup[src_sup.index("def land_match_batch"):]
+    lb = lb[:lb.index("\ndef require_clean_src")]
+    ck("apply_code_batch" in lb and "restore_many" in lb,
+       "multi-file apply and restore use worker_direct's crash journal")
+    ck("lock or _build_lock()" in lb,
+       "the whole batch remains under the fleet's BuildLock")
+    ck("verify_checksums" in lb,
+       "a successful batch still passes the independent full oracle")
+    ck(lb.index("restore_and_assert()") < lb.index("ok2"),
+       "a failed batch is restored before its baseline attribution build")
+    ck("if len(entries) == 1:" in lb and "return land_match(" in lb,
+       "singleton isolation returns to the evidence-preserving landing path")
+    ck("len(overlays) != 1" in lb,
+       "one batch cannot cross checksum artifacts")
 
     print("\nlive supervisor landing retains exact queue identity")
     captured_landing = []

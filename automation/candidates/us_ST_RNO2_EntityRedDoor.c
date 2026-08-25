@@ -1,0 +1,408 @@
+/* UPSTREAM CANDIDATE -- complete target translation unit.
+   method : METHOD=UPSTREAM-HARVEST
+   generator: upstream-harvest-v3-us-conditional-extraction
+   record : us:ST/RNO2:EntityRedDoor
+   upstream: upstream/master
+   source : 85c3717eb4f1a8a5419b9448c5289202a815f971:src/st/e_red_door.h
+   target : src/st/rno2/unk_39458.c
+   content: WHOLE FILE (stub substituted, declarations complete)
+   verdict: candidate evidence only; isolated score and verify_build remain required. */
+// SPDX-License-Identifier: AGPL-3.0-or-later
+#include "rno2.h"
+
+/* Added by the permuter-seed writer. The permuter parses the complete
+   translation unit, so every call needs typemap evidence. INCLUDE_ASM
+   disappears under PERMUTER, and C89 implicit calls have no declaration.
+   Either case otherwise raises KeyError when a mutation touches the call. */
+/* Declared by the tree: */
+int abs(int x);
+void InitializeEntity(u16 arg0[]);
+void DestroyEntity(Entity*);
+u8 GetSideToPlayer();
+int rcos(int a);
+int rsin(int a);
+/* Not declared anywhere in the tree, so the real build compiles these by
+   C89 implicit declaration (6.3.2.2), which is exactly `extern int f();`.
+   Writing it out changes no codegen. */
+extern int EntityIsNearPlayer();
+/* End permuter-seed writer declarations. */
+
+
+/* Compile-shaping declarations retained from the score-zero
+   receipt after destination-scope filtering. */
+#define false 0
+#define true 1
+
+static bool func_us_801B9458(Entity* self) {
+    s16 distanceX;
+    s16 diffX;
+    s16 distanceY;
+    s16 diffY;
+
+    diffX = PLAYER.posX.i.hi - self->posX.i.hi;
+    distanceX = abs(diffX);
+    if (distanceX > 16) {
+        return false;
+    }
+
+    diffY = PLAYER.posY.i.hi - self->posY.i.hi;
+    distanceY = abs(diffY);
+    if (distanceY > 32) {
+        return false;
+    }
+
+    return true;
+}
+
+
+
+/* Declarations injected by the worker: used by the candidate
+   below and absent from this file. Copied verbatim from the
+   tree, same overlay or a shared header, never another
+   overlay's. */
+extern EInit g_EInitCommon;
+extern GameApi g_api;
+extern Primitive g_PrimBuf[];
+extern PlayerState g_Player;
+extern s32 g_PlayableCharacter;
+extern Tilemap g_Tilemap;
+extern u16 g_RedDoorTiles[2][8];
+
+void EntityRedDoor(Entity* self) {
+    Primitive* prim;
+    s32 i;
+    s16 angle;
+    u8* uv;
+    s16 x, y;
+    u8 params;
+    s16 endX;
+    s16 scrollX, scrollY;
+    s32 tileIdx;
+
+    switch (self->step) {
+    case 0:
+        InitializeEntity(g_EInitCommon);
+        self->animSet = 7;
+        self->animCurFrame = 1;
+        self->zPriority = PLAYER.zPriority - 0x20;
+        self->facingLeft = 0;
+        self->posY.i.hi += 0x1F;
+
+        if (self->params & 0x100) {
+            self->ext.redDoor.xOffset = -4;
+        } else {
+            self->ext.redDoor.xOffset = 4;
+        }
+        self->posX.i.hi += self->ext.redDoor.xOffset;
+        self->primIndex = g_api.AllocPrimitives(PRIM_GT4, LEN(g_eRedDoorUV));
+        if (self->primIndex == -1) {
+            DestroyEntity(self);
+            return;
+        }
+        self->flags |= FLAG_HAS_PRIMS;
+        uv = g_eRedDoorUV[0];
+        prim = &g_PrimBuf[self->primIndex];
+        i = 0;
+        y = self->posY.i.hi - 0x1F;
+        while (prim != NULL) {
+            prim->u0 = uv[0];
+            prim->u1 = uv[1];
+            prim->u2 = uv[2];
+            prim->u3 = uv[3];
+            prim->v0 = uv[4];
+            prim->v1 = uv[5];
+            prim->v2 = uv[6];
+            prim->v3 = uv[7];
+            prim->tpage = 0x1F;
+            prim->clut = PAL_UNK_198;
+            prim->priority = PLAYER.zPriority - 0x20;
+            prim->y0 = prim->y1 = y;
+            prim->y2 = prim->y3 = y + 62;
+            if (i == 0) {
+                prim->y0 = prim->y1 = y;
+                prim->y2 = prim->y3 = y + 62;
+            }
+            prim->drawMode = DRAW_COLORS | DRAW_UNK02;
+            prim->r0 = prim->b0 = prim->g0 = 0x7F;
+            prim->r1 = prim->b1 = prim->g1 = 0x7F;
+            prim->r2 = prim->b2 = prim->g2 = 0x7F;
+            prim->r3 = prim->b3 = prim->g3 = 0x7F;
+            if (i == 2 && !(self->params & 0x100)) {
+                prim->drawMode |= DRAW_HIDE;
+            }
+            if (i == 1 && (self->params & 0x100)) {
+                prim->drawMode |= DRAW_HIDE;
+            }
+            i++;
+            uv += 8;
+            prim = prim->next;
+        }
+        if (EntityIsNearPlayer(self)) {
+            if (!(self->params & 0x100)) {
+                g_api.PlaySfxVolPan(SFX_DOOR_OPEN, 0x60, -6);
+                self->ext.redDoor.angle = ROT(360);
+            }
+            if (self->params & 0x100) {
+                g_api.PlaySfxVolPan(SFX_DOOR_OPEN, 0x60, 6);
+                self->ext.redDoor.angle = ROT(180);
+            }
+            self->animCurFrame = 0;
+            self->step = 4;
+            PLAYER.velocityY = 0;
+            g_Player.padSim = 0;
+            g_Player.demo_timer = 24;
+        } else {
+            self->ext.redDoor.angle = ROT(270);
+            prim = &g_PrimBuf[self->primIndex];
+            i = 0;
+            while (prim != NULL) {
+                prim->drawMode |= DRAW_HIDE;
+                i++;
+                if (i == 3) {
+                    break;
+                }
+                prim = prim->next;
+            }
+        }
+        break;
+    case 1:
+
+
+
+
+
+
+
+
+
+
+
+
+
+        if (((PLAYER.facingLeft != GetSideToPlayer()) & 1) ^ 1) {
+            break;
+        }
+        if ((PLAYER.step != 0x19 || g_PlayableCharacter == PLAYER_ALUCARD) &&
+            PLAYER.step != 1) {
+            break;
+        }
+
+        if (!EntityIsNearPlayer(self)) {
+            break;
+        }
+        if (!(self->params & 0x100)) {
+            g_api.PlaySfxVolPan(SFX_DOOR_OPEN, 0x60, -6);
+        }
+        if (self->params & 0x100) {
+            g_api.PlaySfxVolPan(SFX_DOOR_OPEN, 0x60, 6);
+        }
+        prim = &g_PrimBuf[self->primIndex];
+        i = 0;
+        while (prim != NULL) {
+            if (i == 1 && !(self->params & 0x100)) {
+                prim->drawMode &= ~DRAW_HIDE;
+            }
+            if (i == 2 && (self->params & 0x100)) {
+                prim->drawMode &= ~DRAW_HIDE;
+            }
+            if (i == 0) {
+                prim->drawMode &= ~DRAW_HIDE;
+            }
+            i++;
+            prim = prim->next;
+        }
+        self->animCurFrame = 0;
+        g_Player.padSim = 0;
+        g_Player.demo_timer = 2;
+        self->step++;
+        break;
+    case 2:
+        g_Player.padSim = 0;
+        g_Player.demo_timer = 24;
+        if (!(self->params & 0x100)) {
+            self->ext.redDoor.angle += 0x20;
+            if (self->ext.redDoor.angle >= ROT(360)) {
+                self->ext.redDoor.angle = ROT(360);
+            }
+            if (self->ext.redDoor.angle == ROT(360)) {
+                self->step++;
+            }
+        } else {
+            self->ext.redDoor.angle -= 0x20;
+            if (self->ext.redDoor.angle <= ROT(180)) {
+                self->ext.redDoor.angle = ROT(180);
+            }
+            if (self->ext.redDoor.angle == ROT(180)) {
+                self->step++;
+            }
+        }
+        break;
+    case 3:
+        if (g_Player.demo_timer >= 4) {
+            return;
+        }
+        if (!(self->params & 0x100)) {
+            g_Player.padSim = PAD_LEFT;
+        } else {
+            g_Player.padSim = PAD_RIGHT;
+        }
+        g_Player.demo_timer = 3;
+        break;
+    case 4:
+        if (!(self->params & 0x100)) {
+            g_Player.padSim = PAD_RIGHT;
+        } else {
+            g_Player.padSim = PAD_LEFT;
+        }
+        g_Player.demo_timer = 4;
+        if (!EntityIsNearPlayer(self)) {
+            self->step++;
+        }
+        break;
+    case 5:
+        g_Player.padSim = 0;
+        g_Player.demo_timer = 4;
+        if (!(self->params & 0x100)) {
+            self->ext.redDoor.angle -= 0x20;
+            if (self->ext.redDoor.angle <= ROT(270)) {
+                self->ext.redDoor.angle = ROT(270);
+            }
+        } else {
+            self->ext.redDoor.angle += 0x20;
+            if (self->ext.redDoor.angle >= ROT(270)) {
+                self->ext.redDoor.angle = ROT(270);
+            }
+        }
+        if (self->ext.redDoor.angle == ROT(270)) {
+            prim = &g_PrimBuf[self->primIndex];
+            for (i = 0; prim != NULL; i++, prim = prim->next) {
+                prim->drawMode |= DRAW_HIDE;
+            }
+            if (!(self->params & 0x100)) {
+                g_api.PlaySfxVolPan(SFX_DOOR_CLOSE_A, 0x60, -6);
+            }
+            if (self->params & 0x100) {
+                g_api.PlaySfxVolPan(SFX_DOOR_CLOSE_A, 0x60, 6);
+            }
+            self->animCurFrame = 1;
+            self->step = 1;
+        }
+        break;
+    }
+
+    if (self->step != 1) {
+        g_api.func_8010E168(1, 0x20);
+        g_api.func_8010DFF0(1, 1);
+    }
+
+    x = self->posX.i.hi - self->ext.redDoor.xOffset;
+    if (self->params & 0x100) {
+        x--;
+    } else {
+        x++;
+    }
+
+    i = 0;
+    angle = self->ext.redDoor.angle;
+    prim = &g_PrimBuf[self->primIndex];
+    for (; prim != NULL; i++, prim = prim->next) {
+        if (prim->drawMode & DRAW_HIDE) {
+            continue;
+        }
+        if (!(self->params & 0x100)) {
+            if (i == 0) {
+                endX = prim->x0 = prim->x2 = x + ((rcos(angle) >> 8) * 32 >> 4);
+                prim->x1 = prim->x3 = prim->x0 - ((rsin(angle) >> 4) * 6 >> 8);
+                if (angle > ROT(348.75)) {
+                    prim->x1 = prim->x3 = prim->x0 + 1;
+                }
+                if (angle > ROT(315)) {
+                    prim->u0 = prim->u2 = 178;
+                    prim->u1 = prim->u3 = 182;
+                }
+                if (angle <= ROT(315)) {
+                    prim->u0 = prim->u2 = 177;
+                    prim->u1 = prim->u3 = 183;
+                }
+                if (angle == ROT(360)) {
+                    prim->r1 = prim->b1 = prim->g1 = 63;
+                    prim->r3 = prim->b3 = prim->g3 = 63;
+                } else {
+                    prim->r1 = prim->b1 = prim->g1 =
+                        0x7F - ((angle & 0x3FF) >> 4);
+                    prim->r3 = prim->b3 = prim->g3 =
+                        0x7F - ((angle & 0x3FF) >> 4);
+                }
+            } else {
+                prim->x0 = prim->x2 = x;
+                prim->x1 = prim->x3 = endX;
+                if (angle == ROT(360)) {
+                    prim->r0 = prim->b0 = prim->g0 = 63;
+                    prim->r2 = prim->b2 = prim->g2 = 63;
+                } else {
+                    prim->r0 = prim->b0 = prim->g0 = (angle & 0x3FF) >> 4;
+                    prim->r2 = prim->b2 = prim->g2 = (angle & 0x3FF) >> 4;
+                }
+            }
+        } else {
+            if (i == 0) {
+                endX = prim->x1 = prim->x3 = x + ((rcos(angle) >> 8) * 32 >> 4);
+                prim->x0 = prim->x2 = prim->x1 + ((rsin(angle) >> 4) * 6 >> 8);
+                if (angle < ROT(191.25)) {
+                    prim->x0 = prim->x2 = prim->x1 - 1;
+                }
+                if (angle < ROT(225)) {
+                    prim->u0 = prim->u2 = 178;
+                    prim->u1 = prim->u3 = 182;
+                }
+                if (angle > ROT(225)) {
+                    prim->u0 = prim->u2 = 177;
+                    prim->u1 = prim->u3 = 183;
+                }
+                if (angle == ROT(180)) {
+                    prim->r0 = prim->b0 = prim->g0 = 127;
+                    prim->r2 = prim->b2 = prim->g2 = 127;
+                } else {
+                    prim->r0 = prim->b0 = prim->g0 =
+                        63 + ((angle & 0x3FF) >> 4);
+                    prim->r2 = prim->b2 = prim->g2 =
+                        63 + ((angle & 0x3FF) >> 4);
+                }
+            } else {
+                prim->x0 = prim->x2 = endX - 1;
+                prim->x1 = prim->x3 = x;
+                if (angle == ROT(180)) {
+                    prim->r1 = prim->b1 = prim->g1 = 63;
+                    prim->r3 = prim->b3 = prim->g3 = 63;
+                } else {
+                    prim->r1 = prim->b1 = prim->g1 =
+                        63 - ((angle & 0x3FF) >> 4);
+                    prim->r3 = prim->b3 = prim->g3 =
+                        63 - ((angle & 0x3FF) >> 4);
+                }
+            }
+        }
+    }
+
+    params = self->params & 0xFF;
+    if (self->animCurFrame) {
+        for (i = 0; i < 4; i++) {
+            x = self->posX.i.hi;
+            y = self->posY.i.hi - 24 + i * 0x10;
+            scrollX = x + g_Tilemap.scrollX.i.hi;
+            scrollY = y + g_Tilemap.scrollY.i.hi;
+            tileIdx = (scrollX >> 4) + (scrollY >> 4) * g_Tilemap.hSize * 0x10;
+            g_Tilemap.fg[tileIdx] = g_RedDoorTiles[params][i];
+        }
+    } else {
+        for (i = 0; i < 4; i++) {
+            x = self->posX.i.hi;
+            y = self->posY.i.hi - 24 + i * 0x10;
+            scrollX = x + g_Tilemap.scrollX.i.hi;
+            scrollY = y + g_Tilemap.scrollY.i.hi;
+            tileIdx = (scrollX >> 4) + (scrollY >> 4) * g_Tilemap.hSize * 0x10;
+            g_Tilemap.fg[tileIdx] = g_RedDoorTiles[params][i + 4];
+        }
+    }
+}
+

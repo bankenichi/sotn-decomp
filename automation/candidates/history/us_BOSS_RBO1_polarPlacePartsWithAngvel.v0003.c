@@ -1,0 +1,141 @@
+/* PERMUTER SEED -- deterministic isolated-score candidate.
+   record : us:BOSS/RBO1:polarPlacePartsWithAngvel
+   score  : 5
+   receipt: nonmatchings/.adapt-scores/20260824-233602-62298-674842/polarPlacePartsWithAngvel/adapt-score.json
+   producer: compiled-donor transplant, no model
+   content: WHOLE FILE (isolated adaptable draft)
+   origin : src/boss/rbo1/unk_12274.c
+   asm    : asm/us/boss/rbo1/nonmatchings/unk_12274/polarPlacePartsWithAngvel.s
+   verdict: the exact target function compiled under the project
+            compiler and flags but did not score zero. A full game
+            build was intentionally not run. Import and search via
+            permuter_supervisor.py; never treat this as a match. */
+// SPDX-License-Identifier: AGPL-3.0-or-later
+#include "rbo1.h"
+
+INCLUDE_ASM("boss/rbo1/nonmatchings/unk_12274", EntityBreakable);
+
+INCLUDE_ASM("boss/rbo1/nonmatchings/unk_12274", func_us_801923A8);
+
+INCLUDE_ASM("boss/rbo1/nonmatchings/unk_12274", func_us_80192C5C);
+
+INCLUDE_ASM("boss/rbo1/nonmatchings/unk_12274", func_us_80192F84);
+
+INCLUDE_ASM("boss/rbo1/nonmatchings/unk_12274", func_us_801936FC);
+
+INCLUDE_ASM("boss/rbo1/nonmatchings/unk_12274", func_us_80193C2C);
+
+INCLUDE_ASM("boss/rbo1/nonmatchings/unk_12274", func_us_80193E24);
+
+INCLUDE_ASM("boss/rbo1/nonmatchings/unk_12274", func_us_80194108);
+
+INCLUDE_ASM("boss/rbo1/nonmatchings/unk_12274", func_us_8019ED80_from_rbo2);
+
+void polarPlacePart(Entity* self);
+
+void polarPlacePartsWithAngvel(s16* entOffsets) {
+    Entity* ent;
+
+    while (*entOffsets) {
+        if (*entOffsets != 0xFF) {
+            ent = g_CurrentEntity + *entOffsets;
+            ent->ext.GH_Props.rotate += ent->ext.GH_Props.rotVel;
+            polarPlacePart(ent);
+        }
+        entOffsets++;
+    }
+}
+
+void func_801CDD00(Entity* entity, s16 arg1, s16 arg2) {
+    s16 temp_t0 = arg1 - entity->ext.GH_Props.rotate;
+
+    if (temp_t0 > 0x800) {
+        temp_t0 = temp_t0 - 0x1000;
+    }
+
+    if (temp_t0 < -0x800) {
+        temp_t0 = temp_t0 + 0x1000;
+    }
+
+    temp_t0 = temp_t0 / arg2;
+    entity->ext.GH_Props.rotVel = temp_t0;
+    entity->ext.GH_Props.unkA4 = arg1;
+}
+
+void func_801CDD00(Entity* entity, s16 arg1, s16 arg2);
+
+void func_801CDD80(s16* entOffsets, unkStr_801CDD80* arg1) {
+    Entity* var_s1;
+    s16* ptr = arg1->unk4;
+
+    while (*entOffsets) {
+        if (*entOffsets != 0xFF) {
+            var_s1 = g_CurrentEntity + *entOffsets;
+            func_801CDD00(var_s1, *ptr, arg1->unk0);
+        }
+        ptr++;
+        entOffsets++;
+    }
+}
+
+void func_801CDD80(s16* entOffsets, unkStr_801CDD80* arg1);
+
+void func_801CDF1C(s16 entIndices[], unkStr_801CDD80* arg1, s32 arg2) {
+
+    arg1 += (u16)g_CurrentEntity->ext.GH_Props.unkB0[arg2];
+
+    if (!g_CurrentEntity->ext.GH_Props.unkB4[arg2]) {
+        func_801CDD80(entIndices, arg1);
+        g_CurrentEntity->ext.GH_Props.unkB4[arg2] = arg1->unk0;
+    }
+    if (!--g_CurrentEntity->ext.GH_Props.unkB4[arg2]) {
+        arg1++;
+        if (!arg1->unk0) {
+            g_CurrentEntity->ext.GH_Props.unkB0[arg2] = 0;
+        } else {
+            ++g_CurrentEntity->ext.GH_Props.unkB0[arg2];
+        }
+    }
+}
+
+void func_801CE1E8(s32 step) {
+    s32 i;
+
+    g_CurrentEntity->step = step;
+    g_CurrentEntity->step_s = 0;
+    g_CurrentEntity->pose = 0;
+    g_CurrentEntity->poseTimer = 0;
+     
+    for (i = 0; i < 4; i++) {
+        g_CurrentEntity->ext.GH_Props.unkB0[i] = 0;
+        g_CurrentEntity->ext.GH_Props.unkB4[i] = 0;
+    }
+}
+
+void func_801CE228() {
+    s32 i;
+     
+     
+     
+     
+     
+     
+     
+     
+     
+    for (i = 0; i < 4; i++) {
+        g_CurrentEntity->ext.GH_Props.unkB0[i] = 0;
+        g_CurrentEntity->ext.GH_Props.unkB4[i] = 0;
+    }
+}
+
+INCLUDE_ASM("boss/rbo1/nonmatchings/unk_12274", polarPlacePartsList);
+
+// decompiled in src/boss/bo1/e_explosion_flame.c
+INCLUDE_ASM("boss/rbo1/nonmatchings/unk_12274", func_us_8019D260_from_rcen);
+
+INCLUDE_ASM("boss/rbo1/nonmatchings/unk_12274", func_us_801947E4);
+
+INCLUDE_ASM("boss/rbo1/nonmatchings/unk_12274", func_us_80194C50);
+
+INCLUDE_ASM("boss/rbo1/nonmatchings/unk_12274", EntityBossRoomBlock);

@@ -19,6 +19,31 @@ REPO = Path(__file__).resolve().parent.parent
 _RECORD_ID = re.compile(r"^[A-Za-z0-9_.-]+:[A-Za-z0-9_./-]+:[A-Za-z0-9_.$-]+$")
 _PARENT_RELATIVE_INCLUDE = re.compile(
     r'^\s*#\s*include\s+"(?:\.\./)+', re.MULTILINE)
+_HISTORY_DIR_CACHE: dict[Path, tuple[int, list[Path]]] = {}
+
+
+def _history_directory_files(directory: Path) -> list[Path]:
+    """List a shared history directory once until its mtime changes."""
+    try:
+        stamp = directory.stat().st_mtime_ns
+    except OSError:
+        return []
+    cached = _HISTORY_DIR_CACHE.get(directory)
+    if cached is not None and cached[0] == stamp:
+        return cached[1]
+    files = [item for item in directory.iterdir() if item.is_file()]
+    _HISTORY_DIR_CACHE[directory] = (stamp, files)
+    return files
+
+
+def _remember_history_file(path: Path) -> None:
+    """Invalidate the shared index after creating an immutable generation.
+
+    Extending an old cached list is unsafe: another publisher can create a file
+    between our scan and our write. Stamping that incomplete list with the new
+    directory mtime can then hide the other process's evidence indefinitely.
+    """
+    _HISTORY_DIR_CACHE.pop(path.parent, None)
 
 
 def history_versions(path: str | Path) -> list[Path]:
@@ -30,7 +55,7 @@ def history_versions(path: str | Path) -> list[Path]:
     pattern = re.compile(
         rf"^{re.escape(stable.stem)}\.v([0-9]+){re.escape(stable.suffix)}$")
     versions = []
-    for item in directory.iterdir():
+    for item in _history_directory_files(directory):
         match = pattern.fullmatch(item.name) if item.is_file() else None
         if match:
             versions.append((int(match.group(1)), item))
@@ -55,6 +80,7 @@ def write_history_version(path: str | Path, data: bytes) -> Path:
         try:
             with candidate.open("xb") as handle:
                 handle.write(data)
+            _remember_history_file(candidate)
             return candidate
         except FileExistsError:
             version += 1
@@ -162,6 +188,37 @@ def self_test() -> int:
              ["first\n", "manual prior bytes\n", "second\n"],
              "every generation remains byte-identical and ordered"),
             (stable.read_text() == "second\n", "stable view refreshes atomically"),
+        ]
+        history_dir = stable.parent / "history"
+        prior_stamp = history_dir.stat().st_mtime_ns
+        external = history_dir / "seed.v0004.c"
+        external.write_text("external generation\n")
+        # Some temporary filesystems coarsen directory timestamps enough that a
+        # create in the same tick is indistinguishable. Exercise the contract by
+        # making the external change's directory stamp explicit.
+        os.utime(history_dir, ns=(prior_stamp + 1, prior_stamp + 1))
+        refreshed = history_versions(stable)
+        checks += [
+            (history_dir in _HISTORY_DIR_CACHE,
+             "the shared history directory is indexed"),
+            (external in refreshed,
+              "a directory mtime change invalidates the history index"),
+        ]
+        # Reproduce the publisher interleaving directly: our process has a
+        # cached directory view, another publisher adds one generation, then
+        # our writer adds its own before consulting the directory again.
+        _ = history_versions(stable)
+        foreign = history_dir / "seed.v0005.c"
+        ours = history_dir / "seed.v0006.c"
+        foreign.write_text("foreign concurrent generation\n")
+        ours.write_text("our concurrent generation\n")
+        _remember_history_file(ours)
+        interleaved = history_versions(stable)
+        checks += [
+            (foreign in interleaved,
+             "a concurrent publisher's generation remains discoverable"),
+            (ours in interleaved,
+             "this publisher's generation remains discoverable"),
         ]
         incoming = root / "automation" / "logs" / "incoming.c"
         incoming.parent.mkdir(parents=True)

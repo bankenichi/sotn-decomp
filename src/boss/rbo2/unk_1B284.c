@@ -4,11 +4,49 @@
 
 INCLUDE_ASM("boss/rbo2/nonmatchings/unk_1B284", EntityBreakable);
 
-INCLUDE_ASM("boss/rbo2/nonmatchings/unk_1B284", func_us_8019A98C_from_rcen);
+/* Compile-shaping declarations retained from the score-zero
+   receipt after destination-scope filtering. */
+int abs(int x);
+
+s16 func_us_8019A98C_from_rcen(s16 arg0, s16 arg1, s16 arg2) {
+    s16 v_s1;
+    s16 v_s0;
+
+    arg1 &= 0xFFF;
+
+    v_s1 = arg2 - arg1;
+    v_s0 = v_s1;
+
+    if (v_s1 > ROT(180)) {
+        v_s0 = v_s1 - ROT(360);
+    }
+    if (v_s1 < ROT(-180)) {
+        v_s0 = v_s1 + ROT(360);
+    }
+
+    if (abs(v_s0) > arg0) {
+        if (v_s1 < 0) {
+            v_s0 = arg1 - arg0;
+        } else {
+            v_s0 = arg1 + arg0;
+        }
+        return v_s0;
+    }
+
+    return arg2;
+}
+
+
 
 INCLUDE_ASM("boss/rbo2/nonmatchings/unk_1B284", func_us_8019B430);
 
-INCLUDE_ASM("boss/rbo2/nonmatchings/unk_1B284", func_801CDC80);
+/* Compile-shaping declarations retained from the score-zero
+   receipt after destination-scope filtering. */
+#define true 1
+
+#include "../../st/approach_s16.h"
+
+
 
 INCLUDE_ASM("boss/rbo2/nonmatchings/unk_1B284", func_us_8019B52C);
 
@@ -32,15 +70,100 @@ INCLUDE_ASM("boss/rbo2/nonmatchings/unk_1B284", func_us_8019ED80);
 
 INCLUDE_ASM("boss/rbo2/nonmatchings/unk_1B284", polarPlacePartsWithAngvel);
 
-INCLUDE_ASM("boss/rbo2/nonmatchings/unk_1B284", func_801CDD00);
+void func_801CDD00(Entity* entity, s16 arg1, s16 arg2) {
+    s16 temp_t0 = arg1 - entity->ext.GH_Props.rotate;
 
-INCLUDE_ASM("boss/rbo2/nonmatchings/unk_1B284", func_801CDD80);
+    if (temp_t0 > 0x800) {
+        temp_t0 = temp_t0 - 0x1000;
+    }
 
-INCLUDE_ASM("boss/rbo2/nonmatchings/unk_1B284", func_801CDF1C);
+    if (temp_t0 < -0x800) {
+        temp_t0 = temp_t0 + 0x1000;
+    }
 
-INCLUDE_ASM("boss/rbo2/nonmatchings/unk_1B284", func_801CE1E8);
+    temp_t0 = temp_t0 / arg2;
+    entity->ext.GH_Props.rotVel = temp_t0;
+    entity->ext.GH_Props.unkA4 = arg1;
+}
 
-INCLUDE_ASM("boss/rbo2/nonmatchings/unk_1B284", func_801CE228);
+
+
+/* Declarations injected by the worker: used by the candidate
+   below and absent from this file. Copied verbatim from the
+   tree, same overlay or a shared header, never another
+   overlay's. */
+extern Entity* g_CurrentEntity;
+
+void func_801CDD80(s16* entOffsets, unkStr_801CDD80* arg1) {
+    Entity* var_s1;
+    s16* ptr = arg1->unk4;
+
+    while (*entOffsets) {
+        if (*entOffsets != 0xFF) {
+            var_s1 = g_CurrentEntity + *entOffsets;
+            func_801CDD00(var_s1, *ptr, arg1->unk0);
+        }
+        ptr++;
+        entOffsets++;
+    }
+}
+
+
+
+void func_801CDF1C(s16 entIndices[], unkStr_801CDD80* arg1, s32 arg2) {
+
+    arg1 += (u16)g_CurrentEntity->ext.GH_Props.unkB0[arg2];
+
+    if (!g_CurrentEntity->ext.GH_Props.unkB4[arg2]) {
+        func_801CDD80(entIndices, arg1);
+        g_CurrentEntity->ext.GH_Props.unkB4[arg2] = arg1->unk0;
+    }
+    if (!--g_CurrentEntity->ext.GH_Props.unkB4[arg2]) {
+        arg1++;
+        if (!arg1->unk0) {
+            g_CurrentEntity->ext.GH_Props.unkB0[arg2] = 0;
+        } else {
+            ++g_CurrentEntity->ext.GH_Props.unkB0[arg2];
+        }
+    }
+}
+
+
+
+void func_801CE1E8(s32 step) {
+    s32 i;
+
+    g_CurrentEntity->step = step;
+    g_CurrentEntity->step_s = 0;
+    g_CurrentEntity->pose = 0;
+    g_CurrentEntity->poseTimer = 0;
+
+    for (i = 0; i < 4; i++) {
+        g_CurrentEntity->ext.GH_Props.unkB0[i] = 0;
+        g_CurrentEntity->ext.GH_Props.unkB4[i] = 0;
+    }
+}
+
+
+
+void func_801CE228() {
+    s32 i;
+
+
+
+
+
+
+
+
+
+    for (i = 0; i < 4; i++) {
+        g_CurrentEntity->ext.GH_Props.unkB0[i] = 0;
+        g_CurrentEntity->ext.GH_Props.unkB4[i] = 0;
+    }
+}
+
+
 
 INCLUDE_ASM("boss/rbo2/nonmatchings/unk_1B284", polarPlacePartsList);
 

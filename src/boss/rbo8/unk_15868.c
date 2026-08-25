@@ -1,7 +1,32 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #include "rbo8.h"
 
-INCLUDE_ASM("boss/rbo8/nonmatchings/unk_15868", func_801CE3FC);
+/* Declarations injected by the worker: used by the candidate
+   below and absent from this file. Copied verbatim from the
+   tree, same overlay or a shared header, never another
+   overlay's. */
+extern Entity* g_CurrentEntity;
+
+void func_801CE3FC(s16* offsets) {
+    Entity* entity;
+    s32 i;
+
+    for (i = 0; i < 4; i++) {
+        entity = g_CurrentEntity + offsets[i];
+        polarPlacePart(entity);
+    }
+    offsets += 4;
+
+    while (*offsets) {
+        if (*offsets != 0xFF) {
+            entity = g_CurrentEntity + *offsets;
+            polarPlacePart(entity);
+        }
+        offsets++;
+    }
+}
+
+
 
 INCLUDE_ASM("boss/rbo8/nonmatchings/unk_15868", func_us_80195938);
 

@@ -118,7 +118,7 @@ def main() -> int:
 
     # --- the substitution must really happen -------------------------------
     marker = "/* UNIQUE_CANARY_9137 */"
-    body = f"{marker}\nvoid {TARGET_FN}(void) {{}}\n"
+    body = f"void {TARGET_FN}(void) {{ {marker} }}\n"
     virt = wd.virtual_apply(ctx, TARGET_FN, body)
     check("virtual_apply returns the file", len(virt) > 200, f"got {len(virt)}")
     check("candidate is actually substituted in", marker in virt)
@@ -215,11 +215,21 @@ def main() -> int:
                   f"the filter assertions are skipped, not failed.")
         else:
             noisy_fn = _stubs[0]
-            noisy_code = (f"void {noisy_fn}(Entity* self) {{ self->step++; }}\n"
-                          f"static void {x_fn}(Entity* s) {{ s->step++; }}\n")
+            noisy_code = f"void {noisy_fn}(Entity* self) {{ self->step++; }}\n"
+            try:
+                wd.virtual_apply(
+                    x_ctx, noisy_fn,
+                    noisy_code +
+                    f"static void {x_fn}(Entity* s) {{ s->step++; }}\n")
+                rejected_scaffolding = False
+            except RuntimeError:
+                rejected_scaffolding = True
+            check("the source-write boundary rejects a second function",
+                  rejected_scaffolding)
             virt = wd.virtual_apply(x_ctx, noisy_fn, noisy_code)
+            virt += f"\nstatic void {x_fn}(Entity* s) {{ s->step++; }}\n"
             check("the noisy fixture really lands in the inspected text",
-                  f"static void {x_fn}" in virt)
+                   f"static void {x_fn}" in virt)
 
             # Prove the filter has something to filter: with the filter
             # bypassed, the SAME source yields a finding for another function.
@@ -240,7 +250,12 @@ def main() -> int:
                   "no other-function finding was produced, so the filter below "
                   "is untested; pick a fixture that trips a wired check")
 
-            noisy = wd.review_gate(x_ctx, noisy_fn, noisy_code)
+            original_virtual_apply = wd.virtual_apply
+            try:
+                wd.virtual_apply = lambda _ctx, _fn, _code: virt
+                noisy = wd.review_gate(x_ctx, noisy_fn, noisy_code)
+            finally:
+                wd.virtual_apply = original_virtual_apply
             check("and the gate excludes every one of them",
                   all(f["function"] not in " ".join(noisy)
                       for f in unfiltered if f.get("function")),

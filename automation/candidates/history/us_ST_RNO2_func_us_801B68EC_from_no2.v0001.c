@@ -1,0 +1,199 @@
+/* UPSTREAM CANDIDATE -- complete target translation unit.
+   method : METHOD=UPSTREAM-HARVEST
+   record : us:ST/RNO2:func_us_801B68EC_from_no2
+   source : upstream/master:src/st/no2/e_secrets.c
+   target : src/st/rno2/unk_3459C.c
+   content: WHOLE FILE (stub substituted, declarations complete)
+   verdict: candidate evidence only; isolated score and verify_build remain required. */
+// SPDX-License-Identifier: AGPL-3.0-or-later
+#include "rno2.h"
+
+/* Added by the permuter-seed writer. The permuter parses the complete
+   translation unit, so every call needs typemap evidence. INCLUDE_ASM
+   disappears under PERMUTER, and C89 implicit calls have no declaration.
+   Either case otherwise raises KeyError when a mutation touches the call. */
+/* Declared by the tree: */
+void InitializeEntity(u16 arg0[]);
+void DestroyEntity(Entity*);
+extern Primitive* FindFirstUnkPrim(Primitive* prim);
+Entity* AllocEntity(Entity* start, Entity* end);
+void CreateEntityFromEntity(u16 entityId, Entity* ent1, Entity* ent2);
+s32 Random();
+/* Not declared anywhere in the tree, so the real build compiles these by
+   C89 implicit declaration (6.3.2.2), which is exactly `extern int f();`.
+   Writing it out changes no codegen. */
+extern int func_us_801B6794();
+extern int UnkPolyFunc2();
+extern int func_us_801B59C4();
+/* End permuter-seed writer declarations. */
+
+INCLUDE_ASM("st/rno2/nonmatchings/unk_3459C", func_us_801AB9EC_from_bo0);
+
+INCLUDE_ASM("st/rno2/nonmatchings/unk_3459C", func_us_801B5FB8_from_no2);
+
+INCLUDE_ASM("st/rno2/nonmatchings/unk_3459C", func_us_801AC54C_from_bo0);
+
+INCLUDE_ASM("st/rno2/nonmatchings/unk_3459C", func_us_801AC73C_from_bo0);
+
+/* Declarations injected by the worker: used by the candidate
+   below and absent from this file. Copied verbatim from the
+   tree, same overlay or a shared header, never another
+   overlay's. */
+extern EInit g_EInitEnvironment;
+
+void func_us_801B68EC_from_no2(Entity* self) {
+    Entity* tempEntity;
+    Primitive* prim;
+    s32 primIndex;
+    s32 i;
+    s32 tileIdx;
+
+    switch (self->step) {
+    case 0:
+        InitializeEntity(g_EInitEnvironment);
+        self->animCurFrame = 0;
+        self->drawFlags |= ENTITY_ROTATE;
+        self->rotate = 0xC00;
+        if (g_CastleFlags[NO2_SECRET_CEILING_OPEN]) {
+            for (i = 0; i < 8; i++) {
+                tileIdx = D_us_80180E14[i];
+                g_Tilemap.fg[tileIdx] = D_us_80180E24[1][i];
+            }
+            DestroyEntity(self);
+            return;
+        }
+        for (i = 0; i < 8; i++) {
+            tileIdx = D_us_80180E14[i];
+            g_Tilemap.fg[tileIdx] = D_us_80180E24[0][i];
+        }
+        self->hitboxState = 2;
+#ifndef BOSS_IS_BO0
+        self->hitPoints = 0x80;
+#else
+        self->hitPoints = 16;
+#endif
+        self->hitboxWidth = 0x10;
+        self->hitboxHeight = 0x28;
+        primIndex = g_api.func_800EDB58(PRIM_TILE_ALT, 0x1E);
+        if (primIndex != -1) {
+            self->flags |= FLAG_HAS_PRIMS;
+            self->primIndex = primIndex;
+            prim = &g_PrimBuf[primIndex];
+            self->ext.breakableNo2.unk7C = prim;
+            while (prim != NULL) {
+                prim->drawMode = DRAW_HIDE;
+                prim->priority = 0x68;
+                self->ext.breakableNo2.unk84 = prim;
+                prim = prim->next;
+            }
+        } else {
+            DestroyEntity(self);
+        }
+        break;
+
+    case 1:
+        if (self->hitFlags) {
+            for (i = 0; i < 0x10; i++) {
+                prim = self->ext.breakableNo2.unk7C;
+                prim = FindFirstUnkPrim(prim);
+                if (prim != NULL) {
+                    prim->p3 = 1;
+                }
+            }
+        }
+        prim = self->ext.breakableNo2.unk7C;
+        while (prim != NULL) {
+            if (prim->p3) {
+                func_us_801B6794(prim);
+            }
+            prim = prim->next;
+        }
+        prim = self->ext.breakableNo2.unk84;
+        prim->x0 = prim->y0 = 0;
+        prim->u0 = 0;
+        prim->drawMode = DRAW_UNK02;
+        if (self->flags & FLAG_DEAD) {
+            self->animCurFrame = 0;
+            self->step++;
+        }
+        break;
+
+    case 2:
+        primIndex = self->primIndex;
+        g_api.FreePrimitives(primIndex);
+        self->flags &= ~FLAG_HAS_PRIMS;
+        g_CastleFlags[NO2_SECRET_CEILING_OPEN] = 1;
+#ifndef BOSS_IS_BO0
+        g_api.RevealSecretPassageAtPlayerPositionOnMap(NO2_SECRET_CEILING_OPEN);
+#endif
+        for (i = 0; i < 8; i++) {
+            tileIdx = D_us_80180E14[i];
+            g_Tilemap.fg[tileIdx] = D_us_80180E24[1][i];
+        }
+        primIndex = g_api.AllocPrimitives(PRIM_GT4, 0x18);
+        if (primIndex != -1) {
+            self->flags |= FLAG_HAS_PRIMS;
+            self->primIndex = primIndex;
+            prim = &g_PrimBuf[primIndex];
+            self->ext.breakableNo2.unk7C = prim;
+            while (prim != NULL) {
+                prim->drawMode = DRAW_HIDE;
+                prim = prim->next;
+            }
+        } else {
+            DestroyEntity(self);
+            return;
+        }
+        prim = self->ext.breakableNo2.unk7C;
+        for (i = 0; i < 4; i++) {
+            UnkPolyFunc2(prim);
+            prim->next->x1 = self->posX.i.hi - 8 + ((i % 2) * 0x10);
+            prim->next->y0 = self->posY.i.hi + ((i / 2) * 0x10);
+            prim->next->r3 = i + 0xC;
+            prim = prim->next;
+            prim = prim->next;
+        }
+        tempEntity = AllocEntity(&g_Entities[224], &g_Entities[256]);
+        if (tempEntity != NULL) {
+            CreateEntityFromEntity(E_EXPLOSION, self, tempEntity);
+            tempEntity->posY.i.hi += 0x20;
+            tempEntity->params = 0x13;
+            tempEntity->params += 0xAA00;
+        }
+        for (i = 0; i < 8; i++) {
+            tempEntity = AllocEntity(&g_Entities[224], &g_Entities[256]);
+            if (tempEntity != NULL) {
+                CreateEntityFromEntity(E_INTENSE_EXPLOSION, self, tempEntity);
+                tempEntity->posX.i.hi += 0xF - (Random() & 0x1F);
+                tempEntity->posY.i.hi += (Random() & 0x1F);
+                tempEntity->params = 0x10;
+                tempEntity->params += 0xAA00;
+            }
+        }
+        g_api.PlaySfx(SFX_WALL_DEBRIS_B);
+        self->step++;
+        break;
+
+    case 3:
+        i = 1;
+        prim = self->ext.breakableNo2.unk7C;
+        while (prim != NULL) {
+            if (prim->p3 & 8) {
+                i = 0;
+                func_us_801B59C4(prim);
+            }
+            prim = prim->next;
+        }
+        if (i != 0) {
+            DestroyEntity(self);
+            return;
+        }
+        break;
+    }
+}
+
+INCLUDE_ASM("st/rno2/nonmatchings/unk_3459C", EntityPrisoner);
+
+INCLUDE_ASM("st/rno2/nonmatchings/unk_3459C", func_us_801B5EE4);
+
+INCLUDE_ASM("st/rno2/nonmatchings/unk_3459C", EntitySealedDoor);

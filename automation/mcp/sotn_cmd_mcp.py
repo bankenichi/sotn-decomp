@@ -534,7 +534,7 @@ def job_start(action: str, version: str = "us", script: str = "",
     action: make_build | make_extract | make_expected | make_clean |
             make_force_symbols | make_reports | make_duplicates_report |
             make_function_finder | run_automation | run_analysis | permuter |
-            worker_once
+            worker_once | git_push
     For run_automation or its run_analysis compatibility alias, pass script=
     (e.g. asm_twin_finder.py) and args=.
     For worker_once, pass only= with a queue id: it runs the ordinary worker
@@ -591,6 +591,11 @@ def job_start(action: str, version: str = "us", script: str = "",
                 "worker_once needs only=<queue id>, e.g. "
                 "us:ST/RDAI:func_us_801C2418 (see queue_list)")
         kw = {"only": only, "dry_run": dry_run}
+    elif action == "git_push":
+        # Large evidence commits can spend longer than the MCP transport limit
+        # packing and uploading. The background job keeps that process owned
+        # and observable through job_status instead of orphaning it.
+        kw = {}
     else:
         kw = {"version": version}
     return cc.start_job(action, **kw)

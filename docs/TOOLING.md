@@ -13,10 +13,10 @@ For the mechanisms that land matches, read `automation/README.md`.
 | live authority | current value |
 |---|---|
 | Build oracle | **113/113** from the artifacts on disk |
-| Decompiled | **93.7%**, 8061/8742 functions; 681 US `INCLUDE_ASM` stubs remain |
-| Queue | 983 records: 302 matched, 510 todo, 122 escalated, 43 deferred, 6 near |
-| Provenance | upstream-harvest 45, shim-segment 9, shim-header 55, transplant 21, twin-port 29, permuter 18, claude-manual 4, model-fleet 56, unknown 65 |
-| Automation | 84 modules, 28 suites plus 35 module self-tests, 90 tools, 68 diagnostics |
+| Decompiled | **94.0%**, 8166/8734 functions; 568 US `INCLUDE_ASM` stubs remain |
+| Queue | 983 records: 415 matched, 398 todo, 122 escalated, 42 deferred, 6 near |
+| Provenance | upstream-harvest 45, shim-segment 9, shim-header 55, transplant 134, twin-port 29, permuter 18, claude-manual 4, model-fleet 56, unknown 65 |
+| Automation | 84 modules, 28 suites plus 36 module self-tests, 90 tools, 68 diagnostics |
 
 This block is regenerated from the same queue, checksum manifest, linker maps, provenance classifier, and connector inventory as `README.md`.
 <!-- LIVE-STATUS:END -->
@@ -206,8 +206,14 @@ non-score outcomes. `--limit` counts isolated score attempts. Any tool failure
 makes the pass nonzero even if a different record received a numeric score. A
 final score of zero is a build candidate, never a match verdict.
 
+`transplant.py --score-published-file PATH` isolated-scores every live upstream
+candidate named by a JSON priority map or exact-ID list in one cached process.
+It reads only stable artifacts carrying exact upstream-harvest provenance and
+never invokes the game build, edits `src/`, or writes the queue.
+
 `transplant.py --publish-low-scores --score-min N --score-max N` lists the
-newest receipt-owned isolated bodies in the requested range. Add `--apply` to
+lowest-scoring complete historical receipt bodies in the requested range,
+using the newest only to break equal-score ties. Add `--apply` to
 publish those exact bodies through the immutable candidate writer. The command
 does not regenerate a draft from current source, and it never overwrites a prior
 generation. Use `--overlay` and `--limit` to bound a batch. Run a large corpus
@@ -215,12 +221,40 @@ publication through `job_start(action="run_automation", script="transplant.py",
 args="...")`; a synchronous transport timeout does not mean the append-only
 publication stopped.
 
-`transplant.py --land-score-zeros` lists the newest exact score-zero receipts.
+`transplant.py --land-score-zeros` lists the best complete historical exact
+score-zero receipts, using the newest only to break ties.
 Add `--apply` to pass each preserved body sequentially through the journaled
 full-build landing path. The path refuses unrelated `src/` dirt, preserves every
 compile or link miss, restores the source after a miss, and reports a match only
 after the full artifact oracle passes. A score of zero authorizes this path; it
 does not bypass it.
+
+For a corpus, use `--land-score-zero-batches --apply`. It applies one source-
+overlay/checksum family at a time under a multi-file restore journal and one
+BuildLock, then runs the full oracle for the batch. Green batches remain applied. Failed batches
+are restored exactly and held until every initial artifact batch has run, then
+recursively bisected. Singleton failures return to the ordinary landing path so
+their rejected body or compiles-differs seed keeps exact function evidence.
+After the consolidated oracle is green, `--list-applied-score-zeros` reconciles
+the exact archived function body against `src/` and the still-live queue. Use
+that read-only list for `queue_report`; it excludes older records already closed
+and avoids treating a missing stub alone as proof of a landing.
+
+`--repair-landed-score-zero-sources` normalizes receipt landings without
+rebuilding whole files from `HEAD`. It replaces only an exact receipt-owned
+function and its adjacent generated declaration block, so unrelated working-tree
+edits survive. Use `--repair-source-file PATH` with an in-repo JSON string array
+to bind a large repair to an explicit batch. Required macros and declarations are
+re-derived through the existing destination-scope resolver, including only
+headers and definitions visible before the insertion point. Raw receipt bodies
+remain in the durable archive; trailing whitespace never crosses into `src/`.
+
+`--archive-applied-score-zeros PATH` writes an immutable oracle-bound manifest
+and refuses to overwrite it. A repaired tree uses a new path, preserving earlier
+queue references. Re-run against that existing path with `--record-archive` to
+append superseding queue evidence without rewriting the manifest. Each entry
+separately hashes the scored body, the final landed body and the complete source
+file, and labels oracle-proven source normalization explicitly.
 
 `Reorderings: 1` means the exact project compiler emitted the same instruction
 shape in a different local position. It is not evidence that a different
@@ -305,7 +339,7 @@ All of it goes through the connector. Push to `origin` only.
 | `git_add_all` | effectively never; it sweeps harness scratch into your commit |
 | `git_commit` | landing work. It regenerates every managed living document and stages those fixed paths individually; it refuses if any has unstaged prose |
 | `git_commit_amend` | fixing the message or tip, with the same documentation synchronization as `git_commit` |
-| `git_push` | after verifying every expected artifact. It is read-only and refuses if generated documentation has drifted |
+| `git_push` | after verifying every expected artifact and auditing the exact commit. It accepts no arguments and refuses stale generated documentation or a dirty tree. For a large commit use `job_start(action="git_push")` and poll it, so packing/upload cannot outlive the transport invisibly |
 | `git_fetch` | before comparing against upstream |
 | `git_diff` | review before staging |
 | `git_diff_stat` | scope of a change |
@@ -387,16 +421,16 @@ script supports `--help` and most support `--self-test`.
 | script | answers |
 |---|---|
 | `asm_twin_finder.py` | which unmatched stubs already exist elsewhere in the tree |
-| `upstream_harvest.py` | what upstream has decompiled that we do not |
-| `shim_sweep.py` | which shared headers could retire several stubs at once |
-| `transplant.py` | move a twin body mechanically; `--scan` classifies donors, `--adapt` emits a target-informed draft, and `--score` ranks adaptable drafts without a game build or queue write |
-| `codebase_index.py` | the searchable index of the whole tree |
+| `upstream_harvest.py` | what upstream has decompiled that we do not; `--publish-file PATH --apply` pins one upstream commit, resumes only exact record/path/schema provenance, masks inactive US conditionals, and prewarms shared declaration evidence; `--republish-artifact PATH --apply` refreshes a stable closed-record artifact from its recorded pinned source, surgically replaces its already-landed target definition or exact stub, completes declarations, and preserves the prior artifact as an immutable generation; `--provenance-manifest PATH` classifies every preserved artifact as exact upstream, derived from an exact pinned ancestor with hashed transformation evidence, or unclassified, archives the prior stable manifest, and fails only when the last class is nonempty |
+| `shim_sweep.py` | which shared headers could retire several stubs at once; `--json-out` preserves the full deterministic viability report |
+| `transplant.py` | move a twin body mechanically; `--scan` classifies donors, `--adapt` emits a target-informed draft, `--score` ranks adaptable drafts without a game build or queue write, and `--archive-applied-score-zeros PATH` preserves ignored score receipts and exact landed bodies under the verified oracle |
+| `codebase_index.py` | the searchable index of the whole tree; shared implementations retain separate upstream and exact current shim paths, with quoted includes resolved relative to each translation unit |
 | `queue_coverage.py` | does the queue cover what is actually in the tree |
-| `decl_coverage.py` | are the declarations a candidate needs already reachable; `--show-missing` prints retained-data proof without a scratch JSON report |
+| `decl_coverage.py` | are the declarations a candidate needs reachable through the worker; fails closed on symbol/count/address discovery errors, recognizes prior same-file/include definitions and exact C89 implicit-call closure, records real instruction counts, and emits exact same-translation-unit earlier-definition dependencies; `--from-json` validates provenance fields before regenerating plans or atomically correcting queue evidence |
 | `data_declarations.py` | resolve raw `D_*` labels from overlay-specific retained data/rodata/bss directives and calibrated global `Entity` address aliases; ambiguous evidence is refused |
 | `ext_demand.py` | which `Ext` union variants cover generated offsets, including raw Entity-base byte-pointer views and direct `entity->ext.unkNN` accesses, and which named expressions can replace them |
 | `member_types.py` | is this struct member real, on **this** struct |
-| `find_data_segment.py` | which splat `.data` address a symbol belongs to |
+| `find_data_segment.py` | which splat `.data` address a symbol belongs to; `--shim-report ... --json-out ...` calibrates every data-risk stage shim in one pass, requires every binary to match the checked-in oracle, hashes the same snapshotted report and oracle bytes used by the run, and preserves refusals instead of guessing |
 
 ### Diagnosing
 
@@ -419,7 +453,7 @@ script supports `--help` and most support `--self-test`.
 | `matched_audit.py` | is every record marked matched actually present in the tree |
 | `match_provenance.py` | which mechanism produced each match; `--no-git` is much faster |
 | `provenance_check.py` | how close a body is to upstream's |
-| `quality_audit.py` | fake symbols, magic numbers, raw byte casts, duplicates, and unexplained empty control bodies |
+| `quality_audit.py` | overlay-scoped fake symbols, magic numbers, raw byte casts, duplicates, and unexplained empty control bodies; `--since REF` compares the live index and worktree directly against `REF`, so staged and unstaged source changes are included; `--record-duplicate-provenance [PATH]` records exact target and donor hashes, archives a replaced manifest, and routes boundary-blocked reuse to #264 without accepting stale bodies |
 | `post_match_lint.py` | advisory scan of uncommitted matched C for duplicate externs, shared-name macro shadows, suspicious wide scalars, stray null statements, missing fallthrough notes, trailing whitespace, and worker boilerplate; widen with `--since` or `--all` |
 | `model_codegen_audit.py` | joins queue provenance to matched source and reports model-contributed functions with strong unusual shapes but no substantive `CODEGEN:` explanation; it recognizes constant single-iteration loops, `volatile`, null control bodies, and genuine scalar self-assignment, but deliberately excludes semantic `goto` loops and member stores from same-named parameters; a finding requests recovered reasoning, not a rewrite |
 | `review_checks.py` | the gate the worker runs before building |
@@ -440,7 +474,7 @@ script supports `--help` and most support `--self-test`.
 |---|---|
 | `run_selftests.py` | runs every `test_*.py` and prints one table |
 | `artifact_store.py` | public immutable-generation and atomic stable-view store shared by candidate, rejection, transplant, migration, and seed-repair writers |
-| `fix_seed_declarations.py` | repair missing or stale writer-owned declarations in permuter seeds; `--apply` publishes an immutable version and prints its exact `seed=` path |
+| `fix_seed_declarations.py` | repair missing or stale writer-owned declarations across complete candidate translation units; exact repository prototypes win, externally visible definitions supply their exact signature when no prototype exists, and static definitions are never exported; `--apply` publishes an immutable version and prints its exact `seed=` path |
 | `permuter_supervisor.py` | the auto-queueing permuter driver, legacy-seed migrator and focused importer. **Use `job_start`** for searches |
 | `test_connector_surfaces.py` | REGISTRY vs decorators vs manifest, plus portability and doc checks |
 

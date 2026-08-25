@@ -434,7 +434,11 @@ void func_us_801B1590(u8 step) {
     temp->childPalette = 0;
 }
 
-INCLUDE_ASM("boss/bo0/nonmatchings/3053C", func_us_801B15BC);
+#define func_801CDC80 func_us_801B15BC
+#include "../../st/approach_s16.h"
+#undef func_801CDC80
+
+
 
 INCLUDE_ASM("boss/bo0/nonmatchings/3053C", func_us_801B163C);
 

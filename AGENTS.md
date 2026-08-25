@@ -10,7 +10,7 @@ whichever client you are running under.
 This is a fork of the Castlevania: Symphony of the Night decompilation, and the
 decompilation is **not the point**. It is an AI proof of concept that happens to
 be pointed at a matching decompilation, chosen because the oracle is binary and
-cannot be argued with: 81 SHA-1 checksums either match or they do not. There is
+cannot be argued with: every configured SHA-1 checksum either matches or it does not. There is
 no partial credit, no reviewer to persuade, and no way to fake progress.
 
 Two consequences follow, and both override ordinary instincts:
@@ -33,8 +33,11 @@ These are absolute. Each exists because breaking it cost real work.
    left a `.git/index.lock` that corrupted the tree.
 2. **Do not use the sandbox for this project at all.** It times out, and its
    results describe a different machine than the one that builds.
-3. **Stage explicit paths.** `git_add` one path at a time. `git_add_all` sweeps
-   harness scratch output into unrelated commits.
+3. **Stage explicit paths.** `git_add` one file or one coherent directory at a
+   time. A directory is explicit only when every change beneath it belongs to
+   the same task. `git_add_all` sweeps harness scratch into commits. It is
+   permitted only by an explicit, batch-specific owner instruction, and that
+   permission expires with that batch. Never carry it into a later follow-up.
 4. **Push to `origin` only.**
 5. **Never rewrite a document wholesale without being asked.** The markdown files
    in this repository have no backup. Revise in place, surgically.
@@ -50,6 +53,28 @@ These are absolute. Each exists because breaking it cost real work.
 11. **Vendor intentional dependency divergence when practical.** This fork does
     not prepare pull requests for submodules. External repositories are
     reference corpora and dependency sources, not contribution targets.
+12. **Long actions are jobs.** Use `job_start` and poll `job_status`. Never
+    call a known long action synchronously or retry it blindly after a transport
+    timeout. First determine whether the original process is still running.
+13. **Every push gets a fresh, exact pre-push gate.** After the final commit or
+    amend: require a clean `git_state`; audit the exact commit paths without
+    relying on truncated output; run `make_build -> verify_build`; start
+    `git_push` through `job_start`; poll it to completion; and confirm the
+    branch is no longer ahead. Prior proof is not a substitute.
+14. **A push audit includes generated evidence.** Inspect top-level paths and
+    each touched generated store. Explicitly reject build output, `ctx*`,
+    `*.m2c`, caches, debug objects, local agent state, and work directories.
+15. **Do not multiply validation without a state change.** Run the focused
+    regression after an edit and each required consolidated suite once before
+    landing. Do not repeat full analysis or builds when the state they validate
+    has not changed, except for the mandatory fresh pre-push build and oracle.
+16. **Interpret overrides narrowly.** A command-specific or batch-specific
+    instruction changes only that operation unless the owner explicitly states
+    a new general policy. Never turn an exception into a standing workflow.
+17. **Persist process failures as controls.** When the owner identifies an agent
+    failure, record the violated rule here or beside the affected tool and add
+    an automated refusal or regression test where practical. Do not answer with
+    agreement or reassurance in place of a durable correction.
 
 ## 3. Where everything is
 
@@ -190,4 +215,5 @@ python3 automation/run_selftests.py               # after touching automation/
 make_build -> verify_build                        # always
 ```
 
-Then update `ROADMAP.md`, commit with explicit paths, and push to `origin`.
+Then update `ROADMAP.md`, commit with explicit paths, run the complete pre-push
+gate in constraint 13, and push to `origin` only through the background job.

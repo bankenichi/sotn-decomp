@@ -69,8 +69,24 @@ def main() -> int:
     keys = list(doc["twins"])
     check("record keys are unique", len(keys) == len(set(keys)))
     colliding = [k for k in keys if k.rsplit("/", 1)[-1] == "EntityBreakable"]
-    check("colliding symbol kept as two records", len(colliding) == 2,
-          str(colliding))
+    expected_collisions = set()
+    for asm in (REPO / "asm" / "us").rglob("EntityBreakable.s"):
+        parts = asm.relative_to(REPO / "asm" / "us").parts
+        if "nonmatchings" not in parts:
+            continue
+        expected_collisions.add(
+            "/".join(parts[:parts.index("nonmatchings")]).lower()
+            + "/EntityBreakable")
+    check("every colliding symbol keeps its overlay-qualified record",
+          set(colliding) == expected_collisions,
+          f"expected={sorted(expected_collisions)} got={sorted(colliding)}")
+    for key in sorted(expected_collisions):
+        overlay, function = key.rsplit("/", 1)
+        section = wd.twin_for(function, overlay.upper())
+        instructions = doc["twins"][key].get("instructions")
+        check(f"queue-style uppercase collision resolves {key}",
+              bool(section) and f"{instructions} instructions" in section,
+              repr(section[:160]))
 
     # --- the happy path -----------------------------------------------------
     s = wd.twin_for("BO6_RicStepStand", "boss/bo6")

@@ -1,810 +1,1594 @@
 {
- "us:BOSS/BO6:BO6_RicEntityWhip": {
+ "us:BOSS/RBO8:func_us_80195D80": {
   "rank": 0,
   "blocked": false
  },
- "us:BOSS/BO0:func_us_801AD338": {
+ "us:BOSS/BO5:func_us_801A1C14": {
   "rank": 1,
   "blocked": false
  },
- "us:ST/RCHI:EntitySlogra": {
+ "us:BOSS/BO2:func_us_801A269C": {
   "rank": 2,
   "blocked": false
  },
- "us:BOSS/BO6:func_us_801A7DC0": {
+ "us:BOSS/RBO7:func_us_801940B4": {
   "rank": 3,
   "blocked": false
  },
- "us:ST/SEL:func_801B9C80": {
+ "us:BOSS/BO2:EntityCutsceneDialogue": {
   "rank": 4,
   "blocked": false
  },
- "us:BOSS/BO6:BO6_RicMain": {
+ "us:BOSS/RBO6:EntityCutscene": {
   "rank": 5,
   "blocked": false
  },
- "us:BOSS/BO6:BO6_RicStepDead": {
+ "us:BOSS/RBO6:func_us_8019DB9C": {
   "rank": 6,
   "blocked": false
  },
- "us:BOSS/BO6:BO6_RicCheckInput": {
+ "us:BOSS/BO2:func_us_801B385C": {
   "rank": 7,
   "blocked": false
  },
- "us:ST/RCHI:EntityGaibon": {
+ "us:BOSS/BO5:EntityCutscene": {
   "rank": 8,
   "blocked": false
  },
- "us:BOSS/BO6:BO6_RicStepCrouch": {
+ "us:BOSS/RBO2:EntityCutsceneDialogue": {
   "rank": 9,
   "blocked": false
  },
- "us:BOSS/BO6:BO6_RicStepJump": {
+ "us:ST/RNO2:EntityKarasuman": {
   "rank": 10,
   "blocked": false
  },
- "us:BOSS/BO6:BO6_RicStepStand": {
+ "us:ST/RNZ1:func_us_801A9DB8": {
   "rank": 11,
   "blocked": false
  },
- "us:BOSS/BO6:BO6_RicStepHit": {
+ "us:BOSS/RBO2:func_us_8019DA04": {
   "rank": 12,
   "blocked": false
  },
- "us:ST/RDAI:func_us_801B2C28": {
+ "us:BOSS/BO7:func_us_80194D3C": {
   "rank": 13,
   "blocked": false
  },
- "us:ST/RNO0:EntityJackOBones": {
+ "us:ST/RNO4:func_us_801D5E90": {
   "rank": 14,
   "blocked": false
  },
- "us:ST/RNO0:EntityNovaSkeleton": {
+ "us:ST/RNO2:func_us_801C39A4": {
   "rank": 15,
   "blocked": false
  },
- "us:ST/RDAI:func_us_801C2418": {
+ "us:BOSS/BO2:func_us_801A3E04": {
   "rank": 16,
   "blocked": false
  },
- "us:ST/RNO0:EntityRelicOrb": {
+ "us:ST/RLIB:func_us_801AE8E8_from_lib": {
   "rank": 17,
   "blocked": false
  },
- "us:ST/RCEN:func_us_8019B8A8": {
+ "us:BOSS/RBO4:func_us_80197938": {
   "rank": 18,
   "blocked": false
  },
- "us:ST/RCEN:EntityShaft": {
+ "us:ST/RNO1:EntityParanthropus": {
   "rank": 19,
   "blocked": false
  },
- "us:BOSS/BO0:func_us_801B365C": {
+ "us:BOSS/RBO1:func_us_801923A8": {
   "rank": 20,
   "blocked": false
  },
- "us:BOSS/BO6:BO6_RicStepSlide": {
+ "us:BOSS/RBO2:func_us_8019B52C": {
   "rank": 21,
   "blocked": false
  },
- "us:BOSS/BO6:BO6_RicEntityPlayerBlinkWhite": {
+ "us:ST/RNO1:EntityNovaSkeleton": {
   "rank": 22,
   "blocked": false
  },
- "us:BOSS/BO6:BO6_RicStepSlideKick": {
+ "us:ST/RNO4:EntityNovaSkeleton": {
   "rank": 23,
   "blocked": false
  },
- "us:BOSS/BO6:BO6_RicDoCrash": {
+ "us:ST/RNZ1:func_us_801ABDE4": {
   "rank": 24,
   "blocked": false
  },
- "us:BOSS/BO6:BO6_RicCheckSubweapon": {
+ "us:ST/RNZ1:EntityValhallaKnight": {
   "rank": 25,
   "blocked": false
  },
- "us:BOSS/BO6:BO6_RicDoAttack": {
+ "us:BOSS/BO3:func_us_801A3EE0": {
   "rank": 26,
   "blocked": false
  },
- "us:BOSS/BO6:BO6_RicEntityArmBrandishWhip": {
+ "us:BOSS/RBO2:func_us_8019C924": {
   "rank": 27,
   "blocked": false
  },
- "us:BOSS/BO6:BO6_RicEntityHitByIce": {
+ "us:BOSS/BO3:func_us_801A2AEC": {
   "rank": 28,
   "blocked": false
  },
- "us:BOSS/BO0:func_us_801BAB18": {
+ "us:BOSS/RBO6:func_us_8019F1CC": {
   "rank": 29,
   "blocked": false
  },
- "us:BOSS/BO0:func_us_801B7CC8": {
+ "us:ST/RNO1:EntityJackOBones": {
   "rank": 30,
   "blocked": false
  },
- "us:ST/RCEN:func_us_8019FE9C": {
+ "us:ST/RNO4:EntityJackOBones": {
   "rank": 31,
   "blocked": false
  },
- "us:ST/RNO0:EntitySealedDoor": {
+ "us:ST/RNO1:func_us_801A700C": {
   "rank": 32,
   "blocked": false
  },
- "us:ST/RDAI:func_us_801C6040": {
+ "us:ST/RNO2:EntityFlyingZombie2": {
   "rank": 33,
   "blocked": false
  },
- "us:BOSS/BO0:func_us_801B551C": {
+ "us:ST/RLIB:func_us_801AE534": {
   "rank": 34,
   "blocked": false
  },
- "us:BOSS/BO6:func_us_801B94CC": {
+ "us:ST/RNZ1:EntityCloakedKnight": {
   "rank": 35,
   "blocked": false
  },
- "us:BOSS/BO6:BO6_RicEntityHitByHoly": {
+ "us:BOSS/RBO6:func_us_801A4594": {
   "rank": 36,
   "blocked": false
  },
- "us:BOSS/BO6:BO6_RicEntitySubwpnCrashCross": {
+ "us:BOSS/BO5:EntityBell": {
   "rank": 37,
   "blocked": false
  },
- "us:BOSS/BO6:BO6_RicEntitySubwpnAgunea": {
+ "us:ST/RLIB:func_us_801ADBE8": {
   "rank": 38,
   "blocked": false
  },
- "us:ST/RCHI:EntityDemonSwitchWall": {
+ "us:ST/RNO2:EntityFlyingZombie1": {
   "rank": 39,
   "blocked": false
  },
- "us:BOSS/BO0:func_us_801B8D8C": {
+ "us:ST/RNO4:func_us_801BBE58_from_rnz1": {
   "rank": 40,
   "blocked": false
  },
- "us:ST/RDAI:func_us_801B3368": {
+ "us:ST/RNZ1:func_us_801BBE58": {
   "rank": 41,
   "blocked": false
  },
- "us:BOSS/BO6:BO6_RicEntitySubwpnHolyWaterBreakGlass": {
+ "us:BOSS/BO5:EntityStainedGlass": {
   "rank": 42,
   "blocked": false
  },
- "us:BOSS/BO6:BO6_RicEntitySubwpnHolyWaterFlame": {
+ "us:BOSS/BO7:func_us_80195C50": {
   "rank": 43,
   "blocked": false
  },
- "us:BOSS/BO6:BO6_RicEntityCrashBible": {
+ "us:ST/RNO4:EntityImp": {
   "rank": 44,
   "blocked": false
  },
- "us:ST/RCHI:EntityBreakable": {
+ "us:ST/RNO2:func_us_801B68EC_from_no2": {
   "rank": 45,
   "blocked": false
  },
- "us:ST/RDAI:func_us_801BF830": {
+ "us:ST/RNO1:EntityBreakable": {
   "rank": 46,
   "blocked": false
  },
- "us:BOSS/BO6:func_us_801BB314": {
+ "us:BOSS/BO3:func_us_801A365C": {
   "rank": 47,
   "blocked": false
  },
- "us:BOSS/BO6:func_us_801BC678": {
+ "us:ST/RNO2:EntityBreakable": {
   "rank": 48,
   "blocked": false
  },
- "us:BOSS/BO6:BO6_RicEntityFactory": {
+ "us:ST/RNO4:EntityVenusWeedFlower": {
   "rank": 49,
   "blocked": false
  },
- "us:BOSS/BO6:BO6_RicEntityHitByCutBlood": {
+ "us:BOSS/RBO6:func_us_8019EE30": {
   "rank": 50,
   "blocked": false
  },
- "us:BOSS/BO0:func_us_801B619C": {
+ "us:BOSS/BO5:func_us_801A62B4": {
   "rank": 51,
   "blocked": false
  },
- "us:BOSS/BO6:BO6_RicEntityAguneaCircle": {
+ "us:ST/RLIB:EntityBreakable": {
   "rank": 52,
   "blocked": false
  },
- "us:BOSS/BO6:BO6_RicEntityHitByLightning": {
+ "us:ST/RNO4:EntityVenusWeedTendril": {
   "rank": 53,
   "blocked": false
  },
- "us:BOSS/BO6:BO6_RicEntitySubwpnKnife": {
+ "us:ST/RNZ1:func_us_801BD398": {
   "rank": 54,
   "blocked": false
  },
- "us:ST/RNO0:EntityBreakable": {
+ "us:ST/RNO4:EntityVenusWeed": {
   "rank": 55,
   "blocked": false
  },
- "us:BOSS/BO0:func_us_801AE858": {
+ "us:BOSS/BO3:func_us_801A5948": {
   "rank": 56,
   "blocked": false
  },
- "us:BOSS/BO6:BO6_EntityStopWatch": {
+ "us:ST/RNO1:func_us_801A68AC": {
   "rank": 57,
   "blocked": false
  },
- "us:BOSS/BO6:BO6_RicEntitySubwpnThrownAxe": {
+ "us:ST/RNO2:func_us_801B5FB8_from_no2": {
   "rank": 58,
   "blocked": false
  },
- "us:BOSS/BO6:BO6_RicEntityCrashCrossBeam": {
+ "us:ST/RNO4:EntityBreakable": {
   "rank": 59,
   "blocked": false
  },
- "us:ST/RCHI:EntityBreakableWall": {
+ "us:BOSS/RBO1:func_us_801936FC": {
   "rank": 60,
   "blocked": false
  },
- "us:ST/RNO0:func_us_801D15C0": {
+ "us:ST/RNO2:func_us_801CAB8C": {
   "rank": 61,
   "blocked": false
  },
- "us:BOSS/BO6:func_us_801BC2F0": {
+ "us:ST/RLIB:func_us_801AF448": {
   "rank": 62,
   "blocked": false
  },
- "us:BOSS/BO6:func_us_801BC4F8": {
+ "us:BOSS/RBO2:func_us_8019D4CC": {
   "rank": 63,
   "blocked": false
  },
- "us:BOSS/BO6:func_us_801B8E80": {
+ "us:ST/RNO4:func_us_801D511C": {
   "rank": 64,
   "blocked": false
  },
- "us:BOSS/BO6:func_us_801BA9D0": {
+ "us:ST/RNO2:EntityPrisoner": {
   "rank": 65,
   "blocked": false
  },
- "us:BOSS/BO6:BO6_RicEntityCrashBibleBeam": {
+ "us:BOSS/BO3:func_us_801A4988": {
   "rank": 66,
   "blocked": false
  },
- "us:BOSS/BO0:func_us_801BA4AC": {
+ "us:BOSS/BO3:func_us_801A4680": {
   "rank": 67,
   "blocked": false
  },
- "us:ST/RDAI:func_us_801B1C34": {
+ "us:ST/RNZ1:EntityBossDoorTrigger": {
   "rank": 68,
   "blocked": false
  },
- "us:ST/RCEN:func_us_801ABD24": {
+ "us:ST/RNO1:EntityRedDoor": {
   "rank": 69,
   "blocked": false
  },
- "us:BOSS/BO0:func_us_801B9BEC": {
+ "us:BOSS/RBO6:func_us_8019EADC": {
   "rank": 70,
   "blocked": false
  },
- "us:BOSS/BO0:func_us_801BB08C": {
+ "us:ST/RNO1:func_us_801BF074_from_no1": {
   "rank": 71,
   "blocked": false
  },
- "us:BOSS/BO6:func_us_801BC5C8": {
+ "us:BOSS/BO7:EntityDemonSwitchWall": {
   "rank": 72,
   "blocked": false
  },
- "us:BOSS/BO6:EntityShaft": {
+ "us:BOSS/BO2:EntityWerewolfDeathFlames": {
   "rank": 73,
   "blocked": false
  },
- "us:BOSS/BO6:BO6_RicEntityCrashVibhuti": {
+ "us:ST/RNO4:EntityAlucardWaterEffect": {
   "rank": 74,
   "blocked": false
  },
- "us:BOSS/BO6:BO6_RicEntitySubwpnBible": {
+ "us:ST/RNZ1:EntityAlucardWaterEffect": {
   "rank": 75,
   "blocked": false
  },
- "us:ST/RCEN:func_us_8019B5A4": {
+ "us:ST/RNO2:EntitySealedDoor": {
   "rank": 76,
   "blocked": false
  },
- "us:BOSS/BO6:BO6_RicEntityAguneaHitEnemy": {
+ "us:ST/RLIB:func_us_801AFA80_from_lib": {
   "rank": 77,
   "blocked": false
  },
- "us:ST/RDAI:func_us_801C0240": {
+ "us:BOSS/BO3:func_us_801A4C0C": {
   "rank": 78,
   "blocked": false
  },
- "us:ST/RNO0:EntityNovaLaser": {
+ "us:BOSS/RBO6:func_us_801A0AB4": {
   "rank": 79,
   "blocked": false
  },
- "us:ST/RCHI:EntityLargeGaibonProjectile": {
+ "us:ST/RNO4:func_us_801BC650_from_rnz1": {
   "rank": 80,
   "blocked": false
  },
- "us:ST/RNO0:DrawLaserRing": {
+ "us:ST/RNZ1:func_us_801BC650": {
   "rank": 81,
   "blocked": false
  },
- "us:ST/RCEN:func_us_8019C7B8": {
+ "us:BOSS/BO2:func_us_801A6EF8": {
   "rank": 82,
   "blocked": false
  },
- "us:BOSS/BO0:func_us_801AF604": {
+ "us:BOSS/RBO2:func_us_8019E920": {
   "rank": 83,
   "blocked": false
  },
- "us:ST/RDAI:func_us_801C1DE8": {
+ "us:ST/RNO2:EntityRedDoor": {
   "rank": 84,
   "blocked": false
  },
- "us:ST/RDAI:func_us_801C0C44": {
+ "us:ST/RNO1:DrawLaserRing": {
   "rank": 85,
   "blocked": false
  },
- "us:BOSS/BO6:BO6_RicEntitySubwpnCrashCrossParticles": {
+ "us:ST/RNO4:DrawLaserRing": {
   "rank": 86,
   "blocked": false
  },
- "us:ST/RNO0:func_us_801B7104": {
+ "us:BOSS/BO7:EntityBreakable": {
   "rank": 87,
   "blocked": false
  },
- "us:BOSS/BO6:func_us_801C9DE8": {
+ "us:BOSS/BO2:func_us_801A460C": {
   "rank": 88,
   "blocked": false
  },
- "us:BOSS/BO6:BO6_RicEntityShrinkingPowerUpRing": {
+ "us:BOSS/BO7:EntityBreakableWall": {
   "rank": 89,
   "blocked": false
  },
- "us:ST/RNO0:func_us_801C7F24": {
+ "us:BOSS/RBO8:func_us_8019953C": {
   "rank": 90,
   "blocked": false
  },
- "us:ST/RCHI:EntitySlograSpearProjectile": {
+ "us:BOSS/RBO1:func_us_80194C50": {
   "rank": 91,
   "blocked": false
  },
- "us:ST/RDAI:func_us_801C3580": {
+ "us:ST/RNZ1:EntityGearSidewaysSmall": {
   "rank": 92,
   "blocked": false
  },
- "us:BOSS/BO6:BO6_RicEntityCrashHydroStorm": {
+ "us:BOSS/BO5:EntityClouds": {
   "rank": 93,
   "blocked": false
  },
- "us:ST/RCEN:func_us_8019C610": {
+ "us:BOSS/BO5:EntityStainedGlassBackground": {
   "rank": 94,
   "blocked": false
  },
- "us:ST/RCEN:func_us_8019CDF8": {
+ "us:BOSS/RBO1:func_us_80193E24": {
   "rank": 95,
   "blocked": false
  },
- "us:ST/RNO0:func_us_801D0CFC": {
+ "us:ST/RNO1:EntityBreakableDebris": {
   "rank": 96,
   "blocked": false
  },
- "us:BOSS/BO0:func_us_801AFAF4": {
+ "us:ST/RNO2:EntityBreakableDebris": {
   "rank": 97,
   "blocked": false
  },
- "us:ST/RNO0:func_us_801D068C": {
+ "us:ST/RNZ1:func_us_801BDA24": {
   "rank": 98,
   "blocked": false
  },
- "us:BOSS/BO6:BO6_RicEntityHitByDark": {
+ "us:ST/RNO4:EntityKillerFish": {
   "rank": 99,
   "blocked": false
  },
- "us:BOSS/BO6:func_us_801BD384": {
+ "us:BOSS/BO7:EntityBreakableDebris": {
   "rank": 100,
   "blocked": false
  },
- "us:BOSS/BO0:func_us_801BA724": {
+ "us:BOSS/RBO1:func_us_80192F84": {
   "rank": 101,
   "blocked": false
  },
- "us:BOSS/BO6:func_us_801BE79C": {
+ "us:ST/RNO2:EntityKarasumanRavenAttack": {
   "rank": 102,
   "blocked": false
  },
- "us:BOSS/BO0:func_us_801B2690": {
+ "us:ST/RNO4:EntitySplashWater": {
   "rank": 103,
   "blocked": false
  },
- "us:BOSS/BO6:BO6_RicEntityAguneaLightning": {
+ "us:ST/RNZ1:EntitySplashWater": {
   "rank": 104,
   "blocked": false
  },
- "us:ST/RCEN:func_us_8019C4EC": {
+ "us:BOSS/RBO1:func_us_80192C5C": {
   "rank": 105,
   "blocked": false
  },
- "us:ST/RNO0:func_us_801D2038": {
+ "us:BOSS/RBO6:func_us_801A0DC0": {
   "rank": 106,
   "blocked": false
  },
- "us:BOSS/BO0:func_us_801AF8C0": {
+ "us:BOSS/RBO1:EntityBreakable": {
   "rank": 107,
   "blocked": false
  },
- "us:BOSS/BO0:func_us_801BA128": {
+ "us:BOSS/RBO2:EntityBreakable": {
   "rank": 108,
   "blocked": false
  },
- "us:BOSS/BO6:BO6_RicEntitySubwpnThrownVibhuti": {
+ "us:BOSS/RBO4:EntityBreakable": {
   "rank": 109,
   "blocked": false
  },
- "us:ST/RCEN:func_us_8019D330": {
+ "us:BOSS/RBO6:EntityBreakable": {
   "rank": 110,
   "blocked": false
  },
- "us:BOSS/BO0:func_us_801B001C": {
+ "us:BOSS/RBO7:EntityBreakable": {
   "rank": 111,
   "blocked": false
  },
- "us:ST/RCEN:func_us_8019B6D4": {
+ "us:BOSS/RBO8:EntityBreakable": {
   "rank": 112,
   "blocked": false
  },
- "us:BOSS/BO6:BO6_RicEntitySubwpnReboundStone": {
+ "us:ST/RNO4:func_us_801D6B8C": {
   "rank": 113,
   "blocked": false
  },
- "us:ST/RDAI:func_us_801C0898": {
+ "us:ST/RLIB:func_us_801AF538_from_lib": {
   "rank": 114,
   "blocked": false
  },
- "us:ST/RNO0:func_us_801D1BF0": {
+ "us:ST/RLIB:func_us_801AF11C": {
   "rank": 115,
   "blocked": false
  },
- "us:ST/RCHI:EntityBreakableDebris": {
+ "us:ST/RLIB:func_us_801AF7B8_from_lib": {
   "rank": 116,
   "blocked": false
  },
- "us:ST/RNO0:func_us_801CFEA0": {
+ "us:ST/RNO4:EntitySurfacingWater": {
   "rank": 117,
   "blocked": false
  },
- "us:BOSS/BO0:func_us_801B30AC": {
+ "us:ST/RNZ1:EntitySurfacingWater": {
   "rank": 118,
   "blocked": false
  },
- "us:MAIN:dma_execute": {
+ "us:BOSS/BO7:EntityCerberusGateDebug": {
   "rank": 119,
   "blocked": false
  },
- "us:ST/RCHI:EntitySlograSpear": {
+ "us:BOSS/RBO2:EntityCerberusGateDebug": {
   "rank": 120,
   "blocked": false
  },
- "us:ST/RNO0:TryThrow": {
+ "us:BOSS/RBO6:func_us_801A01A4": {
   "rank": 121,
   "blocked": false
  },
- "us:ST/RNO0:func_us_801D21C8": {
+ "us:BOSS/RBO4:func_us_8019818C": {
   "rank": 122,
   "blocked": false
  },
- "us:BOSS/BO0:func_us_801AF31C": {
+ "us:BOSS/RBO7:func_us_801BAB18_from_bo0": {
   "rank": 123,
   "blocked": false
  },
- "us:BOSS/BO0:func_us_801B6CA4": {
+ "us:BOSS/BO3:func_us_801A1120": {
   "rank": 124,
   "blocked": false
  },
- "us:ST/RDAI:func_us_801C4C4C": {
+ "us:BOSS/BO3:EntitySplashWater": {
   "rank": 125,
   "blocked": false
  },
- "us:ST/RNO0:func_us_801D2264": {
+ "us:BOSS/RBO2:func_us_8019C718": {
   "rank": 126,
   "blocked": false
  },
- "us:ST/RCHI:EntityBreakableWallDebris": {
+ "us:ST/RNO4:EntityRdaiUnk33": {
   "rank": 127,
   "blocked": false
  },
- "us:BOSS/BO0:func_us_801B76E4": {
+ "us:BOSS/RBO8:func_us_801983EC": {
   "rank": 128,
   "blocked": false
  },
- "us:ST/RDAI:func_us_801C0528": {
+ "us:ST/RLIB:func_us_801AF280_from_lib": {
   "rank": 129,
   "blocked": false
  },
- "us:ST/RDAI:func_us_801BFE6C": {
+ "us:ST/RNZ1:EntityMedusaHeadBlue": {
   "rank": 130,
   "blocked": false
  },
- "us:ST/RDAI:func_us_801C17E8": {
+ "us:ST/RNO4:func_us_801BCB9C_from_rnz1": {
   "rank": 131,
   "blocked": false
  },
- "us:BOSS/BO0:func_us_801B13A8": {
+ "us:ST/RNZ1:func_us_801BCB9C": {
   "rank": 132,
   "blocked": false
  },
- "us:BOSS/BO0:EntityOlroxAfterImage": {
+ "us:BOSS/BO3:func_us_801C37C8_from_no4": {
   "rank": 133,
   "blocked": false
  },
- "us:BOSS/BO0:func_us_801B65C0": {
+ "us:ST/RNO4:func_us_801C37C8_from_no4": {
   "rank": 134,
   "blocked": false
  },
- "us:ST/RNO0:EntityNovaLaserPulse": {
+ "us:BOSS/RBO7:func_us_80195A8C": {
   "rank": 135,
   "blocked": false
  },
- "us:BOSS/BO6:BO6_RicEntityCrashReboundStoneExplosion": {
+ "us:ST/RNO2:func_us_801C4C0C": {
   "rank": 136,
   "blocked": false
  },
- "us:BOSS/BO6:BO6_RicEntitySubwpnStopwatchCircle": {
+ "us:ST/RNO4:EntityBreakableWall": {
   "rank": 137,
   "blocked": false
  },
- "us:ST/RCEN:func_us_8019D260": {
+ "us:ST/RNZ1:EntityBossDoors": {
   "rank": 138,
   "blocked": false
  },
- "us:ST/RCHI:EntityDemonSwitch": {
+ "us:ST/RNZ1:EntityBreakableWall": {
   "rank": 139,
   "blocked": false
  },
- "us:ST/RNO0:EntityBladeSoldierDeathParts": {
+ "us:BOSS/RBO6:func_us_801A9208_from_bo6": {
   "rank": 140,
   "blocked": false
  },
- "us:ST/RNO0:EntityJackOBonesDeathParts": {
+ "us:BOSS/RBO6:func_us_8019FCB4": {
   "rank": 141,
   "blocked": false
  },
- "us:ST/RNO0:TryShoot": {
+ "us:ST/RNO2:func_us_801AB9EC_from_bo0": {
   "rank": 142,
   "blocked": false
  },
- "us:ST/RNO0:func_us_801D136C": {
+ "us:ST/RLIB:func_us_801AFC88": {
   "rank": 143,
   "blocked": false
  },
- "us:ST/RCHI:EntitySmallGaibonProjectile": {
+ "us:BOSS/BO5:func_us_801A5F88": {
   "rank": 144,
   "blocked": false
  },
- "us:BOSS/BO6:func_us_801BB5BC": {
+ "us:BOSS/BO3:func_us_801A5338": {
   "rank": 145,
   "blocked": false
  },
- "us:BOSS/BO6:func_us_801BD47C": {
+ "us:BOSS/BO3:func_us_801A0A80": {
   "rank": 146,
   "blocked": false
  },
- "us:ST/RCEN:func_801904B8": {
+ "us:BOSS/RBO2:func_us_8019E558": {
   "rank": 147,
   "blocked": false
  },
- "us:ST/RDAI:func_us_801C4B2C": {
+ "us:ST/RNZ1:func_us_801A9994": {
   "rank": 148,
   "blocked": false
  },
- "us:ST/RNO0:func_us_801CFD70": {
+ "us:BOSS/RBO8:func_us_8019C7B8_from_rcen": {
   "rank": 149,
   "blocked": false
  },
- "us:ST/RNO0:func_us_801CFE6C": {
+ "us:BOSS/RBO8:func_us_80197B1C": {
   "rank": 150,
   "blocked": false
  },
- "us:BOSS/BO0:func_us_801B1864": {
+ "us:BOSS/RBO1:func_us_80193C2C": {
   "rank": 151,
   "blocked": false
  },
- "us:BOSS/BO0:func_us_801B19FC": {
+ "us:ST/RNZ1:EntitySecretWallDebris": {
   "rank": 152,
   "blocked": false
  },
- "us:BOSS/BO0:func_us_801B5470": {
+ "us:ST/RLIB:func_us_801BAF60_from_lib": {
   "rank": 153,
   "blocked": false
  },
- "us:BOSS/BO0:func_us_801B6520": {
+ "us:ST/RNZ1:EntitySecretAreaDoor": {
   "rank": 154,
   "blocked": false
  },
- "us:BOSS/BO0:func_us_801B7BAC": {
+ "us:BOSS/BO5:func_us_801A3B88": {
   "rank": 155,
   "blocked": false
  },
- "us:ST/RCEN:func_us_8019AA04": {
+ "us:ST/RNO4:EntityBreakableCrystalFloor": {
   "rank": 156,
   "blocked": false
  },
- "us:ST/RCHI:UpdateFallingPebble": {
+ "us:ST/RNZ1:func_us_801AB380": {
   "rank": 157,
   "blocked": false
  },
- "us:ST/RNO0:func_us_801CF64C": {
+ "us:ST/RNO1:EntityNovaLaser": {
   "rank": 158,
   "blocked": false
  },
- "us:ST/RNO0:func_us_801CF7D0": {
+ "us:ST/RNO4:EntityNovaLaser": {
   "rank": 159,
   "blocked": false
  },
- "us:ST/RNO0:func_us_801CF968": {
+ "us:BOSS/BO5:func_us_801A66B0": {
   "rank": 160,
   "blocked": false
  },
- "us:ST/RNO0:func_us_801CFB20": {
+ "us:BOSS/BO7:func_us_80195AF0": {
   "rank": 161,
   "blocked": false
  },
- "us:ST/RNO0:func_us_801CFC98": {
+ "us:BOSS/RBO1:func_us_80194108": {
   "rank": 162,
   "blocked": false
  },
- "us:BOSS/BO0:func_us_801B1C60": {
+ "us:BOSS/RBO7:func_us_80192B38_from_rbo3": {
   "rank": 163,
   "blocked": false
  },
- "us:BOSS/BO0:func_us_801B1CE0": {
+ "us:BOSS/RBO4:func_us_80192B38_from_rbo3": {
   "rank": 164,
   "blocked": false
  },
- "us:BOSS/BO0:func_us_801B1DDC": {
+ "us:ST/RNO4:EntityVenusWeedDart": {
   "rank": 165,
   "blocked": false
  },
- "us:BOSS/BO0:func_us_801B1EDC": {
+ "us:ST/RNZ1:func_us_801C8AAC_from_are": {
   "rank": 166,
   "blocked": false
  },
- "us:BOSS/BO0:func_us_801B21F0": {
+ "us:BOSS/RBO8:func_us_80198210": {
   "rank": 167,
   "blocked": false
  },
- "us:BOSS/BO0:func_us_801B24CC": {
+ "us:BOSS/RBO4:func_us_801C0B9C_from_no1": {
   "rank": 168,
   "blocked": false
  },
- "us:BOSS/BO0:func_us_801B5E8C": {
+ "us:BOSS/RBO8:func_us_80199A58": {
   "rank": 169,
   "blocked": false
  },
- "us:ST/RCEN:EntityUnkId1B": {
+ "us:BOSS/RBO6:UnkPrimHelper": {
   "rank": 170,
   "blocked": false
  },
- "us:ST/RNO0:EntityUnkId1B": {
+ "us:BOSS/BO2:EntityBossDoors": {
   "rank": 171,
   "blocked": false
  },
- "us:ST/RNO0:func_801CD78C_801CEB40": {
+ "us:ST/RNZ1:EntityMedusaHeadSpawner": {
   "rank": 172,
   "blocked": false
  },
- "us:ST/RNO0:func_us_801D2424_from_are": {
+ "us:BOSS/RBO6:func_us_801A0860": {
   "rank": 173,
   "blocked": false
  },
- "us:ST/RDAI:func_us_801C21E4": {
+ "us:ST/RNO2:func_us_801C4960": {
   "rank": 174,
   "blocked": false
  },
- "us:ST/RDAI:func_us_801C5AA0": {
+ "us:BOSS/RBO2:func_us_801A17C8": {
   "rank": 175,
   "blocked": false
  },
- "us:ST/RNO0:func_us_801CF380": {
+ "us:ST/RNO2:EntityKarasumanOrbAttack": {
   "rank": 176,
   "blocked": false
  },
- "us:MAIN:_SsContDataEntry": {
+ "us:BOSS/RBO6:func_us_8019FBC0": {
   "rank": 177,
   "blocked": false
  },
- "us:ST/RNO0:EntityJackOBonesJack": {
+ "us:BOSS/RBO6:func_us_801A0710": {
   "rank": 178,
   "blocked": false
  },
- "us:BOSS/BO0:func_us_801AD26C": {
+ "us:BOSS/RBO6:func_us_801B2864": {
   "rank": 179,
   "blocked": false
  },
- "us:BOSS/BO0:func_us_801B15BC": {
+ "us:ST/RNO2:EntityKarasumanFeatherAttack": {
   "rank": 180,
   "blocked": false
  },
- "us:BOSS/BO0:func_us_801B163C": {
+ "us:BOSS/BO2:func_us_801A7340": {
   "rank": 181,
   "blocked": false
  },
- "us:BOSS/BO0:func_us_801B171C": {
+ "us:ST/RNZ1:EntityBreakableWallPartial": {
   "rank": 182,
   "blocked": false
  },
- "us:BOSS/BO0:func_us_801B5D6C": {
+ "us:BOSS/RBO6:func_us_8019D330_from_rcen": {
   "rank": 183,
   "blocked": false
  },
- "us:BOSS/BO0:func_us_801B7C44": {
+ "us:BOSS/RBO4:func_us_8019846C": {
   "rank": 184,
   "blocked": false
  },
- "us:BOSS/BO0:func_us_801B888C": {
+ "us:BOSS/BO3:func_us_801C12B0_from_no4": {
   "rank": 185,
   "blocked": false
  },
- "us:ST/RCEN:func_us_8019FD4C": {
+ "us:ST/RNO4:func_us_801C12B0_from_no4": {
   "rank": 186,
   "blocked": false
  },
- "us:ST/RNO0:func_us_8019FD4C_from_rcen": {
+ "us:BOSS/BO3:func_us_801A16E4": {
   "rank": 187,
   "blocked": false
  },
- "us:BOSS/BO0:func_us_801B17BC": {
+ "us:BOSS/BO3:func_us_801A42A8": {
   "rank": 188,
   "blocked": false
  },
- "us:BOSS/BO0:func_us_801B1950": {
+ "us:BOSS/RBO2:func_us_8019F260": {
   "rank": 189,
   "blocked": false
  },
- "us:BOSS/BO0:func_us_801B1B30": {
+ "us:ST/RNO4:func_us_801D58FC": {
   "rank": 190,
   "blocked": false
  },
- "us:BOSS/BO0:func_us_801B1F5C": {
+ "us:ST/RNO1:func_us_801BE880_from_no1": {
   "rank": 191,
   "blocked": false
  },
- "us:BOSS/BO0:func_us_801B2044": {
+ "us:ST/RNO2:EntitySpikesDust": {
   "rank": 192,
   "blocked": false
  },
- "us:BOSS/BO0:func_us_801B20F4": {
+ "us:ST/RNZ1:EntitySpikesDust": {
   "rank": 193,
   "blocked": false
  },
- "us:BOSS/BO0:func_us_801B5E08": {
+ "us:BOSS/RBO8:func_us_8019943C": {
   "rank": 194,
   "blocked": false
  },
- "us:BOSS/BO0:func_us_801B8794": {
+ "us:BOSS/RBO8:EntityMinotaurSpitLiquid": {
   "rank": 195,
   "blocked": false
  },
- "us:ST/RNO0:func_us_801CEEB4": {
+ "us:ST/RNO4:func_us_801BCE4C_from_rnz1": {
   "rank": 196,
   "blocked": false
  },
- "us:ST/RNO0:func_us_801CF08C": {
+ "us:ST/RNZ1:func_us_801BCE4C": {
   "rank": 197,
   "blocked": false
  },
- "us:ST/RNO0:func_us_801CF24C": {
+ "us:BOSS/BO3:func_us_801A051C": {
   "rank": 198,
   "blocked": false
  },
- "us:ST/RNO0:func_us_801D289C": {
+ "us:ST/RNO4:EntityBreakableWallDebris": {
   "rank": 199,
   "blocked": false
  },
- "us:BOSS/BO0:func_us_801B8970": {
+ "us:BOSS/BO2:EntityBossTorch": {
   "rank": 200,
   "blocked": false
  },
- "us:BOSS/BO0:func_us_801B8B64": {
+ "us:BOSS/BO3:func_us_801A6568": {
   "rank": 201,
   "blocked": false
+ },
+ "us:BOSS/RBO8:func_us_80198964": {
+  "rank": 202,
+  "blocked": false
+ },
+ "us:ST/RNO1:func_us_801C7F24_from_rno0": {
+  "rank": 203,
+  "blocked": false
+ },
+ "us:BOSS/BO3:func_us_801A6370": {
+  "rank": 204,
+  "blocked": false
+ },
+ "us:ST/RLIB:func_us_801AED4C": {
+  "rank": 205,
+  "blocked": false
+ },
+ "us:ST/RNO4:func_us_801D68E0": {
+  "rank": 206,
+  "blocked": false
+ },
+ "us:BOSS/BO7:EntityBreakableWallDebris": {
+  "rank": 207,
+  "blocked": false
+ },
+ "us:BOSS/BO3:func_us_801A5F0C": {
+  "rank": 208,
+  "blocked": false
+ },
+ "us:BOSS/BO3:func_us_801A1BE8": {
+  "rank": 209,
+  "blocked": false
+ },
+ "us:BOSS/RBO1:func_us_801947E4": {
+  "rank": 210,
+  "blocked": false
+ },
+ "us:ST/RNO2:func_us_801B4DA4_from_bo0": {
+  "rank": 211,
+  "blocked": false
+ },
+ "us:BOSS/BO7:func_us_801959E0": {
+  "rank": 212,
+  "blocked": false
+ },
+ "us:ST/RNO2:func_us_801B4210_from_bo0": {
+  "rank": 213,
+  "blocked": false
+ },
+ "us:BOSS/RBO6:func_us_801A367C": {
+  "rank": 214,
+  "blocked": false
+ },
+ "us:ST/RNO4:func_us_801C5364": {
+  "rank": 215,
+  "blocked": false
+ },
+ "us:BOSS/BO3:func_us_801C1844_from_no4": {
+  "rank": 216,
+  "blocked": false
+ },
+ "us:BOSS/RBO6:func_us_8019FB04": {
+  "rank": 217,
+  "blocked": false
+ },
+ "us:ST/RNO2:func_us_801C4EA8": {
+  "rank": 218,
+  "blocked": false
+ },
+ "us:ST/RNO4:func_us_801C81C8": {
+  "rank": 219,
+  "blocked": false
+ },
+ "us:BOSS/BO5:func_us_801A4494": {
+  "rank": 220,
+  "blocked": false
+ },
+ "us:BOSS/BO3:func_us_801A4E24": {
+  "rank": 221,
+  "blocked": false
+ },
+ "us:BOSS/BO7:EntityBigRedFireball": {
+  "rank": 222,
+  "blocked": false
+ },
+ "us:ST/RNO2:func_us_801AC54C_from_bo0": {
+  "rank": 223,
+  "blocked": false
+ },
+ "us:BOSS/BO3:func_us_801A07CC": {
+  "rank": 224,
+  "blocked": false
+ },
+ "us:ST/RNO4:func_us_801C909C": {
+  "rank": 225,
+  "blocked": false
+ },
+ "us:BOSS/BO3:func_us_801C34EC_from_no4": {
+  "rank": 226,
+  "blocked": false
+ },
+ "us:ST/RNO4:func_us_801C34EC_from_no4": {
+  "rank": 227,
+  "blocked": false
+ },
+ "us:BOSS/BO3:func_us_801C3CC4_from_no4": {
+  "rank": 228,
+  "blocked": false
+ },
+ "us:ST/RNO4:func_us_801C3CC4_from_no4": {
+  "rank": 229,
+  "blocked": false
+ },
+ "us:BOSS/BO3:func_us_801C2E60_from_no4": {
+  "rank": 230,
+  "blocked": false
+ },
+ "us:ST/RNO4:func_us_801C2E60_from_no4": {
+  "rank": 231,
+  "blocked": false
+ },
+ "us:BOSS/RBO6:EntityLockCamera": {
+  "rank": 232,
+  "blocked": false
+ },
+ "us:BOSS/RBO6:func_us_801A3BE0": {
+  "rank": 233,
+  "blocked": false
+ },
+ "us:BOSS/RBO6:func_us_801A4F14": {
+  "rank": 234,
+  "blocked": false
+ },
+ "us:ST/RNO4:EntityFloatingIcePlatform": {
+  "rank": 235,
+  "blocked": false
+ },
+ "us:BOSS/BO2:func_us_801B52FC": {
+  "rank": 236,
+  "blocked": false
+ },
+ "us:BOSS/BO3:func_us_8019E398": {
+  "rank": 237,
+  "blocked": false
+ },
+ "us:ST/RNO2:EntitySpikes": {
+  "rank": 238,
+  "blocked": false
+ },
+ "us:BOSS/RBO6:func_us_801A1B38": {
+  "rank": 239,
+  "blocked": false
+ },
+ "us:BOSS/RBO7:func_us_80195D04": {
+  "rank": 240,
+  "blocked": false
+ },
+ "us:ST/RNZ1:func_us_801AB04C": {
+  "rank": 241,
+  "blocked": false
+ },
+ "us:BOSS/BO3:EntityUnkId13": {
+  "rank": 242,
+  "blocked": false
+ },
+ "us:ST/RNO1:func_us_801B9028_from_no1": {
+  "rank": 243,
+  "blocked": false
+ },
+ "us:BOSS/RBO1:EntityBossRoomBlock": {
+  "rank": 244,
+  "blocked": false
+ },
+ "us:ST/RNO1:EntityBackgroundBlock": {
+  "rank": 245,
+  "blocked": false
+ },
+ "us:ST/RNO4:func_us_801A07CC_from_bo3": {
+  "rank": 246,
+  "blocked": false
+ },
+ "us:BOSS/BO3:func_us_801A3CD8": {
+  "rank": 247,
+  "blocked": false
+ },
+ "us:ST/RNZ1:EntityBackgroundGears": {
+  "rank": 248,
+  "blocked": false
+ },
+ "us:BOSS/BO3:func_us_801C15F8_from_no4": {
+  "rank": 249,
+  "blocked": false
+ },
+ "us:ST/RNO4:func_us_801C15F8_from_no4": {
+  "rank": 250,
+  "blocked": false
+ },
+ "us:BOSS/BO3:EntityBgColumnsParallax_from_no4": {
+  "rank": 251,
+  "blocked": false
+ },
+ "us:ST/RNO4:EntityBgColumnsParallax_from_no4": {
+  "rank": 252,
+  "blocked": false
+ },
+ "us:BOSS/BO3:func_us_801C3FB0_from_no4": {
+  "rank": 253,
+  "blocked": false
+ },
+ "us:BOSS/BO7:func_us_801963D8": {
+  "rank": 254,
+  "blocked": false
+ },
+ "us:ST/RNO4:func_us_801C3FB0_from_no4": {
+  "rank": 255,
+  "blocked": false
+ },
+ "us:BOSS/RBO8:func_us_801BA164_from_cat": {
+  "rank": 256,
+  "blocked": false
+ },
+ "us:ST/RLIB:func_us_801AF9E8": {
+  "rank": 257,
+  "blocked": false
+ },
+ "us:ST/RNO1:func_us_801BEB54_from_no1": {
+  "rank": 258,
+  "blocked": false
+ },
+ "us:ST/RNO4:func_us_801C3A04_from_no4": {
+  "rank": 259,
+  "blocked": false
+ },
+ "us:BOSS/BO3:func_us_801C1EE4_from_no4": {
+  "rank": 260,
+  "blocked": false
+ },
+ "us:ST/RNO4:func_us_801C1EE4_from_no4": {
+  "rank": 261,
+  "blocked": false
+ },
+ "us:BOSS/BO3:func_us_8019F03C": {
+  "rank": 262,
+  "blocked": false
+ },
+ "us:ST/RNO4:func_us_801C2B78_from_no4": {
+  "rank": 263,
+  "blocked": false
+ },
+ "us:ST/RNO4:func_us_801C3160_from_no4": {
+  "rank": 264,
+  "blocked": false
+ },
+ "us:BOSS/BO3:func_us_801A57A4": {
+  "rank": 265,
+  "blocked": false
+ },
+ "us:ST/RNO4:func_us_801D5BA4": {
+  "rank": 266,
+  "blocked": false
+ },
+ "us:BOSS/BO3:EntityWaterBox": {
+  "rank": 267,
+  "blocked": false
+ },
+ "us:ST/RNO4:EntityVenusWeedSpike": {
+  "rank": 268,
+  "blocked": false
+ },
+ "us:ST/RNO2:func_us_801B3F30_from_bo0": {
+  "rank": 269,
+  "blocked": false
+ },
+ "us:ST/RNO4:func_us_801C5EE4": {
+  "rank": 270,
+  "blocked": false
+ },
+ "us:ST/RNZ1:EntitySpikes": {
+  "rank": 271,
+  "blocked": false
+ },
+ "us:ST/RLIB:func_us_801AEFE0": {
+  "rank": 272,
+  "blocked": false
+ },
+ "us:ST/RLIB:func_us_801D8D44_from_no4": {
+  "rank": 273,
+  "blocked": false
+ },
+ "us:ST/RNO1:TryThrow": {
+  "rank": 274,
+  "blocked": false
+ },
+ "us:ST/RNO4:func_us_801BCD80_from_rnz1": {
+  "rank": 275,
+  "blocked": false
+ },
+ "us:ST/RNZ1:func_us_801BCD80": {
+  "rank": 276,
+  "blocked": false
+ },
+ "us:ST/RNO1:func_us_801B8F50_from_no1": {
+  "rank": 277,
+  "blocked": false
+ },
+ "us:ST/RNO1:EntityBladeSoldierDeathParts": {
+  "rank": 278,
+  "blocked": false
+ },
+ "us:ST/RNO4:EntityBladeSoldierDeathParts": {
+  "rank": 279,
+  "blocked": false
+ },
+ "us:ST/RNZ1:func_us_801A8F7C": {
+  "rank": 280,
+  "blocked": false
+ },
+ "us:BOSS/BO5:func_us_801A19FC": {
+  "rank": 281,
+  "blocked": false
+ },
+ "us:ST/RNZ1:EntityWallGear": {
+  "rank": 282,
+  "blocked": false
+ },
+ "us:BOSS/RBO6:func_us_801A37B4": {
+  "rank": 283,
+  "blocked": false
+ },
+ "us:ST/RNO2:EntitySpikesParts": {
+  "rank": 284,
+  "blocked": false
+ },
+ "us:BOSS/RBO6:func_us_801A399C": {
+  "rank": 285,
+  "blocked": false
+ },
+ "us:ST/RNO4:func_us_801C5C78": {
+  "rank": 286,
+  "blocked": false
+ },
+ "us:BOSS/RBO8:func_us_80195AD8": {
+  "rank": 287,
+  "blocked": false
+ },
+ "us:ST/RNZ1:EntitySpikesParts": {
+  "rank": 288,
+  "blocked": false
+ },
+ "us:ST/RNO1:EntityJackOBonesJack": {
+  "rank": 289,
+  "blocked": false
+ },
+ "us:ST/RNO4:EntityJackOBonesJack": {
+  "rank": 290,
+  "blocked": false
+ },
+ "us:BOSS/BO3:func_us_801C21AC_from_no4": {
+  "rank": 291,
+  "blocked": false
+ },
+ "us:ST/RNO4:func_us_801C2850_from_no4": {
+  "rank": 292,
+  "blocked": false
+ },
+ "us:BOSS/BO2:func_us_801A75B4": {
+  "rank": 293,
+  "blocked": false
+ },
+ "us:ST/RNO4:func_us_801BCA5C_from_rnz1": {
+  "rank": 294,
+  "blocked": false
+ },
+ "us:ST/RNZ1:func_us_801BCA5C": {
+  "rank": 295,
+  "blocked": false
+ },
+ "us:ST/RNO4:func_us_801C4228_from_no4": {
+  "rank": 296,
+  "blocked": false
+ },
+ "us:BOSS/RBO6:func_us_801A1150": {
+  "rank": 297,
+  "blocked": false
+ },
+ "us:ST/RLIB:func_us_801AE7AC_from_lib": {
+  "rank": 298,
+  "blocked": false
+ },
+ "us:BOSS/BO3:CreateExplosionPuff": {
+  "rank": 299,
+  "blocked": false
+ },
+ "us:BOSS/RBO1:func_us_8019D260_from_rcen": {
+  "rank": 300,
+  "blocked": false
+ },
+ "us:BOSS/RBO2:func_us_8019D260_from_rcen": {
+  "rank": 301,
+  "blocked": false
+ },
+ "us:BOSS/RBO6:func_us_8019D260_from_rcen": {
+  "rank": 302,
+  "blocked": false
+ },
+ "us:ST/RLIB:EntityHarpyKick": {
+  "rank": 303,
+  "blocked": false
+ },
+ "us:BOSS/BO7:EntityDemonSwitch": {
+  "rank": 304,
+  "blocked": false
+ },
+ "us:BOSS/RBO7:EntityHarpyKick": {
+  "rank": 305,
+  "blocked": false
+ },
+ "us:ST/RNO2:Entity3DHouseSpawner": {
+  "rank": 306,
+  "blocked": false
+ },
+ "us:BOSS/RBO7:EntityCtulhuDeath": {
+  "rank": 307,
+  "blocked": false
+ },
+ "us:BOSS/RBO6:func_us_801A4028": {
+  "rank": 308,
+  "blocked": false
+ },
+ "us:BOSS/BO3:func_us_801A51E4": {
+  "rank": 309,
+  "blocked": false
+ },
+ "us:ST/RNZ1:SpikesBreak": {
+  "rank": 310,
+  "blocked": false
+ },
+ "us:BOSS/BO2:func_us_801B503C": {
+  "rank": 311,
+  "blocked": false
+ },
+ "us:BOSS/BO5:EntityRbo3Door": {
+  "rank": 312,
+  "blocked": false
+ },
+ "us:ST/RNO4:func_us_801BCFC8_from_rnz1": {
+  "rank": 313,
+  "blocked": false
+ },
+ "us:ST/RNZ1:func_us_801BCFC8": {
+  "rank": 314,
+  "blocked": false
+ },
+ "us:BOSS/BO3:func_us_801A069C": {
+  "rank": 315,
+  "blocked": false
+ },
+ "us:BOSS/RBO6:func_us_8019FA78": {
+  "rank": 316,
+  "blocked": false
+ },
+ "us:ST/RLIB:func_us_801AE414": {
+  "rank": 317,
+  "blocked": false
+ },
+ "us:BOSS/BO3:func_us_801A071C": {
+  "rank": 318,
+  "blocked": false
+ },
+ "us:ST/RNO1:func_us_801A9BEC": {
+  "rank": 319,
+  "blocked": false
+ },
+ "us:ST/RNO4:func_us_801A071C_from_bo3": {
+  "rank": 320,
+  "blocked": false
+ },
+ "us:BOSS/RBO2:func_us_8019D950": {
+  "rank": 321,
+  "blocked": false
+ },
+ "us:BOSS/RBO2:func_us_8019ECCC": {
+  "rank": 322,
+  "blocked": false
+ },
+ "us:ST/RNO2:SpikesBreak": {
+  "rank": 323,
+  "blocked": false
+ },
+ "us:ST/RNZ1:func_us_801AAF00": {
+  "rank": 324,
+  "blocked": false
+ },
+ "us:ST/RNZ1:func_us_801BD184": {
+  "rank": 325,
+  "blocked": false
+ },
+ "us:BOSS/BO3:func_us_801A4FB8": {
+  "rank": 326,
+  "blocked": false
+ },
+ "us:BOSS/BO5:func_us_801A425C": {
+  "rank": 327,
+  "blocked": false
+ },
+ "us:BOSS/RBO2:func_us_8019B430": {
+  "rank": 328,
+  "blocked": false
+ },
+ "us:BOSS/RBO8:func_us_801980E4": {
+  "rank": 329,
+  "blocked": false
+ },
+ "us:BOSS/BO5:func_801A8620": {
+  "rank": 330,
+  "blocked": false
+ },
+ "us:BOSS/RBO8:func_us_801991D4": {
+  "rank": 331,
+  "blocked": false
+ },
+ "us:BOSS/BO5:func_us_801A1BA0": {
+  "rank": 332,
+  "blocked": false
+ },
+ "us:ST/RNZ1:func_us_801BD324": {
+  "rank": 333,
+  "blocked": false
+ },
+ "us:ST/RNO2:EntitySpikesDamage": {
+  "rank": 334,
+  "blocked": false
+ },
+ "us:ST/RLIB:func_us_801AE84C_from_lib": {
+  "rank": 335,
+  "blocked": false
+ },
+ "us:ST/RNO4:func_us_801C8668": {
+  "rank": 336,
+  "blocked": false
+ },
+ "us:ST/RNO1:func_us_801A9A8C": {
+  "rank": 337,
+  "blocked": false
+ },
+ "us:BOSS/RBO1:func_us_8019ED80_from_rbo2": {
+  "rank": 338,
+  "blocked": false
+ },
+ "us:BOSS/RBO2:func_us_8019ED80": {
+  "rank": 339,
+  "blocked": false
+ },
+ "us:ST/RNO4:EntityIntenseExplosion": {
+  "rank": 340,
+  "blocked": false
+ },
+ "us:BOSS/RBO8:func_us_80195938": {
+  "rank": 341,
+  "blocked": false
+ },
+ "us:ST/RNO2:func_us_801B3D8C_from_bo0": {
+  "rank": 342,
+  "blocked": false
+ },
+ "us:BOSS/RBO7:func_us_801957C0": {
+  "rank": 343,
+  "blocked": false
+ },
+ "us:ST/RNO2:SpikesApplyDamage": {
+  "rank": 344,
+  "blocked": false
+ },
+ "us:BOSS/RBO8:func_us_8019921C": {
+  "rank": 345,
+  "blocked": false
+ },
+ "us:ST/RNO4:func_us_801C8C54": {
+  "rank": 346,
+  "blocked": false
+ },
+ "us:ST/RNZ1:SpikesApplyDamage": {
+  "rank": 347,
+  "blocked": false
+ },
+ "us:ST/RNZ1:EntityFrozenShadeCrystal": {
+  "rank": 348,
+  "blocked": false
+ },
+ "us:BOSS/RBO6:func_us_801A362C": {
+  "rank": 349,
+  "blocked": false
+ },
+ "us:ST/RNO4:func_us_801C9048": {
+  "rank": 350,
+  "blocked": false
+ },
+ "us:BOSS/BO5:func_us_801A4430": {
+  "rank": 351,
+  "blocked": false
+ },
+ "us:ST/RNO1:RNO1_DebugInputWait": {
+  "rank": 352,
+  "blocked": false
+ },
+ "us:ST/RNO4:LoadFerrymanGateTiles": {
+  "rank": 353,
+  "blocked": false
+ },
+ "us:ST/RNZ1:EntitySpikesDamage": {
+  "rank": 354,
+  "blocked": false
+ },
+ "us:BOSS/RBO1:polarPlacePartsList": {
+  "rank": 355,
+  "blocked": false
+ },
+ "us:BOSS/RBO2:polarPlacePartsList": {
+  "rank": 356,
+  "blocked": false
+ },
+ "us:ST/RNO4:func_us_801C123C_from_no4": {
+  "rank": 357,
+  "blocked": false
+ },
+ "us:BOSS/BO2:func_us_801A2610": {
+  "rank": 358,
+  "blocked": false
+ },
+ "us:BOSS/BO2:func_us_801B37D0": {
+  "rank": 359,
+  "blocked": false
+ },
+ "us:BOSS/RBO1:polarPlacePartsWithAngvel": {
+  "rank": 360,
+  "blocked": false
+ },
+ "us:BOSS/RBO2:polarPlacePartsWithAngvel": {
+  "rank": 361,
+  "blocked": false
+ },
+ "us:BOSS/RBO4:func_us_80198A18": {
+  "rank": 362,
+  "blocked": false
+ },
+ "us:ST/RNO1:func_us_80198A18_from_rbo4": {
+  "rank": 363,
+  "blocked": false
+ },
+ "us:BOSS/BO5:BO5_RicSetDeadPrologue": {
+  "rank": 364,
+  "blocked": false
+ },
+ "us:BOSS/BO5:func_us_801A19CC": {
+  "rank": 365,
+  "blocked": false
+ },
+ "us:BOSS/RBO8:func_801D0B40": {
+  "rank": 366,
+  "blocked": false
+ },
+ "us:BOSS/RBO8:func_us_801955F8": {
+  "rank": 367,
+  "blocked": false
+ },
+ "us:BOSS/RBO8:func_us_801955A0": {
+  "rank": 368,
+  "blocked": false
+ },
+ "us:BOSS/RBO2:CutsceneCameraPan": {
+  "rank": 369,
+  "blocked": false
+ },
+ "us:ST/RNO4:func_us_801C870C": {
+  "rank": 370,
+  "blocked": false
+ },
+ "us:BOSS/BO5:CutsceneCameraPan": {
+  "rank": 371,
+  "blocked": false
+ },
+ "us:BOSS/BO3:func_us_801A516C": {
+  "rank": 372,
+  "blocked": false
+ },
+ "us:ST/RNZ1:func_us_801BD0EC": {
+  "rank": 373,
+  "blocked": false
+ },
+ "us:BOSS/BO3:func_us_801A09DC": {
+  "rank": 374,
+  "blocked": false
+ },
+ "us:ST/RNO4:func_us_801D5DC8": {
+  "rank": 375,
+  "blocked": false
+ },
+ "us:ST/RNO2:DrawRoof": {
+  "rank": 376,
+  "blocked": false
+ },
+ "us:ST/RNZ1:func_us_801AB198": {
+  "rank": 377,
+  "blocked": false
+ },
+ "us:ST/RNO2:DrawFacade": {
+  "rank": 378,
+  "blocked": false
+ },
+ "us:ST/RNO2:DrawSides": {
+  "rank": 379,
+  "blocked": false
+ },
+ "us:ST/RNO4:SetupPrimsForEntitySpriteParts": {
+  "rank": 380,
+  "blocked": false
+ },
+ "us:ST/RNZ1:func_us_801AB768": {
+  "rank": 381,
+  "blocked": false
+ },
+ "us:ST/RNO2:func_us_801B41A4_from_bo0": {
+  "rank": 382,
+  "blocked": false
+ },
+ "us:ST/RNZ1:func_us_801ABDC8": {
+  "rank": 383,
+  "blocked": false
+ },
+ "us:ST/RNZ1:func_us_801AB16C": {
+  "rank": 384,
+  "blocked": false
+ },
+ "us:BOSS/BO5:func_us_801A666C": {
+  "rank": 385,
+  "blocked": false
+ },
+ "us:BOSS/BO3:func_us_801A2A90": {
+  "rank": 386,
+  "blocked": false
+ },
+ "us:BOSS/RBO6:DecreaseBrightness": {
+  "rank": 387,
+  "blocked": false
+ },
+ "us:BOSS/RBO6:PrimDecreaseBrightness": {
+  "rank": 388,
+  "blocked": false
+ },
+ "us:ST/RNZ1:func_us_801ABA38": {
+  "rank": 389,
+  "blocked": false
+ },
+ "us:ST/RNZ1:func_us_801ABB58": {
+  "rank": 390,
+  "blocked": false
+ },
+ "us:ST/RNO1:EntityIsNearPlayer": {
+  "rank": 391,
+  "blocked": false
+ },
+ "us:ST/RNO2:func_us_801B5EE4": {
+  "rank": 392,
+  "blocked": false
+ },
+ "us:BOSS/RBO6:EntityBackgroundVortex": {
+  "rank": 393,
+  "blocked": true
+ },
+ "us:ST/RNO1:func_us_801A86A8": {
+  "rank": 394,
+  "blocked": true
+ },
+ "us:BOSS/RBO6:func_us_801A11DC": {
+  "rank": 395,
+  "blocked": true
+ },
+ "us:BOSS/RBO6:func_us_801B1738": {
+  "rank": 396,
+  "blocked": true
+ },
+ "us:ST/RNO2:Entity3DBackgroundHouse": {
+  "rank": 397,
+  "blocked": true
  }
 }

@@ -1,0 +1,677 @@
+[
+  {
+    "overlay": "rno2",
+    "file": "src/st/rno2/e_spikes.c",
+    "header": "src/st/e_spikes.h",
+    "stubs": 6,
+    "covered": [
+      "EntitySpikesDust",
+      "EntitySpikesParts",
+      "SpikesBreak",
+      "SpikesApplyDamage",
+      "EntitySpikes",
+      "EntitySpikesDamage"
+    ],
+    "uncovered": [],
+    "peers": 4,
+    "peer_stages": [
+      "dai",
+      "no2",
+      "nz1",
+      "rdai"
+    ],
+    "risks": [
+      "data",
+      "cond:19",
+      "raw-syms"
+    ],
+    "already_includes": []
+  },
+  {
+    "overlay": "rnz1",
+    "file": "src/st/rnz1/e_spikes.c",
+    "header": "src/st/e_spikes.h",
+    "stubs": 6,
+    "covered": [
+      "EntitySpikesDust",
+      "EntitySpikesParts",
+      "SpikesBreak",
+      "SpikesApplyDamage",
+      "EntitySpikes",
+      "EntitySpikesDamage"
+    ],
+    "uncovered": [],
+    "peers": 4,
+    "peer_stages": [
+      "dai",
+      "no2",
+      "nz1",
+      "rdai"
+    ],
+    "risks": [
+      "data",
+      "cond:19"
+    ],
+    "already_includes": []
+  },
+  {
+    "overlay": "rno4",
+    "file": "src/st/rno4/e_blue_venus_weed.c",
+    "header": "src/st/e_venus_weed.h",
+    "stubs": 6,
+    "covered": [
+      "SetupPrimsForEntitySpriteParts",
+      "EntityVenusWeed",
+      "EntityVenusWeedFlower",
+      "EntityVenusWeedTendril",
+      "EntityVenusWeedDart",
+      "EntityVenusWeedSpike"
+    ],
+    "uncovered": [],
+    "peers": 1,
+    "peer_stages": [
+      "rno3"
+    ],
+    "risks": [
+      "data",
+      "cond:22"
+    ],
+    "already_includes": []
+  },
+  {
+    "overlay": "rno2",
+    "file": "src/st/rno2/e_background_house.c",
+    "header": "src/st/e_background_house.h",
+    "stubs": 5,
+    "covered": [
+      "DrawFacade",
+      "DrawSides",
+      "DrawRoof",
+      "Entity3DHouseSpawner",
+      "Entity3DBackgroundHouse"
+    ],
+    "uncovered": [],
+    "peers": 2,
+    "peer_stages": [
+      "dre",
+      "no2"
+    ],
+    "risks": [
+      "data",
+      "cond:3"
+    ],
+    "already_includes": []
+  },
+  {
+    "overlay": "rbo6",
+    "file": "src/boss/rbo6/prim_helpers.c",
+    "header": "src/st/prim_helpers.h",
+    "stubs": 2,
+    "covered": [
+      "UnkPrimHelper",
+      "PrimDecreaseBrightness"
+    ],
+    "uncovered": [],
+    "peers": 33,
+    "peer_stages": [
+      "are",
+      "cat",
+      "cen",
+      "dai",
+      "dre",
+      "lib",
+      "mad",
+      "no0",
+      "no1",
+      "no2",
+      "no3",
+      "no4",
+      "np3",
+      "nz0",
+      "nz1",
+      "rare",
+      "rcat",
+      "rcen",
+      "rchi",
+      "rdai",
+      "rlib",
+      "rno0",
+      "rno1",
+      "rno2",
+      "rno3",
+      "rno4",
+      "rnz0",
+      "rnz1",
+      "rtop",
+      "rwrp",
+      "st0",
+      "top",
+      "wrp"
+    ],
+    "risks": [
+      "data",
+      "cond:2"
+    ],
+    "already_includes": []
+  },
+  {
+    "overlay": "rno1",
+    "file": "src/st/rno1/e_red_door.c",
+    "header": "src/st/e_red_door.h",
+    "stubs": 2,
+    "covered": [
+      "EntityIsNearPlayer",
+      "EntityRedDoor"
+    ],
+    "uncovered": [],
+    "peers": 29,
+    "peer_stages": [
+      "are",
+      "cat",
+      "cen",
+      "dai",
+      "dre",
+      "lib",
+      "mad",
+      "no0",
+      "no2",
+      "no3",
+      "no4",
+      "np3",
+      "nz0",
+      "nz1",
+      "rare",
+      "rcat",
+      "rcen",
+      "rchi",
+      "rdai",
+      "rlib",
+      "rno3",
+      "rno4",
+      "rnz0",
+      "rnz1",
+      "rtop",
+      "rwrp",
+      "st0",
+      "top",
+      "wrp"
+    ],
+    "risks": [
+      "data",
+      "cond:3"
+    ],
+    "already_includes": []
+  },
+  {
+    "overlay": "rchi",
+    "file": "src/st/rchi/e_breakable.c",
+    "header": "src/st/e_breakable_with_debris.h",
+    "stubs": 2,
+    "covered": [
+      "EntityBreakable",
+      "EntityBreakableDebris"
+    ],
+    "uncovered": [],
+    "peers": 6,
+    "peer_stages": [
+      "dai",
+      "no1",
+      "no2",
+      "rdai",
+      "rtop",
+      "top"
+    ],
+    "risks": [
+      "cond:7"
+    ],
+    "already_includes": []
+  },
+  {
+    "overlay": "rnz1",
+    "file": "src/st/rnz1/e_medusa_head.c",
+    "header": "src/st/e_medusa_head.h",
+    "stubs": 2,
+    "covered": [
+      "EntityMedusaHeadSpawner",
+      "EntityMedusaHeadBlue"
+    ],
+    "uncovered": [],
+    "peers": 4,
+    "peer_stages": [
+      "no1",
+      "nz1",
+      "rno0",
+      "rno2"
+    ],
+    "risks": [
+      "data"
+    ],
+    "already_includes": []
+  },
+  {
+    "overlay": "rchi",
+    "file": "src/st/rchi/e_breakable.c",
+    "header": "src/st/e_breakable_with_lighting.h",
+    "stubs": 2,
+    "covered": [
+      "EntityBreakable",
+      "EntityBreakableDebris"
+    ],
+    "uncovered": [],
+    "peers": 1,
+    "peer_stages": [
+      "cen"
+    ],
+    "risks": [
+      "data",
+      "cond:5"
+    ],
+    "already_includes": []
+  },
+  {
+    "overlay": "rno0",
+    "file": "src/st/rno0/e_collect.c",
+    "header": "src/st/e_collect.h",
+    "stubs": 1,
+    "covered": [
+      "EntityRelicOrb"
+    ],
+    "uncovered": [],
+    "peers": 32,
+    "peer_stages": [
+      "are",
+      "cat",
+      "cen",
+      "dai",
+      "dre",
+      "lib",
+      "mad",
+      "no0",
+      "no1",
+      "no2",
+      "no3",
+      "no4",
+      "np3",
+      "nz0",
+      "nz1",
+      "rare",
+      "rcat",
+      "rcen",
+      "rchi",
+      "rdai",
+      "rlib",
+      "rno1",
+      "rno2",
+      "rno3",
+      "rno4",
+      "rnz0",
+      "rnz1",
+      "rtop",
+      "rwrp",
+      "st0",
+      "top",
+      "wrp"
+    ],
+    "risks": [
+      "data",
+      "cond:79",
+      "raw-syms"
+    ],
+    "already_includes": []
+  },
+  {
+    "overlay": "bo3",
+    "file": "src/boss/bo3/e_misc.c",
+    "header": "src/st/e_misc.h",
+    "stubs": 1,
+    "covered": [
+      "EntityUnkId13"
+    ],
+    "uncovered": [],
+    "peers": 30,
+    "peer_stages": [
+      "are",
+      "cat",
+      "cen",
+      "dai",
+      "dre",
+      "lib",
+      "mad",
+      "no0",
+      "no1",
+      "no2",
+      "no3",
+      "no4",
+      "np3",
+      "nz0",
+      "nz1",
+      "rare",
+      "rcat",
+      "rcen",
+      "rchi",
+      "rdai",
+      "rlib",
+      "rno0",
+      "rno3",
+      "rnz0",
+      "rnz1",
+      "rtop",
+      "rwrp",
+      "st0",
+      "top",
+      "wrp"
+    ],
+    "risks": [
+      "data",
+      "cond:6",
+      "raw-syms"
+    ],
+    "already_includes": []
+  },
+  {
+    "overlay": "bo7",
+    "file": "src/boss/bo7/e_misc.c",
+    "header": "src/st/e_misc.h",
+    "stubs": 1,
+    "covered": [
+      "EntityBigRedFireball"
+    ],
+    "uncovered": [],
+    "peers": 30,
+    "peer_stages": [
+      "are",
+      "cat",
+      "cen",
+      "dai",
+      "dre",
+      "lib",
+      "mad",
+      "no0",
+      "no1",
+      "no2",
+      "no3",
+      "no4",
+      "np3",
+      "nz0",
+      "nz1",
+      "rare",
+      "rcat",
+      "rcen",
+      "rchi",
+      "rdai",
+      "rlib",
+      "rno0",
+      "rno3",
+      "rnz0",
+      "rnz1",
+      "rtop",
+      "rwrp",
+      "st0",
+      "top",
+      "wrp"
+    ],
+    "risks": [
+      "data",
+      "cond:6",
+      "raw-syms"
+    ],
+    "already_includes": []
+  },
+  {
+    "overlay": "rbo6",
+    "file": "src/boss/rbo6/e_lock_camera.c",
+    "header": "src/st/entity_lock_camera.h",
+    "stubs": 1,
+    "covered": [
+      "EntityLockCamera"
+    ],
+    "uncovered": [],
+    "peers": 26,
+    "peer_stages": [
+      "are",
+      "cat",
+      "cen",
+      "chi",
+      "dai",
+      "dre",
+      "mad",
+      "no1",
+      "no2",
+      "no3",
+      "no4",
+      "np3",
+      "rare",
+      "rcat",
+      "rchi",
+      "rdai",
+      "rlib",
+      "rno0",
+      "rno1",
+      "rno2",
+      "rno3",
+      "rno4",
+      "rnz0",
+      "rnz1",
+      "rwrp",
+      "wrp"
+    ],
+    "risks": [
+      "data",
+      "cond:3"
+    ],
+    "already_includes": []
+  },
+  {
+    "overlay": "rchi",
+    "file": "src/st/rchi/e_breakable.c",
+    "header": "src/st/e_breakable.h",
+    "stubs": 2,
+    "covered": [
+      "EntityBreakable"
+    ],
+    "uncovered": [
+      "EntityBreakableDebris"
+    ],
+    "peers": 11,
+    "peer_stages": [
+      "are",
+      "cat",
+      "dre",
+      "mad",
+      "no0",
+      "no3",
+      "np3",
+      "rcen",
+      "rno3",
+      "rwrp",
+      "wrp"
+    ],
+    "risks": [
+      "cond:5",
+      "partial:1/2"
+    ],
+    "already_includes": []
+  },
+  {
+    "overlay": "rno0",
+    "file": "src/st/rno0/e_breakable.c",
+    "header": "src/st/e_breakable.h",
+    "stubs": 1,
+    "covered": [
+      "EntityBreakable"
+    ],
+    "uncovered": [],
+    "peers": 11,
+    "peer_stages": [
+      "are",
+      "cat",
+      "dre",
+      "mad",
+      "no0",
+      "no3",
+      "np3",
+      "rcen",
+      "rno3",
+      "rwrp",
+      "wrp"
+    ],
+    "risks": [
+      "cond:5"
+    ],
+    "already_includes": []
+  },
+  {
+    "overlay": "bo3",
+    "file": "src/boss/bo3/e_explosion_puff_opaque.c",
+    "header": "src/st/e_explosion_puff_opaque.h",
+    "stubs": 1,
+    "covered": [
+      "CreateExplosionPuff"
+    ],
+    "uncovered": [],
+    "peers": 8,
+    "peer_stages": [
+      "are",
+      "no0",
+      "no3",
+      "np3",
+      "nz0",
+      "nz1",
+      "rlib",
+      "rnz1"
+    ],
+    "risks": [
+      "data",
+      "cond:7"
+    ],
+    "already_includes": []
+  },
+  {
+    "overlay": "rno0",
+    "file": "src/st/rno0/e_breakable.c",
+    "header": "src/st/e_breakable_with_debris.h",
+    "stubs": 1,
+    "covered": [
+      "EntityBreakable"
+    ],
+    "uncovered": [],
+    "peers": 6,
+    "peer_stages": [
+      "dai",
+      "no1",
+      "no2",
+      "rdai",
+      "rtop",
+      "top"
+    ],
+    "risks": [
+      "cond:7"
+    ],
+    "already_includes": []
+  },
+  {
+    "overlay": "rbo6",
+    "file": "src/boss/rbo6/e_lock_camera.c",
+    "header": "src/st/e_lock_camera.h",
+    "stubs": 1,
+    "covered": [
+      "EntityLockCamera"
+    ],
+    "uncovered": [],
+    "peers": 5,
+    "peer_stages": [
+      "no0",
+      "nz0",
+      "nz1",
+      "rtop",
+      "top"
+    ],
+    "risks": [
+      "cond:3"
+    ],
+    "already_includes": []
+  },
+  {
+    "overlay": "bo5",
+    "file": "src/boss/bo5/e_clouds.c",
+    "header": "src/st/e_clouds.h",
+    "stubs": 1,
+    "covered": [
+      "EntityClouds"
+    ],
+    "uncovered": [],
+    "peers": 2,
+    "peer_stages": [
+      "dai",
+      "rdai"
+    ],
+    "risks": [
+      "data",
+      "cond:5"
+    ],
+    "already_includes": []
+  },
+  {
+    "overlay": "bo5",
+    "file": "src/boss/bo5/e_clouds.c",
+    "header": "src/st/e_clouds_keep.h",
+    "stubs": 1,
+    "covered": [
+      "EntityClouds"
+    ],
+    "uncovered": [],
+    "peers": 2,
+    "peer_stages": [
+      "rtop",
+      "top"
+    ],
+    "risks": [
+      "data",
+      "cond:1"
+    ],
+    "already_includes": []
+  },
+  {
+    "overlay": "rnz1",
+    "file": "src/st/rnz1/e_valhalla_knight.c",
+    "header": "src/st/e_valhalla_knight.h",
+    "stubs": 2,
+    "covered": [
+      "EntityValhallaKnight"
+    ],
+    "uncovered": [
+      "func_us_801C8AAC_from_are"
+    ],
+    "peers": 2,
+    "peer_stages": [
+      "are",
+      "no2"
+    ],
+    "risks": [
+      "data",
+      "cond:3",
+      "raw-syms",
+      "partial:1/2"
+    ],
+    "already_includes": []
+  },
+  {
+    "overlay": "rno0",
+    "file": "src/st/rno0/e_breakable.c",
+    "header": "src/st/e_breakable_with_lighting.h",
+    "stubs": 1,
+    "covered": [
+      "EntityBreakable"
+    ],
+    "uncovered": [],
+    "peers": 1,
+    "peer_stages": [
+      "cen"
+    ],
+    "risks": [
+      "data",
+      "cond:5"
+    ],
+    "already_includes": []
+  }
+]

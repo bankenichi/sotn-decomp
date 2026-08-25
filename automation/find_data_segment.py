@@ -33,18 +33,26 @@ THE METHOD, AND WHY IT IS TRUSTWORTHY
 Usage:
     python3 automation/find_data_segment.py --stage rno0 --stem e_misc
     python3 automation/find_data_segment.py --stage rno0 --all
+    python3 automation/find_data_segment.py --shim-report automation/shim-viability.us.json \\
+        --json-out automation/shim-data-segments.us.json
     python3 automation/find_data_segment.py --self-test
 """
 from __future__ import annotations
 
 import argparse
+import hashlib
+import json
 import re
+import tempfile
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 
 # rno0 and friends load at this base; vaddr = file offset + BASE.
 OVL_BASE = 0x80180000
+_ORACLE_CACHE: dict[str, str] | None = None
+_ORACLE_BYTES: bytes | None = None
+_BIN_CACHE: dict[str, tuple[bytes | None, dict]] = {}
 
 _SEG_RX = re.compile(r"^\s*-\s*\[\s*(0x[0-9A-Fa-f]+)\s*,\s*([^,\]]+?)\s*(?:,\s*([^\]]+?)\s*)?\]")
 
@@ -79,6 +87,57 @@ def overlay_bin(stage: str) -> Path:
     return REPO / "build" / "us" / f"{stage.upper()}.BIN"
 
 
+def oracle_hashes() -> dict[str, str]:
+    """Expected SHA-1s keyed by repository-relative build path."""
+    global _ORACLE_CACHE, _ORACLE_BYTES
+    if _ORACLE_CACHE is None:
+        out = {}
+        manifest = REPO / "config" / "check.us.sha"
+        _ORACLE_BYTES = manifest.read_bytes()
+        for line in _ORACLE_BYTES.decode("utf-8").splitlines():
+            parts = line.split()
+            if len(parts) == 2 and re.fullmatch(r"[0-9A-Fa-f]{40}", parts[0]):
+                out[parts[1].replace("\\", "/")] = parts[0].lower()
+        _ORACLE_CACHE = out
+    return _ORACLE_CACHE
+
+
+def oracle_manifest_bytes() -> bytes:
+    """Return the exact manifest bytes that populated the oracle cache."""
+    oracle_hashes()
+    assert _ORACLE_BYTES is not None
+    return _ORACLE_BYTES
+
+
+def verified_binary(stage: str) -> tuple[bytes | None, dict]:
+    """Read one target only when its bytes match the checked-in US oracle."""
+    key = stage.lower()
+    if key in _BIN_CACHE:
+        return _BIN_CACHE[key]
+    path = overlay_bin(stage)
+    rel = path.relative_to(REPO).as_posix()
+    expected = oracle_hashes().get(rel, "")
+    proof = {"stage": key, "path": rel, "expected_sha1": expected}
+    if not expected:
+        proof["error"] = "binary is absent from config/check.us.sha"
+        result = (None, proof)
+    elif not path.is_file():
+        proof["error"] = "binary is not built"
+        result = (None, proof)
+    else:
+        data = path.read_bytes()
+        actual = hashlib.sha1(data).hexdigest()
+        proof["actual_sha1"] = actual
+        proof["oracle_match"] = actual == expected
+        if actual != expected:
+            proof["error"] = "binary does not match config/check.us.sha"
+            result = (None, proof)
+        else:
+            result = (data, proof)
+    _BIN_CACHE[key] = result
+    return result
+
+
 def peers_with_segment(stem: str) -> list[str]:
     out = []
     for p in sorted((REPO / "config").glob("splat.us.st*.yaml")):
@@ -104,41 +163,57 @@ def locate(stage: str, stem: str) -> dict:
     if len(peers) < 2:
         return {"ok": False, "why": f"need 2+ peers with a '.data, {stem}' "
                                     f"segment to calibrate, found {len(peers)}"}
-    src = overlay_bin(stage)
-    if not src.exists():
-        return {"ok": False, "why": f"{src} not built"}
+    src_data, src_proof = verified_binary(stage)
+    inputs = [src_proof]
+    if src_data is None:
+        return {"ok": False, "oracle_verified": False, "inputs": inputs,
+                "why": f"target binary is not oracle-safe: "
+                       f"{src_proof.get('error', 'unknown error')}"}
 
     a = peers[0]
     span = data_span(a, stem)
-    pat = overlay_bin(a).read_bytes()[span[0]:span[0] + span[1]]
+    peer_data: dict[str, bytes] = {}
+    for peer in peers[:4]:
+        data, proof = verified_binary(peer)
+        inputs.append(proof)
+        if data is None:
+            return {"ok": False, "oracle_verified": False, "inputs": inputs,
+                    "why": f"peer {peer} is not oracle-safe: "
+                           f"{proof.get('error', 'unknown error')}"}
+        peer_data[peer] = data
+    pat = peer_data[a][span[0]:span[0] + span[1]]
     if len(pat) < 8 or len(set(pat)) < 3:
-        return {"ok": False, "why": f"peer {a}'s {stem} data is {len(pat)} bytes "
-                                    f"and not distinctive enough to search for"}
+        return {"ok": False, "oracle_verified": True, "inputs": inputs,
+                "why": f"peer {a}'s {stem} data is {len(pat)} bytes "
+                       f"and not distinctive enough to search for"}
 
     # 1. CALIBRATE against a second peer whose answer we already know.
     calib = []
     for b in peers[1:4]:
         want = data_span(b, stem)[0]
-        hits = find_unique(overlay_bin(b).read_bytes(), pat)
+        hits = find_unique(peer_data[b], pat)
         calib.append((b, want, hits))
     good = [c for c in calib if c[2] == [c[1]]]
     if not good:
         detail = "; ".join(f"{b}: expected {w:#x}, found "
                            f"{[hex(h) for h in h_] or 'nothing'}"
                            for b, w, h_ in calib)
-        return {"ok": False, "calibrated": False,
+        return {"ok": False, "calibrated": False, "oracle_verified": True,
+                "inputs": inputs,
                 "why": f"calibration FAILED, so the bytes are not stage-"
                        f"independent for {stem}. Do not trust a hit in {stage}. "
                        f"({detail})"}
 
     # 2. Only now, search the target.
-    hits = find_unique(src.read_bytes(), pat)
+    hits = find_unique(src_data, pat)
     if len(hits) != 1:
-        return {"ok": False, "calibrated": True,
+        return {"ok": False, "calibrated": True, "oracle_verified": True,
+                "inputs": inputs,
                 "why": f"pattern from {a} ({len(pat)} bytes) matched "
                        f"{len(hits)} times in {stage} ({[hex(x) for x in hits]}); "
                        f"a unique hit is required"}
-    return {"ok": True, "calibrated": True, "pattern_from": a,
+    return {"ok": True, "calibrated": True, "oracle_verified": True,
+            "inputs": inputs, "pattern_from": a,
             "calibrated_on": [c[0] for c in good], "size": len(pat),
             "addr": hits[0], "vaddr": hits[0] + OVL_BASE,
             "end": hits[0] + len(pat)}
@@ -199,9 +274,31 @@ def self_test() -> int:
     if r.get("ok"):
         ck("re-locating a KNOWN segment reproduces its declared address",
            r["addr"] == 0x1454, str(r))
+        ck("successful location records oracle proof for every input",
+           r.get("oracle_verified") is True
+           and all(item.get("oracle_match") for item in r.get("inputs", [])),
+           str(r.get("inputs")))
     else:
         ck("re-locating a known segment is refused, not guessed",
            "calibrat" in r["why"] or "unique" in r["why"], r["why"][:120])
+
+    with tempfile.TemporaryDirectory() as td:
+        report = Path(td) / "shim.json"
+        first_rows = [{"risks": ["data"], "overlay": "BOSS/BO5",
+                       "header": "src/st/e_first.h",
+                       "file": "src/boss/bo5/e_first.c", "covered": ["A"]}]
+        original = json.dumps(first_rows).encode("utf-8")
+        report.write_bytes(original)
+        snapshotted = report.read_bytes()
+        report.write_text(json.dumps([{**first_rows[0],
+                                       "header": "src/st/e_second.h"}]))
+        document = shim_report_document("shim.json", snapshotted, b"oracle\n")
+        ck("report refresh cannot race its recorded source hash",
+           document["source_sha256"] == hashlib.sha256(original).hexdigest()
+           and document["results"][0]["stem"] == "e_first")
+        ck("oracle hash is bound to the cached manifest bytes",
+           document["oracle_manifest_sha256"]
+           == hashlib.sha256(b"oracle\n").hexdigest())
 
     print()
     print("self-test PASSED" if ok else "self-test FAILED")
@@ -212,17 +309,86 @@ BLOCKED_STEMS = ["e_misc", "collision", "st_update", "e_medusa_head",
                  "e_collect", "e_particles", "e_room_fg"]
 
 
+def locate_shim_rows(rows: list[dict]) -> list[dict]:
+    """Run the calibrated locator for already-snapshotted shim-report rows."""
+    out = []
+    seen: set[tuple[str, str]] = set()
+    for row in rows:
+        if "data" not in row.get("risks", []):
+            continue
+        stage = row.get("overlay", "").lower()
+        stem = Path(row.get("header", "")).stem
+        key = (stage, stem)
+        if not stage or not stem or key in seen:
+            continue
+        seen.add(key)
+        item = {
+            "overlay": stage,
+            "stem": stem,
+            "header": row.get("header", ""),
+            "source_file": row.get("file", ""),
+            "covered": row.get("covered", []),
+        }
+        if not item["source_file"].startswith("src/st/"):
+            item["result"] = {
+                "ok": False,
+                "why": "boss overlay naming is not supported by the stage "
+                       "binary locator",
+            }
+        else:
+            item["result"] = locate(stage, stem)
+        out.append(item)
+    return out
+
+
+def shim_report_document(source: str, report_bytes: bytes,
+                         oracle_bytes: bytes) -> dict:
+    """Bind generated results and hashes to one immutable input snapshot."""
+    rows = json.loads(report_bytes.decode("utf-8"))
+    return {
+        "generator": "automation/find_data_segment.py --shim-report",
+        "source": source,
+        "source_sha256": hashlib.sha256(report_bytes).hexdigest(),
+        "oracle_manifest": "config/check.us.sha",
+        "oracle_manifest_sha256": hashlib.sha256(oracle_bytes).hexdigest(),
+        "results": locate_shim_rows(rows),
+    }
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--stage", default="rno0")
     ap.add_argument("--stem", default="")
     ap.add_argument("--all", action="store_true")
+    ap.add_argument("--shim-report", default="",
+                    help="locate every data-risk stage shim in this JSON report")
+    ap.add_argument("--json-out", default="",
+                    help="write structured results for --shim-report")
     ap.add_argument("--self-test", action="store_true")
     a = ap.parse_args()
 
     if a.self_test:
         return self_test()
+
+    if a.shim_report:
+        report_path = Path(a.shim_report)
+        report_bytes = report_path.read_bytes()
+        document = shim_report_document(
+            a.shim_report, report_bytes, oracle_manifest_bytes())
+        results = document["results"]
+        for item in results:
+            result = item["result"]
+            if result.get("ok"):
+                print(f"{item['overlay']:8} {item['stem']:24} "
+                      f"0x{result['addr']:X} size 0x{result['size']:X}")
+            else:
+                print(f"{item['overlay']:8} {item['stem']:24} "
+                      f"NO: {result.get('why', 'unknown')}")
+        if a.json_out:
+            Path(a.json_out).write_text(json.dumps(document, indent=2) + "\n")
+            print(f"wrote {a.json_out}: {len(results)} target/stem pairs")
+        return 0
 
     stems = [a.stem] if a.stem else (BLOCKED_STEMS if a.all else [])
     if not stems:

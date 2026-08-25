@@ -3,6 +3,15 @@
 
 INCLUDE_ASM("st/rnz1/nonmatchings/e_medusa_head", EntityMedusaHeadSpawner);
 
-INCLUDE_ASM("st/rnz1/nonmatchings/e_medusa_head", EntityMedusaHeadYellow);
+/* Compile-shaping declarations retained from the score-zero
+   receipt after destination-scope filtering. */
+void EntityMedusaHeadBlue(Entity* self);
+
+void EntityMedusaHeadYellow(Entity* self) {
+    self->params = 1;
+    EntityMedusaHeadBlue(self);
+}
+
+
 
 INCLUDE_ASM("st/rnz1/nonmatchings/e_medusa_head", EntityMedusaHeadBlue);

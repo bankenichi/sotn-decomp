@@ -1,0 +1,805 @@
+{
+  "schema": 1,
+  "generator": "automation/quality_audit.py --record-duplicate-provenance",
+  "summary": {
+    "entries": 88,
+    "by_disposition": {
+      "shared-header-needs-boundary-calibration": 71,
+      "target-copy-needs-shared-extraction": 17
+    }
+  },
+  "entries": [
+    {
+      "target_file": "src/boss/bo3/e_misc.c",
+      "target_function": "CheckColliderOffsets",
+      "donor": "src/st/e_misc.h:CheckColliderOffsets",
+      "target_body_sha256": "a953ab2123dac7413801aed82709605f1f25e30ec04d7ff24ea8b3744a2ade5e",
+      "donor_body_sha256": "a953ab2123dac7413801aed82709605f1f25e30ec04d7ff24ea8b3744a2ade5e",
+      "disposition": "shared-header-needs-boundary-calibration",
+      "roadmap": "#264"
+    },
+    {
+      "target_file": "src/boss/bo3/e_misc.c",
+      "target_function": "ClutLerp",
+      "donor": "src/st/e_misc.h:ClutLerp",
+      "target_body_sha256": "c4392abc02b6710e088d9a06935e42828987e36462be37997a43ca1583cc7f3b",
+      "donor_body_sha256": "c4392abc02b6710e088d9a06935e42828987e36462be37997a43ca1583cc7f3b",
+      "disposition": "shared-header-needs-boundary-calibration",
+      "roadmap": "#264"
+    },
+    {
+      "target_file": "src/boss/bo3/e_misc.c",
+      "target_function": "EntityBigRedFireball",
+      "donor": "src/st/e_misc.h:EntityBigRedFireball",
+      "target_body_sha256": "b4041154904b086cd23449861fccb2f2174377772fde84feb1fdefcb00b22204",
+      "donor_body_sha256": "b4041154904b086cd23449861fccb2f2174377772fde84feb1fdefcb00b22204",
+      "disposition": "shared-header-needs-boundary-calibration",
+      "roadmap": "#264"
+    },
+    {
+      "target_file": "src/boss/bo3/e_misc.c",
+      "target_function": "EntityExplosionVariantsSpawner",
+      "donor": "src/st/e_misc.h:EntityExplosionVariantsSpawner",
+      "target_body_sha256": "a1241f98a7a05675fe3340a9d9ffb208ecede7bfcb213fcee039ba4b0d9a0b0e",
+      "donor_body_sha256": "a1241f98a7a05675fe3340a9d9ffb208ecede7bfcb213fcee039ba4b0d9a0b0e",
+      "disposition": "shared-header-needs-boundary-calibration",
+      "roadmap": "#264"
+    },
+    {
+      "target_file": "src/boss/bo3/e_misc.c",
+      "target_function": "EntityGreyPuffSpawner",
+      "donor": "src/st/e_misc.h:EntityGreyPuffSpawner",
+      "target_body_sha256": "da2905447b14c68abd39283a5e4c651ef4967a70154953f7e87a3b27bfd165d6",
+      "donor_body_sha256": "da2905447b14c68abd39283a5e4c651ef4967a70154953f7e87a3b27bfd165d6",
+      "disposition": "shared-header-needs-boundary-calibration",
+      "roadmap": "#264"
+    },
+    {
+      "target_file": "src/boss/bo3/e_misc.c",
+      "target_function": "EntityIntenseExplosion",
+      "donor": "src/st/e_misc.h:EntityIntenseExplosion",
+      "target_body_sha256": "5c59c1bfe439765b11a9e5cedd6fd9dd86fc2dcdcc9db50f0d846d81d2736a74",
+      "donor_body_sha256": "5c59c1bfe439765b11a9e5cedd6fd9dd86fc2dcdcc9db50f0d846d81d2736a74",
+      "disposition": "shared-header-needs-boundary-calibration",
+      "roadmap": "#264"
+    },
+    {
+      "target_file": "src/boss/bo3/e_misc.c",
+      "target_function": "MakeEntityFromId",
+      "donor": "src/st/e_misc.h:MakeEntityFromId",
+      "target_body_sha256": "82c187b298361c9d49677e1636d2f83ef98b1d45c98b8afe49cc0604b9bf2e2d",
+      "donor_body_sha256": "82c187b298361c9d49677e1636d2f83ef98b1d45c98b8afe49cc0604b9bf2e2d",
+      "disposition": "shared-header-needs-boundary-calibration",
+      "roadmap": "#264"
+    },
+    {
+      "target_file": "src/boss/bo3/e_misc.c",
+      "target_function": "MakeExplosions",
+      "donor": "src/st/e_misc.h:MakeExplosions",
+      "target_body_sha256": "bd8d5c5d1bc64badd931ca09500339f596a467f340cc83055586573e2553fca5",
+      "donor_body_sha256": "bd8d5c5d1bc64badd931ca09500339f596a467f340cc83055586573e2553fca5",
+      "disposition": "shared-header-needs-boundary-calibration",
+      "roadmap": "#264"
+    },
+    {
+      "target_file": "src/boss/bo3/e_misc.c",
+      "target_function": "PlaySfxPositional",
+      "donor": "src/st/e_misc.h:PlaySfxPositional",
+      "target_body_sha256": "1114783d1f5d741e3e6883de18068a11fbeb49e55a077fc5c1546f3ccd5143c1",
+      "donor_body_sha256": "1114783d1f5d741e3e6883de18068a11fbeb49e55a077fc5c1546f3ccd5143c1",
+      "disposition": "shared-header-needs-boundary-calibration",
+      "roadmap": "#264"
+    },
+    {
+      "target_file": "src/boss/bo3/e_misc.c",
+      "target_function": "UnkCollisionFunc4",
+      "donor": "src/st/e_misc.h:UnkCollisionFunc4",
+      "target_body_sha256": "7de711ca978397caf545f5879c0c89354b18b34cddbd3ca158d0c8cdd5cf6cc9",
+      "donor_body_sha256": "7de711ca978397caf545f5879c0c89354b18b34cddbd3ca158d0c8cdd5cf6cc9",
+      "disposition": "shared-header-needs-boundary-calibration",
+      "roadmap": "#264"
+    },
+    {
+      "target_file": "src/boss/bo3/e_misc.c",
+      "target_function": "UnkCollisionFunc5",
+      "donor": "src/st/e_misc.h:UnkCollisionFunc5",
+      "target_body_sha256": "0fc9d4ceb5d19c469d22f95c112c54e6e8cbf24446bc412bcf29b582272684d0",
+      "donor_body_sha256": "0fc9d4ceb5d19c469d22f95c112c54e6e8cbf24446bc412bcf29b582272684d0",
+      "disposition": "shared-header-needs-boundary-calibration",
+      "roadmap": "#264"
+    },
+    {
+      "target_file": "src/boss/bo3/unk_1CEEC.c",
+      "target_function": "EntityWaterDrop",
+      "donor": "src/st/water_effects.h:EntityWaterDrop",
+      "target_body_sha256": "5962435903e277f55561a8115faffcdc59ddbe9976484f44428443ddff182567",
+      "donor_body_sha256": "5962435903e277f55561a8115faffcdc59ddbe9976484f44428443ddff182567",
+      "disposition": "shared-header-needs-boundary-calibration",
+      "roadmap": "#264"
+    },
+    {
+      "target_file": "src/boss/bo3/unk_1CEEC.c",
+      "target_function": "func_us_801C123C_from_no4",
+      "donor": "src/st/no4/e_breakable.c:func_us_801C123C",
+      "target_body_sha256": "90fb81b2d9a83cd5ff6fb708d981824073fde8093b4f94a83f4a982a64c01f94",
+      "donor_body_sha256": "90fb81b2d9a83cd5ff6fb708d981824073fde8093b4f94a83f4a982a64c01f94",
+      "disposition": "target-copy-needs-shared-extraction",
+      "roadmap": "#264"
+    },
+    {
+      "target_file": "src/boss/bo3/unk_1CEEC.c",
+      "target_function": "func_us_801C2850_from_no4",
+      "donor": "src/st/no4/first_c_file.c:func_us_801C2850",
+      "target_body_sha256": "f54287ee2c64721836032c2b230f3e61cf27ea30f1bd05b3cd85df02a1d416c2",
+      "donor_body_sha256": "f54287ee2c64721836032c2b230f3e61cf27ea30f1bd05b3cd85df02a1d416c2",
+      "disposition": "target-copy-needs-shared-extraction",
+      "roadmap": "#264"
+    },
+    {
+      "target_file": "src/boss/bo3/unk_1CEEC.c",
+      "target_function": "func_us_801C2B78_from_no4",
+      "donor": "src/st/no4/first_c_file.c:func_us_801C2B78",
+      "target_body_sha256": "81303f4cdaf5ddff38f84de392a873c1322d701e96bb0f1e1b6d7e9672141936",
+      "donor_body_sha256": "81303f4cdaf5ddff38f84de392a873c1322d701e96bb0f1e1b6d7e9672141936",
+      "disposition": "target-copy-needs-shared-extraction",
+      "roadmap": "#264"
+    },
+    {
+      "target_file": "src/boss/bo3/unk_1CEEC.c",
+      "target_function": "func_us_801C3A04_from_no4",
+      "donor": "src/st/no4/first_c_file.c:func_us_801C3A04",
+      "target_body_sha256": "9fa92227b007cebe899698e8f2dceeff54ed29e86c5b2f6466f1864dc8082584",
+      "donor_body_sha256": "9fa92227b007cebe899698e8f2dceeff54ed29e86c5b2f6466f1864dc8082584",
+      "disposition": "target-copy-needs-shared-extraction",
+      "roadmap": "#264"
+    },
+    {
+      "target_file": "src/boss/bo3/unk_1CEEC.c",
+      "target_function": "func_us_801C4228_from_no4",
+      "donor": "src/st/no4/first_c_file.c:func_us_801C4228",
+      "target_body_sha256": "0adab199c968523a68095956e029e2f06edb3a71650ed59f14528f827907c65e",
+      "donor_body_sha256": "0adab199c968523a68095956e029e2f06edb3a71650ed59f14528f827907c65e",
+      "disposition": "target-copy-needs-shared-extraction",
+      "roadmap": "#264"
+    },
+    {
+      "target_file": "src/boss/bo7/e_demon_switch_wall.c",
+      "target_function": "UpdateFallingPebble",
+      "donor": "src/st/chi/en_demon_switch_wall.c:UpdateFallingPebble",
+      "target_body_sha256": "be206e27413fe0288a245a6726b3afddd4993b82ed5bd6cc56a87f84049a7ab3",
+      "donor_body_sha256": "be206e27413fe0288a245a6726b3afddd4993b82ed5bd6cc56a87f84049a7ab3",
+      "disposition": "target-copy-needs-shared-extraction",
+      "roadmap": "#264"
+    },
+    {
+      "target_file": "src/boss/bo7/e_misc.c",
+      "target_function": "CheckColliderOffsets",
+      "donor": "src/st/e_misc.h:CheckColliderOffsets",
+      "target_body_sha256": "a953ab2123dac7413801aed82709605f1f25e30ec04d7ff24ea8b3744a2ade5e",
+      "donor_body_sha256": "a953ab2123dac7413801aed82709605f1f25e30ec04d7ff24ea8b3744a2ade5e",
+      "disposition": "shared-header-needs-boundary-calibration",
+      "roadmap": "#264"
+    },
+    {
+      "target_file": "src/boss/bo7/e_misc.c",
+      "target_function": "ClutLerp",
+      "donor": "src/st/e_misc.h:ClutLerp",
+      "target_body_sha256": "c4392abc02b6710e088d9a06935e42828987e36462be37997a43ca1583cc7f3b",
+      "donor_body_sha256": "c4392abc02b6710e088d9a06935e42828987e36462be37997a43ca1583cc7f3b",
+      "disposition": "shared-header-needs-boundary-calibration",
+      "roadmap": "#264"
+    },
+    {
+      "target_file": "src/boss/bo7/e_misc.c",
+      "target_function": "EntityExplosionVariantsSpawner",
+      "donor": "src/st/e_misc.h:EntityExplosionVariantsSpawner",
+      "target_body_sha256": "a1241f98a7a05675fe3340a9d9ffb208ecede7bfcb213fcee039ba4b0d9a0b0e",
+      "donor_body_sha256": "a1241f98a7a05675fe3340a9d9ffb208ecede7bfcb213fcee039ba4b0d9a0b0e",
+      "disposition": "shared-header-needs-boundary-calibration",
+      "roadmap": "#264"
+    },
+    {
+      "target_file": "src/boss/bo7/e_misc.c",
+      "target_function": "EntityGreyPuffSpawner",
+      "donor": "src/st/e_misc.h:EntityGreyPuffSpawner",
+      "target_body_sha256": "da2905447b14c68abd39283a5e4c651ef4967a70154953f7e87a3b27bfd165d6",
+      "donor_body_sha256": "da2905447b14c68abd39283a5e4c651ef4967a70154953f7e87a3b27bfd165d6",
+      "disposition": "shared-header-needs-boundary-calibration",
+      "roadmap": "#264"
+    },
+    {
+      "target_file": "src/boss/bo7/e_misc.c",
+      "target_function": "EntityIntenseExplosion",
+      "donor": "src/st/e_misc.h:EntityIntenseExplosion",
+      "target_body_sha256": "5c59c1bfe439765b11a9e5cedd6fd9dd86fc2dcdcc9db50f0d846d81d2736a74",
+      "donor_body_sha256": "5c59c1bfe439765b11a9e5cedd6fd9dd86fc2dcdcc9db50f0d846d81d2736a74",
+      "disposition": "shared-header-needs-boundary-calibration",
+      "roadmap": "#264"
+    },
+    {
+      "target_file": "src/boss/bo7/e_misc.c",
+      "target_function": "EntityUnkId13",
+      "donor": "src/st/e_misc.h:EntityUnkId13",
+      "target_body_sha256": "5697eee399b8deaf37c8e49858783648ef7b392365d13932ce9c38338c8f070b",
+      "donor_body_sha256": "5697eee399b8deaf37c8e49858783648ef7b392365d13932ce9c38338c8f070b",
+      "disposition": "shared-header-needs-boundary-calibration",
+      "roadmap": "#264"
+    },
+    {
+      "target_file": "src/boss/bo7/e_misc.c",
+      "target_function": "MakeEntityFromId",
+      "donor": "src/st/e_misc.h:MakeEntityFromId",
+      "target_body_sha256": "82c187b298361c9d49677e1636d2f83ef98b1d45c98b8afe49cc0604b9bf2e2d",
+      "donor_body_sha256": "82c187b298361c9d49677e1636d2f83ef98b1d45c98b8afe49cc0604b9bf2e2d",
+      "disposition": "shared-header-needs-boundary-calibration",
+      "roadmap": "#264"
+    },
+    {
+      "target_file": "src/boss/bo7/e_misc.c",
+      "target_function": "MakeExplosions",
+      "donor": "src/st/e_misc.h:MakeExplosions",
+      "target_body_sha256": "bd8d5c5d1bc64badd931ca09500339f596a467f340cc83055586573e2553fca5",
+      "donor_body_sha256": "bd8d5c5d1bc64badd931ca09500339f596a467f340cc83055586573e2553fca5",
+      "disposition": "shared-header-needs-boundary-calibration",
+      "roadmap": "#264"
+    },
+    {
+      "target_file": "src/boss/bo7/e_misc.c",
+      "target_function": "PlaySfxPositional",
+      "donor": "src/st/e_misc.h:PlaySfxPositional",
+      "target_body_sha256": "1114783d1f5d741e3e6883de18068a11fbeb49e55a077fc5c1546f3ccd5143c1",
+      "donor_body_sha256": "1114783d1f5d741e3e6883de18068a11fbeb49e55a077fc5c1546f3ccd5143c1",
+      "disposition": "shared-header-needs-boundary-calibration",
+      "roadmap": "#264"
+    },
+    {
+      "target_file": "src/boss/bo7/e_misc.c",
+      "target_function": "UnkCollisionFunc4",
+      "donor": "src/st/e_misc.h:UnkCollisionFunc4",
+      "target_body_sha256": "7de711ca978397caf545f5879c0c89354b18b34cddbd3ca158d0c8cdd5cf6cc9",
+      "donor_body_sha256": "7de711ca978397caf545f5879c0c89354b18b34cddbd3ca158d0c8cdd5cf6cc9",
+      "disposition": "shared-header-needs-boundary-calibration",
+      "roadmap": "#264"
+    },
+    {
+      "target_file": "src/boss/bo7/e_misc.c",
+      "target_function": "UnkCollisionFunc5",
+      "donor": "src/st/e_misc.h:UnkCollisionFunc5",
+      "target_body_sha256": "0fc9d4ceb5d19c469d22f95c112c54e6e8cbf24446bc412bcf29b582272684d0",
+      "donor_body_sha256": "0fc9d4ceb5d19c469d22f95c112c54e6e8cbf24446bc412bcf29b582272684d0",
+      "disposition": "shared-header-needs-boundary-calibration",
+      "roadmap": "#264"
+    },
+    {
+      "target_file": "src/boss/rbo1/unk_12274.c",
+      "target_function": "func_801CDD00",
+      "donor": "src/st/giantbro_helpers.h:func_801CDD00",
+      "target_body_sha256": "9275fe7e8891e56f993e6402c1950e89d1f1b547cc86907fddb974337e2167a6",
+      "donor_body_sha256": "9275fe7e8891e56f993e6402c1950e89d1f1b547cc86907fddb974337e2167a6",
+      "disposition": "shared-header-needs-boundary-calibration",
+      "roadmap": "#264"
+    },
+    {
+      "target_file": "src/boss/rbo1/unk_12274.c",
+      "target_function": "func_801CDD80",
+      "donor": "src/st/giantbro_helpers.h:func_801CDD80",
+      "target_body_sha256": "729c5ac65b6bcc7448c4001b4bac4869422e20d2d385eadc9d27d3f6e044ac62",
+      "donor_body_sha256": "729c5ac65b6bcc7448c4001b4bac4869422e20d2d385eadc9d27d3f6e044ac62",
+      "disposition": "shared-header-needs-boundary-calibration",
+      "roadmap": "#264"
+    },
+    {
+      "target_file": "src/boss/rbo1/unk_12274.c",
+      "target_function": "func_801CDF1C",
+      "donor": "src/st/giantbro_helpers.h:func_801CDF1C",
+      "target_body_sha256": "047514e9a8fbf1486564f099f4ffa4fa2b7f84fc20bb251bd7e3dacfba50e857",
+      "donor_body_sha256": "047514e9a8fbf1486564f099f4ffa4fa2b7f84fc20bb251bd7e3dacfba50e857",
+      "disposition": "shared-header-needs-boundary-calibration",
+      "roadmap": "#264"
+    },
+    {
+      "target_file": "src/boss/rbo1/unk_12274.c",
+      "target_function": "func_801CE1E8",
+      "donor": "src/st/giantbro_helpers_2.h:func_801CE1E8",
+      "target_body_sha256": "0cd4ca9eedb267d67bc315add15257de46f18e51613e226703002a874fbc01e4",
+      "donor_body_sha256": "0cd4ca9eedb267d67bc315add15257de46f18e51613e226703002a874fbc01e4",
+      "disposition": "shared-header-needs-boundary-calibration",
+      "roadmap": "#264"
+    },
+    {
+      "target_file": "src/boss/rbo1/unk_12274.c",
+      "target_function": "func_801CE228",
+      "donor": "src/st/giantbro_helpers_2.h:func_801CE228",
+      "target_body_sha256": "2048bee7b7a881bde8df16e17d5083a5888844447b6d8aa0b8c290b813cd36cd",
+      "donor_body_sha256": "2048bee7b7a881bde8df16e17d5083a5888844447b6d8aa0b8c290b813cd36cd",
+      "disposition": "shared-header-needs-boundary-calibration",
+      "roadmap": "#264"
+    },
+    {
+      "target_file": "src/boss/rbo2/e_cutscene_actors.c",
+      "target_function": "func_us_801A8FC0_from_bo6",
+      "donor": "src/boss/bo6/e_cutscene_actors.c:func_us_801A8FC0",
+      "target_body_sha256": "9fb879f36a059216619445fa57fedf57aa7f292eebd0bb56d3605b6bbaa8a55b",
+      "donor_body_sha256": "9fb879f36a059216619445fa57fedf57aa7f292eebd0bb56d3605b6bbaa8a55b",
+      "disposition": "target-copy-needs-shared-extraction",
+      "roadmap": "#264"
+    },
+    {
+      "target_file": "src/boss/rbo2/unk_1B284.c",
+      "target_function": "func_801CDD00",
+      "donor": "src/st/giantbro_helpers.h:func_801CDD00",
+      "target_body_sha256": "9275fe7e8891e56f993e6402c1950e89d1f1b547cc86907fddb974337e2167a6",
+      "donor_body_sha256": "9275fe7e8891e56f993e6402c1950e89d1f1b547cc86907fddb974337e2167a6",
+      "disposition": "shared-header-needs-boundary-calibration",
+      "roadmap": "#264"
+    },
+    {
+      "target_file": "src/boss/rbo2/unk_1B284.c",
+      "target_function": "func_801CDD80",
+      "donor": "src/st/giantbro_helpers.h:func_801CDD80",
+      "target_body_sha256": "729c5ac65b6bcc7448c4001b4bac4869422e20d2d385eadc9d27d3f6e044ac62",
+      "donor_body_sha256": "729c5ac65b6bcc7448c4001b4bac4869422e20d2d385eadc9d27d3f6e044ac62",
+      "disposition": "shared-header-needs-boundary-calibration",
+      "roadmap": "#264"
+    },
+    {
+      "target_file": "src/boss/rbo2/unk_1B284.c",
+      "target_function": "func_801CDF1C",
+      "donor": "src/st/giantbro_helpers.h:func_801CDF1C",
+      "target_body_sha256": "047514e9a8fbf1486564f099f4ffa4fa2b7f84fc20bb251bd7e3dacfba50e857",
+      "donor_body_sha256": "047514e9a8fbf1486564f099f4ffa4fa2b7f84fc20bb251bd7e3dacfba50e857",
+      "disposition": "shared-header-needs-boundary-calibration",
+      "roadmap": "#264"
+    },
+    {
+      "target_file": "src/boss/rbo2/unk_1B284.c",
+      "target_function": "func_801CE1E8",
+      "donor": "src/st/giantbro_helpers_2.h:func_801CE1E8",
+      "target_body_sha256": "0cd4ca9eedb267d67bc315add15257de46f18e51613e226703002a874fbc01e4",
+      "donor_body_sha256": "0cd4ca9eedb267d67bc315add15257de46f18e51613e226703002a874fbc01e4",
+      "disposition": "shared-header-needs-boundary-calibration",
+      "roadmap": "#264"
+    },
+    {
+      "target_file": "src/boss/rbo2/unk_1B284.c",
+      "target_function": "func_801CE228",
+      "donor": "src/st/giantbro_helpers_2.h:func_801CE228",
+      "target_body_sha256": "2048bee7b7a881bde8df16e17d5083a5888844447b6d8aa0b8c290b813cd36cd",
+      "donor_body_sha256": "2048bee7b7a881bde8df16e17d5083a5888844447b6d8aa0b8c290b813cd36cd",
+      "disposition": "shared-header-needs-boundary-calibration",
+      "roadmap": "#264"
+    },
+    {
+      "target_file": "src/boss/rbo2/unk_1B284.c",
+      "target_function": "func_us_8019A98C_from_rcen",
+      "donor": "src/st/rcen/e_shaft.c:func_us_8019A98C",
+      "target_body_sha256": "a84ca4b1a6661c83f38a69aca4cffa3a8f80999f716ae2d7e618ab8caa252ec5",
+      "donor_body_sha256": "a84ca4b1a6661c83f38a69aca4cffa3a8f80999f716ae2d7e618ab8caa252ec5",
+      "disposition": "target-copy-needs-shared-extraction",
+      "roadmap": "#264"
+    },
+    {
+      "target_file": "src/boss/rbo6/prim_helpers.c",
+      "target_function": "FindFirstUnkPrim",
+      "donor": "src/st/prim_helpers.h:FindFirstUnkPrim",
+      "target_body_sha256": "9e523a1ba1cec64add1ae7904cfaf2e8bb0561a91c508745db0d7fe9bc44077c",
+      "donor_body_sha256": "9e523a1ba1cec64add1ae7904cfaf2e8bb0561a91c508745db0d7fe9bc44077c",
+      "disposition": "shared-header-needs-boundary-calibration",
+      "roadmap": "#264"
+    },
+    {
+      "target_file": "src/boss/rbo6/prim_helpers.c",
+      "target_function": "FindFirstUnkPrim2",
+      "donor": "src/st/prim_helpers.h:FindFirstUnkPrim2",
+      "target_body_sha256": "6545496790449d4f0a1f8433b8a9b1a9d688cf0c1c86b69ccd7947c315c00712",
+      "donor_body_sha256": "6545496790449d4f0a1f8433b8a9b1a9d688cf0c1c86b69ccd7947c315c00712",
+      "disposition": "shared-header-needs-boundary-calibration",
+      "roadmap": "#264"
+    },
+    {
+      "target_file": "src/boss/rbo6/prim_helpers.c",
+      "target_function": "PrimResetNext",
+      "donor": "src/st/prim_helpers.h:PrimResetNext",
+      "target_body_sha256": "5497bf53324945133acb06b3fb494ea51937bb22d61112e11c8f315493d61d44",
+      "donor_body_sha256": "5497bf53324945133acb06b3fb494ea51937bb22d61112e11c8f315493d61d44",
+      "disposition": "shared-header-needs-boundary-calibration",
+      "roadmap": "#264"
+    },
+    {
+      "target_file": "src/boss/rbo6/prim_helpers.c",
+      "target_function": "PrimToggleVisibility",
+      "donor": "src/st/prim_helpers.h:PrimToggleVisibility",
+      "target_body_sha256": "b93d0a4b74e9400b503d5c37db90ede6e8d24c6c2cd86c8af4e1eeb2d0fa54d5",
+      "donor_body_sha256": "b93d0a4b74e9400b503d5c37db90ede6e8d24c6c2cd86c8af4e1eeb2d0fa54d5",
+      "disposition": "shared-header-needs-boundary-calibration",
+      "roadmap": "#264"
+    },
+    {
+      "target_file": "src/boss/rbo6/prim_helpers.c",
+      "target_function": "UnkPolyFunc0",
+      "donor": "src/st/prim_helpers.h:UnkPolyFunc0",
+      "target_body_sha256": "59e8c008b698e4c337f4d9c55fd2c6ab263c23e7149df7827f5b4729a4e1a554",
+      "donor_body_sha256": "59e8c008b698e4c337f4d9c55fd2c6ab263c23e7149df7827f5b4729a4e1a554",
+      "disposition": "shared-header-needs-boundary-calibration",
+      "roadmap": "#264"
+    },
+    {
+      "target_file": "src/boss/rbo6/prim_helpers.c",
+      "target_function": "UnkPolyFunc2",
+      "donor": "src/st/prim_helpers.h:UnkPolyFunc2",
+      "target_body_sha256": "95fba6e8c047322316389144098dde1884a91b22202876692de5d399d137ef42",
+      "donor_body_sha256": "95fba6e8c047322316389144098dde1884a91b22202876692de5d399d137ef42",
+      "disposition": "shared-header-needs-boundary-calibration",
+      "roadmap": "#264"
+    },
+    {
+      "target_file": "src/boss/rbo6/prim_helpers.c",
+      "target_function": "UpdateAnimation",
+      "donor": "src/st/prim_helpers.h:UpdateAnimation",
+      "target_body_sha256": "713c5c489d1be80a08f6568db7ce0768ef4aa08c3a01d218f752a30530be183e",
+      "donor_body_sha256": "713c5c489d1be80a08f6568db7ce0768ef4aa08c3a01d218f752a30530be183e",
+      "disposition": "shared-header-needs-boundary-calibration",
+      "roadmap": "#264"
+    },
+    {
+      "target_file": "src/boss/rbo8/unk_1546C.c",
+      "target_function": "func_801CE1E8",
+      "donor": "src/st/giantbro_helpers_2.h:func_801CE1E8",
+      "target_body_sha256": "0cd4ca9eedb267d67bc315add15257de46f18e51613e226703002a874fbc01e4",
+      "donor_body_sha256": "0cd4ca9eedb267d67bc315add15257de46f18e51613e226703002a874fbc01e4",
+      "disposition": "shared-header-needs-boundary-calibration",
+      "roadmap": "#264"
+    },
+    {
+      "target_file": "src/boss/rbo8/unk_1546C.c",
+      "target_function": "func_801CE228",
+      "donor": "src/st/giantbro_helpers_2.h:func_801CE228",
+      "target_body_sha256": "2048bee7b7a881bde8df16e17d5083a5888844447b6d8aa0b8c290b813cd36cd",
+      "donor_body_sha256": "2048bee7b7a881bde8df16e17d5083a5888844447b6d8aa0b8c290b813cd36cd",
+      "disposition": "shared-header-needs-boundary-calibration",
+      "roadmap": "#264"
+    },
+    {
+      "target_file": "src/boss/rbo8/unk_1546C.c",
+      "target_function": "polarPlacePartsList",
+      "donor": "src/st/giantbro_helpers_2.h:polarPlacePartsList",
+      "target_body_sha256": "41e676c5593917e1f0b9871456233b77cf82f60bb498a3f09a8f6c101968660c",
+      "donor_body_sha256": "41e676c5593917e1f0b9871456233b77cf82f60bb498a3f09a8f6c101968660c",
+      "disposition": "shared-header-needs-boundary-calibration",
+      "roadmap": "#264"
+    },
+    {
+      "target_file": "src/boss/rbo8/unk_15868.c",
+      "target_function": "func_801CE3FC",
+      "donor": "src/st/giantbro_helpers_2.h:func_801CE3FC",
+      "target_body_sha256": "328d1c5639ab1b4d07204de7bb39e5282fdb0971d55b7fc99dec48a458837c20",
+      "donor_body_sha256": "328d1c5639ab1b4d07204de7bb39e5282fdb0971d55b7fc99dec48a458837c20",
+      "disposition": "shared-header-needs-boundary-calibration",
+      "roadmap": "#264"
+    },
+    {
+      "target_file": "src/st/rno1/e_misc.c",
+      "target_function": "CheckColliderOffsets",
+      "donor": "src/st/e_misc.h:CheckColliderOffsets",
+      "target_body_sha256": "a953ab2123dac7413801aed82709605f1f25e30ec04d7ff24ea8b3744a2ade5e",
+      "donor_body_sha256": "a953ab2123dac7413801aed82709605f1f25e30ec04d7ff24ea8b3744a2ade5e",
+      "disposition": "shared-header-needs-boundary-calibration",
+      "roadmap": "#264"
+    },
+    {
+      "target_file": "src/st/rno1/e_misc.c",
+      "target_function": "ClutLerp",
+      "donor": "src/st/e_misc.h:ClutLerp",
+      "target_body_sha256": "c4392abc02b6710e088d9a06935e42828987e36462be37997a43ca1583cc7f3b",
+      "donor_body_sha256": "c4392abc02b6710e088d9a06935e42828987e36462be37997a43ca1583cc7f3b",
+      "disposition": "shared-header-needs-boundary-calibration",
+      "roadmap": "#264"
+    },
+    {
+      "target_file": "src/st/rno1/e_misc.c",
+      "target_function": "EntityBigRedFireball",
+      "donor": "src/st/e_misc.h:EntityBigRedFireball",
+      "target_body_sha256": "b4041154904b086cd23449861fccb2f2174377772fde84feb1fdefcb00b22204",
+      "donor_body_sha256": "b4041154904b086cd23449861fccb2f2174377772fde84feb1fdefcb00b22204",
+      "disposition": "shared-header-needs-boundary-calibration",
+      "roadmap": "#264"
+    },
+    {
+      "target_file": "src/st/rno1/e_misc.c",
+      "target_function": "EntityExplosionVariantsSpawner",
+      "donor": "src/st/e_misc.h:EntityExplosionVariantsSpawner",
+      "target_body_sha256": "a1241f98a7a05675fe3340a9d9ffb208ecede7bfcb213fcee039ba4b0d9a0b0e",
+      "donor_body_sha256": "a1241f98a7a05675fe3340a9d9ffb208ecede7bfcb213fcee039ba4b0d9a0b0e",
+      "disposition": "shared-header-needs-boundary-calibration",
+      "roadmap": "#264"
+    },
+    {
+      "target_file": "src/st/rno1/e_misc.c",
+      "target_function": "EntityGreyPuffSpawner",
+      "donor": "src/st/e_misc.h:EntityGreyPuffSpawner",
+      "target_body_sha256": "da2905447b14c68abd39283a5e4c651ef4967a70154953f7e87a3b27bfd165d6",
+      "donor_body_sha256": "da2905447b14c68abd39283a5e4c651ef4967a70154953f7e87a3b27bfd165d6",
+      "disposition": "shared-header-needs-boundary-calibration",
+      "roadmap": "#264"
+    },
+    {
+      "target_file": "src/st/rno1/e_misc.c",
+      "target_function": "EntityIntenseExplosion",
+      "donor": "src/st/e_misc.h:EntityIntenseExplosion",
+      "target_body_sha256": "5c59c1bfe439765b11a9e5cedd6fd9dd86fc2dcdcc9db50f0d846d81d2736a74",
+      "donor_body_sha256": "5c59c1bfe439765b11a9e5cedd6fd9dd86fc2dcdcc9db50f0d846d81d2736a74",
+      "disposition": "shared-header-needs-boundary-calibration",
+      "roadmap": "#264"
+    },
+    {
+      "target_file": "src/st/rno1/e_misc.c",
+      "target_function": "EntityUnkId13",
+      "donor": "src/st/e_misc.h:EntityUnkId13",
+      "target_body_sha256": "5697eee399b8deaf37c8e49858783648ef7b392365d13932ce9c38338c8f070b",
+      "donor_body_sha256": "5697eee399b8deaf37c8e49858783648ef7b392365d13932ce9c38338c8f070b",
+      "disposition": "shared-header-needs-boundary-calibration",
+      "roadmap": "#264"
+    },
+    {
+      "target_file": "src/st/rno1/e_misc.c",
+      "target_function": "MakeEntityFromId",
+      "donor": "src/st/e_misc.h:MakeEntityFromId",
+      "target_body_sha256": "82c187b298361c9d49677e1636d2f83ef98b1d45c98b8afe49cc0604b9bf2e2d",
+      "donor_body_sha256": "82c187b298361c9d49677e1636d2f83ef98b1d45c98b8afe49cc0604b9bf2e2d",
+      "disposition": "shared-header-needs-boundary-calibration",
+      "roadmap": "#264"
+    },
+    {
+      "target_file": "src/st/rno1/e_misc.c",
+      "target_function": "MakeExplosions",
+      "donor": "src/st/e_misc.h:MakeExplosions",
+      "target_body_sha256": "bd8d5c5d1bc64badd931ca09500339f596a467f340cc83055586573e2553fca5",
+      "donor_body_sha256": "bd8d5c5d1bc64badd931ca09500339f596a467f340cc83055586573e2553fca5",
+      "disposition": "shared-header-needs-boundary-calibration",
+      "roadmap": "#264"
+    },
+    {
+      "target_file": "src/st/rno1/e_misc.c",
+      "target_function": "PlaySfxPositional",
+      "donor": "src/st/e_misc.h:PlaySfxPositional",
+      "target_body_sha256": "1114783d1f5d741e3e6883de18068a11fbeb49e55a077fc5c1546f3ccd5143c1",
+      "donor_body_sha256": "1114783d1f5d741e3e6883de18068a11fbeb49e55a077fc5c1546f3ccd5143c1",
+      "disposition": "shared-header-needs-boundary-calibration",
+      "roadmap": "#264"
+    },
+    {
+      "target_file": "src/st/rno1/e_misc.c",
+      "target_function": "UnkCollisionFunc4",
+      "donor": "src/st/e_misc.h:UnkCollisionFunc4",
+      "target_body_sha256": "7de711ca978397caf545f5879c0c89354b18b34cddbd3ca158d0c8cdd5cf6cc9",
+      "donor_body_sha256": "7de711ca978397caf545f5879c0c89354b18b34cddbd3ca158d0c8cdd5cf6cc9",
+      "disposition": "shared-header-needs-boundary-calibration",
+      "roadmap": "#264"
+    },
+    {
+      "target_file": "src/st/rno1/e_misc.c",
+      "target_function": "UnkCollisionFunc5",
+      "donor": "src/st/e_misc.h:UnkCollisionFunc5",
+      "target_body_sha256": "0fc9d4ceb5d19c469d22f95c112c54e6e8cbf24446bc412bcf29b582272684d0",
+      "donor_body_sha256": "0fc9d4ceb5d19c469d22f95c112c54e6e8cbf24446bc412bcf29b582272684d0",
+      "disposition": "shared-header-needs-boundary-calibration",
+      "roadmap": "#264"
+    },
+    {
+      "target_file": "src/st/rno1/unk_26178.c",
+      "target_function": "func_us_801B7CC4_from_no1",
+      "donor": "src/st/no1/unk_36490.c:func_us_801B7CC4",
+      "target_body_sha256": "050f4dbad01027ea42bcf702abb6c1b6e3aaa9d752e0a260ff8a9e45011be03f",
+      "donor_body_sha256": "050f4dbad01027ea42bcf702abb6c1b6e3aaa9d752e0a260ff8a9e45011be03f",
+      "disposition": "target-copy-needs-shared-extraction",
+      "roadmap": "#264"
+    },
+    {
+      "target_file": "src/st/rno1/unk_34074.c",
+      "target_function": "EntityParanthropusThrownBone",
+      "donor": "src/st/are/e_paranthropus.c:EntityParanthropusThrownBone",
+      "target_body_sha256": "582b5012a85bab6d4ba7b0efea2d225af6c9bb450d82fb01bc0957e77646adda",
+      "donor_body_sha256": "582b5012a85bab6d4ba7b0efea2d225af6c9bb450d82fb01bc0957e77646adda",
+      "disposition": "target-copy-needs-shared-extraction",
+      "roadmap": "#264"
+    },
+    {
+      "target_file": "src/st/rno1/unk_34074.c",
+      "target_function": "ParanthropusSetStep",
+      "donor": "src/st/are/e_paranthropus.c:ParanthropusSetStep",
+      "target_body_sha256": "c37eabb5acc85fb35cda6883fa64f9a14f5d2313ab538480b77baa3afb0c2b59",
+      "donor_body_sha256": "c37eabb5acc85fb35cda6883fa64f9a14f5d2313ab538480b77baa3afb0c2b59",
+      "disposition": "target-copy-needs-shared-extraction",
+      "roadmap": "#264"
+    },
+    {
+      "target_file": "src/st/rno2/e_misc.c",
+      "target_function": "CheckColliderOffsets",
+      "donor": "src/st/e_misc.h:CheckColliderOffsets",
+      "target_body_sha256": "a953ab2123dac7413801aed82709605f1f25e30ec04d7ff24ea8b3744a2ade5e",
+      "donor_body_sha256": "a953ab2123dac7413801aed82709605f1f25e30ec04d7ff24ea8b3744a2ade5e",
+      "disposition": "shared-header-needs-boundary-calibration",
+      "roadmap": "#264"
+    },
+    {
+      "target_file": "src/st/rno2/e_misc.c",
+      "target_function": "ClutLerp",
+      "donor": "src/st/e_misc.h:ClutLerp",
+      "target_body_sha256": "c4392abc02b6710e088d9a06935e42828987e36462be37997a43ca1583cc7f3b",
+      "donor_body_sha256": "c4392abc02b6710e088d9a06935e42828987e36462be37997a43ca1583cc7f3b",
+      "disposition": "shared-header-needs-boundary-calibration",
+      "roadmap": "#264"
+    },
+    {
+      "target_file": "src/st/rno2/e_misc.c",
+      "target_function": "EntityBigRedFireball",
+      "donor": "src/st/e_misc.h:EntityBigRedFireball",
+      "target_body_sha256": "b4041154904b086cd23449861fccb2f2174377772fde84feb1fdefcb00b22204",
+      "donor_body_sha256": "b4041154904b086cd23449861fccb2f2174377772fde84feb1fdefcb00b22204",
+      "disposition": "shared-header-needs-boundary-calibration",
+      "roadmap": "#264"
+    },
+    {
+      "target_file": "src/st/rno2/e_misc.c",
+      "target_function": "EntityExplosionVariantsSpawner",
+      "donor": "src/st/e_misc.h:EntityExplosionVariantsSpawner",
+      "target_body_sha256": "a1241f98a7a05675fe3340a9d9ffb208ecede7bfcb213fcee039ba4b0d9a0b0e",
+      "donor_body_sha256": "a1241f98a7a05675fe3340a9d9ffb208ecede7bfcb213fcee039ba4b0d9a0b0e",
+      "disposition": "shared-header-needs-boundary-calibration",
+      "roadmap": "#264"
+    },
+    {
+      "target_file": "src/st/rno2/e_misc.c",
+      "target_function": "EntityGreyPuffSpawner",
+      "donor": "src/st/e_misc.h:EntityGreyPuffSpawner",
+      "target_body_sha256": "da2905447b14c68abd39283a5e4c651ef4967a70154953f7e87a3b27bfd165d6",
+      "donor_body_sha256": "da2905447b14c68abd39283a5e4c651ef4967a70154953f7e87a3b27bfd165d6",
+      "disposition": "shared-header-needs-boundary-calibration",
+      "roadmap": "#264"
+    },
+    {
+      "target_file": "src/st/rno2/e_misc.c",
+      "target_function": "EntityIntenseExplosion",
+      "donor": "src/st/e_misc.h:EntityIntenseExplosion",
+      "target_body_sha256": "5c59c1bfe439765b11a9e5cedd6fd9dd86fc2dcdcc9db50f0d846d81d2736a74",
+      "donor_body_sha256": "5c59c1bfe439765b11a9e5cedd6fd9dd86fc2dcdcc9db50f0d846d81d2736a74",
+      "disposition": "shared-header-needs-boundary-calibration",
+      "roadmap": "#264"
+    },
+    {
+      "target_file": "src/st/rno2/e_misc.c",
+      "target_function": "EntityUnkId13",
+      "donor": "src/st/e_misc.h:EntityUnkId13",
+      "target_body_sha256": "5697eee399b8deaf37c8e49858783648ef7b392365d13932ce9c38338c8f070b",
+      "donor_body_sha256": "5697eee399b8deaf37c8e49858783648ef7b392365d13932ce9c38338c8f070b",
+      "disposition": "shared-header-needs-boundary-calibration",
+      "roadmap": "#264"
+    },
+    {
+      "target_file": "src/st/rno2/e_misc.c",
+      "target_function": "MakeEntityFromId",
+      "donor": "src/st/e_misc.h:MakeEntityFromId",
+      "target_body_sha256": "82c187b298361c9d49677e1636d2f83ef98b1d45c98b8afe49cc0604b9bf2e2d",
+      "donor_body_sha256": "82c187b298361c9d49677e1636d2f83ef98b1d45c98b8afe49cc0604b9bf2e2d",
+      "disposition": "shared-header-needs-boundary-calibration",
+      "roadmap": "#264"
+    },
+    {
+      "target_file": "src/st/rno2/e_misc.c",
+      "target_function": "MakeExplosions",
+      "donor": "src/st/e_misc.h:MakeExplosions",
+      "target_body_sha256": "bd8d5c5d1bc64badd931ca09500339f596a467f340cc83055586573e2553fca5",
+      "donor_body_sha256": "bd8d5c5d1bc64badd931ca09500339f596a467f340cc83055586573e2553fca5",
+      "disposition": "shared-header-needs-boundary-calibration",
+      "roadmap": "#264"
+    },
+    {
+      "target_file": "src/st/rno2/e_misc.c",
+      "target_function": "PlaySfxPositional",
+      "donor": "src/st/e_misc.h:PlaySfxPositional",
+      "target_body_sha256": "1114783d1f5d741e3e6883de18068a11fbeb49e55a077fc5c1546f3ccd5143c1",
+      "donor_body_sha256": "1114783d1f5d741e3e6883de18068a11fbeb49e55a077fc5c1546f3ccd5143c1",
+      "disposition": "shared-header-needs-boundary-calibration",
+      "roadmap": "#264"
+    },
+    {
+      "target_file": "src/st/rno2/e_misc.c",
+      "target_function": "UnkCollisionFunc4",
+      "donor": "src/st/e_misc.h:UnkCollisionFunc4",
+      "target_body_sha256": "7de711ca978397caf545f5879c0c89354b18b34cddbd3ca158d0c8cdd5cf6cc9",
+      "donor_body_sha256": "7de711ca978397caf545f5879c0c89354b18b34cddbd3ca158d0c8cdd5cf6cc9",
+      "disposition": "shared-header-needs-boundary-calibration",
+      "roadmap": "#264"
+    },
+    {
+      "target_file": "src/st/rno2/e_misc.c",
+      "target_function": "UnkCollisionFunc5",
+      "donor": "src/st/e_misc.h:UnkCollisionFunc5",
+      "target_body_sha256": "0fc9d4ceb5d19c469d22f95c112c54e6e8cbf24446bc412bcf29b582272684d0",
+      "donor_body_sha256": "0fc9d4ceb5d19c469d22f95c112c54e6e8cbf24446bc412bcf29b582272684d0",
+      "disposition": "shared-header-needs-boundary-calibration",
+      "roadmap": "#264"
+    },
+    {
+      "target_file": "src/st/rno2/unk_322E4.c",
+      "target_function": "func_us_801B4148_from_bo0",
+      "donor": "src/st/no2_bg.h:func_us_801B4148",
+      "target_body_sha256": "32848f698b1dbb7d863d50355940d87c5c4a3bcbb5edf2af8fbdc418fbf41b71",
+      "donor_body_sha256": "32848f698b1dbb7d863d50355940d87c5c4a3bcbb5edf2af8fbdc418fbf41b71",
+      "disposition": "shared-header-needs-boundary-calibration",
+      "roadmap": "#264"
+    },
+    {
+      "target_file": "src/st/rno2/unk_3459C.c",
+      "target_function": "func_us_801AC73C_from_bo0",
+      "donor": "src/boss/bo0/2B9EC.c:func_us_801AC73C",
+      "target_body_sha256": "05316ba788e89ccfbaad550119cab736354b4f5d1168f07f8cfd168c85f22338",
+      "donor_body_sha256": "05316ba788e89ccfbaad550119cab736354b4f5d1168f07f8cfd168c85f22338",
+      "disposition": "target-copy-needs-shared-extraction",
+      "roadmap": "#264"
+    },
+    {
+      "target_file": "src/st/rno2/unk_39458.c",
+      "target_function": "func_us_801B9458",
+      "donor": "src/st/e_red_door.h:EntityIsNearPlayer",
+      "target_body_sha256": "6fcc0caa9c5ec1ec71cfb05a871bb1a86a60d4c6cf9559c9cebf7bf8d2051509",
+      "donor_body_sha256": "6fcc0caa9c5ec1ec71cfb05a871bb1a86a60d4c6cf9559c9cebf7bf8d2051509",
+      "disposition": "shared-header-needs-boundary-calibration",
+      "roadmap": "#264"
+    },
+    {
+      "target_file": "src/st/rno4/unk_44B0C.c",
+      "target_function": "EntityWaterBox",
+      "donor": "src/st/no4/first_c_file.c:EntityWaterBox",
+      "target_body_sha256": "de095f0091b5ae57de2c6cfeed6d892c3a9ee4b74c3a902b2a49c97473fcb56c",
+      "donor_body_sha256": "de095f0091b5ae57de2c6cfeed6d892c3a9ee4b74c3a902b2a49c97473fcb56c",
+      "disposition": "target-copy-needs-shared-extraction",
+      "roadmap": "#264"
+    },
+    {
+      "target_file": "src/st/rno4/unk_44B0C.c",
+      "target_function": "PlaySfxPositional",
+      "donor": "src/st/e_misc.h:PlaySfxPositional",
+      "target_body_sha256": "1114783d1f5d741e3e6883de18068a11fbeb49e55a077fc5c1546f3ccd5143c1",
+      "donor_body_sha256": "1114783d1f5d741e3e6883de18068a11fbeb49e55a077fc5c1546f3ccd5143c1",
+      "disposition": "shared-header-needs-boundary-calibration",
+      "roadmap": "#264"
+    },
+    {
+      "target_file": "src/st/rno4/unk_52ED0.c",
+      "target_function": "EntityWaterDrop",
+      "donor": "src/st/rnz1/unk_37BF8.c:EntityWaterDrop",
+      "target_body_sha256": "e9d961edaa8b4ae2170605facf2a28f634cd15bc296c5844a4267bf1b1c02136",
+      "donor_body_sha256": "e9d961edaa8b4ae2170605facf2a28f634cd15bc296c5844a4267bf1b1c02136",
+      "disposition": "target-copy-needs-shared-extraction",
+      "roadmap": "#264"
+    },
+    {
+      "target_file": "src/st/rnz1/e_cloaked_knight.c",
+      "target_function": "EntityCloakedKnightAura",
+      "donor": "src/st/nz1/e_cloaked_knight.c:EntityCloakedKnightAura",
+      "target_body_sha256": "fa7fd37e3e6e4daf6f3f2d6272ee0870233bf6be2e6bc24d1d3e82c14940a5ee",
+      "donor_body_sha256": "fa7fd37e3e6e4daf6f3f2d6272ee0870233bf6be2e6bc24d1d3e82c14940a5ee",
+      "disposition": "target-copy-needs-shared-extraction",
+      "roadmap": "#264"
+    },
+    {
+      "target_file": "src/st/rnz1/unk_276A8.c",
+      "target_function": "EntityGearSidewaysLarge",
+      "donor": "src/st/nz1/e_gear_large.c:EntityGearSidewaysLarge",
+      "target_body_sha256": "625af431e9d9205b0bc090cce44d3bd90f9b028a1c6c0236b59efe93c58c6b08",
+      "donor_body_sha256": "625af431e9d9205b0bc090cce44d3bd90f9b028a1c6c0236b59efe93c58c6b08",
+      "disposition": "target-copy-needs-shared-extraction",
+      "roadmap": "#264"
+    },
+    {
+      "target_file": "src/st/rnz1/unk_37BF8.c",
+      "target_function": "EntityWaterDrop",
+      "donor": "src/st/rno4/unk_52ED0.c:EntityWaterDrop",
+      "target_body_sha256": "e9d961edaa8b4ae2170605facf2a28f634cd15bc296c5844a4267bf1b1c02136",
+      "donor_body_sha256": "e9d961edaa8b4ae2170605facf2a28f634cd15bc296c5844a4267bf1b1c02136",
+      "disposition": "target-copy-needs-shared-extraction",
+      "roadmap": "#264"
+    }
+  ]
+}
