@@ -566,6 +566,7 @@ AUTOMATION_SCRIPTS = {
     "overlay_size_check.py",
     "test_build_classifier.py",
     "test_review_gate.py",
+    "test_selftest_runner.py",
     "test_shim_gate.py",
     "relocation_check.py",
     "find_data_segment.py",

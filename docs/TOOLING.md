@@ -16,7 +16,7 @@ For the mechanisms that land matches, read `automation/README.md`.
 | Decompiled | **94.0%**, 8166/8734 functions; 568 US `INCLUDE_ASM` stubs remain |
 | Queue | 983 records: 415 matched, 398 todo, 122 escalated, 42 deferred, 6 near |
 | Provenance | upstream-harvest 45, shim-segment 9, shim-header 55, transplant 134, twin-port 29, permuter 18, claude-manual 4, model-fleet 56, unknown 65 |
-| Automation | 85 modules, 28 suites plus 36 module self-tests, 90 tools, 68 diagnostics |
+| Automation | 86 modules, 29 suites plus 36 module self-tests, 90 tools, 69 diagnostics |
 
 This block is regenerated from the same queue, checksum manifest, linker maps, provenance classifier, and connector inventory as `README.md`.
 <!-- LIVE-STATUS:END -->
@@ -472,7 +472,7 @@ script supports `--help` and most support `--self-test`.
 
 | script | answers |
 |---|---|
-| `run_selftests.py` | runs every `test_*.py` and prints one table |
+| `run_selftests.py` | runs every `test_*.py` and module self-test through one longest-first worker queue, streams completion progress, and prints one table; the timing cache lives outside Git at `~/sotn-work/selftest-timings.json` |
 | `artifact_store.py` | public immutable-generation and atomic stable-view store shared by candidate, rejection, transplant, migration, and seed-repair writers |
 | `fix_seed_declarations.py` | repair missing or stale writer-owned declarations across complete candidate translation units; exact repository prototypes win, externally visible definitions supply their exact signature when no prototype exists, and static definitions are never exported; `--apply` publishes an immutable version and prints its exact `seed=` path |
 | `permuter_supervisor.py` | the auto-queueing permuter driver, legacy-seed migrator and focused importer. **Use `job_start`** for searches |
@@ -481,7 +481,7 @@ script supports `--help` and most support `--self-test`.
 The remaining `test_*.py` scripts are all callable through `run_automation` and
 each explains itself when run. `test_connector_surfaces.py` enforces that
 blanket claim and exact coverage of every callable connector tool.
-`run_selftests.py` is the one to reach for.
+`run_selftests.py` is the one to reach for. Its verified default is up to eight concurrent suites; BuildLock and server-driving suites remain serial.
 
 Before publication, the worker scans the complete substituted translation unit,
 not only the generated function. Existing C earlier in the file can rely on C89
