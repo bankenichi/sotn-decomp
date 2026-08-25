@@ -1,3 +1,15 @@
+/* PERMUTER SEED -- deterministic isolated-score candidate.
+   record : us:BOSS/BO5:func_us_801A19CC
+   score  : 0
+   receipt: nonmatchings/.adapt-scores/20260825-212851-34688-468568/func_us_801A19CC/adapt-score.json
+   producer: compiled-donor transplant, no model
+   content: WHOLE FILE (isolated adaptable draft)
+   origin : src/boss/bo5/unk_2159C.c
+   asm    : asm/us/boss/bo5/nonmatchings/unk_2159C/func_us_801A19CC.s
+   verdict: the exact target function compiled under the project
+            compiler and flags but did not score zero. A full game
+            build was intentionally not run. Import and search via
+            permuter_supervisor.py; never treat this as a match. */
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #include "bo5.h"
 
