@@ -15,9 +15,9 @@ evidence, not active instructions.
 | live authority | current value |
 |---|---|
 | Build oracle | **113/113** from the artifacts on disk |
-| Decompiled | **94.0%**, 8174/8734 functions; 560 US `INCLUDE_ASM` stubs remain |
-| Queue | 983 records: 423 matched, 389 todo, 123 escalated, 42 deferred, 6 near |
-| Provenance | upstream-harvest 47, shim-segment 9, shim-header 55, transplant 135, twin-port 29, permuter 18, claude-manual 6, model-fleet 58, unknown 66 |
+| Decompiled | **94.0%**, 8176/8734 functions; 558 US `INCLUDE_ASM` stubs remain |
+| Queue | 983 records: 425 matched, 387 todo, 123 escalated, 42 deferred, 6 near |
+| Provenance | upstream-harvest 47, shim-segment 9, shim-header 55, transplant 135, twin-port 31, permuter 18, claude-manual 6, model-fleet 58, unknown 66 |
 | Automation | 86 modules, 29 suites plus 36 module self-tests, 90 tools, 69 diagnostics |
 
 This block is regenerated from the same queue, checksum manifest, linker maps, provenance classifier, and connector inventory as `README.md`.

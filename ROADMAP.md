@@ -19,9 +19,9 @@ mistake impossible twice.
 | live authority | current value |
 |---|---|
 | Build oracle | **113/113** from the artifacts on disk |
-| Decompiled | **94.0%**, 8174/8734 functions; 560 US `INCLUDE_ASM` stubs remain |
-| Queue | 983 records: 423 matched, 389 todo, 123 escalated, 42 deferred, 6 near |
-| Provenance | upstream-harvest 47, shim-segment 9, shim-header 55, transplant 135, twin-port 29, permuter 18, claude-manual 6, model-fleet 58, unknown 66 |
+| Decompiled | **94.0%**, 8176/8734 functions; 558 US `INCLUDE_ASM` stubs remain |
+| Queue | 983 records: 425 matched, 387 todo, 123 escalated, 42 deferred, 6 near |
+| Provenance | upstream-harvest 47, shim-segment 9, shim-header 55, transplant 135, twin-port 31, permuter 18, claude-manual 6, model-fleet 58, unknown 66 |
 | Automation | 86 modules, 29 suites plus 36 module self-tests, 90 tools, 69 diagnostics |
 
 This block is regenerated from the same queue, checksum manifest, linker maps, provenance classifier, and connector inventory as `README.md`.
@@ -42,8 +42,8 @@ This block is regenerated from the same queue, checksum manifest, linker maps, p
 | `BOSS/BO5` | 18 | 18 | 0 | 0 | 0 | 5 |
 | `BOSS/BO6` | 43 | 0 | 2 | 34 | 7 | 80 |
 | `BOSS/BO7` | 13 | 13 | 0 | 0 | 0 | 8 |
-| `BOSS/RBO1` | 15 | 15 | 0 | 0 | 0 | 5 |
-| `BOSS/RBO2` | 20 | 20 | 0 | 0 | 0 | 8 |
+| `BOSS/RBO1` | 14 | 14 | 0 | 0 | 0 | 6 |
+| `BOSS/RBO2` | 19 | 19 | 0 | 0 | 0 | 9 |
 | `BOSS/RBO4` | 7 | 7 | 0 | 0 | 0 | 0 |
 | `BOSS/RBO6` | 36 | 36 | 0 | 0 | 0 | 8 |
 | `BOSS/RBO7` | 9 | 9 | 0 | 0 | 0 | 0 |
