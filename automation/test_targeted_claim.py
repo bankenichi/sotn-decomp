@@ -154,6 +154,30 @@ def scheduler_behaviour(tmp):
     check(on_disk[0]["status"] == "todo",
           "in particular it did NOT claim the record it would have picked")
 
+    print("\na fleet allowlist filters the ordinary todo pool")
+    allowed = "us:ST/RDAI:func_allowed"
+    burned = "us:ST/RDAI:func_burned"
+    unrelated = "us:ST/RDAI:func_unrelated"
+    write_queue(qpath, [
+        rec(burned, "escalated"),
+        rec(allowed, "todo"),
+        rec(unrelated, "todo"),
+    ])
+    got = run_next(qpath, "--allowlist", f"{burned},{allowed}")
+    check(got.get("id") == allowed,
+          f"claims the allowed todo record, not the escalated one ({got!r})")
+    write_queue(qpath, [
+        rec(burned, "escalated"),
+        rec(unrelated, "todo"),
+    ])
+    got = run_next(qpath, "--allowlist", burned)
+    check(got.get("status") == "empty",
+          "an allowlisted escalated record is terminal for the fleet pass")
+    on_disk = {r["id"]: r for r in
+               (json.loads(l) for l in open(qpath, encoding="utf-8"))}
+    check(on_disk[unrelated]["status"] == "todo",
+          "and an unrelated todo record is never used as fallback")
+
     print("\nwithout --only the ordinary path is unchanged")
     write_queue(qpath, [
         rec("us:ST/RDAI:func_a", "todo"),
@@ -267,6 +291,8 @@ def scheduler_structure():
     check('pn.add_argument("--only"' in src, "next takes --only")
     check(src.count('add_argument("--only"') == 1,
           "and no other subcommand does")
+    check('pn.add_argument("--allowlist"' in src,
+          "next also takes the fleet's todo-pool allowlist")
 
 
 def priority_identity():
@@ -316,14 +342,16 @@ def worker_structure():
     src = open(wd.__file__, encoding="utf-8", errors="replace").read()
 
     print("\nthe worker passes it through")
-    check("def claim_next(only: str | None = None)" in src,
-          "claim_next takes an id")
+    check("def claim_next(only: str | None = None," in src,
+          "claim_next takes a targeted id")
     check('_next_args += ["--only", only]' in src,
           "and forwards it to the scheduler")
-    check("def process_one(dry: bool = False, only: str | None = None)" in src,
+    check("def process_one(dry: bool = False, only: str | None = None," in src,
           "process_one takes one too")
     check("process_one(a.dry_run, a.only)" in src,
           "and `once` supplies it")
+    check('_next_args += ["--allowlist", ",".join(allowlist)]' in src,
+          "fleet loops forward their subset through the separate allowlist")
 
     print("\n`loop --only` is not offered, because it would not mean anything")
     # A loop with a fixed id either re-claims the record it just reported or
@@ -331,6 +359,8 @@ def worker_structure():
     loop = src[src.index('p2 = sub.add_parser("loop")'):]
     loop = loop[:loop.index("sub.add_parser(\"preflight\"")]
     check("--only" not in loop, "loop has no --only")
+    check("--allowlist" in loop,
+          "loop instead filters the scheduler's normal todo pool")
 
     print("\nan unclaimable id says so instead of 'queue empty'")
     # "queue empty" after a targeted run is a lie: the queue is full, that one

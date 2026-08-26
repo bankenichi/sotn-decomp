@@ -48,7 +48,20 @@ INCLUDE_ASM("boss/rbo8/nonmatchings/unk_15868", func_us_80198964);
 
 INCLUDE_ASM("boss/rbo8/nonmatchings/unk_15868", func_us_8019C7B8_from_rcen);
 
-INCLUDE_ASM("boss/rbo8/nonmatchings/unk_15868", func_us_801991D4);
+/* Declarations injected by the worker: used by the candidate
+   below and absent from this file. Copied verbatim from the
+   tree, same overlay or a shared header, never another
+   overlay's. */
+extern EInit D_us_80180A98;
+
+void func_us_801991D4(Entity* self) {
+    if (self->step == 0) {
+        InitializeEntity(D_us_80180A98);
+        return;
+    }
+    DestroyEntity(self);
+}
+
 
 INCLUDE_ASM("boss/rbo8/nonmatchings/unk_15868", func_us_8019921C);
 

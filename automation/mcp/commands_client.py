@@ -2020,7 +2020,7 @@ def opencode_preflight(timeout: int = 90) -> dict:
 def fleet_start(workers: int = 4, max_functions: int = 0,
                 force: bool = False, backend: str = "zen",
                 cli_workers: int = 0, opencode_model: str = "",
-                reasoning: str = "") -> dict:
+                reasoning: str = "", only: str = "") -> dict:
     """Launch detached worker_direct.py processes inside WSL.
 
     Lets the orchestrator run the volume tier without a human at a PowerShell
@@ -2067,6 +2067,10 @@ def fleet_start(workers: int = 4, max_functions: int = 0,
     Total workers is generations in flight. apply/build/verify is serialised by
     a lock, so beyond ~4 the extras mostly queue. llama-server must be started
     with --parallel >= the llama worker count or generation serialises too.
+
+    only is a comma-separated allowlist of exact queue ids. It filters the
+    scheduler's ordinary todo pool before ranking and claiming. Escalated,
+    deferred, near, matched and unlisted todo records are never eligible.
     """
     backend = (backend or "zen").strip().lower()
     # Legacy alias. Resolve it before validation so exactly one spelling
@@ -2113,9 +2117,22 @@ def fleet_start(workers: int = 4, max_functions: int = 0,
                        f"default) or explicit 'low'; Zen 503s on medium and "
                        f"500s on high. Rejected: {', '.join(sorted(set(bad)))}")
 
+    subset = []
+    for raw in (only or "").split(","):
+        qid = raw.strip()
+        if not qid:
+            continue
+        qid = _queue_id(qid)
+        if qid in subset:
+            raise Rejected(f"duplicate queue id in only: {qid}")
+        subset.append(qid)
+    if len(subset) > 256:
+        raise Rejected("only accepts at most 256 exact queue ids")
+
     plan = {"backend": backend, "llama_workers": n_llama, "zen_workers": n_zen, "cli_workers": n_cli,
             "opencode_model": opencode_model or "(worker default)",
-            "reasoning": ",".join(efforts) or "(worker default: none)"}
+            "reasoning": ",".join(efforts) or "(worker default: none)",
+            "only": subset}
     if DRYRUN:
         return {"action": "fleet_start", "dry_run": True, **plan,
                 "note": "would launch detached workers"}
@@ -2158,6 +2175,8 @@ def fleet_start(workers: int = 4, max_functions: int = 0,
                             "automation\\win\\start_fleet.ps1 on Windows."}
 
     extra = f" --max {int(max_functions)}" if int(max_functions) > 0 else ""
+    if subset:
+        extra += " --allowlist " + shlex.quote(",".join(subset))
     # One bash invocation launches every worker and writes the pid file, so a
     # slow MCP round trip cannot leave a half-started, untracked fleet.
     #

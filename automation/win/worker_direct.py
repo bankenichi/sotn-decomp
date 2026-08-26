@@ -1146,7 +1146,8 @@ def sched(*args: str) -> str:
     return out.strip()
 
 
-def claim_next(only: str | None = None) -> dict | None:
+def claim_next(only: str | None = None,
+               allowlist: list[str] | None = None) -> dict | None:
     # A hosted tier picks up what llama handed off for size. Without this the
     # deferred records sit forever: llama will never retry them (same gate) and
     # nothing else claims `deferred`.
@@ -1174,6 +1175,8 @@ def claim_next(only: str | None = None) -> dict | None:
     # reason the flag exists.
     if only:
         _next_args += ["--only", only]
+    elif allowlist:
+        _next_args += ["--allowlist", ",".join(allowlist)]
     raw = sched(*_next_args)
     line = [l for l in raw.splitlines() if l.strip().startswith("{")]
     if not line:
@@ -5419,14 +5422,17 @@ def diff_feedback(rec: dict) -> str:
 
 # ---- main loop ---------------------------------------------------------------
 
-def process_one(dry: bool = False, only: str | None = None) -> bool:
-    rec = claim_next(only)
+def process_one(dry: bool = False, only: str | None = None,
+                allowlist: list[str] | None = None) -> bool:
+    rec = claim_next(only, allowlist)
     if rec is None:
         # Say WHICH question came back empty. "queue empty" after a targeted
         # run is a lie: the queue is full, that one id was unclaimable.
         if only:
             print(f"[worker] cannot claim {only}: no such record, or it is "
                   f"already claimed or already matched")
+        elif allowlist:
+            print("[worker] allowlisted todo subset exhausted")
         else:
             print("[worker] queue empty")
         return False
@@ -5976,6 +5982,8 @@ def main() -> int:
     p2 = sub.add_parser("loop")
     p2.add_argument("--max", type=int, default=0)
     p2.add_argument("--dry-run", action="store_true")
+    p2.add_argument("--allowlist", default="", metavar="ID[,ID...]",
+                    help="filter normal todo claims to these exact queue ids")
     sub.add_parser("preflight",
                    help="check the configured backend is reachable, then exit")
     sub.add_parser("replay",
@@ -6101,8 +6109,10 @@ def main() -> int:
     try:
         if a.cmd == "once":
             process_one(a.dry_run, a.only); return 0
+        allowlist = [
+            qid.strip() for qid in a.allowlist.split(",") if qid.strip()]
         n = 0
-        while process_one(a.dry_run):
+        while process_one(a.dry_run, allowlist=allowlist):
             n += 1
             if a.max and n >= a.max:
                 break

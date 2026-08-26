@@ -19,9 +19,9 @@ mistake impossible twice.
 | live authority | current value |
 |---|---|
 | Build oracle | **113/113** from the artifacts on disk |
-| Decompiled | **94.0%**, 8171/8734 functions; 563 US `INCLUDE_ASM` stubs remain |
-| Queue | 983 records: 420 matched, 393 todo, 122 escalated, 42 deferred, 6 near |
-| Provenance | upstream-harvest 47, shim-segment 9, shim-header 55, transplant 135, twin-port 29, permuter 18, claude-manual 6, model-fleet 56, unknown 65 |
+| Decompiled | **94.0%**, 8174/8734 functions; 560 US `INCLUDE_ASM` stubs remain |
+| Queue | 983 records: 423 matched, 389 todo, 123 escalated, 42 deferred, 6 near |
+| Provenance | upstream-harvest 47, shim-segment 9, shim-header 55, transplant 135, twin-port 29, permuter 18, claude-manual 6, model-fleet 58, unknown 66 |
 | Automation | 86 modules, 29 suites plus 36 module self-tests, 90 tools, 69 diagnostics |
 
 This block is regenerated from the same queue, checksum manifest, linker maps, provenance classifier, and connector inventory as `README.md`.
@@ -39,7 +39,7 @@ This block is regenerated from the same queue, checksum manifest, linker maps, p
 | `BOSS/BO0` | 50 | 0 | 1 | 31 | 18 | 17 |
 | `BOSS/BO2` | 15 | 15 | 0 | 0 | 0 | 0 |
 | `BOSS/BO3` | 45 | 45 | 0 | 0 | 0 | 15 |
-| `BOSS/BO5` | 19 | 19 | 0 | 0 | 0 | 4 |
+| `BOSS/BO5` | 18 | 18 | 0 | 0 | 0 | 5 |
 | `BOSS/BO6` | 43 | 0 | 2 | 34 | 7 | 80 |
 | `BOSS/BO7` | 13 | 13 | 0 | 0 | 0 | 8 |
 | `BOSS/RBO1` | 15 | 15 | 0 | 0 | 0 | 5 |
@@ -47,7 +47,7 @@ This block is regenerated from the same queue, checksum manifest, linker maps, p
 | `BOSS/RBO4` | 7 | 7 | 0 | 0 | 0 | 0 |
 | `BOSS/RBO6` | 36 | 36 | 0 | 0 | 0 | 8 |
 | `BOSS/RBO7` | 9 | 9 | 0 | 0 | 0 | 0 |
-| `BOSS/RBO8` | 20 | 20 | 0 | 0 | 0 | 4 |
+| `BOSS/RBO8` | 19 | 18 | 0 | 1 | 0 | 5 |
 | `MAIN` | 2 | 0 | 0 | 2 | 0 | 0 |
 | `ST/RCEN` | 15 | 0 | 0 | 14 | 1 | 8 |
 | `ST/RCHI` | 10 | 0 | 0 | 7 | 3 | 5 |
@@ -56,7 +56,7 @@ This block is regenerated from the same queue, checksum manifest, linker maps, p
 | `ST/RNO0` | 31 | 0 | 2 | 18 | 11 | 188 |
 | `ST/RNO1` | 26 | 26 | 0 | 0 | 0 | 16 |
 | `ST/RNO2` | 37 | 37 | 0 | 0 | 0 | 11 |
-| `ST/RNO4` | 64 | 64 | 0 | 0 | 0 | 20 |
+| `ST/RNO4` | 63 | 63 | 0 | 0 | 0 | 21 |
 | `ST/RNZ1` | 47 | 47 | 0 | 0 | 0 | 18 |
 | `ST/SEL` | 1 | 0 | 0 | 1 | 0 | 0 |
 
@@ -1307,3 +1307,7 @@ Status: **done**, **open**, **partial**, **void** (turned out unnecessary),
 | 267 | **open** | OWNER OVERRIDE: the current live `todo` population is the exclusive execution lane until `queue_stats` reports `todo: 0`. Execute #257 through #264 in order and do not advance #242 through #252, #265, or any non-todo record before that boundary. The deferred tasks remain open with all prior evidence intact; refresh their live populations only after todo exhaustion. |
 | 268 | done | Fixed the post-commit generated-document refusal without weakening the push gate. Root cause was `readme_status.py` reusing queue coverage's intentional `HEAD` default during pre-commit synchronization, so a staged stub removal rendered the old count and the new commit became stale immediately. Queue coverage now distinguishes committed HEAD, staged index and worktree while retaining HEAD as its audit default; living work-scope generation and every generated stub total read the exact staged blobs Git will commit. A temporary-repository regression proves the index remains authoritative across a conflicting unstaged same-file edit, selector regressions cover all three views, and the push guard continues to refuse genuinely stale managed documents. |
 | 269 | done | Fixed the sequential score-zero landing helper after RNO4 `LoadFerrymanGateTiles` reached a green 113/113 oracle and printed `MATCHED` while remaining live `todo`. Root cause was structural: `land_score_zeros()` never called the scheduler, and calling it after `land_match()` returned would have occurred outside BuildLock and recreated the known whole-tree proof race. The supervisor now exposes a verified-success callback inside its apply/build/oracle lock; the sequential helper validates exact receipt-owned source changes and performs the scheduler proof-gated queue transition there. Callback or reporting failure restores the original source before releasing the lock. A behavioral regression first reproduced the missing report, then passed with the fix; supervisor controls assert callback order and in-lock restoration. |
+| 270 | done | Continued #257 after its fifth match. With `LoadFerrymanGateTiles` landed, the remaining 12-instruction RNO4 `func_us_801C8C54` dependency closed mechanically; the cheap targeted worker produced the direct `LoadFerrymanGateTiles(); DestroyEntity(self);` wrapper on its first attempt, and the scheduler recorded a proof-gated 113/113 match with durable landing evidence. This supersedes #257's interim count: six tiny-closed records are matched and 26 original wave records remain. |
+| 271 | done | Added bounded fleet dispatch after the owner identified per-record babysitting as avoidable token cost. `fleet_start(only=...)` now accepts a comma-separated allowlist of exact queue ids, validates each id through the existing queue-id control, forwards the immutable subset to every worker, and exposes it in the launch plan. Worker loops scan only those ids and exit when none remain claimable, never falling through to unrelated todo work. The connector-surface regression proves exact subset preservation and the real worker wiring. A connector restart is required before the new argument is callable from clients. |
+| 272 | done | Retracted #271's initial worker-loop implementation after its first live run. It reused the targeted `scheduler next --only` override, which deliberately claims escalated records, so four workers repeatedly reclaimed their own failures: RBO8 `func_801D0B40` reached eight claims and RNZ1 `SpikesApplyDamage` reached 21 before the fleet was stopped. The corrected design adds a scheduler-owned allowlist as a filter on the ordinary `todo` pool before ranking and claiming. Fleet subsets can now claim only listed todo records; escalated, deferred, near, matched and unrelated todo records are terminal or invisible. The pre-existing targeted-claim regression that the first implementation violated now passes, and new behavioral cases prove no escalated reclaim and no unrelated fallback. The next scoped comparison must use low reasoning and exclude `SpikesApplyDamage`, whose exact shared function body makes it deterministic transplant work despite the whole-header shim's separate data-segment blocker. |
+| 273 | **open** | OWNER OVERRIDE: audit all 560 currently unmatched records across `todo`, `near`, `escalated` and `deferred`, and exhaust every applicable programmatic path before any further model dispatch. Candidate status is not an exhaustion receipt. Refresh upstream, twin, shim, declaration and data evidence; isolated-score every deterministic transplant or adaptation; land every score zero through the complete oracle; preserve every rejection; and implement any missing candidate verifier instead of skipping that class. The batch recovery boundary is `automation/queue/snapshots/queue.20260826-031644.e8f49b1.jsonl`, 983 records at SHA-256 `500e125c46546aa2fe4b5d013397937bbead87d79d4de8c2128f1795b68643ab`. The first refreshed evidence found 205 upstream definitions and 237 twin-bearing records among the 560 unmatched stubs. |

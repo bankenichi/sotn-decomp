@@ -21,19 +21,13 @@
 void SpikesApplyDamage(u32 arg0) {
     s32 tileX;
     s32 tileY;
-    s16 scrollX;
-    s16 scrollY;
 
-    tileX = (arg0 & 0xF) << 4;
-    tileX += 8;
-    scrollX = g_Tilemap.scrollX.i.hi;
-    tileX -= scrollX;
+    // Extract tile X from low nibble, scale to pixel offset, add 8 for center
+    tileX = (arg0 & 0xF) * 16 + 8;
+    // Extract tile Y from high nibble, scale to pixel offset, add 8 for center
+    tileY = ((arg0 >> 4) & 0xF) * 16 + 8;
 
-    tileY = (arg0 >> 4) << 4;
-    tileY += 8;
-    scrollY = g_Tilemap.scrollY.i.hi;
-    tileY -= scrollY;
-
-    g_CurrentEntity->ext.spikes.rotate = (s16)tileX;
-    g_CurrentEntity->ext.spikes.echoCooldown = (s16)tileY;
+    // Subtract scroll position to get world-space coordinate
+    g_CurrentEntity->ext.spikes.rotate = (s16)(tileX - g_Tilemap.scrollX.i.hi);
+    g_CurrentEntity->ext.spikes.echoCooldown = (s16)(tileY - g_Tilemap.scrollY.i.hi);
 }

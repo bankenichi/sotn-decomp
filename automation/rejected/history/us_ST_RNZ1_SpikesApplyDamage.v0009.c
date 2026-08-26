@@ -18,22 +18,20 @@
 
    Do NOT apply this to the tree. Read it, fix what the
    verdict names, and re-attempt. */
+// Applies spike damage based on tile position, setting hitbox offsets relative to scroll position
 void SpikesApplyDamage(u32 arg0) {
-    s32 tileX;
-    s32 tileY;
-    s16 scrollX;
-    s16 scrollY;
+    s16 tileX;
+    s16 tileY;
 
+    // Extract low nibble for X tile, high nibble for Y tile
     tileX = (arg0 & 0xF) << 4;
     tileX += 8;
-    scrollX = g_Tilemap.scrollX.i.hi;
-    tileX -= scrollX;
+    tileX -= g_Tilemap.scrollX.i.hi;
 
     tileY = (arg0 >> 4) << 4;
     tileY += 8;
-    scrollY = g_Tilemap.scrollY.i.hi;
-    tileY -= scrollY;
+    tileY -= g_Tilemap.scrollY.i.hi;
 
-    g_CurrentEntity->ext.spikes.rotate = (s16)tileX;
-    g_CurrentEntity->ext.spikes.echoCooldown = (s16)tileY;
+    g_CurrentEntity->ext.spikes.rotate = tileX;
+    g_CurrentEntity->ext.spikes.echoCooldown = tileY;
 }

@@ -19,21 +19,12 @@
    Do NOT apply this to the tree. Read it, fix what the
    verdict names, and re-attempt. */
 void SpikesApplyDamage(u32 arg0) {
-    s32 tileX;
-    s32 tileY;
-    s16 scrollX;
-    s16 scrollY;
+    s16 tileX;
+    s16 tileY;
 
-    tileX = (arg0 & 0xF) << 4;
-    tileX += 8;
-    scrollX = g_Tilemap.scrollX.i.hi;
-    tileX -= scrollX;
+    tileX = (s16)(((arg0 & 0xF) << 4) + 8) - (s16)g_Tilemap.scrollX.i.hi;
+    tileY = (s16)(((arg0 >> 4) << 4) + 8) - (s16)g_Tilemap.scrollY.i.hi;
 
-    tileY = (arg0 >> 4) << 4;
-    tileY += 8;
-    scrollY = g_Tilemap.scrollY.i.hi;
-    tileY -= scrollY;
-
-    g_CurrentEntity->ext.spikes.rotate = (s16)tileX;
-    g_CurrentEntity->ext.spikes.echoCooldown = (s16)tileY;
+    g_CurrentEntity->ext.spikes.prim = (Primitive*)tileX;
+    g_CurrentEntity->ext.spikes.rotate = tileY;
 }

@@ -21,18 +21,15 @@
 void SpikesApplyDamage(u32 arg0) {
     s32 tileX;
     s32 tileY;
-    s16 scrollX;
-    s16 scrollY;
 
+    // Extract tile coordinates from packed arg0: low nibble = X, high nibble = Y
     tileX = (arg0 & 0xF) << 4;
     tileX += 8;
-    scrollX = g_Tilemap.scrollX.i.hi;
-    tileX -= scrollX;
+    tileX -= g_Tilemap.scrollX.i.hi;
 
     tileY = (arg0 >> 4) << 4;
     tileY += 8;
-    scrollY = g_Tilemap.scrollY.i.hi;
-    tileY -= scrollY;
+    tileY -= g_Tilemap.scrollY.i.hi;
 
     g_CurrentEntity->ext.spikes.rotate = (s16)tileX;
     g_CurrentEntity->ext.spikes.echoCooldown = (s16)tileY;

@@ -1,37 +1,8 @@
 {
- "generated_from": "2d69cb333",
+ "generated_from": "e8f49b174",
  "how_to_read": "A twin is a starting point, not an answer. Diff it against the stub's assembly before copying: sibling overlays routinely differ by one constant or one branch, and copying past that difference produces a function that is wrong in a way the build will catch but a reviewer will not. A twin under src/st/<name>.h is a SHARED implementation, so the right answer there is usually a shim, not a copy -- check shim_viable() in codebase_index.py first.",
  "regenerate": "python3 automation/asm_twin_finder.py --record",
  "twins": {
-  "boss/bo0/func_us_801B15BC": {
-   "instructions": 32,
-   "name_twins": [],
-   "overlay": "boss/bo0",
-   "shape_twins": [
-    {
-     "identical_constants": true,
-     "overlay": "boss/rbo2",
-     "symbol": "func_801CDC80"
-    },
-    {
-     "identical_constants": true,
-     "overlay": "st/rlib",
-     "symbol": "func_us_801AE4B4"
-    },
-    {
-     "identical_constants": true,
-     "overlay": "st/rlib",
-     "symbol": "func_us_801AF3C8"
-    },
-    {
-     "identical_constants": true,
-     "overlay": "st/rnz1",
-     "symbol": "func_801CDC80"
-    }
-   ],
-   "symbol": "func_us_801B15BC",
-   "token_twins": []
-  },
   "boss/bo0/func_us_801B1DDC": {
    "instructions": 32,
    "name_twins": [],
@@ -160,31 +131,6 @@
    "symbol": "func_us_801B37D0",
    "token_twins": []
   },
-  "boss/bo3/CheckColliderOffsets": {
-   "instructions": 60,
-   "name_twins": [
-    {
-     "file": "src/boss/bo7/e_misc.c",
-     "function": "CheckColliderOffsets"
-    },
-    {
-     "file": "src/st/e_misc.h",
-     "function": "CheckColliderOffsets"
-    },
-    {
-     "file": "src/st/rno1/e_misc.c",
-     "function": "CheckColliderOffsets"
-    },
-    {
-     "file": "src/st/rno2/e_misc.c",
-     "function": "CheckColliderOffsets"
-    }
-   ],
-   "overlay": "boss/bo3",
-   "shape_twins": [],
-   "symbol": "CheckColliderOffsets",
-   "token_twins": []
-  },
   "boss/bo3/CreateExplosionPuff": {
    "instructions": 48,
    "name_twins": [
@@ -200,103 +146,6 @@
    "overlay": "boss/bo3",
    "shape_twins": [],
    "symbol": "CreateExplosionPuff",
-   "token_twins": []
-  },
-  "boss/bo3/EntityExplosionVariants": {
-   "instructions": 60,
-   "name_twins": [
-    {
-     "file": "src/st/e_misc.h",
-     "function": "EntityExplosionVariants"
-    }
-   ],
-   "overlay": "boss/bo3",
-   "shape_twins": [
-    {
-     "identical_constants": true,
-     "overlay": "boss/bo7",
-     "symbol": "EntityExplosionVariants"
-    },
-    {
-     "identical_constants": true,
-     "overlay": "st/rno1",
-     "symbol": "EntityExplosionVariants"
-    },
-    {
-     "identical_constants": true,
-     "overlay": "st/rno2",
-     "symbol": "EntityExplosionVariants"
-    },
-    {
-     "identical_constants": true,
-     "overlay": "st/rno4",
-     "symbol": "EntityExplosionVariants"
-    }
-   ],
-   "symbol": "EntityExplosionVariants",
-   "token_twins": []
-  },
-  "boss/bo3/EntityGreyPuff": {
-   "instructions": 61,
-   "name_twins": [
-    {
-     "file": "src/st/e_misc.h",
-     "function": "EntityGreyPuff"
-    }
-   ],
-   "overlay": "boss/bo3",
-   "shape_twins": [
-    {
-     "identical_constants": true,
-     "overlay": "boss/bo7",
-     "symbol": "EntityGreyPuff"
-    },
-    {
-     "identical_constants": true,
-     "overlay": "st/rno1",
-     "symbol": "EntityGreyPuff"
-    },
-    {
-     "identical_constants": true,
-     "overlay": "st/rno2",
-     "symbol": "EntityGreyPuff"
-    },
-    {
-     "identical_constants": true,
-     "overlay": "st/rno4",
-     "symbol": "EntityGreyPuff"
-    }
-   ],
-   "symbol": "EntityGreyPuff",
-   "token_twins": []
-  },
-  "boss/bo3/EntityOlroxDrool": {
-   "instructions": 140,
-   "name_twins": [
-    {
-     "file": "src/st/e_misc.h",
-     "function": "EntityOlroxDrool"
-    }
-   ],
-   "overlay": "boss/bo3",
-   "shape_twins": [
-    {
-     "identical_constants": true,
-     "overlay": "boss/bo7",
-     "symbol": "EntityOlroxDrool"
-    },
-    {
-     "identical_constants": true,
-     "overlay": "st/rno1",
-     "symbol": "EntityOlroxDrool"
-    },
-    {
-     "identical_constants": true,
-     "overlay": "st/rno2",
-     "symbol": "EntityOlroxDrool"
-    }
-   ],
-   "symbol": "EntityOlroxDrool",
    "token_twins": []
   },
   "boss/bo3/EntitySplashWater": {
@@ -347,115 +196,15 @@
     {
      "file": "src/st/no4/first_c_file.c",
      "function": "EntityWaterBox"
+    },
+    {
+     "file": "src/st/rno4/unk_44B0C.c",
+     "function": "EntityWaterBox"
     }
    ],
    "overlay": "boss/bo3",
    "shape_twins": [],
    "symbol": "EntityWaterBox",
-   "token_twins": []
-  },
-  "boss/bo3/EntityWaterDrop": {
-   "instructions": 169,
-   "name_twins": [
-    {
-     "file": "src/st/rno3/water_effects.c",
-     "function": "EntityWaterDrop"
-    },
-    {
-     "file": "src/st/water_effects.h",
-     "function": "EntityWaterDrop"
-    }
-   ],
-   "overlay": "boss/bo3",
-   "shape_twins": [],
-   "symbol": "EntityWaterDrop",
-   "token_twins": []
-  },
-  "boss/bo3/InitializeUnkEntity": {
-   "instructions": 51,
-   "name_twins": [
-    {
-     "file": "src/st/e_misc.h",
-     "function": "InitializeUnkEntity"
-    }
-   ],
-   "overlay": "boss/bo3",
-   "shape_twins": [
-    {
-     "identical_constants": true,
-     "overlay": "boss/bo7",
-     "symbol": "InitializeUnkEntity"
-    },
-    {
-     "identical_constants": true,
-     "overlay": "st/rno1",
-     "symbol": "InitializeUnkEntity"
-    },
-    {
-     "identical_constants": true,
-     "overlay": "st/rno2",
-     "symbol": "InitializeUnkEntity"
-    }
-   ],
-   "symbol": "InitializeUnkEntity",
-   "token_twins": []
-  },
-  "boss/bo3/UnkRecursivePrimFunc1": {
-   "instructions": 376,
-   "name_twins": [
-    {
-     "file": "src/st/e_misc.h",
-     "function": "UnkRecursivePrimFunc1"
-    }
-   ],
-   "overlay": "boss/bo3",
-   "shape_twins": [
-    {
-     "identical_constants": true,
-     "overlay": "boss/bo7",
-     "symbol": "UnkRecursivePrimFunc1"
-    },
-    {
-     "identical_constants": true,
-     "overlay": "st/rno1",
-     "symbol": "UnkRecursivePrimFunc1"
-    },
-    {
-     "identical_constants": true,
-     "overlay": "st/rno2",
-     "symbol": "UnkRecursivePrimFunc1"
-    }
-   ],
-   "symbol": "UnkRecursivePrimFunc1",
-   "token_twins": []
-  },
-  "boss/bo3/UnkRecursivePrimFunc2": {
-   "instructions": 448,
-   "name_twins": [
-    {
-     "file": "src/st/e_misc.h",
-     "function": "UnkRecursivePrimFunc2"
-    }
-   ],
-   "overlay": "boss/bo3",
-   "shape_twins": [
-    {
-     "identical_constants": true,
-     "overlay": "boss/bo7",
-     "symbol": "UnkRecursivePrimFunc2"
-    },
-    {
-     "identical_constants": true,
-     "overlay": "st/rno1",
-     "symbol": "UnkRecursivePrimFunc2"
-    },
-    {
-     "identical_constants": true,
-     "overlay": "st/rno2",
-     "symbol": "UnkRecursivePrimFunc2"
-    }
-   ],
-   "symbol": "UnkRecursivePrimFunc2",
    "token_twins": []
   },
   "boss/bo3/func_us_801A071C": {
@@ -470,25 +219,6 @@
     }
    ],
    "symbol": "func_us_801A071C",
-   "token_twins": []
-  },
-  "boss/bo3/func_us_801C123C_from_no4": {
-   "instructions": 29,
-   "name_twins": [
-    {
-     "file": "src/st/rcen/unk_1F0D8.c",
-     "function": "func_us_801C123C_from_no4"
-    }
-   ],
-   "overlay": "boss/bo3",
-   "shape_twins": [
-    {
-     "identical_constants": false,
-     "overlay": "st/rno4",
-     "symbol": "func_us_801C123C_from_no4"
-    }
-   ],
-   "symbol": "func_us_801C123C_from_no4",
    "token_twins": []
   },
   "boss/bo3/func_us_801C12B0_from_no4": {
@@ -533,37 +263,6 @@
    "symbol": "func_us_801C3CC4_from_no4",
    "token_twins": []
   },
-  "boss/bo3/func_us_801C5518_from_no4": {
-   "instructions": 68,
-   "name_twins": [],
-   "overlay": "boss/bo3",
-   "shape_twins": [
-    {
-     "identical_constants": true,
-     "overlay": "st/rno4",
-     "symbol": "func_us_801C5518_from_no4"
-    }
-   ],
-   "symbol": "func_us_801C5518_from_no4",
-   "token_twins": []
-  },
-  "boss/bo5/BO5_RicSetDeadPrologue": {
-   "instructions": 8,
-   "name_twins": [
-    {
-     "file": "src/boss/bo6/us_39144.c",
-     "function": "BO6_RicSetDeadPrologue"
-    },
-    {
-     "file": "src/ric/pl_setstep.c",
-     "function": "RicSetDeadPrologue"
-    }
-   ],
-   "overlay": "boss/bo5",
-   "shape_twins": [],
-   "symbol": "BO5_RicSetDeadPrologue",
-   "token_twins": []
-  },
   "boss/bo5/CutsceneCameraPan": {
    "instructions": 24,
    "name_twins": [
@@ -596,19 +295,6 @@
    "overlay": "boss/bo5",
    "shape_twins": [],
    "symbol": "EntityBell",
-   "token_twins": []
-  },
-  "boss/bo5/EntityBellSpawner": {
-   "instructions": 51,
-   "name_twins": [
-    {
-     "file": "src/st/dai/e_bell.c",
-     "function": "EntityBellSpawner"
-    }
-   ],
-   "overlay": "boss/bo5",
-   "shape_twins": [],
-   "symbol": "EntityBellSpawner",
    "token_twins": []
   },
   "boss/bo5/EntityClouds": {
@@ -712,35 +398,6 @@
    "overlay": "boss/bo5",
    "shape_twins": [],
    "symbol": "EntityRbo3Door",
-   "token_twins": []
-  },
-  "boss/bo5/EntityRoomForeground": {
-   "instructions": 59,
-   "name_twins": [
-    {
-     "file": "src/st/e_room_fg.h",
-     "function": "EntityRoomForeground"
-    },
-    {
-     "file": "src/st/mad/e_room_fg.c",
-     "function": "EntityRoomForeground"
-    },
-    {
-     "file": "src/st/no3/e_room_fg.c",
-     "function": "EntityRoomForeground"
-    },
-    {
-     "file": "src/st/np3/e_room_fg.c",
-     "function": "EntityRoomForeground"
-    },
-    {
-     "file": "src/st/rno3/e_room_fg.c",
-     "function": "EntityRoomForeground"
-    }
-   ],
-   "overlay": "boss/bo5",
-   "shape_twins": [],
-   "symbol": "EntityRoomForeground",
    "token_twins": []
   },
   "boss/bo5/EntityStainedGlass": {
@@ -1148,17 +805,17 @@
     {
      "file": "src/st/cen_psp/e_maria_utils.c",
      "function": "MarSetAnimation",
-     "score": 0.417
+     "score": 0.416
     },
     {
      "file": "src/servant/set_entity_animation.h",
      "function": "SetEntityAnimation",
-     "score": 0.417
+     "score": 0.416
     },
     {
      "file": "src/ric/pl_utils.c",
      "function": "RicSetAnimation",
-     "score": 0.417
+     "score": 0.416
     }
    ]
   },
@@ -1177,7 +834,7 @@
     {
      "file": "src/boss/bo6/us_39144.c",
      "function": "BO6_RicSetStep",
-     "score": 0.317
+     "score": 0.318
     }
    ]
   },
@@ -1196,7 +853,7 @@
     {
      "file": "src/boss/bo6/us_39144.c",
      "function": "BO6_RicSetStep",
-     "score": 0.317
+     "score": 0.318
     }
    ]
   },
@@ -1475,207 +1132,6 @@
    "symbol": "EntityDemonSwitchWall",
    "token_twins": []
   },
-  "boss/bo7/EntityExplosionVariants": {
-   "instructions": 60,
-   "name_twins": [
-    {
-     "file": "src/st/e_misc.h",
-     "function": "EntityExplosionVariants"
-    }
-   ],
-   "overlay": "boss/bo7",
-   "shape_twins": [
-    {
-     "identical_constants": true,
-     "overlay": "boss/bo3",
-     "symbol": "EntityExplosionVariants"
-    },
-    {
-     "identical_constants": true,
-     "overlay": "st/rno1",
-     "symbol": "EntityExplosionVariants"
-    },
-    {
-     "identical_constants": true,
-     "overlay": "st/rno2",
-     "symbol": "EntityExplosionVariants"
-    },
-    {
-     "identical_constants": true,
-     "overlay": "st/rno4",
-     "symbol": "EntityExplosionVariants"
-    }
-   ],
-   "symbol": "EntityExplosionVariants",
-   "token_twins": []
-  },
-  "boss/bo7/EntityGreyPuff": {
-   "instructions": 61,
-   "name_twins": [
-    {
-     "file": "src/st/e_misc.h",
-     "function": "EntityGreyPuff"
-    }
-   ],
-   "overlay": "boss/bo7",
-   "shape_twins": [
-    {
-     "identical_constants": true,
-     "overlay": "boss/bo3",
-     "symbol": "EntityGreyPuff"
-    },
-    {
-     "identical_constants": true,
-     "overlay": "st/rno1",
-     "symbol": "EntityGreyPuff"
-    },
-    {
-     "identical_constants": true,
-     "overlay": "st/rno2",
-     "symbol": "EntityGreyPuff"
-    },
-    {
-     "identical_constants": true,
-     "overlay": "st/rno4",
-     "symbol": "EntityGreyPuff"
-    }
-   ],
-   "symbol": "EntityGreyPuff",
-   "token_twins": []
-  },
-  "boss/bo7/EntityOlroxDrool": {
-   "instructions": 140,
-   "name_twins": [
-    {
-     "file": "src/st/e_misc.h",
-     "function": "EntityOlroxDrool"
-    }
-   ],
-   "overlay": "boss/bo7",
-   "shape_twins": [
-    {
-     "identical_constants": true,
-     "overlay": "boss/bo3",
-     "symbol": "EntityOlroxDrool"
-    },
-    {
-     "identical_constants": true,
-     "overlay": "st/rno1",
-     "symbol": "EntityOlroxDrool"
-    },
-    {
-     "identical_constants": true,
-     "overlay": "st/rno2",
-     "symbol": "EntityOlroxDrool"
-    }
-   ],
-   "symbol": "EntityOlroxDrool",
-   "token_twins": []
-  },
-  "boss/bo7/InitializeUnkEntity": {
-   "instructions": 51,
-   "name_twins": [
-    {
-     "file": "src/st/e_misc.h",
-     "function": "InitializeUnkEntity"
-    }
-   ],
-   "overlay": "boss/bo7",
-   "shape_twins": [
-    {
-     "identical_constants": true,
-     "overlay": "boss/bo3",
-     "symbol": "InitializeUnkEntity"
-    },
-    {
-     "identical_constants": true,
-     "overlay": "st/rno1",
-     "symbol": "InitializeUnkEntity"
-    },
-    {
-     "identical_constants": true,
-     "overlay": "st/rno2",
-     "symbol": "InitializeUnkEntity"
-    }
-   ],
-   "symbol": "InitializeUnkEntity",
-   "token_twins": []
-  },
-  "boss/bo7/UnkRecursivePrimFunc1": {
-   "instructions": 376,
-   "name_twins": [
-    {
-     "file": "src/st/e_misc.h",
-     "function": "UnkRecursivePrimFunc1"
-    }
-   ],
-   "overlay": "boss/bo7",
-   "shape_twins": [
-    {
-     "identical_constants": true,
-     "overlay": "boss/bo3",
-     "symbol": "UnkRecursivePrimFunc1"
-    },
-    {
-     "identical_constants": true,
-     "overlay": "st/rno1",
-     "symbol": "UnkRecursivePrimFunc1"
-    },
-    {
-     "identical_constants": true,
-     "overlay": "st/rno2",
-     "symbol": "UnkRecursivePrimFunc1"
-    }
-   ],
-   "symbol": "UnkRecursivePrimFunc1",
-   "token_twins": []
-  },
-  "boss/bo7/UnkRecursivePrimFunc2": {
-   "instructions": 448,
-   "name_twins": [
-    {
-     "file": "src/st/e_misc.h",
-     "function": "UnkRecursivePrimFunc2"
-    }
-   ],
-   "overlay": "boss/bo7",
-   "shape_twins": [
-    {
-     "identical_constants": true,
-     "overlay": "boss/bo3",
-     "symbol": "UnkRecursivePrimFunc2"
-    },
-    {
-     "identical_constants": true,
-     "overlay": "st/rno1",
-     "symbol": "UnkRecursivePrimFunc2"
-    },
-    {
-     "identical_constants": true,
-     "overlay": "st/rno2",
-     "symbol": "UnkRecursivePrimFunc2"
-    }
-   ],
-   "symbol": "UnkRecursivePrimFunc2",
-   "token_twins": []
-  },
-  "boss/bo7/UpdateFallingPebble": {
-   "instructions": 59,
-   "name_twins": [
-    {
-     "file": "src/st/chi/en_demon_switch_wall.c",
-     "function": "UpdateFallingPebble"
-    },
-    {
-     "file": "src/st/rchi/e_demon_switch_wall.c",
-     "function": "UpdateFallingPebble"
-    }
-   ],
-   "overlay": "boss/bo7",
-   "shape_twins": [],
-   "symbol": "UpdateFallingPebble",
-   "token_twins": []
-  },
   "boss/rbo1/EntityBossRoomBlock": {
    "instructions": 99,
    "name_twins": [
@@ -1768,86 +1224,6 @@
    "symbol": "EntityBreakable",
    "token_twins": []
   },
-  "boss/rbo1/func_801CDD00": {
-   "instructions": 32,
-   "name_twins": [],
-   "overlay": "boss/rbo1",
-   "shape_twins": [
-    {
-     "identical_constants": true,
-     "overlay": "boss/rbo2",
-     "symbol": "func_801CDD00"
-    }
-   ],
-   "symbol": "func_801CDD00",
-   "token_twins": []
-  },
-  "boss/rbo1/func_801CDD80": {
-   "instructions": 36,
-   "name_twins": [],
-   "overlay": "boss/rbo1",
-   "shape_twins": [
-    {
-     "identical_constants": true,
-     "overlay": "boss/rbo2",
-     "symbol": "func_801CDD80"
-    }
-   ],
-   "symbol": "func_801CDD80",
-   "token_twins": []
-  },
-  "boss/rbo1/func_801CDF1C": {
-   "instructions": 47,
-   "name_twins": [],
-   "overlay": "boss/rbo1",
-   "shape_twins": [
-    {
-     "identical_constants": true,
-     "overlay": "boss/rbo2",
-     "symbol": "func_801CDF1C"
-    }
-   ],
-   "symbol": "func_801CDF1C",
-   "token_twins": []
-  },
-  "boss/rbo1/func_801CE1E8": {
-   "instructions": 16,
-   "name_twins": [],
-   "overlay": "boss/rbo1",
-   "shape_twins": [
-    {
-     "identical_constants": true,
-     "overlay": "boss/rbo2",
-     "symbol": "func_801CE1E8"
-    },
-    {
-     "identical_constants": true,
-     "overlay": "boss/rbo8",
-     "symbol": "func_801CE1E8"
-    }
-   ],
-   "symbol": "func_801CE1E8",
-   "token_twins": []
-  },
-  "boss/rbo1/func_801CE228": {
-   "instructions": 12,
-   "name_twins": [],
-   "overlay": "boss/rbo1",
-   "shape_twins": [
-    {
-     "identical_constants": true,
-     "overlay": "boss/rbo2",
-     "symbol": "func_801CE228"
-    },
-    {
-     "identical_constants": true,
-     "overlay": "boss/rbo8",
-     "symbol": "func_801CE228"
-    }
-   ],
-   "symbol": "func_801CE228",
-   "token_twins": []
-  },
   "boss/rbo1/func_us_8019D260_from_rcen": {
    "instructions": 52,
    "name_twins": [
@@ -1894,6 +1270,10 @@
   "boss/rbo1/polarPlacePartsList": {
    "instructions": 29,
    "name_twins": [
+    {
+     "file": "src/boss/rbo8/unk_1546C.c",
+     "function": "polarPlacePartsList"
+    },
     {
      "file": "src/st/giantbro_helpers_2.h",
      "function": "polarPlacePartsList"
@@ -2078,115 +1458,6 @@
    "symbol": "EntityCutsceneDialogue",
    "token_twins": []
   },
-  "boss/rbo2/func_801CDC80": {
-   "instructions": 32,
-   "name_twins": [],
-   "overlay": "boss/rbo2",
-   "shape_twins": [
-    {
-     "identical_constants": true,
-     "overlay": "boss/bo0",
-     "symbol": "func_us_801B15BC"
-    },
-    {
-     "identical_constants": true,
-     "overlay": "st/rlib",
-     "symbol": "func_us_801AE4B4"
-    },
-    {
-     "identical_constants": true,
-     "overlay": "st/rlib",
-     "symbol": "func_us_801AF3C8"
-    },
-    {
-     "identical_constants": true,
-     "overlay": "st/rnz1",
-     "symbol": "func_801CDC80"
-    }
-   ],
-   "symbol": "func_801CDC80",
-   "token_twins": []
-  },
-  "boss/rbo2/func_801CDD00": {
-   "instructions": 32,
-   "name_twins": [],
-   "overlay": "boss/rbo2",
-   "shape_twins": [
-    {
-     "identical_constants": true,
-     "overlay": "boss/rbo1",
-     "symbol": "func_801CDD00"
-    }
-   ],
-   "symbol": "func_801CDD00",
-   "token_twins": []
-  },
-  "boss/rbo2/func_801CDD80": {
-   "instructions": 36,
-   "name_twins": [],
-   "overlay": "boss/rbo2",
-   "shape_twins": [
-    {
-     "identical_constants": true,
-     "overlay": "boss/rbo1",
-     "symbol": "func_801CDD80"
-    }
-   ],
-   "symbol": "func_801CDD80",
-   "token_twins": []
-  },
-  "boss/rbo2/func_801CDF1C": {
-   "instructions": 47,
-   "name_twins": [],
-   "overlay": "boss/rbo2",
-   "shape_twins": [
-    {
-     "identical_constants": true,
-     "overlay": "boss/rbo1",
-     "symbol": "func_801CDF1C"
-    }
-   ],
-   "symbol": "func_801CDF1C",
-   "token_twins": []
-  },
-  "boss/rbo2/func_801CE1E8": {
-   "instructions": 16,
-   "name_twins": [],
-   "overlay": "boss/rbo2",
-   "shape_twins": [
-    {
-     "identical_constants": true,
-     "overlay": "boss/rbo1",
-     "symbol": "func_801CE1E8"
-    },
-    {
-     "identical_constants": true,
-     "overlay": "boss/rbo8",
-     "symbol": "func_801CE1E8"
-    }
-   ],
-   "symbol": "func_801CE1E8",
-   "token_twins": []
-  },
-  "boss/rbo2/func_801CE228": {
-   "instructions": 12,
-   "name_twins": [],
-   "overlay": "boss/rbo2",
-   "shape_twins": [
-    {
-     "identical_constants": true,
-     "overlay": "boss/rbo1",
-     "symbol": "func_801CE228"
-    },
-    {
-     "identical_constants": true,
-     "overlay": "boss/rbo8",
-     "symbol": "func_801CE228"
-    }
-   ],
-   "symbol": "func_801CE228",
-   "token_twins": []
-  },
   "boss/rbo2/func_us_8019D260_from_rcen": {
    "instructions": 52,
    "name_twins": [
@@ -2261,6 +1532,10 @@
   "boss/rbo2/polarPlacePartsList": {
    "instructions": 29,
    "name_twins": [
+    {
+     "file": "src/boss/rbo8/unk_1546C.c",
+     "function": "polarPlacePartsList"
+    },
     {
      "file": "src/st/giantbro_helpers_2.h",
      "function": "polarPlacePartsList"
@@ -2597,45 +1872,6 @@
    "symbol": "EntityLockCamera",
    "token_twins": []
   },
-  "boss/rbo6/FindFirstUnkPrim": {
-   "instructions": 12,
-   "name_twins": [
-    {
-     "file": "src/st/prim_helpers.h",
-     "function": "FindFirstUnkPrim"
-    }
-   ],
-   "overlay": "boss/rbo6",
-   "shape_twins": [],
-   "symbol": "FindFirstUnkPrim",
-   "token_twins": []
-  },
-  "boss/rbo6/FindFirstUnkPrim2": {
-   "instructions": 31,
-   "name_twins": [
-    {
-     "file": "src/st/prim_helpers.h",
-     "function": "FindFirstUnkPrim2"
-    }
-   ],
-   "overlay": "boss/rbo6",
-   "shape_twins": [],
-   "symbol": "FindFirstUnkPrim2",
-   "token_twins": []
-  },
-  "boss/rbo6/PlayerIsWithinHitbox": {
-   "instructions": 33,
-   "name_twins": [
-    {
-     "file": "src/st/player_is_within_hitbox.h",
-     "function": "PlayerIsWithinHitbox"
-    }
-   ],
-   "overlay": "boss/rbo6",
-   "shape_twins": [],
-   "symbol": "PlayerIsWithinHitbox",
-   "token_twins": []
-  },
   "boss/rbo6/PrimDecreaseBrightness": {
    "instructions": 25,
    "name_twins": [
@@ -2661,58 +1897,6 @@
    "symbol": "PrimDecreaseBrightness",
    "token_twins": []
   },
-  "boss/rbo6/PrimResetNext": {
-   "instructions": 56,
-   "name_twins": [
-    {
-     "file": "src/st/prim_helpers.h",
-     "function": "PrimResetNext"
-    }
-   ],
-   "overlay": "boss/rbo6",
-   "shape_twins": [],
-   "symbol": "PrimResetNext",
-   "token_twins": []
-  },
-  "boss/rbo6/PrimToggleVisibility": {
-   "instructions": 34,
-   "name_twins": [
-    {
-     "file": "src/st/prim_helpers.h",
-     "function": "PrimToggleVisibility"
-    }
-   ],
-   "overlay": "boss/rbo6",
-   "shape_twins": [],
-   "symbol": "PrimToggleVisibility",
-   "token_twins": []
-  },
-  "boss/rbo6/UnkPolyFunc0": {
-   "instructions": 11,
-   "name_twins": [
-    {
-     "file": "src/st/prim_helpers.h",
-     "function": "UnkPolyFunc0"
-    }
-   ],
-   "overlay": "boss/rbo6",
-   "shape_twins": [],
-   "symbol": "UnkPolyFunc0",
-   "token_twins": []
-  },
-  "boss/rbo6/UnkPolyFunc2": {
-   "instructions": 21,
-   "name_twins": [
-    {
-     "file": "src/st/prim_helpers.h",
-     "function": "UnkPolyFunc2"
-    }
-   ],
-   "overlay": "boss/rbo6",
-   "shape_twins": [],
-   "symbol": "UnkPolyFunc2",
-   "token_twins": []
-  },
   "boss/rbo6/UnkPrimHelper": {
    "instructions": 250,
    "name_twins": [
@@ -2724,19 +1908,6 @@
    "overlay": "boss/rbo6",
    "shape_twins": [],
    "symbol": "UnkPrimHelper",
-   "token_twins": []
-  },
-  "boss/rbo6/UpdateAnimation": {
-   "instructions": 84,
-   "name_twins": [
-    {
-     "file": "src/st/prim_helpers.h",
-     "function": "UpdateAnimation"
-    }
-   ],
-   "overlay": "boss/rbo6",
-   "shape_twins": [],
-   "symbol": "UpdateAnimation",
    "token_twins": []
   },
   "boss/rbo6/func_us_8019D260_from_rcen": {
@@ -2969,44 +2140,6 @@
    "symbol": "EntityMinotaurSpitLiquid",
    "token_twins": []
   },
-  "boss/rbo8/func_801CE1E8": {
-   "instructions": 16,
-   "name_twins": [],
-   "overlay": "boss/rbo8",
-   "shape_twins": [
-    {
-     "identical_constants": true,
-     "overlay": "boss/rbo1",
-     "symbol": "func_801CE1E8"
-    },
-    {
-     "identical_constants": true,
-     "overlay": "boss/rbo2",
-     "symbol": "func_801CE1E8"
-    }
-   ],
-   "symbol": "func_801CE1E8",
-   "token_twins": []
-  },
-  "boss/rbo8/func_801CE228": {
-   "instructions": 12,
-   "name_twins": [],
-   "overlay": "boss/rbo8",
-   "shape_twins": [
-    {
-     "identical_constants": true,
-     "overlay": "boss/rbo1",
-     "symbol": "func_801CE228"
-    },
-    {
-     "identical_constants": true,
-     "overlay": "boss/rbo2",
-     "symbol": "func_801CE228"
-    }
-   ],
-   "symbol": "func_801CE228",
-   "token_twins": []
-  },
   "boss/rbo8/func_us_801BA164_from_cat": {
    "instructions": 163,
    "name_twins": [
@@ -3018,38 +2151,6 @@
    "overlay": "boss/rbo8",
    "shape_twins": [],
    "symbol": "func_us_801BA164_from_cat",
-   "token_twins": []
-  },
-  "boss/rbo8/polarPlacePartsList": {
-   "instructions": 29,
-   "name_twins": [
-    {
-     "file": "src/st/giantbro_helpers_2.h",
-     "function": "polarPlacePartsList"
-    },
-    {
-     "file": "src/st/no2/4966C.c",
-     "function": "polarPlacePartsList"
-    },
-    {
-     "file": "src/st/np3/4E04C.c",
-     "function": "polarPlacePartsList"
-    }
-   ],
-   "overlay": "boss/rbo8",
-   "shape_twins": [
-    {
-     "identical_constants": true,
-     "overlay": "boss/rbo1",
-     "symbol": "polarPlacePartsList"
-    },
-    {
-     "identical_constants": true,
-     "overlay": "boss/rbo2",
-     "symbol": "polarPlacePartsList"
-    }
-   ],
-   "symbol": "polarPlacePartsList",
    "token_twins": []
   },
   "st/rcen/EntityUnkId1B": {
@@ -3479,64 +2580,6 @@
    "overlay": "st/rlib",
    "shape_twins": [],
    "symbol": "EntityHarpyKick",
-   "token_twins": []
-  },
-  "st/rlib/func_us_801AE4B4": {
-   "instructions": 32,
-   "name_twins": [],
-   "overlay": "st/rlib",
-   "shape_twins": [
-    {
-     "identical_constants": true,
-     "overlay": "boss/bo0",
-     "symbol": "func_us_801B15BC"
-    },
-    {
-     "identical_constants": true,
-     "overlay": "boss/rbo2",
-     "symbol": "func_801CDC80"
-    },
-    {
-     "identical_constants": true,
-     "overlay": "st/rlib",
-     "symbol": "func_us_801AF3C8"
-    },
-    {
-     "identical_constants": true,
-     "overlay": "st/rnz1",
-     "symbol": "func_801CDC80"
-    }
-   ],
-   "symbol": "func_us_801AE4B4",
-   "token_twins": []
-  },
-  "st/rlib/func_us_801AF3C8": {
-   "instructions": 32,
-   "name_twins": [],
-   "overlay": "st/rlib",
-   "shape_twins": [
-    {
-     "identical_constants": true,
-     "overlay": "boss/bo0",
-     "symbol": "func_us_801B15BC"
-    },
-    {
-     "identical_constants": true,
-     "overlay": "boss/rbo2",
-     "symbol": "func_801CDC80"
-    },
-    {
-     "identical_constants": true,
-     "overlay": "st/rlib",
-     "symbol": "func_us_801AE4B4"
-    },
-    {
-     "identical_constants": true,
-     "overlay": "st/rnz1",
-     "symbol": "func_801CDC80"
-    }
-   ],
-   "symbol": "func_us_801AF3C8",
    "token_twins": []
   },
   "st/rno0/DrawLaserRing": {
@@ -3972,74 +3015,6 @@
    "symbol": "EntityBreakableDebris",
    "token_twins": []
   },
-  "st/rno1/EntityExplosionVariants": {
-   "instructions": 60,
-   "name_twins": [
-    {
-     "file": "src/st/e_misc.h",
-     "function": "EntityExplosionVariants"
-    }
-   ],
-   "overlay": "st/rno1",
-   "shape_twins": [
-    {
-     "identical_constants": true,
-     "overlay": "boss/bo3",
-     "symbol": "EntityExplosionVariants"
-    },
-    {
-     "identical_constants": true,
-     "overlay": "boss/bo7",
-     "symbol": "EntityExplosionVariants"
-    },
-    {
-     "identical_constants": true,
-     "overlay": "st/rno2",
-     "symbol": "EntityExplosionVariants"
-    },
-    {
-     "identical_constants": true,
-     "overlay": "st/rno4",
-     "symbol": "EntityExplosionVariants"
-    }
-   ],
-   "symbol": "EntityExplosionVariants",
-   "token_twins": []
-  },
-  "st/rno1/EntityGreyPuff": {
-   "instructions": 61,
-   "name_twins": [
-    {
-     "file": "src/st/e_misc.h",
-     "function": "EntityGreyPuff"
-    }
-   ],
-   "overlay": "st/rno1",
-   "shape_twins": [
-    {
-     "identical_constants": true,
-     "overlay": "boss/bo3",
-     "symbol": "EntityGreyPuff"
-    },
-    {
-     "identical_constants": true,
-     "overlay": "boss/bo7",
-     "symbol": "EntityGreyPuff"
-    },
-    {
-     "identical_constants": true,
-     "overlay": "st/rno2",
-     "symbol": "EntityGreyPuff"
-    },
-    {
-     "identical_constants": true,
-     "overlay": "st/rno4",
-     "symbol": "EntityGreyPuff"
-    }
-   ],
-   "symbol": "EntityGreyPuff",
-   "token_twins": []
-  },
   "st/rno1/EntityIsNearPlayer": {
    "instructions": 30,
    "name_twins": [
@@ -4092,29 +3067,6 @@
    "symbol": "EntityJackOBones",
    "token_twins": []
   },
-  "st/rno1/EntityJackOBonesDeathParts": {
-   "instructions": 63,
-   "name_twins": [
-    {
-     "file": "src/st/rno0/unk_48100.c",
-     "function": "EntityJackOBonesDeathParts"
-    },
-    {
-     "file": "src/st/rno3/e_jack_o_bones.c",
-     "function": "EntityJackOBonesDeathParts"
-    }
-   ],
-   "overlay": "st/rno1",
-   "shape_twins": [
-    {
-     "identical_constants": true,
-     "overlay": "st/rno4",
-     "symbol": "EntityJackOBonesDeathParts"
-    }
-   ],
-   "symbol": "EntityJackOBonesDeathParts",
-   "token_twins": []
-  },
   "st/rno1/EntityJackOBonesJack": {
    "instructions": 177,
    "name_twins": [
@@ -4163,29 +3115,6 @@
    "symbol": "EntityNovaLaser",
    "token_twins": []
   },
-  "st/rno1/EntityNovaLaserPulse": {
-   "instructions": 86,
-   "name_twins": [
-    {
-     "file": "src/st/rno0/unk_48100.c",
-     "function": "EntityNovaLaserPulse"
-    },
-    {
-     "file": "src/st/rno3/e_nova_skeleton.c",
-     "function": "EntityNovaLaserPulse"
-    }
-   ],
-   "overlay": "st/rno1",
-   "shape_twins": [
-    {
-     "identical_constants": true,
-     "overlay": "st/rno4",
-     "symbol": "EntityNovaLaserPulse"
-    }
-   ],
-   "symbol": "EntityNovaLaserPulse",
-   "token_twins": []
-  },
   "st/rno1/EntityNovaSkeleton": {
    "instructions": 324,
    "name_twins": [
@@ -4210,35 +3139,6 @@
    "symbol": "EntityNovaSkeleton",
    "token_twins": []
   },
-  "st/rno1/EntityOlroxDrool": {
-   "instructions": 140,
-   "name_twins": [
-    {
-     "file": "src/st/e_misc.h",
-     "function": "EntityOlroxDrool"
-    }
-   ],
-   "overlay": "st/rno1",
-   "shape_twins": [
-    {
-     "identical_constants": true,
-     "overlay": "boss/bo3",
-     "symbol": "EntityOlroxDrool"
-    },
-    {
-     "identical_constants": true,
-     "overlay": "boss/bo7",
-     "symbol": "EntityOlroxDrool"
-    },
-    {
-     "identical_constants": true,
-     "overlay": "st/rno2",
-     "symbol": "EntityOlroxDrool"
-    }
-   ],
-   "symbol": "EntityOlroxDrool",
-   "token_twins": []
-  },
   "st/rno1/EntityParanthropus": {
    "instructions": 911,
    "name_twins": [
@@ -4250,45 +3150,6 @@
    "overlay": "st/rno1",
    "shape_twins": [],
    "symbol": "EntityParanthropus",
-   "token_twins": []
-  },
-  "st/rno1/EntityParanthropusBoneHitbox": {
-   "instructions": 57,
-   "name_twins": [
-    {
-     "file": "src/st/are/e_paranthropus.c",
-     "function": "EntityParanthropusBoneHitbox"
-    }
-   ],
-   "overlay": "st/rno1",
-   "shape_twins": [],
-   "symbol": "EntityParanthropusBoneHitbox",
-   "token_twins": []
-  },
-  "st/rno1/EntityParanthropusSkull": {
-   "instructions": 79,
-   "name_twins": [
-    {
-     "file": "src/st/are/e_paranthropus.c",
-     "function": "EntityParanthropusSkull"
-    }
-   ],
-   "overlay": "st/rno1",
-   "shape_twins": [],
-   "symbol": "EntityParanthropusSkull",
-   "token_twins": []
-  },
-  "st/rno1/EntityParanthropusThrownBone": {
-   "instructions": 50,
-   "name_twins": [
-    {
-     "file": "src/st/are/e_paranthropus.c",
-     "function": "EntityParanthropusThrownBone"
-    }
-   ],
-   "overlay": "st/rno1",
-   "shape_twins": [],
-   "symbol": "EntityParanthropusThrownBone",
    "token_twins": []
   },
   "st/rno1/EntityRedDoor": {
@@ -4306,48 +3167,6 @@
    "overlay": "st/rno1",
    "shape_twins": [],
    "symbol": "EntityRedDoor",
-   "token_twins": []
-  },
-  "st/rno1/InitializeUnkEntity": {
-   "instructions": 51,
-   "name_twins": [
-    {
-     "file": "src/st/e_misc.h",
-     "function": "InitializeUnkEntity"
-    }
-   ],
-   "overlay": "st/rno1",
-   "shape_twins": [
-    {
-     "identical_constants": true,
-     "overlay": "boss/bo3",
-     "symbol": "InitializeUnkEntity"
-    },
-    {
-     "identical_constants": true,
-     "overlay": "boss/bo7",
-     "symbol": "InitializeUnkEntity"
-    },
-    {
-     "identical_constants": true,
-     "overlay": "st/rno2",
-     "symbol": "InitializeUnkEntity"
-    }
-   ],
-   "symbol": "InitializeUnkEntity",
-   "token_twins": []
-  },
-  "st/rno1/ParanthropusSetStep": {
-   "instructions": 13,
-   "name_twins": [
-    {
-     "file": "src/st/are/e_paranthropus.c",
-     "function": "ParanthropusSetStep"
-    }
-   ],
-   "overlay": "st/rno1",
-   "shape_twins": [],
-   "symbol": "ParanthropusSetStep",
    "token_twins": []
   },
   "st/rno1/RNO1_DebugInputWait": {
@@ -4395,74 +3214,6 @@
    "symbol": "RNO1_DebugInputWait",
    "token_twins": []
   },
-  "st/rno1/RNO1_DebugShowWaitInfo": {
-   "instructions": 41,
-   "name_twins": [
-    {
-     "file": "src/boss/bo6/us_3E79C.c",
-     "function": "BO6_DebugShowWaitInfo"
-    },
-    {
-     "file": "src/dra/42398.c",
-     "function": "DebugShowWaitInfo"
-    },
-    {
-     "file": "src/dra_psp/186E8.c",
-     "function": "DebugShowWaitInfo"
-    },
-    {
-     "file": "src/ric/pl_collision.c",
-     "function": "DebugShowWaitInfo"
-    },
-    {
-     "file": "src/st/no1/unk_381E8.c",
-     "function": "DebugShowWaitInfo"
-    },
-    {
-     "file": "src/weapon/w_010.c",
-     "function": "DebugShowWaitInfo"
-    },
-    {
-     "file": "src/weapon/w_018.c",
-     "function": "DebugShowWaitInfo"
-    },
-    {
-     "file": "src/weapon/w_027.c",
-     "function": "DebugShowWaitInfo"
-    },
-    {
-     "file": "src/weapon/w_042.c",
-     "function": "DebugShowWaitInfo"
-    }
-   ],
-   "overlay": "st/rno1",
-   "shape_twins": [],
-   "symbol": "RNO1_DebugShowWaitInfo",
-   "token_twins": []
-  },
-  "st/rno1/TryShoot": {
-   "instructions": 40,
-   "name_twins": [
-    {
-     "file": "src/st/rno0/unk_48100.c",
-     "function": "TryShoot"
-    },
-    {
-     "file": "src/st/rno3/e_nova_skeleton.c",
-     "function": "TryShoot"
-    }
-   ],
-   "overlay": "st/rno1",
-   "shape_twins": [
-    {
-     "identical_constants": true,
-     "overlay": "st/rno4",
-     "symbol": "TryShoot"
-    }
-   ],
-   "symbol": "TryShoot",
-   "token_twins": []
-  },
   "st/rno1/TryThrow": {
    "instructions": 41,
    "name_twins": [
@@ -4472,6 +3223,10 @@
     },
     {
      "file": "src/st/rno3/e_jack_o_bones.c",
+     "function": "TryThrow"
+    },
+    {
+     "file": "src/st/rno4/unk_58A30.c",
      "function": "TryThrow"
     }
    ],
@@ -4484,64 +3239,6 @@
     }
    ],
    "symbol": "TryThrow",
-   "token_twins": []
-  },
-  "st/rno1/UnkRecursivePrimFunc1": {
-   "instructions": 376,
-   "name_twins": [
-    {
-     "file": "src/st/e_misc.h",
-     "function": "UnkRecursivePrimFunc1"
-    }
-   ],
-   "overlay": "st/rno1",
-   "shape_twins": [
-    {
-     "identical_constants": true,
-     "overlay": "boss/bo3",
-     "symbol": "UnkRecursivePrimFunc1"
-    },
-    {
-     "identical_constants": true,
-     "overlay": "boss/bo7",
-     "symbol": "UnkRecursivePrimFunc1"
-    },
-    {
-     "identical_constants": true,
-     "overlay": "st/rno2",
-     "symbol": "UnkRecursivePrimFunc1"
-    }
-   ],
-   "symbol": "UnkRecursivePrimFunc1",
-   "token_twins": []
-  },
-  "st/rno1/UnkRecursivePrimFunc2": {
-   "instructions": 448,
-   "name_twins": [
-    {
-     "file": "src/st/e_misc.h",
-     "function": "UnkRecursivePrimFunc2"
-    }
-   ],
-   "overlay": "st/rno1",
-   "shape_twins": [
-    {
-     "identical_constants": true,
-     "overlay": "boss/bo3",
-     "symbol": "UnkRecursivePrimFunc2"
-    },
-    {
-     "identical_constants": true,
-     "overlay": "boss/bo7",
-     "symbol": "UnkRecursivePrimFunc2"
-    },
-    {
-     "identical_constants": true,
-     "overlay": "st/rno2",
-     "symbol": "UnkRecursivePrimFunc2"
-    }
-   ],
-   "symbol": "UnkRecursivePrimFunc2",
    "token_twins": []
   },
   "st/rno1/func_us_80198A18_from_rbo4": {
@@ -4715,40 +3412,6 @@
    "symbol": "EntityBreakableDebris",
    "token_twins": []
   },
-  "st/rno2/EntityExplosionVariants": {
-   "instructions": 60,
-   "name_twins": [
-    {
-     "file": "src/st/e_misc.h",
-     "function": "EntityExplosionVariants"
-    }
-   ],
-   "overlay": "st/rno2",
-   "shape_twins": [
-    {
-     "identical_constants": true,
-     "overlay": "boss/bo3",
-     "symbol": "EntityExplosionVariants"
-    },
-    {
-     "identical_constants": true,
-     "overlay": "boss/bo7",
-     "symbol": "EntityExplosionVariants"
-    },
-    {
-     "identical_constants": true,
-     "overlay": "st/rno1",
-     "symbol": "EntityExplosionVariants"
-    },
-    {
-     "identical_constants": true,
-     "overlay": "st/rno4",
-     "symbol": "EntityExplosionVariants"
-    }
-   ],
-   "symbol": "EntityExplosionVariants",
-   "token_twins": []
-  },
   "st/rno2/EntityFlyingZombie1": {
    "instructions": 392,
    "name_twins": [
@@ -4775,40 +3438,6 @@
    "symbol": "EntityFlyingZombie2",
    "token_twins": []
   },
-  "st/rno2/EntityGreyPuff": {
-   "instructions": 61,
-   "name_twins": [
-    {
-     "file": "src/st/e_misc.h",
-     "function": "EntityGreyPuff"
-    }
-   ],
-   "overlay": "st/rno2",
-   "shape_twins": [
-    {
-     "identical_constants": true,
-     "overlay": "boss/bo3",
-     "symbol": "EntityGreyPuff"
-    },
-    {
-     "identical_constants": true,
-     "overlay": "boss/bo7",
-     "symbol": "EntityGreyPuff"
-    },
-    {
-     "identical_constants": true,
-     "overlay": "st/rno1",
-     "symbol": "EntityGreyPuff"
-    },
-    {
-     "identical_constants": true,
-     "overlay": "st/rno4",
-     "symbol": "EntityGreyPuff"
-    }
-   ],
-   "symbol": "EntityGreyPuff",
-   "token_twins": []
-  },
   "st/rno2/EntityKarasuman": {
    "instructions": 1008,
    "name_twins": [
@@ -4820,19 +3449,6 @@
    "overlay": "st/rno2",
    "shape_twins": [],
    "symbol": "EntityKarasuman",
-   "token_twins": []
-  },
-  "st/rno2/EntityKarasumanFeather": {
-   "instructions": 117,
-   "name_twins": [
-    {
-     "file": "src/st/nz1/e_karasuman.c",
-     "function": "EntityKarasumanFeather"
-    }
-   ],
-   "overlay": "st/rno2",
-   "shape_twins": [],
-   "symbol": "EntityKarasumanFeather",
    "token_twins": []
   },
   "st/rno2/EntityKarasumanFeatherAttack": {
@@ -4861,19 +3477,6 @@
    "symbol": "EntityKarasumanOrbAttack",
    "token_twins": []
   },
-  "st/rno2/EntityKarasumanRavenAbsorb": {
-   "instructions": 110,
-   "name_twins": [
-    {
-     "file": "src/st/nz1/e_karasuman.c",
-     "function": "EntityKarasumanRavenAbsorb"
-    }
-   ],
-   "overlay": "st/rno2",
-   "shape_twins": [],
-   "symbol": "EntityKarasumanRavenAbsorb",
-   "token_twins": []
-  },
   "st/rno2/EntityKarasumanRavenAttack": {
    "instructions": 231,
    "name_twins": [
@@ -4885,35 +3488,6 @@
    "overlay": "st/rno2",
    "shape_twins": [],
    "symbol": "EntityKarasumanRavenAttack",
-   "token_twins": []
-  },
-  "st/rno2/EntityOlroxDrool": {
-   "instructions": 140,
-   "name_twins": [
-    {
-     "file": "src/st/e_misc.h",
-     "function": "EntityOlroxDrool"
-    }
-   ],
-   "overlay": "st/rno2",
-   "shape_twins": [
-    {
-     "identical_constants": true,
-     "overlay": "boss/bo3",
-     "symbol": "EntityOlroxDrool"
-    },
-    {
-     "identical_constants": true,
-     "overlay": "boss/bo7",
-     "symbol": "EntityOlroxDrool"
-    },
-    {
-     "identical_constants": true,
-     "overlay": "st/rno1",
-     "symbol": "EntityOlroxDrool"
-    }
-   ],
-   "symbol": "EntityOlroxDrool",
    "token_twins": []
   },
   "st/rno2/EntityPrisoner": {
@@ -5021,35 +3595,6 @@
    "symbol": "EntitySpikesParts",
    "token_twins": []
   },
-  "st/rno2/InitializeUnkEntity": {
-   "instructions": 51,
-   "name_twins": [
-    {
-     "file": "src/st/e_misc.h",
-     "function": "InitializeUnkEntity"
-    }
-   ],
-   "overlay": "st/rno2",
-   "shape_twins": [
-    {
-     "identical_constants": true,
-     "overlay": "boss/bo3",
-     "symbol": "InitializeUnkEntity"
-    },
-    {
-     "identical_constants": true,
-     "overlay": "boss/bo7",
-     "symbol": "InitializeUnkEntity"
-    },
-    {
-     "identical_constants": true,
-     "overlay": "st/rno1",
-     "symbol": "InitializeUnkEntity"
-    }
-   ],
-   "symbol": "InitializeUnkEntity",
-   "token_twins": []
-  },
   "st/rno2/SpikesApplyDamage": {
    "instructions": 43,
    "name_twins": [
@@ -5076,77 +3621,6 @@
    "symbol": "SpikesBreak",
    "token_twins": []
   },
-  "st/rno2/UnkRecursivePrimFunc1": {
-   "instructions": 376,
-   "name_twins": [
-    {
-     "file": "src/st/e_misc.h",
-     "function": "UnkRecursivePrimFunc1"
-    }
-   ],
-   "overlay": "st/rno2",
-   "shape_twins": [
-    {
-     "identical_constants": true,
-     "overlay": "boss/bo3",
-     "symbol": "UnkRecursivePrimFunc1"
-    },
-    {
-     "identical_constants": true,
-     "overlay": "boss/bo7",
-     "symbol": "UnkRecursivePrimFunc1"
-    },
-    {
-     "identical_constants": true,
-     "overlay": "st/rno1",
-     "symbol": "UnkRecursivePrimFunc1"
-    }
-   ],
-   "symbol": "UnkRecursivePrimFunc1",
-   "token_twins": []
-  },
-  "st/rno2/UnkRecursivePrimFunc2": {
-   "instructions": 448,
-   "name_twins": [
-    {
-     "file": "src/st/e_misc.h",
-     "function": "UnkRecursivePrimFunc2"
-    }
-   ],
-   "overlay": "st/rno2",
-   "shape_twins": [
-    {
-     "identical_constants": true,
-     "overlay": "boss/bo3",
-     "symbol": "UnkRecursivePrimFunc2"
-    },
-    {
-     "identical_constants": true,
-     "overlay": "boss/bo7",
-     "symbol": "UnkRecursivePrimFunc2"
-    },
-    {
-     "identical_constants": true,
-     "overlay": "st/rno1",
-     "symbol": "UnkRecursivePrimFunc2"
-    }
-   ],
-   "symbol": "UnkRecursivePrimFunc2",
-   "token_twins": []
-  },
-  "st/rno2/func_us_801B4148_from_bo0": {
-   "instructions": 23,
-   "name_twins": [
-    {
-     "file": "src/st/rcen/unk_1F0D8.c",
-     "function": "func_us_801B4148_from_bo0"
-    }
-   ],
-   "overlay": "st/rno2",
-   "shape_twins": [],
-   "symbol": "func_us_801B4148_from_bo0",
-   "token_twins": []
-  },
   "st/rno2/func_us_801B41A4_from_bo0": {
    "instructions": 27,
    "name_twins": [],
@@ -5157,17 +3631,17 @@
     {
      "file": "src/st/st0/prologue_scroll.c",
      "function": "SetDisplayBufferColorsToBlack",
-     "score": 0.36
+     "score": 0.359
     },
     {
      "file": "src/st/sel_psp/7D40.c",
      "function": "SetDisplayBufferColorsToBlack",
-     "score": 0.36
+     "score": 0.359
     },
     {
      "file": "src/st/sel/318CC.c",
      "function": "SetDisplayBufferColorsToBlack",
-     "score": 0.36
+     "score": 0.359
     }
    ]
   },
@@ -5188,25 +3662,6 @@
     }
    ],
    "symbol": "func_us_801B5EE4",
-   "token_twins": []
-  },
-  "st/rno2/func_us_801B9458": {
-   "instructions": 30,
-   "name_twins": [],
-   "overlay": "st/rno2",
-   "shape_twins": [
-    {
-     "identical_constants": false,
-     "overlay": "st/rno1",
-     "symbol": "EntityIsNearPlayer"
-    },
-    {
-     "identical_constants": false,
-     "overlay": "st/rno2",
-     "symbol": "func_us_801B5EE4"
-    }
-   ],
-   "symbol": "func_us_801B9458",
    "token_twins": []
   },
   "st/rno4/DrawLaserRing": {
@@ -5278,19 +3733,6 @@
     }
    ],
    "symbol": "EntityBladeSoldierDeathParts",
-   "token_twins": []
-  },
-  "st/rno4/EntityBoatElevatorChains": {
-   "instructions": 279,
-   "name_twins": [
-    {
-     "file": "src/st/no4/e_ferryman.c",
-     "function": "EntityBoatElevatorChains"
-    }
-   ],
-   "overlay": "st/rno4",
-   "shape_twins": [],
-   "symbol": "EntityBoatElevatorChains",
    "token_twins": []
   },
   "st/rno4/EntityBreakable": {
@@ -5421,40 +3863,6 @@
    "symbol": "EntityBreakableWallDebris",
    "token_twins": []
   },
-  "st/rno4/EntityExplosionVariants": {
-   "instructions": 60,
-   "name_twins": [
-    {
-     "file": "src/st/e_misc.h",
-     "function": "EntityExplosionVariants"
-    }
-   ],
-   "overlay": "st/rno4",
-   "shape_twins": [
-    {
-     "identical_constants": true,
-     "overlay": "boss/bo3",
-     "symbol": "EntityExplosionVariants"
-    },
-    {
-     "identical_constants": true,
-     "overlay": "boss/bo7",
-     "symbol": "EntityExplosionVariants"
-    },
-    {
-     "identical_constants": true,
-     "overlay": "st/rno1",
-     "symbol": "EntityExplosionVariants"
-    },
-    {
-     "identical_constants": true,
-     "overlay": "st/rno2",
-     "symbol": "EntityExplosionVariants"
-    }
-   ],
-   "symbol": "EntityExplosionVariants",
-   "token_twins": []
-  },
   "st/rno4/EntityFloatingIcePlatform": {
    "instructions": 150,
    "name_twins": [
@@ -5468,40 +3876,6 @@
    "symbol": "EntityFloatingIcePlatform",
    "token_twins": []
   },
-  "st/rno4/EntityGreyPuff": {
-   "instructions": 61,
-   "name_twins": [
-    {
-     "file": "src/st/e_misc.h",
-     "function": "EntityGreyPuff"
-    }
-   ],
-   "overlay": "st/rno4",
-   "shape_twins": [
-    {
-     "identical_constants": true,
-     "overlay": "boss/bo3",
-     "symbol": "EntityGreyPuff"
-    },
-    {
-     "identical_constants": true,
-     "overlay": "boss/bo7",
-     "symbol": "EntityGreyPuff"
-    },
-    {
-     "identical_constants": true,
-     "overlay": "st/rno1",
-     "symbol": "EntityGreyPuff"
-    },
-    {
-     "identical_constants": true,
-     "overlay": "st/rno2",
-     "symbol": "EntityGreyPuff"
-    }
-   ],
-   "symbol": "EntityGreyPuff",
-   "token_twins": []
-  },
   "st/rno4/EntityImp": {
    "instructions": 812,
    "name_twins": [
@@ -5513,36 +3887,6 @@
    "overlay": "st/rno4",
    "shape_twins": [],
    "symbol": "EntityImp",
-   "token_twins": []
-  },
-  "st/rno4/EntityImpDeathParticle": {
-   "instructions": 137,
-   "name_twins": [
-    {
-     "file": "src/st/e_imp_death_particle.h",
-     "function": "EntityImpDeathParticle"
-    }
-   ],
-   "overlay": "st/rno4",
-   "shape_twins": [],
-   "symbol": "EntityImpDeathParticle",
-   "token_twins": []
-  },
-  "st/rno4/EntityImpSmoke": {
-   "instructions": 60,
-   "name_twins": [
-    {
-     "file": "src/st/e_imp_smoke.h",
-     "function": "EntityImpSmoke"
-    },
-    {
-     "file": "src/st/rnz0/e_imp.c",
-     "function": "EntityImpSmoke"
-    }
-   ],
-   "overlay": "st/rno4",
-   "shape_twins": [],
-   "symbol": "EntityImpSmoke",
    "token_twins": []
   },
   "st/rno4/EntityIntenseExplosion": {
@@ -5598,29 +3942,6 @@
    "symbol": "EntityJackOBones",
    "token_twins": []
   },
-  "st/rno4/EntityJackOBonesDeathParts": {
-   "instructions": 63,
-   "name_twins": [
-    {
-     "file": "src/st/rno0/unk_48100.c",
-     "function": "EntityJackOBonesDeathParts"
-    },
-    {
-     "file": "src/st/rno3/e_jack_o_bones.c",
-     "function": "EntityJackOBonesDeathParts"
-    }
-   ],
-   "overlay": "st/rno4",
-   "shape_twins": [
-    {
-     "identical_constants": true,
-     "overlay": "st/rno1",
-     "symbol": "EntityJackOBonesDeathParts"
-    }
-   ],
-   "symbol": "EntityJackOBonesDeathParts",
-   "token_twins": []
-  },
   "st/rno4/EntityJackOBonesJack": {
    "instructions": 177,
    "name_twins": [
@@ -5658,19 +3979,6 @@
    "symbol": "EntityKillerFish",
    "token_twins": []
   },
-  "st/rno4/EntityKillerFishDeathPuff": {
-   "instructions": 54,
-   "name_twins": [
-    {
-     "file": "src/st/no4/e_killer_fish.c",
-     "function": "EntityKillerFishDeathPuff"
-    }
-   ],
-   "overlay": "st/rno4",
-   "shape_twins": [],
-   "symbol": "EntityKillerFishDeathPuff",
-   "token_twins": []
-  },
   "st/rno4/EntityNovaLaser": {
    "instructions": 305,
    "name_twins": [
@@ -5693,29 +4001,6 @@
     }
    ],
    "symbol": "EntityNovaLaser",
-   "token_twins": []
-  },
-  "st/rno4/EntityNovaLaserPulse": {
-   "instructions": 86,
-   "name_twins": [
-    {
-     "file": "src/st/rno0/unk_48100.c",
-     "function": "EntityNovaLaserPulse"
-    },
-    {
-     "file": "src/st/rno3/e_nova_skeleton.c",
-     "function": "EntityNovaLaserPulse"
-    }
-   ],
-   "overlay": "st/rno4",
-   "shape_twins": [
-    {
-     "identical_constants": true,
-     "overlay": "st/rno1",
-     "symbol": "EntityNovaLaserPulse"
-    }
-   ],
-   "symbol": "EntityNovaLaserPulse",
    "token_twins": []
   },
   "st/rno4/EntityNovaSkeleton": {
@@ -5753,52 +4038,6 @@
    "overlay": "st/rno4",
    "shape_twins": [],
    "symbol": "EntityRdaiUnk33",
-   "token_twins": []
-  },
-  "st/rno4/EntitySideWaterSplash": {
-   "instructions": 231,
-   "name_twins": [
-    {
-     "file": "src/st/rno3/water_effects.c",
-     "function": "EntitySideWaterSplash"
-    },
-    {
-     "file": "src/st/water_effects.h",
-     "function": "EntitySideWaterSplash"
-    }
-   ],
-   "overlay": "st/rno4",
-   "shape_twins": [
-    {
-     "identical_constants": true,
-     "overlay": "st/rnz1",
-     "symbol": "EntitySideWaterSplash"
-    }
-   ],
-   "symbol": "EntitySideWaterSplash",
-   "token_twins": []
-  },
-  "st/rno4/EntitySmallWaterDrop": {
-   "instructions": 151,
-   "name_twins": [
-    {
-     "file": "src/st/rno3/water_effects.c",
-     "function": "EntitySmallWaterDrop"
-    },
-    {
-     "file": "src/st/water_effects.h",
-     "function": "EntitySmallWaterDrop"
-    }
-   ],
-   "overlay": "st/rno4",
-   "shape_twins": [
-    {
-     "identical_constants": true,
-     "overlay": "st/rnz1",
-     "symbol": "EntitySmallWaterDrop"
-    }
-   ],
-   "symbol": "EntitySmallWaterDrop",
    "token_twins": []
   },
   "st/rno4/EntitySplashWater": {
@@ -5912,90 +4151,6 @@
    "symbol": "EntityVenusWeedTendril",
    "token_twins": []
   },
-  "st/rno4/EntityWaterBox": {
-   "instructions": 134,
-   "name_twins": [
-    {
-     "file": "src/st/no4/first_c_file.c",
-     "function": "EntityWaterBox"
-    }
-   ],
-   "overlay": "st/rno4",
-   "shape_twins": [],
-   "symbol": "EntityWaterBox",
-   "token_twins": []
-  },
-  "st/rno4/EntityWaterDrop": {
-   "instructions": 169,
-   "name_twins": [
-    {
-     "file": "src/st/rno3/water_effects.c",
-     "function": "EntityWaterDrop"
-    },
-    {
-     "file": "src/st/water_effects.h",
-     "function": "EntityWaterDrop"
-    }
-   ],
-   "overlay": "st/rno4",
-   "shape_twins": [
-    {
-     "identical_constants": true,
-     "overlay": "st/rnz1",
-     "symbol": "EntityWaterDrop"
-    }
-   ],
-   "symbol": "EntityWaterDrop",
-   "token_twins": []
-  },
-  "st/rno4/LoadFerrymanGateTiles": {
-   "instructions": 28,
-   "name_twins": [
-    {
-     "file": "src/st/no4/e_ferryman.c",
-     "function": "LoadFerrymanGateTiles"
-    }
-   ],
-   "overlay": "st/rno4",
-   "shape_twins": [],
-   "symbol": "LoadFerrymanGateTiles",
-   "token_twins": []
-  },
-  "st/rno4/PlaySfxPositional": {
-   "instructions": 62,
-   "name_twins": [
-    {
-     "file": "src/boss/bo3/e_misc.c",
-     "function": "PlaySfxPositional"
-    },
-    {
-     "file": "src/boss/bo7/e_misc.c",
-     "function": "PlaySfxPositional"
-    },
-    {
-     "file": "src/st/e_misc.h",
-     "function": "PlaySfxPositional"
-    },
-    {
-     "file": "src/st/rno1/e_misc.c",
-     "function": "PlaySfxPositional"
-    },
-    {
-     "file": "src/st/rno2/e_misc.c",
-     "function": "PlaySfxPositional"
-    }
-   ],
-   "overlay": "st/rno4",
-   "shape_twins": [
-    {
-     "identical_constants": false,
-     "overlay": "st/rcen",
-     "symbol": "func_us_8019AA04"
-    }
-   ],
-   "symbol": "PlaySfxPositional",
-   "token_twins": []
-  },
   "st/rno4/SetupPrimsForEntitySpriteParts": {
    "instructions": 161,
    "name_twins": [
@@ -6007,89 +4162,6 @@
    "overlay": "st/rno4",
    "shape_twins": [],
    "symbol": "SetupPrimsForEntitySpriteParts",
-   "token_twins": []
-  },
-  "st/rno4/StepTowards": {
-   "instructions": 27,
-   "name_twins": [
-    {
-     "file": "src/st/rno0/e_gorgon.c",
-     "function": "StepTowards"
-    },
-    {
-     "file": "src/st/step_towards.h",
-     "function": "StepTowards"
-    }
-   ],
-   "overlay": "st/rno4",
-   "shape_twins": [
-    {
-     "identical_constants": true,
-     "overlay": "st/rnz1",
-     "symbol": "StepTowards"
-    }
-   ],
-   "symbol": "StepTowards",
-   "token_twins": []
-  },
-  "st/rno4/TryShoot": {
-   "instructions": 40,
-   "name_twins": [
-    {
-     "file": "src/st/rno0/unk_48100.c",
-     "function": "TryShoot"
-    },
-    {
-     "file": "src/st/rno3/e_nova_skeleton.c",
-     "function": "TryShoot"
-    }
-   ],
-   "overlay": "st/rno4",
-   "shape_twins": [
-    {
-     "identical_constants": true,
-     "overlay": "st/rno1",
-     "symbol": "TryShoot"
-    }
-   ],
-   "symbol": "TryShoot",
-   "token_twins": []
-  },
-  "st/rno4/TryThrow": {
-   "instructions": 41,
-   "name_twins": [
-    {
-     "file": "src/st/rno0/unk_48100.c",
-     "function": "TryThrow"
-    },
-    {
-     "file": "src/st/rno3/e_jack_o_bones.c",
-     "function": "TryThrow"
-    }
-   ],
-   "overlay": "st/rno4",
-   "shape_twins": [
-    {
-     "identical_constants": true,
-     "overlay": "st/rno1",
-     "symbol": "TryThrow"
-    }
-   ],
-   "symbol": "TryThrow",
-   "token_twins": []
-  },
-  "st/rno4/func_pspeu_0924B480": {
-   "instructions": 76,
-   "name_twins": [],
-   "overlay": "st/rno4",
-   "shape_twins": [
-    {
-     "identical_constants": true,
-     "overlay": "st/rnz1",
-     "symbol": "func_pspeu_0924B480"
-    }
-   ],
-   "symbol": "func_pspeu_0924B480",
    "token_twins": []
   },
   "st/rno4/func_us_801A071C_from_bo3": {
@@ -6208,6 +4280,10 @@
    "instructions": 29,
    "name_twins": [
     {
+     "file": "src/boss/bo3/unk_1CEEC.c",
+     "function": "func_us_801C123C_from_no4"
+    },
+    {
      "file": "src/st/rcen/unk_1F0D8.c",
      "function": "func_us_801C123C_from_no4"
     }
@@ -6237,6 +4313,32 @@
    "symbol": "func_us_801C12B0_from_no4",
    "token_twins": []
   },
+  "st/rno4/func_us_801C2850_from_no4": {
+   "instructions": 203,
+   "name_twins": [
+    {
+     "file": "src/boss/bo3/unk_1CEEC.c",
+     "function": "func_us_801C2850_from_no4"
+    }
+   ],
+   "overlay": "st/rno4",
+   "shape_twins": [],
+   "symbol": "func_us_801C2850_from_no4",
+   "token_twins": []
+  },
+  "st/rno4/func_us_801C2B78_from_no4": {
+   "instructions": 186,
+   "name_twins": [
+    {
+     "file": "src/boss/bo3/unk_1CEEC.c",
+     "function": "func_us_801C2B78_from_no4"
+    }
+   ],
+   "overlay": "st/rno4",
+   "shape_twins": [],
+   "symbol": "func_us_801C2B78_from_no4",
+   "token_twins": []
+  },
   "st/rno4/func_us_801C37C8_from_no4": {
    "instructions": 143,
    "name_twins": [],
@@ -6249,6 +4351,19 @@
     }
    ],
    "symbol": "func_us_801C37C8_from_no4",
+   "token_twins": []
+  },
+  "st/rno4/func_us_801C3A04_from_no4": {
+   "instructions": 176,
+   "name_twins": [
+    {
+     "file": "src/boss/bo3/unk_1CEEC.c",
+     "function": "func_us_801C3A04_from_no4"
+    }
+   ],
+   "overlay": "st/rno4",
+   "shape_twins": [],
+   "symbol": "func_us_801C3A04_from_no4",
    "token_twins": []
   },
   "st/rno4/func_us_801C3CC4_from_no4": {
@@ -6265,18 +4380,17 @@
    "symbol": "func_us_801C3CC4_from_no4",
    "token_twins": []
   },
-  "st/rno4/func_us_801C5518_from_no4": {
-   "instructions": 68,
-   "name_twins": [],
-   "overlay": "st/rno4",
-   "shape_twins": [
+  "st/rno4/func_us_801C4228_from_no4": {
+   "instructions": 190,
+   "name_twins": [
     {
-     "identical_constants": true,
-     "overlay": "boss/bo3",
-     "symbol": "func_us_801C5518_from_no4"
+     "file": "src/boss/bo3/unk_1CEEC.c",
+     "function": "func_us_801C4228_from_no4"
     }
    ],
-   "symbol": "func_us_801C5518_from_no4",
+   "overlay": "st/rno4",
+   "shape_twins": [],
+   "symbol": "func_us_801C4228_from_no4",
    "token_twins": []
   },
   "st/rnz1/EntityAlucardWaterEffect": {
@@ -6408,45 +4522,6 @@
    "symbol": "EntityCloakedKnight",
    "token_twins": []
   },
-  "st/rnz1/EntityCloakedKnightAura": {
-   "instructions": 73,
-   "name_twins": [
-    {
-     "file": "src/st/nz1/e_cloaked_knight.c",
-     "function": "EntityCloakedKnightAura"
-    }
-   ],
-   "overlay": "st/rnz1",
-   "shape_twins": [],
-   "symbol": "EntityCloakedKnightAura",
-   "token_twins": []
-  },
-  "st/rnz1/EntityCloakedKnightCloak": {
-   "instructions": 76,
-   "name_twins": [
-    {
-     "file": "src/st/nz1/e_cloaked_knight.c",
-     "function": "EntityCloakedKnightCloak"
-    }
-   ],
-   "overlay": "st/rnz1",
-   "shape_twins": [],
-   "symbol": "EntityCloakedKnightCloak",
-   "token_twins": []
-  },
-  "st/rnz1/EntityCloakedKnightSword": {
-   "instructions": 177,
-   "name_twins": [
-    {
-     "file": "src/st/nz1/e_cloaked_knight.c",
-     "function": "EntityCloakedKnightSword"
-    }
-   ],
-   "overlay": "st/rnz1",
-   "shape_twins": [],
-   "symbol": "EntityCloakedKnightSword",
-   "token_twins": []
-  },
   "st/rnz1/EntityFrozenShadeCrystal": {
    "instructions": 19,
    "name_twins": [
@@ -6460,32 +4535,6 @@
    "symbol": "EntityFrozenShadeCrystal",
    "token_twins": []
   },
-  "st/rnz1/EntityGearHorizontal": {
-   "instructions": 66,
-   "name_twins": [
-    {
-     "file": "src/st/nz1/e_gear_horizontal.c",
-     "function": "EntityGearHorizontal"
-    }
-   ],
-   "overlay": "st/rnz1",
-   "shape_twins": [],
-   "symbol": "EntityGearHorizontal",
-   "token_twins": []
-  },
-  "st/rnz1/EntityGearSidewaysLarge": {
-   "instructions": 158,
-   "name_twins": [
-    {
-     "file": "src/st/nz1/e_gear_large.c",
-     "function": "EntityGearSidewaysLarge"
-    }
-   ],
-   "overlay": "st/rnz1",
-   "shape_twins": [],
-   "symbol": "EntityGearSidewaysLarge",
-   "token_twins": []
-  },
   "st/rnz1/EntityGearSidewaysSmall": {
    "instructions": 219,
    "name_twins": [
@@ -6497,19 +4546,6 @@
    "overlay": "st/rnz1",
    "shape_twins": [],
    "symbol": "EntityGearSidewaysSmall",
-   "token_twins": []
-  },
-  "st/rnz1/EntityGearVertical": {
-   "instructions": 138,
-   "name_twins": [
-    {
-     "file": "src/st/nz1/e_gear_vertical.c",
-     "function": "EntityGearVertical"
-    }
-   ],
-   "overlay": "st/rnz1",
-   "shape_twins": [],
-   "symbol": "EntityGearVertical",
    "token_twins": []
   },
   "st/rnz1/EntityMedusaHeadBlue": {
@@ -6538,24 +4574,16 @@
    "symbol": "EntityMedusaHeadSpawner",
    "token_twins": [
     {
-     "file": "src/st/e_medusa_head.h",
+     "file": "src/st/rnz1/e_medusa_head.c",
      "function": "EntityMedusaHeadYellow",
-     "score": 0.377
-    }
-   ]
-  },
-  "st/rnz1/EntityMedusaHeadYellow": {
-   "instructions": 9,
-   "name_twins": [
+     "score": 0.365
+    },
     {
      "file": "src/st/e_medusa_head.h",
-     "function": "EntityMedusaHeadYellow"
+     "function": "EntityMedusaHeadYellow",
+     "score": 0.365
     }
-   ],
-   "overlay": "st/rnz1",
-   "shape_twins": [],
-   "symbol": "EntityMedusaHeadYellow",
-   "token_twins": []
+   ]
   },
   "st/rnz1/EntitySecretAreaDoor": {
    "instructions": 186,
@@ -6589,52 +4617,6 @@
    "overlay": "st/rnz1",
    "shape_twins": [],
    "symbol": "EntitySecretWallDebris",
-   "token_twins": []
-  },
-  "st/rnz1/EntitySideWaterSplash": {
-   "instructions": 231,
-   "name_twins": [
-    {
-     "file": "src/st/rno3/water_effects.c",
-     "function": "EntitySideWaterSplash"
-    },
-    {
-     "file": "src/st/water_effects.h",
-     "function": "EntitySideWaterSplash"
-    }
-   ],
-   "overlay": "st/rnz1",
-   "shape_twins": [
-    {
-     "identical_constants": true,
-     "overlay": "st/rno4",
-     "symbol": "EntitySideWaterSplash"
-    }
-   ],
-   "symbol": "EntitySideWaterSplash",
-   "token_twins": []
-  },
-  "st/rnz1/EntitySmallWaterDrop": {
-   "instructions": 151,
-   "name_twins": [
-    {
-     "file": "src/st/rno3/water_effects.c",
-     "function": "EntitySmallWaterDrop"
-    },
-    {
-     "file": "src/st/water_effects.h",
-     "function": "EntitySmallWaterDrop"
-    }
-   ],
-   "overlay": "st/rnz1",
-   "shape_twins": [
-    {
-     "identical_constants": true,
-     "overlay": "st/rno4",
-     "symbol": "EntitySmallWaterDrop"
-    }
-   ],
-   "symbol": "EntitySmallWaterDrop",
    "token_twins": []
   },
   "st/rnz1/EntitySpikes": {
@@ -6767,42 +4749,6 @@
    "symbol": "EntityWallGear",
    "token_twins": []
   },
-  "st/rnz1/EntityWaterDrop": {
-   "instructions": 169,
-   "name_twins": [
-    {
-     "file": "src/st/rno3/water_effects.c",
-     "function": "EntityWaterDrop"
-    },
-    {
-     "file": "src/st/water_effects.h",
-     "function": "EntityWaterDrop"
-    }
-   ],
-   "overlay": "st/rnz1",
-   "shape_twins": [
-    {
-     "identical_constants": true,
-     "overlay": "st/rno4",
-     "symbol": "EntityWaterDrop"
-    }
-   ],
-   "symbol": "EntityWaterDrop",
-   "token_twins": []
-  },
-  "st/rnz1/EntityWaterForeground": {
-   "instructions": 75,
-   "name_twins": [
-    {
-     "file": "src/st/nz1/e_water_fg.c",
-     "function": "EntityWaterForeground"
-    }
-   ],
-   "overlay": "st/rnz1",
-   "shape_twins": [],
-   "symbol": "EntityWaterForeground",
-   "token_twins": []
-  },
   "st/rnz1/SpikesApplyDamage": {
    "instructions": 17,
    "name_twins": [
@@ -6827,72 +4773,6 @@
    "overlay": "st/rnz1",
    "shape_twins": [],
    "symbol": "SpikesBreak",
-   "token_twins": []
-  },
-  "st/rnz1/StepTowards": {
-   "instructions": 27,
-   "name_twins": [
-    {
-     "file": "src/st/rno0/e_gorgon.c",
-     "function": "StepTowards"
-    },
-    {
-     "file": "src/st/step_towards.h",
-     "function": "StepTowards"
-    }
-   ],
-   "overlay": "st/rnz1",
-   "shape_twins": [
-    {
-     "identical_constants": true,
-     "overlay": "st/rno4",
-     "symbol": "StepTowards"
-    }
-   ],
-   "symbol": "StepTowards",
-   "token_twins": []
-  },
-  "st/rnz1/func_801CDC80": {
-   "instructions": 32,
-   "name_twins": [],
-   "overlay": "st/rnz1",
-   "shape_twins": [
-    {
-     "identical_constants": true,
-     "overlay": "boss/bo0",
-     "symbol": "func_us_801B15BC"
-    },
-    {
-     "identical_constants": true,
-     "overlay": "boss/rbo2",
-     "symbol": "func_801CDC80"
-    },
-    {
-     "identical_constants": true,
-     "overlay": "st/rlib",
-     "symbol": "func_us_801AE4B4"
-    },
-    {
-     "identical_constants": true,
-     "overlay": "st/rlib",
-     "symbol": "func_us_801AF3C8"
-    }
-   ],
-   "symbol": "func_801CDC80",
-   "token_twins": []
-  },
-  "st/rnz1/func_pspeu_0924B480": {
-   "instructions": 76,
-   "name_twins": [],
-   "overlay": "st/rnz1",
-   "shape_twins": [
-    {
-     "identical_constants": true,
-     "overlay": "st/rno4",
-     "symbol": "func_pspeu_0924B480"
-    }
-   ],
-   "symbol": "func_pspeu_0924B480",
    "token_twins": []
   },
   "st/rnz1/func_us_801BBE58": {
@@ -7018,7 +4898,7 @@
    ]
   }
  },
- "unmatched_stubs": 683,
+ "unmatched_stubs": 560,
  "version": "us",
- "with_candidates": 335
+ "with_candidates": 237
 }

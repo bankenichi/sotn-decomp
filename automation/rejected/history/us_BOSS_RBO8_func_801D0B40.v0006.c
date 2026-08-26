@@ -1,9 +1,9 @@
 /* REJECTED CANDIDATE -- was REJECTED BEFORE THE BUILD. Kept on purpose.
-   record : us:ST/RNZ1:SpikesApplyDamage
+   record : us:BOSS/RBO8:func_801D0B40
    attempt: 4/4
    from   : mimo-v2.5-free
-   origin : src/st/rnz1/e_spikes.c
-   verdict: quality reject: static_dropped: shared e_spikes.h declares it static in every version branch; our copy does not. FIX: restore static --
+   origin : src/boss/rbo8/unk_15868.c
+   verdict: quality reject: `Entity` has no member `unk5C4`; 0x5C4 falls inside `unkB8` (0xB8)
 
    This is NOT a permuter seed and must never be treated as
    one: it has never built. automation/candidates/ is for
@@ -18,22 +18,12 @@
 
    Do NOT apply this to the tree. Read it, fix what the
    verdict names, and re-attempt. */
-void SpikesApplyDamage(u32 arg0) {
-    s32 tileX;
-    s32 tileY;
-    s16 scrollX;
-    s16 scrollY;
-
-    tileX = (arg0 & 0xF) << 4;
-    tileX += 8;
-    scrollX = g_Tilemap.scrollX.i.hi;
-    tileX -= scrollX;
-
-    tileY = (arg0 >> 4) << 4;
-    tileY += 8;
-    scrollY = g_Tilemap.scrollY.i.hi;
-    tileY -= scrollY;
-
-    g_CurrentEntity->ext.spikes.rotate = (s16)tileX;
-    g_CurrentEntity->ext.spikes.echoCooldown = (s16)tileY;
+void func_801D0B40(void) {
+    Entity* self = g_CurrentEntity;
+    Entity* entity1 = self->unk5C4; // Entity at ext+0x548
+    Entity* entity2 = self->unk8B4; // Entity at ext+0x838
+    s16 angle1 = entity1->unk9C;    // Entity at ext+0x20
+    s16 angle2 = entity2->unk9C;    // Entity at ext+0x20
+    self->unk5C0 = angle1 + 0x100;  // Entity at ext+0x544
+    self->unk8B0 = angle2 + 0x180;  // Entity at ext+0x834
 }

@@ -18,22 +18,12 @@
 
    Do NOT apply this to the tree. Read it, fix what the
    verdict names, and re-attempt. */
+// Applies spike damage position based on tile coordinates from arg0
 void SpikesApplyDamage(u32 arg0) {
-    s32 tileX;
-    s32 tileY;
-    s16 scrollX;
-    s16 scrollY;
-
-    tileX = (arg0 & 0xF) << 4;
-    tileX += 8;
-    scrollX = g_Tilemap.scrollX.i.hi;
-    tileX -= scrollX;
-
-    tileY = (arg0 >> 4) << 4;
-    tileY += 8;
-    scrollY = g_Tilemap.scrollY.i.hi;
-    tileY -= scrollY;
-
-    g_CurrentEntity->ext.spikes.rotate = (s16)tileX;
-    g_CurrentEntity->ext.spikes.echoCooldown = (s16)tileY;
+    s32 tileX = (arg0 & 0xF) * 16 + 8;
+    s32 tileY = (arg0 >> 4) * 16 + 8;
+    s16 scrollX = g_Tilemap.scrollX.i.hi;
+    s16 scrollY = g_Tilemap.scrollY.i.hi;
+    g_CurrentEntity->ext.spikes.rotate = (s16)(tileX - scrollX);
+    g_CurrentEntity->ext.spikes.echoCooldown = (s16)(tileY - scrollY);
 }

@@ -13,9 +13,9 @@ For the mechanisms that land matches, read `automation/README.md`.
 | live authority | current value |
 |---|---|
 | Build oracle | **113/113** from the artifacts on disk |
-| Decompiled | **94.0%**, 8171/8734 functions; 563 US `INCLUDE_ASM` stubs remain |
-| Queue | 983 records: 420 matched, 393 todo, 122 escalated, 42 deferred, 6 near |
-| Provenance | upstream-harvest 47, shim-segment 9, shim-header 55, transplant 135, twin-port 29, permuter 18, claude-manual 6, model-fleet 56, unknown 65 |
+| Decompiled | **94.0%**, 8174/8734 functions; 560 US `INCLUDE_ASM` stubs remain |
+| Queue | 983 records: 423 matched, 389 todo, 123 escalated, 42 deferred, 6 near |
+| Provenance | upstream-harvest 47, shim-segment 9, shim-header 55, transplant 135, twin-port 29, permuter 18, claude-manual 6, model-fleet 58, unknown 66 |
 | Automation | 86 modules, 29 suites plus 36 module self-tests, 90 tools, 69 diagnostics |
 
 This block is regenerated from the same queue, checksum manifest, linker maps, provenance classifier, and connector inventory as `README.md`.
@@ -389,7 +389,7 @@ Check every consumer of a header before adopting it.
 | `job_status` | poll a job |
 | `job_list` | see what is running |
 | `job_cancel` | stop a job; it writes the exit sentinel so the job does not read as a crash |
-| `fleet_start` | start N model workers. Backend defaults to `zen` |
+| `fleet_start` | start N model workers. Backend defaults to `zen`; `only=` filters normal claims to exact listed `todo` ids |
 | `fleet_status` | **read the log tails.** A stuck worker looks alive from the counters alone |
 | `fleet_stop` | always, at the end. Releases claims, clears the lock, replays crash journals |
 | `worker_once` | one worker iteration synchronously, for debugging the loop |
@@ -399,6 +399,12 @@ Check every consumer of a header before adopting it.
 the models worth running fill `reasoning_content` first, so through the CLI they
 return empty roughly 94% of the time and worse on large contexts. Treating
 `== "cli"` as a proxy for "big-context tier" is a recurring bug in this codebase.
+
+Fleet subsets use the scheduler's ordinary todo path with an allowlist filter.
+Do not implement them by looping over targeted `--only` claims: that operator
+override intentionally permits escalated and deferred records, so a persistent
+loop reclaims its own failures. A subset never claims any non-todo status or an
+unlisted todo record.
 
 `job_status.elapsed_s` **includes queue wait**. Jobs are exclusive. The same call
 has measured 82s and 271s. It is not a runtime.

@@ -354,6 +354,9 @@ def main() -> int:
         plans = {b: _cc_mod.fleet_start(workers=2, backend=b)
                  for b in ("zen", "llama", "cli", "http")}
         default = _cc_mod.fleet_start(workers=2)
+        subset = _cc_mod.fleet_start(
+            workers=2, only=("us:ST/RNO4:func_us_801C8C54,"
+                             "us:ST/RNO4:LoadFerrymanGateTiles"))
     finally:
         _cc_mod.DRYRUN = _was
 
@@ -362,10 +365,17 @@ def main() -> int:
     check(default["reasoning"] == "(worker default: none)",
           f"fleet plan exposes the measured no-reasoning default "
           f"(got {default['reasoning']!r})")
+    check(subset["only"] == ["us:ST/RNO4:func_us_801C8C54",
+                              "us:ST/RNO4:LoadFerrymanGateTiles"],
+          f"fleet plan preserves the exact queue-id subset ({subset['only']!r})")
     _worker = (pathlib.Path(__file__).parent / "win" /
                "worker_direct.py").read_text(encoding="utf-8")
     check('os.environ.get("REASONING_EFFORT", "none")' in _worker,
           "the real Zen worker defaults to no reasoning")
+    check('p2.add_argument("--allowlist"' in _worker
+          and "allowlist=allowlist" in _worker
+          and '_next_args += ["--allowlist"' in _worker,
+          "the real fleet worker filters normal todo claims by allowlist")
     check(plans["zen"]["zen_workers"] == 2 and plans["zen"]["llama_workers"] == 0,
           "backend=zen starts zen workers and no llama workers")
     check(plans["llama"]["llama_workers"] == 2 and plans["llama"]["zen_workers"] == 0,

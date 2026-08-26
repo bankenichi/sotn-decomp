@@ -19,21 +19,18 @@
    Do NOT apply this to the tree. Read it, fix what the
    verdict names, and re-attempt. */
 void SpikesApplyDamage(u32 arg0) {
-    s32 tileX;
-    s32 tileY;
-    s16 scrollX;
-    s16 scrollY;
+    s16 tileX;
+    s16 tileY;
 
-    tileX = (arg0 & 0xF) << 4;
-    tileX += 8;
-    scrollX = g_Tilemap.scrollX.i.hi;
-    tileX -= scrollX;
+    // Extract tile coordinates from packed arg0: low nibble = X, high nibble = Y
+    tileX = (s16)(((arg0 & 0xF) << 4) + 8);
+    tileY = (s16)(((arg0 >> 4) << 4) + 8);
 
-    tileY = (arg0 >> 4) << 4;
-    tileY += 8;
-    scrollY = g_Tilemap.scrollY.i.hi;
-    tileY -= scrollY;
+    // Subtract scroll offsets to get world position
+    tileX -= g_Tilemap.scrollX.i.hi;
+    tileY -= g_Tilemap.scrollY.i.hi;
 
-    g_CurrentEntity->ext.spikes.rotate = (s16)tileX;
-    g_CurrentEntity->ext.spikes.echoCooldown = (s16)tileY;
+    // Store as spike hitbox offsets in ext union
+    g_CurrentEntity->ext.spikes.unkBE = tileX;
+    g_CurrentEntity->ext.spikes.unkC2 = tileY;
 }

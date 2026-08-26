@@ -344,7 +344,11 @@ void LoadFerrymanGateTiles(void) {
 }
 
 
-INCLUDE_ASM("st/rno4/nonmatchings/unk_44B0C", func_us_801C8C54);
+void func_us_801C8C54(Entity* self) {
+    LoadFerrymanGateTiles();
+    DestroyEntity(self);
+}
+
 
 INCLUDE_ASM("st/rno4/nonmatchings/unk_44B0C", func_us_801A071C_from_bo3);
 

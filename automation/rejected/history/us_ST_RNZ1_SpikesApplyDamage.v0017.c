@@ -21,8 +21,8 @@
 void SpikesApplyDamage(u32 arg0) {
     s32 tileX;
     s32 tileY;
-    s16 scrollX;
-    s16 scrollY;
+    u16 scrollX;
+    u16 scrollY;
 
     tileX = (arg0 & 0xF) << 4;
     tileX += 8;

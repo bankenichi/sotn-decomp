@@ -338,6 +338,9 @@ def _take(records, best, args):
 def cmd_next(args):
     q = Queue()
     prio = _load_priority()
+    allowlist = frozenset(
+        qid.strip() for qid in (getattr(args, "allowlist", "") or "").split(",")
+        if qid.strip())
 
     # Records the previous tier handed off because the function was too large
     # for it. Only THESE deferrals are claimable here: a record deferred for a
@@ -384,8 +387,14 @@ def cmd_next(args):
             return _take(records, r, args)
 
         todo = [r for r in records if r["status"] == "todo"]
+        if allowlist:
+            # A fleet subset is a FILTER on the ordinary todo pool, not a
+            # sequence of targeted operator overrides. The latter may reclaim
+            # escalated records by design and caused four workers to repeat the
+            # same failed records until they were stopped on 2026-08-25.
+            todo = [r for r in todo if r["id"] in allowlist]
         deferred_ids = set()
-        if args.include_deferred:
+        if args.include_deferred and not allowlist:
             for r in records:
                 if not (r["status"] == "deferred"
                         and HANDOFF in (r.get("notes") or "")):
@@ -1041,6 +1050,10 @@ def main():
                          "blocked filter and the deferred-last rule. Refused "
                          "if it is already claimed or already matched. For "
                          "targeted verification runs; the fleet never uses it")
+    pn.add_argument("--allowlist", default="", metavar="ID[,ID...]",
+                    help="filter the ordinary todo pool to these exact ids. "
+                         "Never claims escalated, deferred, near, matched, or "
+                         "unlisted todo records; intended for fleet subsets")
     pn.set_defaults(func=cmd_next)
 
     pr = sub.add_parser("report")

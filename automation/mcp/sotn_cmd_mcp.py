@@ -271,7 +271,7 @@ def candidate_publish(
 def fleet_start(workers: int = 4, max_functions: int = 0,
                 force: bool = False, backend: str = "zen",
                 cli_workers: int = 0, opencode_model: str = "",
-                reasoning: str = "") -> dict:
+                reasoning: str = "", only: str = "") -> dict:
     """Launch detached volume workers in WSL. Returns immediately.
 
     backend picks the model tier:
@@ -310,6 +310,10 @@ def fleet_start(workers: int = 4, max_functions: int = 0,
     serialised, so beyond ~4 the extras mostly queue. llama workers need
     llama-server started with --parallel >= that count.
 
+    only is an optional comma-separated allowlist of exact queue ids. It filters
+    the scheduler's normal todo pool before ranking and claiming. Escalated,
+    deferred, near, matched and unrelated todo records remain ineligible.
+
     Any cli worker triggers a preflight first: if the OpenCode CLI is not usable
     from the worker's environment, NOTHING is started. Otherwise those workers
     would claim records and escalate them for reasons unrelated to the function.
@@ -323,7 +327,7 @@ def fleet_start(workers: int = 4, max_functions: int = 0,
     return cc.fleet_start(workers, max_functions, force=force, backend=backend,
                           cli_workers=cli_workers,
                           opencode_model=opencode_model,
-                          reasoning=reasoning)
+                          reasoning=reasoning, only=only)
 
 
 @mcp.tool()
