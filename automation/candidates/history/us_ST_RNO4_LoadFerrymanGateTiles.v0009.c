@@ -1,14 +1,15 @@
 /* PERMUTER SEED -- deterministic isolated-score candidate.
    record : us:ST/RNO4:LoadFerrymanGateTiles
-   score  : 0
-   receipt: nonmatchings/.adapt-scores/20260825-214920-68881-165701/LoadFerrymanGateTiles/adapt-score.json
+   score  : 5
+   receipt: nonmatchings/.adapt-scores/20260824-234747-62298-142634/LoadFerrymanGateTiles/adapt-score.json
    producer: compiled-donor transplant, no model
    content: WHOLE FILE (isolated adaptable draft)
    origin : src/st/rno4/unk_44B0C.c
    asm    : asm/us/st/rno4/nonmatchings/unk_44B0C/LoadFerrymanGateTiles.s
-   verdict: the exact target function compiled and scored zero under the
-            project compiler and flags. A full game build is still required;
-            never treat isolated score evidence as a match. */
+   verdict: the exact target function compiled under the project
+            compiler and flags but did not score zero. A full game
+            build was intentionally not run. Import and search via
+            permuter_supervisor.py; never treat this as a match. */
 // SPDX-License-Identifier: AGPL-3.0-or-later
 #include "rno4.h"
 

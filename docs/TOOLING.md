@@ -13,9 +13,9 @@ For the mechanisms that land matches, read `automation/README.md`.
 | live authority | current value |
 |---|---|
 | Build oracle | **113/113** from the artifacts on disk |
-| Decompiled | **94.0%**, 8170/8734 functions; 564 US `INCLUDE_ASM` stubs remain |
-| Queue | 983 records: 419 matched, 394 todo, 122 escalated, 42 deferred, 6 near |
-| Provenance | upstream-harvest 47, shim-segment 9, shim-header 55, transplant 134, twin-port 29, permuter 18, claude-manual 6, model-fleet 56, unknown 65 |
+| Decompiled | **94.0%**, 8171/8734 functions; 563 US `INCLUDE_ASM` stubs remain |
+| Queue | 983 records: 420 matched, 393 todo, 122 escalated, 42 deferred, 6 near |
+| Provenance | upstream-harvest 47, shim-segment 9, shim-header 55, transplant 135, twin-port 29, permuter 18, claude-manual 6, model-fleet 56, unknown 65 |
 | Automation | 86 modules, 29 suites plus 36 module self-tests, 90 tools, 69 diagnostics |
 
 This block is regenerated from the same queue, checksum manifest, linker maps, provenance classifier, and connector inventory as `README.md`.
@@ -226,8 +226,11 @@ score-zero receipts, using the newest only to break ties.
 Add `--apply` to pass each preserved body sequentially through the journaled
 full-build landing path. The path refuses unrelated `src/` dirt, preserves every
 compile or link miss, restores the source after a miss, and reports a match only
-after the full artifact oracle passes. A score of zero authorizes this path; it
-does not bypass it.
+after the full artifact oracle passes. For a green sequential landing, receipt
+ownership and the scheduler's independent proof gate run under the same
+BuildLock; the queue transition is part of the transaction, and a reporting
+failure restores the source before releasing the lock. A score of zero
+authorizes this path; it does not bypass it.
 
 For a corpus, use `--land-score-zero-batches --apply`. It applies one source-
 overlay/checksum family at a time under a multi-file restore journal and one

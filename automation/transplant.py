@@ -1863,6 +1863,38 @@ def _expected_path_change_failures(
     return missing, unchanged
 
 
+def _report_score_zero_match(row: dict, verdict: str) -> None:
+    """Publish one verified score-zero result through scheduler's proof gate."""
+    evidence = {
+        "notes": (
+            f"deterministic score-zero landing receipt={row['receipt']} "
+            f"source={row['source']}"),
+        "proof": f"{verdict}; receipt={row['receipt']}",
+    }
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(REPO / "automation" / "scheduler.py"),
+            "report",
+            "--id", row["record_id"],
+            "--status", "matched",
+            "--score", "0",
+            "--keep-note",
+            "--evidence-stdin",
+        ],
+        cwd=str(REPO),
+        input=json.dumps(evidence),
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    if result.returncode:
+        detail = ((result.stdout or "") + "\n" + (result.stderr or "")).strip()
+        raise RuntimeError(
+            f"scheduler report failed for {row['record_id']}: "
+            f"{detail[-2000:] or 'no diagnostic'}")
+
+
 def land_score_zeros(apply: bool, overlay: str = "", function: str = "",
                      limit: int = 0) -> int:
     """Full-build the exact newest score-zero bodies, sequentially."""
@@ -1898,23 +1930,34 @@ def land_score_zeros(apply: bool, overlay: str = "", function: str = "",
               f"  receipt: {row['receipt']}", flush=True)
         expected = {row["source"]}
         before_bytes = _snapshot_expected_paths(expected)
-        good, verdict = _sup().land_match(
-            Path("."), row["function"], body=row["body"],
-            rec_id=row["record_id"])
-        if good:
+        ownership_verified = [False]
+
+        def report_verified(green: str) -> None:
             dirty_now = _dirty_files()
             unexpected, missing = _dirty_ownership_delta(
                 landed, dirty_now, expected)
-            byte_missing, unchanged = _expected_path_change_failures(before_bytes)
+            byte_missing, unchanged = _expected_path_change_failures(
+                before_bytes)
             missing |= byte_missing
             if unexpected or missing or unchanged:
+                raise RuntimeError(
+                    "GREEN touched paths outside its receipt ownership: "
+                    f"expected={sorted(expected)} "
+                    f"unexpected={sorted(unexpected)} "
+                    f"missing={sorted(missing)} "
+                    f"unchanged={sorted(unchanged)}")
+            _report_score_zero_match(row, green)
+            ownership_verified[0] = True
+
+        good, verdict = _sup().land_match(
+            Path("."), row["function"], body=row["body"],
+            rec_id=row["record_id"], on_verified=report_verified)
+        if good:
+            if not ownership_verified[0]:
                 failed += 1
                 result = "UNSAFE"
-                verdict = ("GREEN touched paths outside its receipt ownership: "
-                           f"expected={sorted(expected)} "
-                           f"unexpected={sorted(unexpected)} "
-                           f"missing={sorted(missing)} "
-                           f"unchanged={sorted(unchanged)}")
+                verdict = (
+                    "GREEN returned without the verified-success callback")
             else:
                 landed |= expected
                 result = "MATCHED"
@@ -3226,6 +3269,59 @@ def self_test() -> int:
        "landing passes the archived body directly to land_match")
     ck("score_draft" not in landing_src and "preflight(" not in landing_src,
        "landing never regenerates the body it is meant to prove")
+
+    print("\nsequential score-zero landing reports while the oracle lock is held")
+    original_globals = {
+        name: globals().get(name)
+        for name in (
+            "_selected_score_receipts", "_dirty_files",
+            "_validate_receipt_target", "_snapshot_expected_paths",
+            "_expected_path_change_failures", "_sup",
+            "_report_score_zero_match")
+    }
+    report_calls = []
+    dirty_states = iter([
+        set(), set(), {"src/st/test/file.c"}])
+    row = {
+        "record_id": "us:ST/TEST:FixtureFunction",
+        "overlay": "ST/TEST",
+        "function": "FixtureFunction",
+        "source": "src/st/test/file.c",
+        "body": "void FixtureFunction(void) {}",
+        "receipt": "nonmatchings/test/adapt-score.json",
+    }
+
+    class FakeSupervisor:
+        @staticmethod
+        def land_match(*_args, **kwargs):
+            callback = kwargs.get("on_verified")
+            if callback is not None:
+                callback("GREEN: fixture oracle")
+            return True, "GREEN: fixture oracle"
+
+    try:
+        globals()["_selected_score_receipts"] = lambda *_a, **_k: [row]
+        globals()["_dirty_files"] = lambda: next(dirty_states)
+        globals()["_validate_receipt_target"] = lambda _row: (True, "")
+        globals()["_snapshot_expected_paths"] = lambda _paths: {
+            "src/st/test/file.c": b"before"}
+        globals()["_expected_path_change_failures"] = lambda _before: (
+            set(), set())
+        globals()["_sup"] = lambda: FakeSupervisor()
+        globals()["_report_score_zero_match"] = (
+            lambda got_row, verdict: report_calls.append(
+                (got_row["record_id"], verdict)))
+        rc = land_score_zeros(True, "ST/TEST", "FixtureFunction", 1)
+        ck(rc == 0 and report_calls == [
+            ("us:ST/TEST:FixtureFunction", "GREEN: fixture oracle")],
+           "a green sequential landing reports the exact queue record in-lock",
+           f"rc={rc} calls={report_calls}")
+    finally:
+        for name, value in original_globals.items():
+            if value is None:
+                globals().pop(name, None)
+            else:
+                globals()[name] = value
     publishing_src = src[src.index("def _isolated_seed_artifact"):
                          src.index("\ndef publish_low_scores")]
     ck("artifact_store.publish_versioned_artifact" in publishing_src

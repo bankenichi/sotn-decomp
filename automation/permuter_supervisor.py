@@ -1259,7 +1259,8 @@ def land_supervisor_slot(work: Path, slot: dict) -> tuple[bool, str]:
 
 
 def land_match(work: Path, fn: str, build: str = "us",
-               lock=None, body: str = "", rec_id: str = "") -> tuple[bool, str]:
+               lock=None, body: str = "", rec_id: str = "",
+               on_verified=None) -> tuple[bool, str]:
     """Apply a score-0 seed to src/, BUILD it, and revert unless it is green.
 
     A permuter zero is necessary but NOT sufficient. func_us_801BC3E0 scored 0
@@ -1350,19 +1351,31 @@ def land_match(work: Path, fn: str, build: str = "us",
                 # the hashes win.
                 vok, vdetail = verify_checksums(build)
                 if vok:
-                    # CLEAR THE JOURNAL. apply_code wrote one holding the
-                    # PRE-EDIT stub, and it is only discarded by restore(),
-                    # which a successful landing never calls. Left behind, the
-                    # next replay_pending_journals() -- run at every worker
-                    # start and by fleet_stop -- would write that stub back
-                    # over the match we just verified, silently un-landing it.
-                    # worker_direct hit this exact bug and documents it at its
-                    # own journal_clear() call site.
+                    # CLEAR THE JOURNAL before publishing the queue transition.
+                    # A crash after reporting but before disarming would let
+                    # journal replay restore the stub while the queue still said
+                    # matched. If the in-lock callback fails, restore from the
+                    # in-memory original before releasing BuildLock.
+                    green = f"GREEN: {detail}; {vdetail}"
                     if not wd.journal_clear():
                         wd.restore(ctx, original)
                         return False, ("INTERNAL ERROR: verified landing journal "
                                        "could not be disarmed; source restored")
-                    return True, f"GREEN: {detail}; {vdetail}"
+                    if on_verified is not None:
+                        try:
+                            on_verified(green)
+                        except Exception as exc:  # noqa: BLE001
+                            wd.restore(ctx, original)
+                            bad = _assert_reverted(path, original)
+                            if bad:
+                                return False, (
+                                    f"{bad} (after verified-success callback "
+                                    f"failed: {type(exc).__name__}: {exc})")
+                            return False, (
+                                "INTERNAL ERROR: verified-success callback "
+                                f"failed; source restored: {type(exc).__name__}: "
+                                f"{exc}")
+                    return True, green
                 wd.restore(ctx, original)
                 bad = _assert_reverted(path, original)
                 if bad:
@@ -2713,6 +2726,12 @@ def self_test() -> int:
        "and the whole apply/build/revert happens under the fleet's lock")
     ck(lm.index("build_and_check") < lm.index("return True"),
        "there is no path that returns success without having built")
+    ck("on_verified=None" in lm
+       and lm.index("on_verified(green)") < lm.index("return True"),
+       "a verified-success callback runs before the oracle lock is released")
+    ck("after verified-success callback" in lm
+       and lm.count("wd.restore(ctx, original)") >= 4,
+       "a failed verified-success callback restores the source in-lock")
 
     print("\nbatched landing keeps the hardened oracle transaction")
     lb = src_sup[src_sup.index("def land_match_batch"):]

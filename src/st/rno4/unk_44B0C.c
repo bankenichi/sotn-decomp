@@ -324,7 +324,25 @@ void RNO4_Unused801C8BD4(void) {}
 
 void RNO4_Unused801C8BDC(void) {}
 
-INCLUDE_ASM("st/rno4/nonmatchings/unk_44B0C", LoadFerrymanGateTiles);
+void LoadFerrymanGateTiles(void) {
+    extern u16 D_us_801815C0[7][2];
+    u16* tileLayoutPtr;
+    Tilemap* tileMap;
+    s32 i;
+    s16 offset;
+
+    tileMap = &g_Tilemap;
+    offset = 0xF89;
+    tileLayoutPtr = *D_us_801815C0;
+
+    for (i = 0; i < LEN(D_us_801815C0); i++) {
+        tileMap->fg[offset] = *tileLayoutPtr++;
+        offset++;
+        tileMap->fg[offset] = *tileLayoutPtr++;
+        offset += 0xCF;
+    }
+}
+
 
 INCLUDE_ASM("st/rno4/nonmatchings/unk_44B0C", func_us_801C8C54);
 
