@@ -952,7 +952,13 @@ def _extract(body_src: str, fn: str) -> str:
     # loose version extracted 2,136 unrelated chars from it and reported three
     # raw D_ symbols we do not actually use. That is a fabricated finding, and
     # it is exactly the class of error this whole comparison exists to avoid.
-    text = _mask_inactive_us(_mask_c_noncode(body_src))
+    # Parsing needs comments and literals masked so braces inside them cannot
+    # terminate the function early. Returning that mask is destructive: it
+    # erases string/character literals and quoted include operands from the C.
+    # Keep an equal-length US source for the returned slice and use the masked
+    # copy only to locate the definition and its closing brace.
+    us_source = _mask_inactive_us(body_src)
+    text = _mask_c_noncode(us_source)
     for m in mt.RX_FUNC_HEAD.finditer(text):
         if m.group(1) != fn:
             continue
@@ -966,7 +972,7 @@ def _extract(body_src: str, fn: str) -> str:
                 if depth == 0:
                     break
             j += 1
-        return text[m.start():j + 1]
+        return us_source[m.start():j + 1]
     return ""
 
 
@@ -1127,6 +1133,22 @@ def self_test() -> int:
        == "func_us_801CC750", "suffix stripped")
     ck(re.sub(r"_from_\w+$", "", "EntityBreakable") == "EntityBreakable",
        "a name without the suffix is untouched")
+
+    print("\nfunction extraction masks syntax without erasing source semantics")
+    extracted_fixture = _extract(
+        'void Fixture(void) {\n'
+        '    FntPrint("value %d\\\\n", 1); /* keep comment */\n'
+        '#include "debug.h"\n'
+        '#ifdef VERSION_PSP\n    psp_only();\n#else\n    us_only();\n#endif\n'
+        '}\n', "Fixture")
+    ck('FntPrint("value %d\\\\n", 1);' in extracted_fixture,
+       f"string literals survive extraction ({extracted_fixture!r})")
+    ck('#include "debug.h"' in extracted_fixture,
+       "quoted include operands survive extraction")
+    ck("/* keep comment */" in extracted_fixture,
+       "comments survive extraction")
+    ck("us_only();" in extracted_fixture and "psp_only();" not in extracted_fixture,
+       "only the configured US branch survives extraction")
 
     print("\nbatch publication accepts exact-ID maps and lists")
     ck(publish_ids({"us:ST/RNO0:One": {}, "us:ST/RNO0:Two": {}}) ==

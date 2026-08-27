@@ -22,6 +22,14 @@ _PARENT_RELATIVE_INCLUDE = re.compile(
 _HISTORY_DIR_CACHE: dict[Path, tuple[int, list[Path]]] = {}
 
 
+def normalize_artifact_text(text: str) -> str:
+    """Canonicalize generated text before either immutable or stable storage."""
+    lines = [line.rstrip(" \t") for line in text.splitlines()]
+    while lines and not lines[-1]:
+        lines.pop()
+    return "\n".join(lines) + ("\n" if lines else "")
+
+
 def _history_directory_files(directory: Path) -> list[Path]:
     """List a shared history directory once until its mtime changes."""
     try:
@@ -92,6 +100,7 @@ def publish_versioned_artifact(
     stable = Path(path)
     root = Path(repo_root)
     stable.parent.mkdir(parents=True, exist_ok=True)
+    text = normalize_artifact_text(text)
     data = text.encode("utf-8")
     versions = history_versions(stable)
     archived = None
@@ -177,6 +186,16 @@ def self_test() -> int:
         checks = [
             (first.endswith("history/seed.v0001.c"), "first version is v0001"),
             (stable.read_text() == "first\n", "stable view matches first version"),
+        ]
+        normalized = root / "automation" / "candidates" / "normalized.c"
+        normalized_version = publish_versioned_artifact(
+            normalized, "line with padding   \n      \n\n", "seed", root)
+        normalized_history = root / normalized_version
+        checks += [
+            (normalized_history.read_text() == "line with padding\n",
+             "immutable generations remove trailing whitespace and blank EOF lines"),
+            (normalized.read_text() == "line with padding\n",
+             "stable views use the same canonical text as immutable generations"),
         ]
         stable.write_text("manual prior bytes\n")
         second = publish_versioned_artifact(stable, "second\n", "seed", root)

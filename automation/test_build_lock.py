@@ -98,6 +98,28 @@ def main():
     check(wd._LOCK_WAIT_TOTAL - before2 < 0.1,
           f"({wd._LOCK_WAIT_TOTAL - before2:.3f}s)")
 
+    print("\na dead lock owner is reclaimed without waiting an hour")
+    with open(lockpath, "w") as f:
+        f.write("99999999 0")
+    dead_age = time.time() - 30
+    os.utime(lockpath, (dead_age, dead_age))
+    dead_reclaimed = threading.Event()
+
+    def reclaim_dead_owner():
+        dead_lock = wd.BuildLock(lockpath)
+        dead_lock.acquire(poll=0.02)
+        dead_reclaimed.set()
+        dead_lock.release()
+
+    dead_thread = threading.Thread(target=reclaim_dead_owner)
+    dead_thread.start()
+    dead_thread.join(timeout=0.5)
+    check(dead_reclaimed.is_set(),
+          "a cancelled job's dead-owner lock is reclaimed after the grace period")
+    if not dead_reclaimed.is_set():
+        os.utime(lockpath, (0, 0))
+        dead_thread.join(timeout=5)
+
     print("\na stale lock is stolen by RENAME, not unlink")
     # unlink was a TOCTOU: two workers both see the same stale lock, one
     # unlinks and creates a fresh one, the other unlinks THAT and creates its

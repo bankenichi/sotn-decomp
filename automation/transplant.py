@@ -199,6 +199,39 @@ def local_twin(base: str, exclude: str = "") -> tuple[str, str]:
     return "", ""
 
 
+def expand_function_local_includes(
+        body: str, donor: Path, repo: Path = REPO,
+        _depth: int = 0) -> tuple[str, list[str]]:
+    """Inline quoted includes that were authored inside a donor function."""
+    if _depth > 8:
+        raise ValueError(f"function-local include nesting exceeds 8 at {donor}")
+    notes: list[str] = []
+    repo_root = repo.resolve()
+    pattern = re.compile(
+        r'(?m)^(?P<indent>[ \t]*)#\s*include\s+"(?P<name>[^"]+)"[ \t]*$')
+
+    def replace(match: re.Match) -> str:
+        include = (donor.resolve().parent / match.group("name")).resolve()
+        try:
+            include.relative_to(repo_root)
+        except ValueError as exc:
+            raise ValueError(
+                f"function-local include escapes repository: {include}") from exc
+        if not include.is_file():
+            raise ValueError(f"function-local include is missing: {include}")
+        expanded, nested_notes = expand_function_local_includes(
+            include.read_text(errors="ignore"), include, repo, _depth + 1)
+        notes.append(
+            "expanded function-local include "
+            + include.relative_to(repo_root).as_posix())
+        notes.extend(nested_notes)
+        indent = match.group("indent")
+        return "\n".join(
+            indent + line if line else line for line in expanded.splitlines())
+
+    return pattern.sub(replace, body), notes
+
+
 def rename_function(body: str, old: str, new: str) -> str:
     """Rename the DEFINITION and any self-recursion, nothing else.
 
@@ -211,6 +244,11 @@ def rename_function(body: str, old: str, new: str) -> str:
     if old == new:
         return body
     return re.sub(r"\b" + re.escape(old) + r"\b", new, body)
+
+
+def body_defines_function(body: str, fn: str) -> bool:
+    """Definition proof that tolerates file-scope compound declarations."""
+    return bool(_harv()._extract(body, fn))
 
 
 def apply_map(body: str, pairs: list[str]) -> tuple[str, list[str]]:
@@ -243,8 +281,8 @@ def apply_map(body: str, pairs: list[str]) -> tuple[str, list[str]]:
         if not o or not n_:
             notes.append(f"IGNORED malformed --map {pair!r}")
             continue
-        hits = len(re.findall(r"(?<![\w.])" + re.escape(o) + r"(?![\w.])",
-                              body))
+        hits = len(re.findall(r"(?<![\w.+-])" + re.escape(o) +
+                              r"(?![\w.+-])", body))
         if not hits:
             notes.append(f"IGNORED {o}: not present in the body")
             continue
@@ -257,9 +295,9 @@ def apply_map(body: str, pairs: list[str]) -> tuple[str, list[str]]:
     # a swap: the inverted castle mirrors this sprite, so 0xC0 and 0xE0 trade
     # places, and `0xC0->0xE0` followed by `0xE0->0xC0` collapses both to
     # 0xC0. Longest key first so a shorter one cannot match inside a longer.
-    pat = re.compile(r"(?<![\w.])(" + "|".join(
+    pat = re.compile(r"(?<![\w.+-])(" + "|".join(
         re.escape(k) for k in sorted(table, key=len, reverse=True))
-        + r")(?![\w.])")
+        + r")(?![\w.+-])")
     return pat.sub(lambda m: table[m.group(1)], body), notes
 
 
@@ -612,7 +650,9 @@ def auto_decls(body: str, dest: Path,
 
 _C_TYPE = (r"(?:(?:const|volatile)[ \t]+)*"
            r"(?:struct[ \t]+[A-Za-z_]\w*|union[ \t]+[A-Za-z_]\w*|"
-           r"enum[ \t]+[A-Za-z_]\w*|[A-Za-z_]\w*)"
+           r"enum[ \t]+[A-Za-z_]\w*|"
+           r"(?:signed|unsigned)(?:[ \t]+(?:char|short|int|long))?|"
+           r"[A-Za-z_]\w*)"
            r"(?:[ \t]*\*)*")
 _DONOR_OBJECT = re.compile(
     rf"(?m)^(?P<storage>(?:(?:static|extern)[ \t]+)*)"
@@ -624,16 +664,41 @@ _DONOR_FUNCTION = re.compile(
     rf"(?P<type>{_C_TYPE})[ \t]+"
     r"(?P<name>[A-Za-z_]\w*)[ \t]*\((?P<args>[^;{}]*)\)[ \t]*(?:\{|;)")
 _DONOR_ENUM = re.compile(
-    r"(?s)(?:typedef[ \t]+)?enum(?:[ \t]+[A-Za-z_]\w*)?[ \t]*"
+    r"(?s)(?:typedef[ \t]+)?enum"
+    r"(?:[ \t]+[A-Za-z_]\w*(?:[ \t]*\([^()]*\))?)?[ \t]*"
     r"\{(?P<body>.*?)\}[ \t]*(?:[A-Za-z_]\w*)?[ \t]*;")
 _DONOR_DEFINE = re.compile(
     r"(?m)^[ \t]*#\s*define[ \t]+(?P<name>[A-Za-z_]\w*)"
-    r"(?![ \t]*\()[ \t]+(?P<value>[^\n]+)")
+    r"(?!\()[ \t]+(?P<value>[^\n]+)")
+_DONOR_FUNCTION_DEFINE = re.compile(
+    r"(?m)^[ \t]*#\s*define[ \t]+(?P<name>[A-Za-z_]\w*)"
+    r"\((?P<args>[^)\n]*)\)[ \t]+(?P<value>[^\n]+)")
+_DONOR_COMPOUND_TYPEDEF = re.compile(
+    r"(?s)\btypedef[ \t]+(?P<kind>struct|union|enum)"
+    r"(?:[ \t]+[A-Za-z_]\w*)?[ \t]*\{(?P<body>.*?)\}"
+    r"[ \t]*(?P<name>[A-Za-z_]\w*)[ \t]*;")
 
 
-def _donor_scope_sources(donor: Path) -> list[tuple[Path, str]]:
-    """Donor plus recursively reachable quoted headers, each read once."""
-    pending = [donor]
+def compiled_consumer_source(twin_asm: str) -> Path | None:
+    """Map asm_delta's selected build object back to its exact C consumer."""
+    if not twin_asm:
+        return None
+    value = Path(twin_asm)
+    path = value if value.is_absolute() else REPO / value
+    try:
+        rel = path.resolve().relative_to((REPO / "build" / "us").resolve())
+    except ValueError:
+        return None
+    if rel.suffix != ".o":
+        return None
+    source = REPO / rel.with_suffix("")
+    return source if source.suffix == ".c" and source.is_file() else None
+
+
+def _donor_scope_sources(
+        donor: Path, consumer: Path | None = None) -> list[tuple[Path, str]]:
+    """Donor plus its selected compiled consumer's reachable quoted headers."""
+    pending = [item for item in (consumer, donor) if item is not None]
     seen: set[Path] = set()
     out: list[tuple[Path, str]] = []
     repo = REPO.resolve()
@@ -655,11 +720,13 @@ def _donor_scope_sources(donor: Path) -> list[tuple[Path, str]]:
         seen.add(path)
         text = path.read_text(errors="ignore")
         out.append((path, text))
-        for include in re.findall(r'^\s*#\s*include\s+"([^"]+)"',
-                                  text, flags=re.M):
+        for _opening, include in re.findall(
+                r'^\s*#\s*include\s*(["<])([^">]+)[">]',
+                text, flags=re.M):
             candidates = [path.parent / include,
                           REPO / "src" / include,
-                          REPO / "include" / include]
+                          REPO / "include" / include,
+                          REPO / "include" / "psxsdk" / include]
             found = next((item for item in candidates if item.is_file()), None)
             if found is not None and found.resolve() not in seen:
                 pending.append(found)
@@ -667,13 +734,11 @@ def _donor_scope_sources(donor: Path) -> list[tuple[Path, str]]:
 
 
 def _us_visible_source(text: str) -> str:
-    """Mask VERSION_PSP-only branches while preserving line structure.
+    """Mask non-PSX branches while preserving line structure.
 
-    Isolated scores target the US build. Donor files often carry PSP-only
-    declarations whose macro-expanded names conflict with US enum constants.
-    This is intentionally a narrow conditional reader, not a C preprocessor:
-    unknown conditions keep both branches visible, matching the resolver's
-    previous conservative behavior.
+    Isolated scores target the US PSX build, so VERSION_PSP and VERSION_PC are
+    both false. This is intentionally a narrow conditional reader, not a C
+    preprocessor: unknown conditions keep both branches visible.
     """
     stack: list[tuple[bool, bool | None, bool]] = []
     active = True
@@ -686,18 +751,21 @@ def _us_visible_source(text: str) -> str:
             if op in {"if", "ifdef", "ifndef"}:
                 expr = tail.strip()
                 verdict: bool | None = None
-                if op == "ifdef" and expr == "VERSION_PSP":
+                false_targets = r"(?:VERSION_PSP|VERSION_PC)"
+                if (op == "ifdef"
+                        and re.fullmatch(false_targets, expr)):
                     verdict = False
-                elif op == "ifndef" and expr == "VERSION_PSP":
+                elif (op == "ifndef"
+                      and re.fullmatch(false_targets, expr)):
                     verdict = True
                 elif op == "if":
                     if re.fullmatch(
-                            r"defined\s*(?:\(\s*VERSION_PSP\s*\)|"
-                            r"VERSION_PSP)", expr):
+                            rf"defined\s*(?:\(\s*{false_targets}\s*\)|"
+                            rf"{false_targets})", expr):
                         verdict = False
                     elif re.fullmatch(
-                            r"!\s*defined\s*(?:\(\s*VERSION_PSP\s*\)|"
-                            r"VERSION_PSP)", expr):
+                            rf"!\s*defined\s*(?:\(\s*{false_targets}\s*\)|"
+                            rf"{false_targets})", expr):
                         verdict = True
                 stack.append((active, verdict, False))
                 active = active and (verdict is not False)
@@ -802,11 +870,13 @@ def _destination_scope_sources(dest: Path,
     destination_root = dest.resolve().parent
     while pending and len(seen) < 64:
         source_path, source_text = pending.pop(0)
-        for include in re.findall(
-                r'^\s*#\s*include\s+"([^"]+)"', source_text, flags=re.M):
+        for _opening, include in re.findall(
+                r'^\s*#\s*include\s*(["<])([^">]+)[">]',
+                source_text, flags=re.M):
             candidates = [source_path.parent / include,
                           REPO / "src" / include,
-                          REPO / "include" / include]
+                          REPO / "include" / include,
+                          REPO / "include" / "psxsdk" / include]
             found = next((item.resolve() for item in candidates
                           if item.is_file()), None)
             if found is None or found in seen:
@@ -828,6 +898,30 @@ def _destination_scope_sources(dest: Path,
     return out
 
 
+def _file_scope_text(text: str) -> str:
+    """Mask brace-scoped members, initializers and function bodies."""
+    masked = _harv()._mask_c_noncode(text)
+    out: list[str] = []
+    depth = 0
+    for line in masked.splitlines(keepends=True):
+        if re.match(r"^\s*#", line):
+            out.append(line if depth == 0 else
+                       ("\n" if line.endswith("\n") else ""))
+            continue
+        for char in line:
+            if char == "{":
+                depth += 1
+                out.append(" ")
+            elif char == "}":
+                depth = max(0, depth - 1)
+                out.append(" ")
+            elif depth == 0:
+                out.append(char)
+            else:
+                out.append("\n" if char == "\n" else " ")
+    return "".join(out)
+
+
 def _destination_visible(dest: Path, name: str, defining: str = "",
                          destination_text: str | None = None) -> bool:
     """Whether a dependency is declared before the destination insertion point."""
@@ -845,12 +939,22 @@ def _destination_visible(dest: Path, name: str, defining: str = "",
             destination = destination[:min(markers)]
     pieces = [text for _path, text in _destination_scope_sources(
         dest, destination)]
-    text = _without_comments("\n".join(pieces))
-    text = re.sub(
-        r"\bINCLUDE_(?:ASM|RODATA)\s*\(.*?\)\s*;", " ", text, flags=re.S)
-    return bool(re.search(
-        rf"#\s*define[ \t]+{re.escape(name)}\b|"
-        rf"\b{re.escape(name)}\b[ \t]*(?:\[|\(|=|,|;)", text))
+    for piece in pieces:
+        clean = _without_comments(piece)
+        for enum in _DONOR_ENUM.finditer(clean):
+            for raw in enum.group("body").split(","):
+                if raw.partition("=")[0].strip() == name:
+                    return True
+        scope = _file_scope_text(clean)
+        scope = re.sub(
+            r"\bINCLUDE_(?:ASM|RODATA)\s*\(.*?\)\s*;",
+            " ", scope, flags=re.S)
+        if re.search(
+                rf"#\s*define[ \t]+{re.escape(name)}\b|"
+                rf"\b{re.escape(name)}\b[ \t]*(?:\[|\(|=|,|;)",
+                scope):
+            return True
+    return False
 
 
 def _local_names(body: str) -> set[str]:
@@ -861,13 +965,32 @@ def _local_names(body: str) -> set[str]:
         rf"(?P<type>{_C_TYPE})[ \t]+(?P<name>[A-Za-z_]\w*)"
         r"[ \t]*(?:\[|=|,|;)")
     non_types = {"return", "if", "else", "for", "while", "switch", "goto"}
+    builtin_types = {
+        "bool", "char", "double", "fixed", "float", "int", "long", "short",
+        "s8", "s16", "s32", "s64", "size_t", "u8", "u16", "u32", "u64",
+        "unsigned", "void",
+    }
     for match in local_decl.finditer(body):
-        base_type = re.sub(r"\b(?:const|volatile)\b|\*", "",
-                           match.group("type")).strip().split()[0]
-        if base_type not in non_types:
-            out.add(match.group("name"))
+        type_text = match.group("type")
+        tokens = re.findall(r"[A-Za-z_]\w*", re.sub(
+            r"\b(?:const|volatile)\b|\*", "", type_text))
+        if not tokens:
+            continue
+        base_type = tokens[-1]
+        explicit_tag = bool(re.match(
+            r"\s*(?:const\s+|volatile\s+)*(?:struct|union|enum)\b",
+            type_text))
+        # _C_TYPE accepts project typedefs, but can therefore parse an
+        # assignment such as pointsPtr = points as a declaration of points.
+        if (base_type in non_types or not (
+                base_type in builtin_types or explicit_tag
+                or base_type[:1].isupper() or base_type.endswith("_t"))):
+            continue
+        out.add(match.group("name"))
 
-    header = body.split("{", 1)[0]
+    header_match = re.search(
+        r"(?m)^[A-Za-z_][^\n;{}]*\([^;{}]*\)\s*\{", body)
+    header = header_match.group(0) if header_match else body.split("{", 1)[0]
     args_match = re.search(r"\((.*)\)", header, re.S)
     if args_match:
         for arg in args_match.group(1).split(","):
@@ -928,26 +1051,87 @@ def _enum_values(source: str) -> dict[str, int]:
 
 def donor_scope_decls(body: str, donor: Path, dest: Path,
                       defining: str = "",
-                      destination_text: str | None = None
+                      destination_text: str | None = None,
+                      consumer: Path | None = None
                       ) -> tuple[list[str], list[str]]:
     """Compile-only declarations for donor-local dependencies of a near twin.
 
-    These declarations make the isolated scorer reject or score the actual C
-    instead of accepting the legacy compiler's zero-exit invalid object. They
-    are not target-symbol proof and are labeled score-only. A full build still
-    has to resolve each dependency before a candidate can land.
+    Prefer exact destination declarations, even when they occur after the
+    insertion point, then fall back to donor declarations. Function-like
+    macros are retained because permuter import preserves only an allowlist.
     """
     sources = [(path, _us_visible_source(text))
-               for path, text in _donor_scope_sources(donor)]
+               for path, text in _donor_scope_sources(donor, consumer)]
+    destination_sources = [
+        (path, _us_visible_source(text))
+        for path, text in _destination_scope_sources(
+            dest, dest.read_text(errors="ignore"))]
     source = "\n".join(text for _path, text in sources)
-    used = set(re.findall(r"\b[A-Za-z_]\w*\b", body)) - _local_names(body)
+    dependency_text = re.sub(
+        r"(->|\.)[ \t]*[A-Za-z_]\w*", r"\1", _without_comments(body))
+    used = (set(re.findall(r"\b[A-Za-z_]\w*\b", dependency_text))
+            - _local_names(body))
     used.update("E_" + match.group(1) for match in re.finditer(
-        r"\bE_ID\s*\(\s*([A-Z][A-Z0-9_]*)\s*\)", body))
+        r"\bE_ID\s*\(\s*([A-Z0-9][A-Z0-9_]*)\s*\)", body))
+    type_decls: list[str] = []
     object_decls: list[str] = []
     function_decls: list[str] = []
     define_decls: list[str] = []
     notes: list[str] = []
     claimed: set[str] = set()
+
+    typedefs: dict[str, tuple[str, Path]] = {}
+    for source_path, source_text in destination_sources + sources:
+        for match in _DONOR_COMPOUND_TYPEDEF.finditer(
+                _without_comments(source_text)):
+            compact_body = " ".join(match.group("body").split())
+            declaration = (
+                f"#define {match.group('name')} {match.group('kind')} "
+                f"{{ {compact_body} }}")
+            typedefs.setdefault(
+                match.group("name"), (declaration, source_path))
+    added_types: set[str] = set()
+
+    def collect_required_types() -> None:
+        pending_types = set(used) - added_types
+        while pending_types:
+            name = min(pending_types)
+            pending_types.remove(name)
+            item = typedefs.get(name)
+            if item is None or name in added_types or _destination_visible(
+                    dest, name, defining, destination_text):
+                continue
+            declaration, source_path = item
+            type_decls.append(declaration)
+            added_types.add(name)
+            pending_types.update(
+                set(re.findall(r"\b[A-Za-z_]\w*\b", declaration))
+                - added_types
+                - {name, "typedef", "struct", "union", "enum"})
+            notes.append(f"score-only {declaration} from {source_path.name}")
+
+    collect_required_types()
+
+    # Exact target declarations after the stub beat donor guesses.
+    for source_path, source_text in destination_sources:
+        for match in _DONOR_OBJECT.finditer(source_text):
+            name = match.group("name")
+            if (name in claimed or name not in used or name == defining
+                    or _destination_visible(
+                        dest, name, defining, destination_text)):
+                continue
+            array = _complete_array_shape(source_text, match)
+            storage = match.group("storage").split()
+            prefix = "static " if "static" in storage else "extern "
+            declaration = (
+                f"{prefix}{match.group('type').strip()} {name}{array};")
+            object_decls.append(declaration)
+            claimed.add(name)
+            used.update(re.findall(
+                r"\b[A-Za-z_]\w*\b", match.group("type") + " " + array))
+            notes.append(
+                f"score-only exact destination {declaration} "
+                f"from {source_path.name}")
 
     for source_path, source_text in sources:
         for match in _DONOR_OBJECT.finditer(source_text):
@@ -960,29 +1144,44 @@ def donor_scope_decls(body: str, donor: Path, dest: Path,
             declaration = f"extern {match.group('type').strip()} {name}{array};"
             object_decls.append(declaration)
             claimed.add(name)
-            used.update(re.findall(r"\b[A-Za-z_]\w*\b", array))
+            used.update(re.findall(
+                r"\b[A-Za-z_]\w*\b", match.group("type") + " " + array))
             notes.append(f"score-only {declaration} from {source_path.name}")
 
+    collect_required_types()
+
+    # Function-pointer values need prototypes even without a call expression.
+    for source_path, source_text in destination_sources + sources:
         for match in _DONOR_FUNCTION.finditer(source_text):
             name = match.group("name")
             if (name in claimed or name not in used or name == defining
-                    or not re.search(rf"\b{re.escape(name)}\s*\(", body)
                     or _destination_visible(
                         dest, name, defining, destination_text)):
                 continue
-            storage = "extern " if "extern" in match.group("storage").split() else ""
+            storage_words = match.group("storage").split()
+            storage = ("static " if "static" in storage_words else
+                       "extern " if "extern" in storage_words else "")
             declaration = (f"{storage}{match.group('type').strip()} {name}"
                            f"({match.group('args').strip() or 'void'});")
             function_decls.append(declaration)
             claimed.add(name)
             notes.append(f"score-only {declaration} from {source_path.name}")
 
-    macros: dict[str, tuple[str, Path]] = {}
-    for source_path, source_text in sources:
-        for match in _DONOR_DEFINE.finditer(source_text):
+    macros: dict[str, tuple[str, Path, str, bool]] = {}
+    for source_path, source_text in destination_sources + sources:
+        for match in _DONOR_FUNCTION_DEFINE.finditer(source_text):
+            value = _without_comments(match.group("value")).strip()
+            declaration = (
+                f"#define {match.group('name')}({match.group('args')}) {value}")
             macros.setdefault(
                 match.group("name"),
-                (_without_comments(match.group("value")).strip(), source_path))
+                (value, source_path, declaration, True))
+        for match in _DONOR_DEFINE.finditer(source_text):
+            value = _without_comments(match.group("value")).strip()
+            declaration = f"#define {match.group('name')} {value}"
+            macros.setdefault(
+                match.group("name"),
+                (value, source_path, declaration, False))
     required = set(used)
     pending = set(required)
     added_macros: set[str] = set()
@@ -990,19 +1189,19 @@ def donor_scope_decls(body: str, donor: Path, dest: Path,
         name = min(pending)
         pending.remove(name)
         item = macros.get(name)
-        if (not item or name in added_macros
-                or _destination_visible(
-                    dest, name, defining, destination_text)):
+        if not item or name in added_macros:
             continue
-        value, source_path = item
+        value, source_path, declaration, function_like = item
+        if (not function_like and _destination_visible(
+                dest, name, defining, destination_text)):
+            continue
         if not value:
             continue
-        declaration = f"#define {name} {value}"
         define_decls.append(declaration)
         added_macros.add(name)
         dependencies = set(re.findall(r"\b[A-Za-z_]\w*\b", value))
         required.update(dependencies)
-        pending.update(dependencies)
+        pending.update(dependencies - added_macros)
         notes.append(f"score-only {declaration} from {source_path.name}")
 
     enum_values = _enum_values(source)
@@ -1014,7 +1213,7 @@ def donor_scope_decls(body: str, donor: Path, dest: Path,
         declaration = f"#define {name} {enum_values[name]}"
         define_decls.append(declaration)
         notes.append(f"score-only {declaration} from donor enum scope")
-    return define_decls + object_decls + function_decls, notes
+    return define_decls + type_decls + object_decls + function_decls, notes
 
 
 RX_ENUM = re.compile(r"enum\s+\w*\s*\{(.*?)\}", re.S)
@@ -1096,7 +1295,10 @@ def enum_map(body: str, src_h: Path, dest_h: Path,
         return {}, []
     have = {n for n, _c in dest}
     out, notes = {}, []
-    for name in sorted(set(re.findall(r"\b(E_[A-Z0-9_]+)\b", body))):
+    literal_names = set(re.findall(r"\b(E_[A-Z0-9_]+)\b", body))
+    e_id_names = {"E_" + match.group(1) for match in re.finditer(
+        r"\bE_ID\s*\(\s*([A-Z0-9][A-Z0-9_]*)\s*\)", body)}
+    for name in sorted(literal_names | e_id_names):
         if name in have:
             continue                      # the destination knows this name
         idx = next((i for i, (n, _c) in enumerate(src) if n == name), -1)
@@ -1124,7 +1326,10 @@ def enum_map(body: str, src_h: Path, dest_h: Path,
             notes.append(f"{name} -> {cand}: proven by EntityUpdates "
                          f"({evidence}) but suppressed for a non-clean twin")
             continue
-        out[name] = cand
+        if name in literal_names:
+            out[name] = cand
+        if name in e_id_names:
+            out[f"E_ID({name[2:]})"] = cand
         notes.append(f"{name} -> {cand}  (ordinal {idx}, EntityUpdates: "
                      f"{evidence}"
                      + (f", destination comment: {comment}" if comment else "")
@@ -1165,7 +1370,8 @@ def aggregate_candidate_failures(classes: list[str]) -> str:
 
 def preflight(fn: str, mapping: list[str] | None = None,
               auto: bool = False, skip_clean: bool = False,
-              adapt: bool = False, stub_overlay: str = ""
+              adapt: bool = False, stub_overlay: str = "",
+              score_context: bool = False
               ) -> tuple[bool, str, str]:
     """Everything checkable before the tree is touched.
 
@@ -1250,10 +1456,15 @@ def preflight(fn: str, mapping: list[str] | None = None,
         return False, "", (f"scan-class: {scan_class}\n"
                            "no usable twin in this tree; tried "
                            + (rendered if rendered else "nothing"))
+    try:
+        body, include_notes = expand_function_local_includes(
+            body, REPO / path)
+    except ValueError as exc:
+        return False, "", f"scan-class: error\n{exc}"
     body = rename_function(body, base, fn)
 
     pairs = list(mapping or [])
-    auto_notes: list[str] = []
+    auto_notes: list[str] = list(include_notes)
     target_symbols: set[str] = set()
     adapt_kind = ""
     if auto:
@@ -1311,9 +1522,11 @@ def preflight(fn: str, mapping: list[str] | None = None,
     body, map_notes = apply_map(body, pairs + mc)
     body, api_notes = adapt_api_surfaces(body, target_symbols)
     decls, decl_notes = auto_decls(body, REPO / stub_path, defining=fn)
-    if adapt_kind:
+    if adapt_kind or score_context:
         donor_decls, donor_notes = donor_scope_decls(
-            body, REPO / path, REPO / stub_path, defining=fn)
+            body, REPO / path, REPO / stub_path, defining=fn,
+            consumer=compiled_consumer_source(
+                str((selected_delta or {}).get("twin_asm", ""))))
         decls = list(dict.fromkeys(decls + donor_decls))
         decl_notes += donor_notes
     if decls:
@@ -1322,8 +1535,7 @@ def preflight(fn: str, mapping: list[str] | None = None,
     # The transplant must define the function we are replacing, not merely
     # mention it. _extract already enforces this, but a wrong body here would
     # be applied to the tree, so it is worth asserting twice.
-    head = body.split("{", 1)[0]
-    if not re.search(r"\b" + re.escape(fn) + r"\s*\(", head):
+    if not body_defines_function(body, fn):
         return False, "", f"extracted body does not define {fn}"
 
     # Type-check the transplant the same way generated C is checked. Upstream
@@ -1382,12 +1594,42 @@ def run(fn: str, apply: bool, mapping: list[str] | None = None,
     return 0 if good else 2
 
 
+def _dedupe_score_support_declarations(
+        body: str, fn: str) -> tuple[str, list[str]]:
+    """Keep the first exact extern when relocation aliases collide."""
+    definition = re.search(
+        rf"(?m)^[^#\n;{{}}]*\b{re.escape(fn)}\s*"
+        r"\([^;{}]*\)\s*\{", body)
+    if definition is None:
+        return body, []
+    prefix, rest = body[:definition.start()], body[definition.start():]
+    seen: set[str] = set()
+    out: list[str] = []
+    notes: list[str] = []
+    for line in prefix.splitlines(keepends=True):
+        raw = line.rstrip("\r\n")
+        match = _DONOR_OBJECT.match(raw)
+        is_extern = bool(match and match.end() == len(raw)
+                         and "extern" in match.group("storage").split())
+        if not is_extern:
+            out.append(line)
+            continue
+        name = match.group("name")
+        if name in seen:
+            notes.append(f"dropped duplicate relocated extern {raw.strip()}")
+            continue
+        seen.add(name)
+        out.append(line)
+    return "".join(out) + rest, notes
+
+
 def score_draft(fn: str, mapping: list[str] | None = None,
                 body: str = "", detail: str = "", overlay: str = "") -> dict:
     """Isolated permuter debug score for one target-informed draft."""
     if not body:
         ok, body, detail = preflight(
-            fn, mapping, auto=True, adapt=True, stub_overlay=overlay)
+            fn, mapping, auto=True, adapt=True, stub_overlay=overlay,
+            score_context=True)
         if not ok:
             return {"function": fn, "score": None, "status": "preflight-failed",
                     "archive": "", "detail": detail}
@@ -1405,6 +1647,9 @@ def score_draft(fn: str, mapping: list[str] | None = None,
 
     mapped_body, map_notes = apply_map(
         body, [f"{old}={new}" for old, new in sorted(aliases.items())])
+    mapped_body, dedupe_notes = _dedupe_score_support_declarations(
+        mapped_body, fn)
+    map_notes.extend(dedupe_notes)
     if mapped_body == body:
         return first
     lineage = {
@@ -1540,29 +1785,113 @@ def score_published_file(path_text: str, limit: int = 0,
     return 1 if score_scan_failed(ranked) else 0
 
 
+def scan_report(mode: str, rows: list[dict]) -> dict:
+    """Build one deterministic, lossless report for a full candidate pass."""
+    counts: dict[str, int] = {}
+    for row in rows:
+        status = str(row.get("status") or "error")
+        counts[status] = counts.get(status, 0) + 1
+    return {
+        "schema": 1,
+        "mode": mode,
+        "record_count": len(rows),
+        "summary": {key: counts[key] for key in sorted(counts)},
+        "records": rows,
+    }
+
+
+def write_scan_report(json_out: str, report: dict) -> bool:
+    """Persist a scan report inside the repository, atomically."""
+    if not json_out:
+        return True
+    out = (REPO / json_out).resolve()
+    try:
+        out.relative_to(REPO.resolve())
+    except ValueError:
+        print("json-out must stay inside the repository")
+        return False
+    out.parent.mkdir(parents=True, exist_ok=True)
+    pending = out.with_name(out.name + ".tmp")
+    pending.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+    pending.replace(out)
+    print(f"wrote {out.relative_to(REPO)}: {report['record_count']} record(s)")
+    return True
+
+
 def score_scan_preflight_status(ok: bool, detail: str) -> str:
     """Render every exact preflight outcome instead of silently dropping it."""
     if ok and detail.startswith("adaptable draft:"):
         return ""
     if ok and detail.startswith("ready:"):
-        return "ready-unscored"
+        return ""
     match = re.search(r"(?m)^scan-class:\s*([^\n]+)", detail)
     if match:
         return match.group(1).strip()
     return "preflight-failed"
 
 
+SCORE_SCAN_FAILURES = {
+    "preflight-error", "preflight-failed", "import-failed",
+    "debug-failed", "archive-failed", "source-restore-failed", "error",
+}
+
+
 def score_scan_failed(rows: list[dict]) -> bool:
-    failures = {
-        "preflight-error", "preflight-failed", "import-failed",
-        "debug-failed", "archive-failed", "source-restore-failed", "error",
-    }
-    return not rows or any(row.get("status") in failures for row in rows)
+    return not rows or any(
+        row.get("status") in SCORE_SCAN_FAILURES for row in rows)
 
 
-def score_scan(limit: int = 0, overlay: str = "") -> int:
-    """Generate, isolate-score and rank adaptable queue records."""
+def select_score_failure_records(
+        data: object, recs: list[tuple[str, str, str]]
+        ) -> list[tuple[str, str, str]]:
+    """Resolve a prior report's failed IDs against the current exact queue set."""
+    rows = data.get("records") if isinstance(data, dict) else None
+    if not isinstance(rows, list):
+        raise ValueError("score failures file must contain a records array")
+    ids: list[str] = []
+    for row in rows:
+        if not isinstance(row, dict) or row.get("status") not in SCORE_SCAN_FAILURES:
+            continue
+        record_id = row.get("record_id")
+        if not isinstance(record_id, str) or not record_id:
+            raise ValueError("failed score row has no exact record_id")
+        if record_id in ids:
+            raise ValueError(f"duplicate failed score record_id: {record_id}")
+        ids.append(record_id)
+    if not ids:
+        raise ValueError("score failures file contains no failed record IDs")
+    by_id = {rec[0]: rec for rec in recs}
+    missing = [record_id for record_id in ids if record_id not in by_id]
+    if missing:
+        raise ValueError(
+            "failed score IDs are not current unmatched records: "
+            + ", ".join(missing))
+    return [by_id[record_id] for record_id in ids]
+
+
+def score_failure_records(path_text: str,
+                          recs: list[tuple[str, str, str]]
+                          ) -> list[tuple[str, str, str]]:
+    """Select the exact failed record IDs from one prior score report."""
+    path = (REPO / path_text).resolve()
+    try:
+        path.relative_to(REPO.resolve())
+    except ValueError as exc:
+        raise ValueError("score failures file must stay inside the repository") from exc
+    data = json.loads(path.read_text(encoding="utf-8"))
+    return select_score_failure_records(data, recs)
+
+
+def score_scan(limit: int = 0, overlay: str = "",
+               json_out: str = "", failures_file: str = "") -> int:
+    """Generate, isolate-score and rank every compilable donor candidate."""
     recs = _harv().unmatched_records()
+    if failures_file:
+        try:
+            recs = score_failure_records(failures_file, recs)
+        except (OSError, ValueError, json.JSONDecodeError) as exc:
+            print(f"could not select exact score failures: {exc}")
+            return 2
     if overlay:
         recs = [rec for rec in recs if overlay.lower() in rec[1].lower()]
     dirty = _sup().require_clean_src()
@@ -1572,25 +1901,28 @@ def score_scan(limit: int = 0, overlay: str = "") -> int:
 
     rows: list[dict] = []
     attempted = 0
-    for _rid, ovl, fn in recs:
+    for rid, ovl, fn in recs:
         try:
             ok, body, detail = preflight(
                 fn, None, auto=True, skip_clean=True, adapt=True,
-                stub_overlay=ovl)
+                stub_overlay=ovl, score_context=True)
         except Exception as exc:                              # noqa: BLE001
-            rows.append({"function": fn, "overlay": ovl, "score": None,
+            rows.append({"record_id": rid, "function": fn, "overlay": ovl,
+                         "score": None,
                          "status": "preflight-error", "archive": "",
                          "detail": f"{type(exc).__name__}: {exc}"})
             continue
         preflight_status = score_scan_preflight_status(ok, detail)
         if preflight_status:
-            rows.append({"function": fn, "overlay": ovl, "score": None,
+            rows.append({"record_id": rid, "function": fn, "overlay": ovl,
+                         "score": None,
                          "status": preflight_status, "archive": "",
                          "detail": detail})
             continue
         print(f"[score] {fn} ({ovl})", flush=True)
         result = score_draft(fn, body=body, detail=detail, overlay=ovl)
         result["overlay"] = ovl
+        result["record_id"] = rid
         rows.append(result)
         attempted += 1
         if limit and attempted >= limit:
@@ -1612,6 +1944,8 @@ def score_scan(limit: int = 0, overlay: str = "") -> int:
             print(f"          evidence: {row['archive']}")
         if row.get("score") is None:
             print(f"          detail: {row.get('detail', '')[:160]}")
+    if not write_scan_report(json_out, scan_report("score", ranked)):
+        return 1
     return 1 if score_scan_failed(ranked) else 0
 
 
@@ -1729,12 +2063,51 @@ def best_score_receipts(root: Path = SCORE_ROOT,
                   key=lambda row: row["record_id"])
 
 
+def score_report_record_ids(path: str, min_score: int, max_score: int,
+                            repo: Path = REPO) -> set[str]:
+    """Load an exact record allowlist from one durable score scan report."""
+    report = (repo / path).resolve()
+    try:
+        report.relative_to(repo.resolve())
+    except ValueError as exc:
+        raise ValueError(f"score receipt report escapes repository: {path}") from exc
+    data = json.loads(report.read_text(encoding="utf-8"))
+    records = data.get("records")
+    if data.get("mode") != "score" or not isinstance(records, list):
+        raise ValueError("score receipt report must be a score scan report")
+    selected: set[str] = set()
+    seen: set[str] = set()
+    for index, row in enumerate(records):
+        if not isinstance(row, dict):
+            raise ValueError(f"score receipt report row {index} is not an object")
+        record_id = str(row.get("record_id") or "")
+        overlay = str(row.get("overlay") or "")
+        function = str(row.get("function") or "")
+        expected = f"us:{overlay.upper()}:{function}"
+        if (not function or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", function)
+                or record_id != expected):
+            raise ValueError(
+                f"score receipt report row {index} has inconsistent identity")
+        if record_id in seen:
+            raise ValueError(
+                f"score receipt report repeats exact record {record_id}")
+        seen.add(record_id)
+        score = row.get("score")
+        if (row.get("status") == "scored" and isinstance(score, int)
+                and min_score <= score <= max_score):
+            selected.add(record_id)
+    return selected
+
+
 def select_score_receipts(rows: list[dict], min_score: int, max_score: int,
                           overlay: str = "", function: str = "",
-                          limit: int = 0) -> list[dict]:
+                          limit: int = 0,
+                          record_ids: set[str] | None = None) -> list[dict]:
     """Select receipts by exact identity before applying an optional limit."""
     rows = [row for row in rows
             if min_score <= row["score"] <= max_score]
+    if record_ids is not None:
+        rows = [row for row in rows if row["record_id"] in record_ids]
     if overlay:
         rows = [row for row in rows
                 if overlay.lower() in row["overlay"].lower()]
@@ -1746,10 +2119,16 @@ def select_score_receipts(rows: list[dict], min_score: int, max_score: int,
 
 def _selected_score_receipts(min_score: int, max_score: int,
                              overlay: str = "", function: str = "",
-                             limit: int = 0) -> list[dict]:
+                             limit: int = 0,
+                             score_receipts_file: str = "") -> list[dict]:
+    record_ids = None
+    if score_receipts_file:
+        record_ids = score_report_record_ids(
+            score_receipts_file, min_score, max_score)
     return select_score_receipts(
         best_score_receipts(), min_score, max_score,
-        overlay=overlay, function=function, limit=limit)
+        overlay=overlay, function=function, limit=limit,
+        record_ids=record_ids)
 
 
 def _validate_receipt_target(row: dict) -> tuple[bool, str]:
@@ -1764,6 +2143,32 @@ def _validate_receipt_target(row: dict) -> tuple[bool, str]:
                        f"asm={row['stub_asm']}; live source={source} "
                        f"asm={asm_rel}")
     return True, "exact live target"
+
+
+def receipt_support_declarations(receipt_body: str, body: str) -> list[str]:
+    """Return the exact validated context that accompanied a scored function."""
+    residual = receipt_body.replace(body, "", 1)
+    if residual == receipt_body:
+        raise ValueError("scored function is not owned by its receipt body")
+    residual = _without_comments(residual)
+    declarations: list[str] = []
+    for line in residual.splitlines():
+        item = line.strip()
+        if not item:
+            continue
+        if item.startswith("#define ") or (
+                item.endswith(";") and "{" not in item and "}" not in item):
+            if item not in declarations:
+                declarations.append(item)
+            continue
+        raise ValueError(
+            f"unsupported file-scope score receipt context: {item[:120]}")
+    return declarations
+
+
+def _receipt_support_declarations(row: dict) -> list[str]:
+    """Recover the exact file-scope context owned by an isolated-score receipt."""
+    return receipt_support_declarations(row["receipt_body"], row["body"])
 
 
 def _isolated_seed_artifact(row: dict) -> tuple[str, str]:
@@ -1896,9 +2301,10 @@ def _report_score_zero_match(row: dict, verdict: str) -> None:
 
 
 def land_score_zeros(apply: bool, overlay: str = "", function: str = "",
-                     limit: int = 0) -> int:
+                     limit: int = 0, score_receipts_file: str = "") -> int:
     """Full-build the exact newest score-zero bodies, sequentially."""
-    rows = _selected_score_receipts(0, 0, overlay, function, limit)
+    rows = _selected_score_receipts(
+        0, 0, overlay, function, limit, score_receipts_file)
     if not rows:
         print("no current score-zero receipts")
         return 0
@@ -1951,7 +2357,8 @@ def land_score_zeros(apply: bool, overlay: str = "", function: str = "",
 
         good, verdict = _sup().land_match(
             Path("."), row["function"], body=row["body"],
-            rec_id=row["record_id"], on_verified=report_verified)
+            rec_id=row["record_id"], on_verified=report_verified,
+            support_declarations=_receipt_support_declarations(row))
         if good:
             if not ownership_verified[0]:
                 failed += 1
@@ -1979,7 +2386,8 @@ def land_score_zeros(apply: bool, overlay: str = "", function: str = "",
 
 
 def land_score_zero_batches(apply: bool, overlay: str = "",
-                            function: str = "", limit: int = 0) -> int:
+                            function: str = "", limit: int = 0,
+                            score_receipts_file: str = "") -> int:
     """Oracle score-zero receipts by overlay, then bisect failed batches.
 
     Initial batches are all attempted before any failure isolation. A green
@@ -1987,7 +2395,8 @@ def land_score_zero_batches(apply: bool, overlay: str = "",
     for recursive bisection, so the common case costs one game build per
     checksum artifact rather than one build per function.
     """
-    rows = _selected_score_receipts(0, 0, overlay, function, limit)
+    rows = _selected_score_receipts(
+        0, 0, overlay, function, limit, score_receipts_file)
     live: list[dict] = []
     stale = 0
     for row in rows:
@@ -2046,9 +2455,12 @@ def land_score_zero_batches(apply: bool, overlay: str = "",
             for path in landed - expected
         }
         print(f"\n[{phase}] {label}: {len(batch_rows)} receipt(s)", flush=True)
-        entries = [{"record_id": row["record_id"],
-                    "function": row["function"], "body": row["body"]}
-                   for row in batch_rows]
+        entries = [{
+            "record_id": row["record_id"],
+            "function": row["function"],
+            "body": row["body"],
+            "support_declarations": _receipt_support_declarations(row),
+        } for row in batch_rows]
         good, verdict = _sup().land_match_batch(entries)
         print(f"BATCH RESULT {label} size={len(batch_rows)} "
               f"{'GREEN' if good else 'FAILED'} verdict={verdict}", flush=True)
@@ -2455,8 +2867,8 @@ def scan_failure_bucket(detail: str) -> str:
     return marker.group(1) if marker else "error"
 
 
-def scan(limit: int = 0, overlay: str = "") -> int:
-    """Classify EVERY unmatched record, unsupervised, writing nothing.
+def scan(limit: int = 0, overlay: str = "", json_out: str = "") -> int:
+    """Classify EVERY unmatched record, unsupervised.
 
     THE POINT OF THE MECHANISM. A tool that needs an operator to pick the
     candidate, read the asm diff and hand-write the substitutions is not
@@ -2497,25 +2909,29 @@ def scan(limit: int = 0, overlay: str = "") -> int:
     if limit:
         recs = recs[:limit]
 
-    buckets: dict[str, list] = {"ready": [], "needs-defs": [],
-                                "adaptable": [], "needs-maps": [],
-                                "not-twin": [], "no-twin": [], "error": []}
+    buckets: dict[str, list[dict]] = {"ready": [], "needs-defs": [],
+                                      "adaptable": [], "needs-maps": [],
+                                      "not-twin": [], "no-twin": [],
+                                      "error": []}
     dirty = _sup().require_clean_src()
     if dirty:
         print(f"src/ is not clean: {dirty}\n")
         return 1
-    for _rid, ovl, fn in recs:
+    for rid, ovl, fn in recs:
         try:
             ok, _body, detail = preflight(fn, None, auto=True,
                                           skip_clean=True,
                                           stub_overlay=ovl)
         except Exception as e:                                # noqa: BLE001
-            buckets["error"].append((fn, ovl, f"error: {type(e).__name__}"))
+            buckets["error"].append({
+                "record_id": rid, "function": fn, "overlay": ovl,
+                "status": "error", "detail": f"error: {type(e).__name__}: {e}"})
             continue
         if not ok:
-            why = detail.splitlines()[-1].strip()
             key = scan_failure_bucket(detail)
-            buckets[key].append((fn, ovl, why[:88]))
+            buckets[key].append({
+                "record_id": rid, "function": fn, "overlay": ovl,
+                "status": key, "detail": detail})
             continue
         missing = [l.split("for ", 1)[1].split(";")[0]
                    for l in detail.splitlines()
@@ -2526,12 +2942,16 @@ def scan(limit: int = 0, overlay: str = "") -> int:
         real = [m for m in missing
                 if re.match(r"^(?:D_us_|D_|func_)", m)]
         if real:
-            buckets["needs-defs"].append((fn, ovl, ", ".join(real[:4])))
+            buckets["needs-defs"].append({
+                "record_id": rid, "function": fn, "overlay": ovl,
+                "status": "needs-defs", "detail": ", ".join(real)})
         else:
             nsub = len([l for l in detail.splitlines()
                         if l.strip().startswith("map: ")
                         and "IGNORED" not in l])
-            buckets["ready"].append((fn, ovl, f"{nsub} substitution(s)"))
+            buckets["ready"].append({
+                "record_id": rid, "function": fn, "overlay": ovl,
+                "status": "ready", "detail": f"{nsub} substitution(s)"})
 
     total = sum(len(v) for v in buckets.values())
     print(f"{total} unmatched record(s) examined, nothing written\n")
@@ -2543,8 +2963,14 @@ def scan(limit: int = 0, overlay: str = "") -> int:
         if not buckets[k]:
             continue
         print(f"\n=== {k} ===")
-        for fn, ovl, why in buckets[k]:
-            print(f"  {fn[:34]:36}{ovl[:12]:14}{why}")
+        for row in buckets[k]:
+            why = str(row.get("detail") or "").splitlines()[-1].strip()[:88]
+            print(f"  {row['function'][:34]:36}{row['overlay'][:12]:14}{why}")
+    rows = [row for key in ("ready", "needs-defs", "adaptable",
+                            "needs-maps", "not-twin", "no-twin", "error")
+            for row in buckets[key]]
+    if not write_scan_report(json_out, scan_report("classify", rows)):
+        return 1
     if buckets["ready"]:
         print("\nEach `ready` is one build away from a verdict:")
         print("  transplant.py --function <name> --auto --apply")
@@ -2649,15 +3075,16 @@ def self_test() -> int:
     import ast as _ast
     # The SELF-TEST is excluded from this scan: it legitimately writes to a
     # temp directory to exercise auto_decls, and including it made the test
-    # fail on its own scaffolding. Scope the assertion to the code that
-    # actually runs against the repo.
+    # fail on its own scaffolding. The explicit JSON reporter is also excluded:
+    # it writes evidence only to the caller-named in-repo path and never src/.
+    # Scope the assertion to code that can mutate decompilation inputs.
     called = set()
     tree = _ast.parse(src)
     tree.body = [n for n in tree.body
                  if not (isinstance(n, _ast.FunctionDef)
-                          and n.name in {"self_test",
-                                        "archive_applied_score_zeros",
-                                        "repair_landed_score_zero_sources"})]
+                           and n.name in {"self_test", "write_scan_report",
+                                         "archive_applied_score_zeros",
+                                         "repair_landed_score_zero_sources"})]
     for node in _ast.walk(tree):
         if isinstance(node, _ast.Call):
             f = node.func
@@ -2670,7 +3097,7 @@ def self_test() -> int:
         ck(danger not in called, f"never calls {danger}()")
     ck("land_match" in called, "it delegates to land_match")
 
-    print("\nnothing is written without --apply")
+    print("\nsrc/ is not written without --apply")
     ck('if not apply:' in src and 'DRY RUN' in src,
        "the dry-run branch returns before land_match")
     ck(src.index("if not apply:") < src.index("ps.land_match("),
@@ -2745,6 +3172,19 @@ def self_test() -> int:
     # mis-anchor; the guard is a non-word, non-dot lookaround.
     nb, _ = apply_map("x = 0x91; y = 0x910;", ["0x91=0x5F"])
     ck(nb == "x = 0x5F; y = 0x910;", f"0x910 is not touched by 0x91 ({nb})")
+    signed, _ = apply_map("a = -1; b = 1; c = +1;", ["1=-0x1"])
+    ck(signed == "a = -1; b = -0x1; c = +1;",
+       f"an unsigned token map cannot rewrite a signed literal fragment ({signed})")
+    local_probe = _local_names(
+        "void f(Entity* self) {\n"
+        "    s32 local;\n"
+        "    pointsPtr = points;\n"
+        "    self->pfnUpdate = EntityBloodDrips;\n"
+        "}")
+    ck("local" in local_probe and "self" in local_probe
+       and "points" not in local_probe
+       and "EntityBloodDrips" not in local_probe,
+       f"assignments are not misclassified as declarations ({local_probe})")
 
     print("\nsigned asm constants can adapt compound assignments")
     cb, left, cn = adapt_signed_compound_assignments(
@@ -2772,14 +3212,29 @@ def self_test() -> int:
             "extern EInit g_EInitFixture;\n"
             "extern u8 D_fixtureAnim[];\n"
             "extern u16 g_fixturePressed;\n"
+            "extern u8 D_alias[20];\n"
+            "extern signed short* sprites[];\n"
+            "static SVEC4 points[] = {{{{0}}}};\n"
+            "#define PAREN_OBJECT (&g_Entities[1])\n"
+            "#define SP(x) (0x1F800000 + (x))\n"
+            "#define SPAD(x) ((s32*)SP((x) * 4))\n"
+            "typedef struct { s16 value; } FixtureParams;\n"
+            "static FixtureParams fixtureParams[] = {{1}};\n"
+            "void FixtureHelper(Entity* self) { }\n"
             "void Fixture(Entity* self) {\n"
+            "    s32 value = *SPAD(0);\n"
             "    InitializeEntity(g_EInitFixture);\n"
             "    AnimateEntity(D_fixtureAnim, self);\n"
-            "    if (g_fixturePressed) { self->step++; }\n"
+            "    self->pfnUpdate = FixtureHelper;\n"
+            "    value += fixtureParams[0].value + D_alias[0];\n"
+            "    value += *sprites[0] + points[0].v0->vx;\n"
+            "    if (PAREN_OBJECT && g_fixturePressed) { self->step += value; }\n"
             "}\n",
             encoding="utf-8")
         (fixture / "visible.h").write_text(
-            "extern EInit g_EInitFixture;\n", encoding="utf-8")
+            "extern EInit g_EInitFixture;\n"
+            "typedef struct { SVECTOR points[4]; } Holder;\n",
+            encoding="utf-8")
         (fixture / "late.h").write_text(
             "extern u8 D_fixtureAnim[];\n", encoding="utf-8")
         (fixture / "unused.h").write_text(
@@ -2791,15 +3246,26 @@ def self_test() -> int:
             "    Fixture\n"
             ");\n"
             '#include "late.h"\n'
-            "extern u16 g_fixturePressed;\n",
+            "extern u16 g_fixturePressed;\n"
+            "extern u8 D_alias[6];\n",
             encoding="utf-8")
         fixture_body = _harv()._extract(donor.read_text(), "Fixture")
         fixture_decls, _fixture_notes = donor_scope_decls(
             fixture_body, donor, destination, defining="Fixture")
     ck("extern EInit g_EInitFixture;" not in fixture_decls
        and "extern u8 D_fixtureAnim[];" in fixture_decls
-       and "extern u16 g_fixturePressed;" in fixture_decls,
-       "only headers reachable before a multiline stub suppress score declarations")
+       and "extern u16 g_fixturePressed;" in fixture_decls
+       and "#define SPAD(x) ((s32*)SP((x) * 4))" in fixture_decls
+       and "#define SP(x) (0x1F800000 + (x))" in fixture_decls
+       and any("FixtureParams" in decl for decl in fixture_decls)
+       and any("fixtureParams" in decl for decl in fixture_decls)
+       and any("FixtureHelper" in decl for decl in fixture_decls)
+       and "extern signed short* sprites[];" in fixture_decls
+       and "extern SVEC4 points[1];" in fixture_decls
+       and "#define PAREN_OBJECT (&g_Entities[1])" in fixture_decls
+       and "extern u8 D_alias[6];" in fixture_decls
+       and "extern u8 D_alias[20];" not in fixture_decls,
+       "scope closure prefers target shapes and retains macro/type dependencies")
     landed_fixture = (
         "/* unrelated operator edit */\n"
         "/* Declarations injected by the worker: used by the candidate\n"
@@ -2904,6 +3370,15 @@ def self_test() -> int:
             "#ifdef VERSION_PSP\nint psp;\n#else\nint us;\n#endif\n")
         ck("int us;" in visible and "int psp;" not in visible,
            f"only the US declaration survives ({visible!r})")
+        psx_visible = _us_visible_source(
+            "#if defined(VERSION_PC)\n"
+            "#define SP(x) (&g_Scratchpad[x])\n"
+            "#else\n"
+            "#define SP(x) (0x1F800000 + (x))\n"
+            "#endif\n")
+        ck("g_Scratchpad" not in psx_visible
+           and "0x1F800000" in psx_visible,
+           f"the US scorer selects the PSX branch ({psx_visible!r})")
         ck(not any(line.lstrip().startswith("#")
                    for line in visible.splitlines()),
            f"no orphan conditional directives survive ({visible!r})")
@@ -3182,9 +3657,17 @@ def self_test() -> int:
     ck(score_scan_preflight_status(
            False, "scan-class: not-twin\nstructural mismatch") == "not-twin",
        "a structural not-twin is rendered instead of silently skipped")
-    ck(score_scan_preflight_status(True, "ready: clean twin")
-       == "ready-unscored",
-       "a clean twin remains visible even though it needs no isolated score")
+    ck(score_scan_preflight_status(True, "ready: clean twin") == "",
+       "a clean twin is sent through the same cheap isolated verifier")
+    report = scan_report("scan", [
+        {"record_id": "us:ST/TEST:Ready", "function": "Ready",
+         "overlay": "ST/TEST", "status": "ready", "detail": "clean"},
+        {"record_id": "us:ST/TEST:Broken", "function": "Broken",
+         "overlay": "ST/TEST", "status": "error", "detail": "instrument"},
+    ])
+    ck(report["summary"] == {"error": 1, "ready": 1}
+       and len(report["records"]) == 2,
+       "the durable scan report preserves every exact row and category count")
     ck(not score_scan_failed([
            {"status": "scored", "score": 0},
            {"status": "not-twin", "score": None},
@@ -3263,12 +3746,131 @@ def self_test() -> int:
     ], 0, 0, overlay="ST/RNO0", function="func_us_801C7F24", limit=1)
     ck([row["function"] for row in selected] == ["func_us_801C7F24"],
        "an exact function filter is applied before a receipt limit")
+    with tempfile.TemporaryDirectory() as td:
+        report_repo = Path(td)
+        report = report_repo / "score.json"
+        report.write_text(json.dumps({
+            "mode": "score",
+            "records": [
+                {"record_id": "us:ST/RNO2:DrawFacade",
+                 "overlay": "ST/RNO2", "function": "DrawFacade",
+                 "status": "scored", "score": 0},
+                {"record_id": "us:ST/RNO4:EntityImp",
+                 "overlay": "ST/RNO4", "function": "EntityImp",
+                 "status": "scored", "score": 15},
+            ],
+        }), encoding="utf-8")
+        exact_ids = score_report_record_ids(
+            "score.json", 0, 0, report_repo)
+        ck(exact_ids == {"us:ST/RNO2:DrawFacade"},
+           f"a score report supplies an exact landing subset ({exact_ids})")
+        report.write_text(json.dumps({
+            "mode": "score",
+            "records": [
+                {"record_id": "us:ST/RNO4:Wrong",
+                 "overlay": "ST/RNO4", "function": "EntityImp",
+                 "status": "scored", "score": 0},
+            ],
+        }), encoding="utf-8")
+        try:
+            score_report_record_ids("score.json", 0, 0, report_repo)
+        except ValueError:
+            rejected_bad_report = True
+        else:
+            rejected_bad_report = False
+        ck(rejected_bad_report,
+           "an inconsistent score report identity is refused")
     landing_src = src[src.index("def land_score_zeros"):
                       src.index("\ndef list_all")]
     ck('body=row["body"]' in landing_src,
        "landing passes the archived body directly to land_match")
     ck("score_draft" not in landing_src and "preflight(" not in landing_src,
        "landing never regenerates the body it is meant to prove")
+
+    print("\nscore reruns are exact and donor dependency discovery is structural")
+    selected_failures = select_score_failure_records({
+        "records": [
+            {"record_id": "us:ST/A:Good", "status": "scored"},
+            {"record_id": "us:ST/B:Retry", "status": "debug-failed"},
+        ]
+    }, [
+        ("us:ST/A:Good", "ST/A", "Good"),
+        ("us:ST/B:Retry", "ST/B", "Retry"),
+    ])
+    ck(selected_failures == [("us:ST/B:Retry", "ST/B", "Retry")],
+       f"only exact prior failures are selected ({selected_failures})")
+    wrapped_values = _enum_values(
+        "enum OVL_EXPORT(Entities) { E_FIRST = 7, E_SECOND };")
+    ck(wrapped_values == {"E_FIRST": 7, "E_SECOND": 8},
+       f"macro-wrapped enum tags remain visible ({wrapped_values})")
+    with tempfile.TemporaryDirectory() as td:
+        fixture_root = Path(td)
+        donor = fixture_root / "donor.c"
+        dest = fixture_root / "dest.c"
+        donor.write_text(
+            "SVECTOR v0;\n"
+            "typedef struct { s16 count; } FixtureParams;\n"
+            "FixtureParams fixture_params[2];\n",
+            encoding="utf-8")
+        dest.write_text("", encoding="utf-8")
+        debug_header = fixture_root / "debug.h"
+        debug_header.write_text("self->step = 1;\n", encoding="utf-8")
+        expanded_include, include_notes = expand_function_local_includes(
+            'void Fixture(void) {\n#include "debug.h"\n}', donor,
+            fixture_root)
+        ck("#include" not in expanded_include
+           and "self->step = 1;" in expanded_include
+           and include_notes == ["expanded function-local include debug.h"],
+           f"function-local includes retain their donor-relative content "
+           f"({expanded_include!r}, {include_notes})")
+        member_decls, _member_notes = donor_scope_decls(
+            "void Fixture(void) { self->v0 = 1; }", donor, dest,
+            defining="Fixture")
+        ck(not any(re.search(r"\bv0\b", decl) for decl in member_decls),
+           f"struct members cannot become file-scope globals ({member_decls})")
+        type_decls, _type_notes = donor_scope_decls(
+            "void Fixture(void) { FixtureParams* params = fixture_params; }",
+            donor, dest, defining="Fixture")
+        ck("#define FixtureParams struct { s16 count; }" in type_decls,
+           f"required donor compound types become preprocessor score context "
+           f"({type_decls})")
+    selected_consumer = compiled_consumer_source(
+        "build/us/src/st/no1/e_medusa_head.c.o")
+    ck(selected_consumer == REPO / "src/st/no1/e_medusa_head.c",
+       f"a selected donor object maps to its exact compiled consumer "
+       f"({selected_consumer})")
+    real_medusa_decls, _real_medusa_notes = donor_scope_decls(
+        ("void EntityMedusaHeadBlue(Entity* self) { "
+         "MedusaHeadInitParams* params = medusaHeadInitParams; }"),
+        REPO / "src/st/e_medusa_head.h",
+        REPO / "src/st/rnz1/e_medusa_head.c",
+        defining="EntityMedusaHeadBlue")
+    ck(any(decl.startswith("#define MedusaHeadInitParams struct {")
+           for decl in real_medusa_decls),
+       f"later compound typedefs in shared donors are retained "
+       f"({real_medusa_decls})")
+    ck(not any(decl.startswith("#define Entity ") for decl in real_medusa_decls),
+       "angle-bracket destination includes suppress already-visible core types")
+    ck(body_defines_function(
+        ("typedef struct { s16 value; } Prefix;\n"
+         "void Fixture(void) { use(); }"), "Fixture"),
+       "compound score context cannot hide the following function definition")
+    ck("score_context" in src[src.index("def preflight"):src.index("def run(")],
+       "clean twins request donor declarations when isolated scoring needs them")
+
+    print("\nexact score receipts retain their validated file-scope context")
+    receipt_function = "void ReceiptTarget(void) { use(D_target); }"
+    receipt_text = (
+        "#define RECEIPT_COUNT 4\n"
+        "extern SVECTOR D_target;\n"
+        "void use(SVECTOR* value);\n\n"
+        + receipt_function)
+    support = receipt_support_declarations(receipt_text, receipt_function)
+    ck(support == [
+        "#define RECEIPT_COUNT 4",
+        "extern SVECTOR D_target;",
+        "void use(SVECTOR* value);",
+    ], f"the receipt, not a second derivation, owns landing context ({support})")
 
     print("\nsequential score-zero landing reports while the oracle lock is held")
     original_globals = {
@@ -3277,7 +3879,7 @@ def self_test() -> int:
             "_selected_score_receipts", "_dirty_files",
             "_validate_receipt_target", "_snapshot_expected_paths",
             "_expected_path_change_failures", "_sup",
-            "_report_score_zero_match")
+            "_report_score_zero_match", "_receipt_support_declarations")
     }
     report_calls = []
     dirty_states = iter([
@@ -3303,6 +3905,7 @@ def self_test() -> int:
         globals()["_selected_score_receipts"] = lambda *_a, **_k: [row]
         globals()["_dirty_files"] = lambda: next(dirty_states)
         globals()["_validate_receipt_target"] = lambda _row: (True, "")
+        globals()["_receipt_support_declarations"] = lambda _row: []
         globals()["_snapshot_expected_paths"] = lambda _paths: {
             "src/st/test/file.c": b"before"}
         globals()["_expected_path_change_failures"] = lambda _before: (
@@ -3331,6 +3934,8 @@ def self_test() -> int:
     batch_landing_src = batch_landing_src[:batch_landing_src.index("\ndef list_all")]
     ck("land_match_batch" in batch_landing_src,
        "batched oracle work delegates to the hardened supervisor")
+    ck("support_declarations" in batch_landing_src,
+       "batched landing carries exact receipt declarations through the supervisor")
     ck(batch_landing_src.index("=== initial overlay batches ===")
        < batch_landing_src.index("=== failed-batch isolation ==="),
        "every initial overlay batch runs before failure isolation")
@@ -3435,6 +4040,8 @@ def self_test() -> int:
     }
     ck("--score" in parser_flags,
        "the score path is reachable through the existing connector surface")
+    ck("--score-failures-file" in parser_flags,
+       "the failed-subset score path is reachable through the connector surface")
     ck(_sup().parse_debug_score("base score = 60\n") == 60,
        "the debug receipt yields its numeric score")
     ck(_sup().parse_debug_score("compile failed") is None,
@@ -3462,7 +4069,8 @@ def self_test() -> int:
     globals()["_sup"] = lambda: fake_score
     try:
         rescored = score_draft(
-            "target", body=("extern s16 sensors2[];\n"
+            "target", body=("extern s16 D_us_80181FAC[6];\n"
+                            "extern s16 sensors2[20];\n"
                             "void target(void) { use(sensors2); }\n"),
             detail="fixture")
     finally:
@@ -3473,6 +4081,10 @@ def self_test() -> int:
         second_body = fake_score.calls[1][1]
         ck("D_us_80181FAC" in second_body and "sensors2" not in second_body,
            "the re-score uses the debug-proven target label in C")
+        ck(second_body.count("D_us_80181FAC") == 2
+           and "D_us_80181FAC[6]" in second_body
+           and "D_us_80181FAC[20]" not in second_body,
+           "relocation aliases keep one exact target support declaration")
         ck(fake_score.calls[1][3].get("context", {}).get("prior_score") == 10,
            "the second receipt links back to its unnormalized score evidence")
     score_node = next((node for node in tree.body
@@ -3530,8 +4142,13 @@ def main() -> int:
                     help="emit a target-informed draft from a structural-near "
                          "or schedule-only donor; implies --auto")
     ap.add_argument("--score", action="store_true",
-                    help="debug-score an adaptable draft without a game build; "
+                    help="debug-score every compilable donor without a game build; "
                          "use with --function or --scan")
+    ap.add_argument("--json-out", default="", metavar="PATH",
+                    help="persist every exact --scan result and category in-repo")
+    ap.add_argument("--score-failures-file", default="", metavar="PATH",
+                    help="with --score --scan, rerun only exact failed record "
+                         "IDs from a prior JSON score report")
     ap.add_argument("--body-file", default="",
                     help="score the named function from an existing in-repo C "
                          "file instead of generating a donor draft")
@@ -3545,6 +4162,9 @@ def main() -> int:
     ap.add_argument("--land-score-zero-batches", action="store_true",
                     help="full-build score-zero receipts by overlay and bisect "
                          "only failed batches")
+    ap.add_argument("--score-receipts-file", default="", metavar="PATH",
+                    help="limit score-zero landing to exact record IDs scored "
+                         "zero in one durable score scan report")
     ap.add_argument("--list-applied-score-zeros", action="store_true",
                     help="read-only reconciliation of queue-live score-zero "
                           "bodies now present in src")
@@ -3578,17 +4198,21 @@ def main() -> int:
         if a.function:
             return score_one(a.function, pairs, a.overlay, a.body_file)
         if a.scan:
-            return score_scan(a.limit, a.overlay)
+            return score_scan(
+                a.limit, a.overlay, a.json_out, a.score_failures_file)
         print("--score requires --function NAME or --scan", file=sys.stderr)
         return 2
     if a.publish_low_scores:
         return publish_low_scores(
             a.apply, a.score_min, a.score_max, a.overlay, a.function, a.limit)
     if a.land_score_zeros:
-        return land_score_zeros(a.apply, a.overlay, a.function, a.limit)
+        return land_score_zeros(
+            a.apply, a.overlay, a.function, a.limit,
+            a.score_receipts_file)
     if a.land_score_zero_batches:
         return land_score_zero_batches(
-            a.apply, a.overlay, a.function, a.limit)
+            a.apply, a.overlay, a.function, a.limit,
+            a.score_receipts_file)
     if a.list_applied_score_zeros:
         return list_applied_score_zeros()
     if a.archive_applied_score_zeros:
@@ -3612,6 +4236,10 @@ def main() -> int:
                 return 2
             repair_sources += scope_data
         return repair_landed_score_zero_sources(a.apply, repair_sources)
+    if a.score_receipts_file:
+        print("--score-receipts-file requires score-zero landing",
+              file=sys.stderr)
+        return 2
     if a.record_archive:
         print("--record-archive requires --archive-applied-score-zeros",
               file=sys.stderr)
@@ -3619,7 +4247,10 @@ def main() -> int:
     if a.list:
         return list_all()
     if a.scan:
-        return scan(a.limit, a.overlay)
+        return scan(a.limit, a.overlay, a.json_out)
+    if a.json_out:
+        print("--json-out requires --scan", file=sys.stderr)
+        return 2
     if a.batch:
         return batch(a.limit, a.overlay)
     if a.function:

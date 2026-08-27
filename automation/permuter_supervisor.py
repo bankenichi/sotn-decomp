@@ -1260,7 +1260,8 @@ def land_supervisor_slot(work: Path, slot: dict) -> tuple[bool, str]:
 
 def land_match(work: Path, fn: str, build: str = "us",
                lock=None, body: str = "", rec_id: str = "",
-               on_verified=None) -> tuple[bool, str]:
+               on_verified=None,
+               support_declarations: list[str] | None = None) -> tuple[bool, str]:
     """Apply a score-0 seed to src/, BUILD it, and revert unless it is green.
 
     A permuter zero is necessary but NOT sufficient. func_us_801BC3E0 scored 0
@@ -1340,7 +1341,8 @@ def land_match(work: Path, fn: str, build: str = "us",
     original = None
     with (lock or _build_lock())():
         try:
-            original = wd.apply_code(ctx, fn, body)
+            original = wd.apply_code(
+                ctx, fn, body, support_declarations=support_declarations)
             ok, detail = wd.build_and_check(rec)
             if ok:
                 # An INDEPENDENT oracle, not a second opinion from the same
@@ -1491,8 +1493,10 @@ def land_match_batch(entries: list[dict], build: str = "us",
         return False, "empty landing batch"
     if len(entries) == 1:
         entry = entries[0]
-        return land_match(Path("."), entry["function"], build=build, lock=lock,
-                          body=entry["body"], rec_id=entry["record_id"])
+        return land_match(
+            Path("."), entry["function"], build=build, lock=lock,
+            body=entry["body"], rec_id=entry["record_id"],
+            support_declarations=entry.get("support_declarations") or [])
 
     prepared: list[tuple[dict, str, str]] = []
     originals: dict[str, str] | None = None
@@ -1513,8 +1517,12 @@ def land_match_batch(entries: list[dict], build: str = "us",
         overlays.add(overlay)
         paths[src_rel] = path
         ids.append(record_id)
-        prepared.append(({"src_rel": src_rel, "asm_rel": asm_rel},
-                         fn, entry["body"]))
+        prepared.append((
+            {"src_rel": src_rel, "asm_rel": asm_rel},
+            fn,
+            entry["body"],
+            entry.get("support_declarations") or [],
+        ))
     if len(overlays) != 1:
         return False, ("batch crosses source-overlay/checksum families: "
                        + ", ".join(sorted(overlays)))

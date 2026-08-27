@@ -309,6 +309,11 @@ def main() -> int:
         wd.WIN_REPO = old_repo
 
     # --- the contracts in the source ---------------------------------------
+    batch_source = inspect.getsource(ps.land_match_batch)
+    singleton_source = batch_source[:batch_source.index("prepared:")]
+    check("singleton batch forwards score-receipt support",
+          "support_declarations" in singleton_source)
+
     src = (REPO / "automation" / "win" / "worker_direct.py").read_text(
         encoding="utf-8", errors="replace")
     check("replay holds BuildLock", "with BuildLock(" in

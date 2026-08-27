@@ -33,6 +33,8 @@ WHAT IS ASSERTED
 import os
 import re
 import sys
+import tempfile
+from pathlib import Path
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "win"))
 os.environ.setdefault("MODEL_BACKEND", "zen")
@@ -118,6 +120,17 @@ def main():
           "a definition after Target cannot suppress its required extern")
 
     print("\ntrusted receipt support is normalized at the write boundary")
+    score_macros = [
+        "#define LOW(x) (*(s32*)&(x))",
+        "#define SPAD(x) ((s32*)SP((x) * sizeof(s32)))",
+        "#define SCRATCH_PAD 0x1F800000",
+    ]
+    try:
+        retained_macros = wd._validated_support_declarations(score_macros)
+    except RuntimeError:
+        retained_macros = []
+    check(retained_macros == score_macros,
+          "single-line function-like score macros cross the batch boundary")
     supported = wd._prepare_candidate_body(
         'INCLUDE_ASM("st/test/nonmatchings/file", Target);\n',
         'void Target(void) { LaterCall(); }   \n',
@@ -129,6 +142,33 @@ def main():
           "validated score context remains visible before the exact function")
     check(not any(line.endswith(" ") for line in supported.splitlines()),
           "receipt whitespace is normalized before it reaches src/")
+
+    print("\nbatch application carries trusted receipt support to the write boundary")
+    with tempfile.TemporaryDirectory() as td:
+        target = Path(td) / "fixture.c"
+        target.write_text(
+            'INCLUDE_ASM("st/test/nonmatchings/file", Target);\n',
+            encoding="utf-8")
+        old_win_path = wd.win_path
+        old_journal_write_many = wd.journal_write_many
+        try:
+            wd.win_path = lambda _src_rel: str(target)
+            wd.journal_write_many = lambda _originals: True
+            wd.apply_code_batch([(
+                {"src_rel": "src/st/test.c",
+                 "asm_rel": "st/test/nonmatchings/file"},
+                "Target",
+                'void Target(void) { (void)D_us_80180000; }\n',
+                ["extern SVECTOR D_us_80180000;"],
+            )])
+        finally:
+            wd.win_path = old_win_path
+            wd.journal_write_many = old_journal_write_many
+        applied = target.read_text(encoding="utf-8")
+    check("extern SVECTOR D_us_80180000;" in applied
+          and applied.index("extern SVECTOR D_us_80180000;")
+          < applied.index("void Target"),
+          "batched score-zero landing retains its validated extern")
 
     print("\nthe declaration lands after the includes, before the code")
     i_inc = out.index('#include "bo0.h"')

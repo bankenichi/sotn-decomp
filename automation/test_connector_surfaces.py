@@ -529,6 +529,10 @@ def main() -> int:
     _jf = _pend / "selftest-dead-worker.json"
     _orig = "// self-test fixture, not a real source file\nvoid f(void) {}\n"
     _was = _cc_mod.DRYRUN
+    _models_path = (_cc_mod.REPO / "automation" / "opencode" /
+                    "opencode.json")
+    _models_before = _models_path.read_bytes()
+    _real_refresh_models = _cc_mod.refresh_zen_models
     try:
         _pend.mkdir(parents=True, exist_ok=True)
         # A successful transaction now deliberately retains an empty committed
@@ -558,6 +562,11 @@ def main() -> int:
         _victim.write_text(_orig + "// STRANDED BY A KILLED WORKER\n",
                            encoding="utf-8")
         _cc_mod.DRYRUN = False
+        # fleet_stop refreshes the live Zen catalogue into a tracked config.
+        # That production side effect does not belong in a self-test, whose
+        # contract is to leave every tracked byte unchanged.
+        _cc_mod.refresh_zen_models = lambda: {
+            "ok": True, "changed": False, "self_test": True}
         _r = _cc_mod.fleet_stop(hold=True)
         check(_r.get("restored_files") == 1,
               f"fleet_stop restores source left by a dead worker "
@@ -586,8 +595,11 @@ def main() -> int:
               f"({str(_r.get('matched_audit'))[:80]})")
     finally:
         _cc_mod.DRYRUN = _was
+        _cc_mod.refresh_zen_models = _real_refresh_models
         _victim.unlink(missing_ok=True)
         _jf.unlink(missing_ok=True)
+    check(_models_path.read_bytes() == _models_before,
+          "and the self-test does not rewrite the tracked model catalogue")
 
     print("\na count of zero against a non-empty pending dir is not silent")
     # The guard that makes the next occurrence self-diagnosing. Drive it by
@@ -595,6 +607,7 @@ def main() -> int:
     # is non-empty on entry and the restore count is legitimately 0.
     _jf2 = _pend / "selftest-live-owner.json"
     _was2 = _cc_mod.DRYRUN
+    _real_refresh_models2 = _cc_mod.refresh_zen_models
     try:
         _victim.write_text(_orig, encoding="utf-8")
         _jf2.write_text(_j.dumps({
@@ -603,6 +616,8 @@ def main() -> int:
             "pid": __import__("os").getpid(),   # alive by construction
             "at": _t.time()}), encoding="utf-8")
         _cc_mod.DRYRUN = False
+        _cc_mod.refresh_zen_models = lambda: {
+            "ok": True, "changed": False, "self_test": True}
         _r2 = _cc_mod.fleet_stop(hold=True)
         check(_r2.get("restored_files") == 0,
               f"a live owner's journal is left alone "
@@ -616,8 +631,11 @@ def main() -> int:
               "here is how a real replay_error stops being believed")
     finally:
         _cc_mod.DRYRUN = _was2
+        _cc_mod.refresh_zen_models = _real_refresh_models2
         _jf2.unlink(missing_ok=True)
         _victim.unlink(missing_ok=True)
+    check(_models_path.read_bytes() == _models_before,
+          "and the second fleet-stop fixture also preserves that config")
 
     # --- path containment is a PARENT check, not a prefix check -------------
     #

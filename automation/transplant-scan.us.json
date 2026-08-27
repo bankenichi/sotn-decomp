@@ -1,0 +1,3936 @@
+{
+  "schema": 1,
+  "mode": "classify",
+  "record_count": 560,
+  "summary": {
+    "adaptable": 175,
+    "error": 1,
+    "needs-defs": 2,
+    "needs-maps": 9,
+    "no-twin": 321,
+    "not-twin": 49,
+    "ready": 3
+  },
+  "records": [
+    {
+      "record_id": "us:ST/RNO1:EntityIsNearPlayer",
+      "function": "EntityIsNearPlayer",
+      "overlay": "ST/RNO1",
+      "status": "ready",
+      "detail": "0 substitution(s)"
+    },
+    {
+      "record_id": "us:ST/RNO2:func_us_801B5EE4",
+      "function": "func_us_801B5EE4",
+      "overlay": "ST/RNO2",
+      "status": "ready",
+      "detail": "0 substitution(s)"
+    },
+    {
+      "record_id": "us:ST/RNZ1:SpikesApplyDamage",
+      "function": "SpikesApplyDamage",
+      "overlay": "ST/RNZ1",
+      "status": "ready",
+      "detail": "0 substitution(s)"
+    },
+    {
+      "record_id": "us:BOSS/RBO1:polarPlacePartsList",
+      "function": "polarPlacePartsList",
+      "overlay": "BOSS/RBO1",
+      "status": "needs-defs",
+      "detail": "func_us_8019ED80_from_rbo2"
+    },
+    {
+      "record_id": "us:BOSS/RBO2:polarPlacePartsList",
+      "function": "polarPlacePartsList",
+      "overlay": "BOSS/RBO2",
+      "status": "needs-defs",
+      "detail": "func_us_8019ED80"
+    },
+    {
+      "record_id": "us:BOSS/BO2:EntityBossTorch",
+      "function": "EntityBossTorch",
+      "overlay": "BOSS/BO2",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried EntityBossTorch: structural near: 103 vs 101 instructions, 79.4% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:BOSS/BO2:EntityWerewolfDeathFlames",
+      "function": "EntityWerewolfDeathFlames",
+      "overlay": "BOSS/BO2",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried EntityWerewolfDeathFlames: structural near: 317 vs 320 instructions, 77.6% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:BOSS/BO3:CreateExplosionPuff",
+      "function": "CreateExplosionPuff",
+      "overlay": "BOSS/BO3",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried CreateExplosionPuff: structural near: 48 vs 48 instructions, 79.2% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:BOSS/BO3:EntitySplashWater",
+      "function": "EntitySplashWater",
+      "overlay": "BOSS/BO3",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried EntitySplashWater: structural near: 581 vs 578 instructions, 77.5% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:BOSS/BO3:EntityUnkId13",
+      "function": "EntityUnkId13",
+      "overlay": "BOSS/BO3",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried EntityUnkId13: structural near: 68 vs 68 instructions, 79.4% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:BOSS/BO3:EntityWaterBox",
+      "function": "EntityWaterBox",
+      "overlay": "BOSS/BO3",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried EntityWaterBox: structural near: 134 vs 124 instructions, 69.0% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:BOSS/BO3:func_us_801C12B0_from_no4",
+      "function": "func_us_801C12B0_from_no4",
+      "overlay": "BOSS/BO3",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried func_us_801C12B0: structural near: 210 vs 210 instructions, 77.6% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:BOSS/BO3:func_us_801C15F8_from_no4",
+      "function": "func_us_801C15F8_from_no4",
+      "overlay": "BOSS/BO3",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried func_us_801C15F8: structural near: 147 vs 147 instructions, 72.8% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:BOSS/BO3:func_us_801C1844_from_no4",
+      "function": "func_us_801C1844_from_no4",
+      "overlay": "BOSS/BO3",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried func_us_801C1844: structural near: 276 vs 276 instructions, 73.6% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:BOSS/BO3:func_us_801C1EE4_from_no4",
+      "function": "func_us_801C1EE4_from_no4",
+      "overlay": "BOSS/BO3",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried func_us_801C1EE4: structural near: 178 vs 178 instructions, 74.7% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:BOSS/BO3:func_us_801C21AC_from_no4",
+      "function": "func_us_801C21AC_from_no4",
+      "overlay": "BOSS/BO3",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried func_us_801C21AC: structural near: 178 vs 178 instructions, 74.2% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:BOSS/BO3:func_us_801C2E60_from_no4",
+      "function": "func_us_801C2E60_from_no4",
+      "overlay": "BOSS/BO3",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried func_us_801C2E60: structural near: 192 vs 192 instructions, 81.2% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:BOSS/BO3:func_us_801C34EC_from_no4",
+      "function": "func_us_801C34EC_from_no4",
+      "overlay": "BOSS/BO3",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried func_us_801C34EC: structural near: 183 vs 180 instructions, 68.9% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:BOSS/BO3:func_us_801C37C8_from_no4",
+      "function": "func_us_801C37C8_from_no4",
+      "overlay": "BOSS/BO3",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried func_us_801C37C8: structural near: 143 vs 143 instructions, 74.1% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:BOSS/BO3:func_us_801C3CC4_from_no4",
+      "function": "func_us_801C3CC4_from_no4",
+      "overlay": "BOSS/BO3",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried func_us_801C3CC4: structural near: 187 vs 187 instructions, 81.3% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:BOSS/BO5:EntityBell",
+      "function": "EntityBell",
+      "overlay": "BOSS/BO5",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried EntityBell: structural near: 734 vs 736 instructions, 76.9% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:BOSS/BO5:EntityClouds",
+      "function": "EntityClouds",
+      "overlay": "BOSS/BO5",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried EntityClouds: structural near: 412 vs 414 instructions, 70.0% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:BOSS/BO5:EntityCutscene",
+      "function": "EntityCutscene",
+      "overlay": "BOSS/BO5",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried EntityCutscene: structural near: 1071 vs 1082 instructions, 78.4% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:BOSS/BO5:EntityStainedGlass",
+      "function": "EntityStainedGlass",
+      "overlay": "BOSS/BO5",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried EntityStainedGlass: structural near: 475 vs 479 instructions, 78.4% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:BOSS/BO5:EntityStainedGlassBackground",
+      "function": "EntityStainedGlassBackground",
+      "overlay": "BOSS/BO5",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried EntityStainedGlassBackground: structural near: 458 vs 461 instructions, 81.2% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:BOSS/BO5:func_801A8620",
+      "function": "func_801A8620",
+      "overlay": "BOSS/BO5",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried func_801A8620: structural near: 217 vs 192 instructions, 68.0% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:BOSS/BO7:EntityBigRedFireball",
+      "function": "EntityBigRedFireball",
+      "overlay": "BOSS/BO7",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried EntityBigRedFireball: structural near: 118 vs 118 instructions, 81.4% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:BOSS/BO7:EntityBreakableWall",
+      "function": "EntityBreakableWall",
+      "overlay": "BOSS/BO7",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried EntityBreakableWall: structural near: 375 vs 375 instructions, 77.3% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:BOSS/BO7:EntityCerberusGateDebug",
+      "function": "EntityCerberusGateDebug",
+      "overlay": "BOSS/BO7",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried EntityCerberusGateDebug: structural near: 332 vs 345 instructions, 69.4% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:BOSS/BO7:EntityDemonSwitch",
+      "function": "EntityDemonSwitch",
+      "overlay": "BOSS/BO7",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried EntityDemonSwitch: structural near: 57 vs 57 instructions, 68.4% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:BOSS/BO7:EntityDemonSwitchWall",
+      "function": "EntityDemonSwitchWall",
+      "overlay": "BOSS/BO7",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried EntityDemonSwitchWall: structural near: 272 vs 272 instructions, 78.7% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:BOSS/RBO1:EntityBossRoomBlock",
+      "function": "EntityBossRoomBlock",
+      "overlay": "BOSS/RBO1",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried EntityBossRoomBlock: structural near: 94 vs 94 instructions, 70.2% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:BOSS/RBO1:EntityBreakable",
+      "function": "EntityBreakable",
+      "overlay": "BOSS/RBO1",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried EntityBreakable: structural near: 82 vs 77 instructions, 70.4% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:BOSS/RBO1:polarPlacePartsWithAngvel",
+      "function": "polarPlacePartsWithAngvel",
+      "overlay": "BOSS/RBO1",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried polarPlacePartsWithAngvel: structural near: 37 vs 37 instructions, 86.5% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:BOSS/RBO2:CutsceneCameraPan",
+      "function": "CutsceneCameraPan",
+      "overlay": "BOSS/RBO2",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried CutsceneCameraPan: structural near: 23 vs 23 instructions, 82.6% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:BOSS/RBO2:EntityBreakable",
+      "function": "EntityBreakable",
+      "overlay": "BOSS/RBO2",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried EntityBreakable: structural near: 82 vs 77 instructions, 70.4% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:BOSS/RBO2:EntityCerberusGateDebug",
+      "function": "EntityCerberusGateDebug",
+      "overlay": "BOSS/RBO2",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried EntityCerberusGateDebug: structural near: 332 vs 345 instructions, 69.4% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:BOSS/RBO2:polarPlacePartsWithAngvel",
+      "function": "polarPlacePartsWithAngvel",
+      "overlay": "BOSS/RBO2",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried polarPlacePartsWithAngvel: structural near: 37 vs 37 instructions, 86.5% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:BOSS/RBO4:EntityBreakable",
+      "function": "EntityBreakable",
+      "overlay": "BOSS/RBO4",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried EntityBreakable: structural near: 82 vs 77 instructions, 70.4% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:BOSS/RBO4:func_us_80192B38_from_rbo3",
+      "function": "func_us_80192B38_from_rbo3",
+      "overlay": "BOSS/RBO4",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried func_us_80192B38: structural near: 139 vs 159 instructions, 73.8% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:BOSS/RBO4:func_us_801C0B9C_from_no1",
+      "function": "func_us_801C0B9C_from_no1",
+      "overlay": "BOSS/RBO4",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried func_us_801C0B9C: structural near: 191 vs 206 instructions, 73.6% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:BOSS/RBO6:EntityBackgroundVortex",
+      "function": "EntityBackgroundVortex",
+      "overlay": "BOSS/RBO6",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried EntityBackgroundVortex: structural near: 580 vs 620 instructions, 66.7% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:BOSS/RBO6:EntityBreakable",
+      "function": "EntityBreakable",
+      "overlay": "BOSS/RBO6",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried EntityBreakable: structural near: 82 vs 77 instructions, 70.4% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:BOSS/RBO6:EntityCutscene",
+      "function": "EntityCutscene",
+      "overlay": "BOSS/RBO6",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried EntityCutscene: structural near: 1071 vs 1069 instructions, 75.1% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:BOSS/RBO6:EntityLockCamera",
+      "function": "EntityLockCamera",
+      "overlay": "BOSS/RBO6",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried EntityLockCamera: structural near: 274 vs 274 instructions, 82.5% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:BOSS/RBO6:UnkPrimHelper",
+      "function": "UnkPrimHelper",
+      "overlay": "BOSS/RBO6",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried UnkPrimHelper: structural near: 242 vs 246 instructions, 90.2% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:BOSS/RBO6:func_us_801A9208_from_bo6",
+      "function": "func_us_801A9208_from_bo6",
+      "overlay": "BOSS/RBO6",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried func_us_801A9208: structural near: 251 vs 250 instructions, 77.0% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:BOSS/RBO7:EntityBreakable",
+      "function": "EntityBreakable",
+      "overlay": "BOSS/RBO7",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried EntityBreakable: structural near: 82 vs 77 instructions, 70.4% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:BOSS/RBO7:EntityHarpyKick",
+      "function": "EntityHarpyKick",
+      "overlay": "BOSS/RBO7",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried EntityHarpyKick: structural near: 55 vs 59 instructions, 75.4% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:BOSS/RBO7:func_us_80192B38_from_rbo3",
+      "function": "func_us_80192B38_from_rbo3",
+      "overlay": "BOSS/RBO7",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried func_us_80192B38: structural near: 139 vs 139 instructions, 79.9% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:BOSS/RBO8:EntityBreakable",
+      "function": "EntityBreakable",
+      "overlay": "BOSS/RBO8",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried EntityBreakable: structural near: 82 vs 77 instructions, 70.4% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:BOSS/RBO8:EntityMinotaurSpitLiquid",
+      "function": "EntityMinotaurSpitLiquid",
+      "overlay": "BOSS/RBO8",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried EntityMinotaurSpitLiquid: structural near: 79 vs 82 instructions, 65.8% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:BOSS/RBO8:func_us_801BA164_from_cat",
+      "function": "func_us_801BA164_from_cat",
+      "overlay": "BOSS/RBO8",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried func_us_801BA164: structural near: 137 vs 163 instructions, 74.0% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:ST/RLIB:EntityHarpyKick",
+      "function": "EntityHarpyKick",
+      "overlay": "ST/RLIB",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried EntityHarpyKick: structural near: 55 vs 56 instructions, 72.1% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:ST/RLIB:func_us_801AE8E8_from_lib",
+      "function": "func_us_801AE8E8_from_lib",
+      "overlay": "ST/RLIB",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried func_us_801AE8E8: structural near: 614 vs 614 instructions, 75.4% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:ST/RLIB:func_us_801AFA80_from_lib",
+      "function": "func_us_801AFA80_from_lib",
+      "overlay": "ST/RLIB",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried func_us_801AFA80: structural near: 227 vs 226 instructions, 75.1% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:ST/RNO1:DrawLaserRing",
+      "function": "DrawLaserRing",
+      "overlay": "ST/RNO1",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried DrawLaserRing: structural near: 140 vs 140 instructions, 82.1% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:ST/RNO1:EntityBladeSoldierDeathParts",
+      "function": "EntityBladeSoldierDeathParts",
+      "overlay": "ST/RNO1",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried EntityBladeSoldierDeathParts: structural near: 62 vs 62 instructions, 83.9% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:ST/RNO1:EntityBreakableDebris",
+      "function": "EntityBreakableDebris",
+      "overlay": "ST/RNO1",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried EntityBreakableDebris: structural near: 199 vs 190 instructions, 76.6% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:ST/RNO1:EntityJackOBones",
+      "function": "EntityJackOBones",
+      "overlay": "ST/RNO1",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried EntityJackOBones: structural near: 324 vs 324 instructions, 75.6% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:ST/RNO1:EntityJackOBonesJack",
+      "function": "EntityJackOBonesJack",
+      "overlay": "ST/RNO1",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried EntityJackOBonesJack: structural near: 177 vs 177 instructions, 78.0% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:ST/RNO1:EntityNovaLaser",
+      "function": "EntityNovaLaser",
+      "overlay": "ST/RNO1",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried EntityNovaLaser: structural near: 300 vs 300 instructions, 78.0% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:ST/RNO1:EntityNovaSkeleton",
+      "function": "EntityNovaSkeleton",
+      "overlay": "ST/RNO1",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried EntityNovaSkeleton: structural near: 314 vs 314 instructions, 75.8% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:ST/RNO1:EntityParanthropus",
+      "function": "EntityParanthropus",
+      "overlay": "ST/RNO1",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried EntityParanthropus: structural near: 899 vs 899 instructions, 73.0% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:ST/RNO1:EntityRedDoor",
+      "function": "EntityRedDoor",
+      "overlay": "ST/RNO1",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried EntityRedDoor: structural near: 775 vs 864 instructions, 69.3% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:ST/RNO1:TryThrow",
+      "function": "TryThrow",
+      "overlay": "ST/RNO1",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried TryThrow: structural near: 41 vs 41 instructions, 73.2% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:ST/RNO1:func_us_801B8F50_from_no1",
+      "function": "func_us_801B8F50_from_no1",
+      "overlay": "ST/RNO1",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried func_us_801B8F50: structural near: 54 vs 54 instructions, 74.1% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:ST/RNO1:func_us_801B9028_from_no1",
+      "function": "func_us_801B9028_from_no1",
+      "overlay": "ST/RNO1",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried func_us_801B9028: structural near: 87 vs 87 instructions, 80.5% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:ST/RNO1:func_us_801BE880_from_no1",
+      "function": "func_us_801BE880_from_no1",
+      "overlay": "ST/RNO1",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried func_us_801BE880: structural near: 181 vs 181 instructions, 70.2% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:ST/RNO1:func_us_801BEB54_from_no1",
+      "function": "func_us_801BEB54_from_no1",
+      "overlay": "ST/RNO1",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried func_us_801BEB54: structural near: 171 vs 171 instructions, 70.2% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:ST/RNO1:func_us_801BF074_from_no1",
+      "function": "func_us_801BF074_from_no1",
+      "overlay": "ST/RNO1",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried func_us_801BF074: structural near: 224 vs 224 instructions, 81.2% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:ST/RNO1:func_us_801C7F24_from_rno0",
+      "function": "func_us_801C7F24_from_rno0",
+      "overlay": "ST/RNO1",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried func_us_801C7F24: structural near: 119 vs 119 instructions, 77.3% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:ST/RNO2:DrawFacade",
+      "function": "DrawFacade",
+      "overlay": "ST/RNO2",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried DrawFacade: structural near: 132 vs 132 instructions, 81.1% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:ST/RNO2:DrawRoof",
+      "function": "DrawRoof",
+      "overlay": "ST/RNO2",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried DrawRoof: structural near: 97 vs 97 instructions, 76.3% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:ST/RNO2:DrawSides",
+      "function": "DrawSides",
+      "overlay": "ST/RNO2",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried DrawSides: structural near: 145 vs 145 instructions, 88.3% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:ST/RNO2:Entity3DBackgroundHouse",
+      "function": "Entity3DBackgroundHouse",
+      "overlay": "ST/RNO2",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried Entity3DBackgroundHouse: structural near: 213 vs 214 instructions, 68.4% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:ST/RNO2:Entity3DHouseSpawner",
+      "function": "Entity3DHouseSpawner",
+      "overlay": "ST/RNO2",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried Entity3DHouseSpawner: structural near: 60 vs 60 instructions, 80.0% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:ST/RNO2:EntityBreakableDebris",
+      "function": "EntityBreakableDebris",
+      "overlay": "ST/RNO2",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried EntityBreakableDebris: structural near: 199 vs 190 instructions, 76.6% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:ST/RNO2:EntityFlyingZombie1",
+      "function": "EntityFlyingZombie1",
+      "overlay": "ST/RNO2",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried EntityFlyingZombie1: structural near: 383 vs 383 instructions, 75.5% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:ST/RNO2:EntityFlyingZombie2",
+      "function": "EntityFlyingZombie2",
+      "overlay": "ST/RNO2",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried EntityFlyingZombie2: structural near: 520 vs 523 instructions, 73.3% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:ST/RNO2:EntityKarasumanFeatherAttack",
+      "function": "EntityKarasumanFeatherAttack",
+      "overlay": "ST/RNO2",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried EntityKarasumanFeatherAttack: structural near: 94 vs 94 instructions, 75.5% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:ST/RNO2:EntityKarasumanOrbAttack",
+      "function": "EntityKarasumanOrbAttack",
+      "overlay": "ST/RNO2",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried EntityKarasumanOrbAttack: structural near: 160 vs 166 instructions, 74.2% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:ST/RNO2:EntityKarasumanRavenAttack",
+      "function": "EntityKarasumanRavenAttack",
+      "overlay": "ST/RNO2",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried EntityKarasumanRavenAttack: structural near: 219 vs 219 instructions, 78.1% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:ST/RNO2:EntityPrisoner",
+      "function": "EntityPrisoner",
+      "overlay": "ST/RNO2",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried EntityPrisoner: structural near: 301 vs 301 instructions, 74.1% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:ST/RNO2:EntityRedDoor",
+      "function": "EntityRedDoor",
+      "overlay": "ST/RNO2",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried EntityRedDoor: structural near: 782 vs 782 instructions, 75.1% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:ST/RNO2:EntitySpikes",
+      "function": "EntitySpikes",
+      "overlay": "ST/RNO2",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried EntitySpikes: structural near: 126 vs 126 instructions, 77.0% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:ST/RNO2:EntitySpikesDamage",
+      "function": "EntitySpikesDamage",
+      "overlay": "ST/RNO2",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried EntitySpikesDamage: structural near: 28 vs 31 instructions, 71.2% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:ST/RNO2:EntitySpikesDust",
+      "function": "EntitySpikesDust",
+      "overlay": "ST/RNO2",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried EntitySpikesDust: structural near: 45 vs 45 instructions, 73.3% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:ST/RNO2:EntitySpikesParts",
+      "function": "EntitySpikesParts",
+      "overlay": "ST/RNO2",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried EntitySpikesParts: structural near: 132 vs 133 instructions, 84.5% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:ST/RNO2:SpikesApplyDamage",
+      "function": "SpikesApplyDamage",
+      "overlay": "ST/RNO2",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried SpikesApplyDamage: structural near: 43 vs 43 instructions, 83.7% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:ST/RNO2:SpikesBreak",
+      "function": "SpikesBreak",
+      "overlay": "ST/RNO2",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried SpikesBreak: structural near: 75 vs 75 instructions, 70.7% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:ST/RNO2:func_us_801AB9EC_from_bo0",
+      "function": "func_us_801AB9EC_from_bo0",
+      "overlay": "ST/RNO2",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried func_us_801AB9EC: structural near: 381 vs 390 instructions, 73.4% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:ST/RNO2:func_us_801AC54C_from_bo0",
+      "function": "func_us_801AC54C_from_bo0",
+      "overlay": "ST/RNO2",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried func_us_801AC54C: structural near: 124 vs 124 instructions, 74.2% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:ST/RNO2:func_us_801B3F30_from_bo0",
+      "function": "func_us_801B3F30_from_bo0",
+      "overlay": "ST/RNO2",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried func_us_801B3F30: structural near: 134 vs 134 instructions, 75.4% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:ST/RNO2:func_us_801B41A4_from_bo0",
+      "function": "func_us_801B41A4_from_bo0",
+      "overlay": "ST/RNO2",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried func_us_801B41A4: structural near: 27 vs 27 instructions, 85.2% aligned; code shape differs; SetDisplayBufferColorsToBlack: different length or opcode shape: 14 vs 27 instructions, 39.0% aligned; not a twin"
+    },
+    {
+      "record_id": "us:ST/RNO2:func_us_801B4210_from_bo0",
+      "function": "func_us_801B4210_from_bo0",
+      "overlay": "ST/RNO2",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried func_us_801B4210: structural near: 94 vs 94 instructions, 75.5% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:ST/RNO2:func_us_801B4DA4_from_bo0",
+      "function": "func_us_801B4DA4_from_bo0",
+      "overlay": "ST/RNO2",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried func_us_801B4DA4: structural near: 324 vs 324 instructions, 74.7% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:ST/RNO2:func_us_801B5FB8_from_no2",
+      "function": "func_us_801B5FB8_from_no2",
+      "overlay": "ST/RNO2",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried func_us_801B5FB8: structural near: 379 vs 379 instructions, 75.7% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:ST/RNO2:func_us_801B68EC_from_no2",
+      "function": "func_us_801B68EC_from_no2",
+      "overlay": "ST/RNO2",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried func_us_801B68EC: structural near: 338 vs 338 instructions, 74.0% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:ST/RNO4:DrawLaserRing",
+      "function": "DrawLaserRing",
+      "overlay": "ST/RNO4",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried DrawLaserRing: structural near: 140 vs 140 instructions, 82.1% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:ST/RNO4:EntityAlucardWaterEffect",
+      "function": "EntityAlucardWaterEffect",
+      "overlay": "ST/RNO4",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried EntityAlucardWaterEffect: structural near: 667 vs 667 instructions, 73.9% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:ST/RNO4:EntityBladeSoldierDeathParts",
+      "function": "EntityBladeSoldierDeathParts",
+      "overlay": "ST/RNO4",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried EntityBladeSoldierDeathParts: structural near: 62 vs 62 instructions, 83.9% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:ST/RNO4:EntityBreakableCrystalFloor",
+      "function": "EntityBreakableCrystalFloor",
+      "overlay": "ST/RNO4",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried EntityBreakableCrystalFloor: structural near: 192 vs 189 instructions, 71.4% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:ST/RNO4:EntityFloatingIcePlatform",
+      "function": "EntityFloatingIcePlatform",
+      "overlay": "ST/RNO4",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried EntityFloatingIcePlatform: structural near: 150 vs 150 instructions, 81.3% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:ST/RNO4:EntityImp",
+      "function": "EntityImp",
+      "overlay": "ST/RNO4",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried EntityImp: structural near: 800 vs 800 instructions, 75.8% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:ST/RNO4:EntityIntenseExplosion",
+      "function": "EntityIntenseExplosion",
+      "overlay": "ST/RNO4",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried EntityIntenseExplosion: structural near: 64 vs 64 instructions, 78.1% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:ST/RNO4:EntityJackOBones",
+      "function": "EntityJackOBones",
+      "overlay": "ST/RNO4",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried EntityJackOBones: structural near: 324 vs 324 instructions, 75.6% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:ST/RNO4:EntityJackOBonesJack",
+      "function": "EntityJackOBonesJack",
+      "overlay": "ST/RNO4",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried EntityJackOBonesJack: structural near: 177 vs 177 instructions, 78.0% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:ST/RNO4:EntityKillerFish",
+      "function": "EntityKillerFish",
+      "overlay": "ST/RNO4",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried EntityKillerFish: structural near: 204 vs 204 instructions, 69.6% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:ST/RNO4:EntityNovaLaser",
+      "function": "EntityNovaLaser",
+      "overlay": "ST/RNO4",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried EntityNovaLaser: structural near: 300 vs 300 instructions, 78.0% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:ST/RNO4:EntityNovaSkeleton",
+      "function": "EntityNovaSkeleton",
+      "overlay": "ST/RNO4",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried EntityNovaSkeleton: structural near: 314 vs 314 instructions, 75.8% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:ST/RNO4:EntitySplashWater",
+      "function": "EntitySplashWater",
+      "overlay": "ST/RNO4",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried EntitySplashWater: structural near: 581 vs 581 instructions, 78.3% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:ST/RNO4:EntitySurfacingWater",
+      "function": "EntitySurfacingWater",
+      "overlay": "ST/RNO4",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried EntitySurfacingWater: structural near: 320 vs 320 instructions, 81.9% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:ST/RNO4:EntityVenusWeed",
+      "function": "EntityVenusWeed",
+      "overlay": "ST/RNO4",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried EntityVenusWeed: structural near: 557 vs 557 instructions, 77.6% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:ST/RNO4:EntityVenusWeedDart",
+      "function": "EntityVenusWeedDart",
+      "overlay": "ST/RNO4",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried EntityVenusWeedDart: structural near: 226 vs 226 instructions, 79.2% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:ST/RNO4:EntityVenusWeedFlower",
+      "function": "EntityVenusWeedFlower",
+      "overlay": "ST/RNO4",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried EntityVenusWeedFlower: structural near: 444 vs 444 instructions, 70.3% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:ST/RNO4:EntityVenusWeedSpike",
+      "function": "EntityVenusWeedSpike",
+      "overlay": "ST/RNO4",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried EntityVenusWeedSpike: structural near: 130 vs 130 instructions, 77.7% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:ST/RNO4:EntityVenusWeedTendril",
+      "function": "EntityVenusWeedTendril",
+      "overlay": "ST/RNO4",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried EntityVenusWeedTendril: structural near: 284 vs 284 instructions, 77.1% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:ST/RNO4:SetupPrimsForEntitySpriteParts",
+      "function": "SetupPrimsForEntitySpriteParts",
+      "overlay": "ST/RNO4",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried SetupPrimsForEntitySpriteParts: structural near: 161 vs 161 instructions, 82.0% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:ST/RNO4:func_us_801C123C_from_no4",
+      "function": "func_us_801C123C_from_no4",
+      "overlay": "ST/RNO4",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried func_us_801C123C: structural near: 29 vs 29 instructions, 72.4% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:ST/RNO4:func_us_801C12B0_from_no4",
+      "function": "func_us_801C12B0_from_no4",
+      "overlay": "ST/RNO4",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried func_us_801C12B0: structural near: 210 vs 210 instructions, 77.6% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:ST/RNO4:func_us_801C15F8_from_no4",
+      "function": "func_us_801C15F8_from_no4",
+      "overlay": "ST/RNO4",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried func_us_801C15F8: structural near: 147 vs 147 instructions, 70.1% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:ST/RNO4:func_us_801C2850_from_no4",
+      "function": "func_us_801C2850_from_no4",
+      "overlay": "ST/RNO4",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried func_us_801C2850: structural near: 202 vs 203 instructions, 75.1% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:ST/RNO4:func_us_801C2B78_from_no4",
+      "function": "func_us_801C2B78_from_no4",
+      "overlay": "ST/RNO4",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried func_us_801C2B78: structural near: 186 vs 186 instructions, 80.6% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:ST/RNO4:func_us_801C2E60_from_no4",
+      "function": "func_us_801C2E60_from_no4",
+      "overlay": "ST/RNO4",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried func_us_801C2E60: structural near: 192 vs 192 instructions, 81.2% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:ST/RNO4:func_us_801C3160_from_no4",
+      "function": "func_us_801C3160_from_no4",
+      "overlay": "ST/RNO4",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried func_us_801C3160: structural near: 227 vs 230 instructions, 69.1% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:ST/RNO4:func_us_801C34EC_from_no4",
+      "function": "func_us_801C34EC_from_no4",
+      "overlay": "ST/RNO4",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried func_us_801C34EC: structural near: 183 vs 183 instructions, 79.8% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:ST/RNO4:func_us_801C37C8_from_no4",
+      "function": "func_us_801C37C8_from_no4",
+      "overlay": "ST/RNO4",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried func_us_801C37C8: structural near: 143 vs 143 instructions, 74.1% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:ST/RNO4:func_us_801C3A04_from_no4",
+      "function": "func_us_801C3A04_from_no4",
+      "overlay": "ST/RNO4",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried func_us_801C3A04: structural near: 176 vs 176 instructions, 79.5% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:ST/RNO4:func_us_801C3CC4_from_no4",
+      "function": "func_us_801C3CC4_from_no4",
+      "overlay": "ST/RNO4",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried func_us_801C3CC4: structural near: 187 vs 187 instructions, 81.3% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:ST/RNO4:func_us_801C3FB0_from_no4",
+      "function": "func_us_801C3FB0_from_no4",
+      "overlay": "ST/RNO4",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried func_us_801C3FB0: structural near: 158 vs 159 instructions, 70.7% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:ST/RNO4:func_us_801C4228_from_no4",
+      "function": "func_us_801C4228_from_no4",
+      "overlay": "ST/RNO4",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried func_us_801C4228: structural near: 190 vs 190 instructions, 81.1% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:ST/RNZ1:EntityAlucardWaterEffect",
+      "function": "EntityAlucardWaterEffect",
+      "overlay": "ST/RNZ1",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried EntityAlucardWaterEffect: structural near: 667 vs 667 instructions, 73.9% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:ST/RNZ1:EntityBackgroundGears",
+      "function": "EntityBackgroundGears",
+      "overlay": "ST/RNZ1",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried EntityBackgroundGears: structural near: 132 vs 132 instructions, 73.5% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:ST/RNZ1:EntityBreakableWallPartial",
+      "function": "EntityBreakableWallPartial",
+      "overlay": "ST/RNZ1",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried EntityBreakableWallPartial: structural near: 190 vs 188 instructions, 75.7% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:ST/RNZ1:EntityCloakedKnight",
+      "function": "EntityCloakedKnight",
+      "overlay": "ST/RNZ1",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried EntityCloakedKnight: structural near: 559 vs 559 instructions, 72.6% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:ST/RNZ1:EntityFrozenShadeCrystal",
+      "function": "EntityFrozenShadeCrystal",
+      "overlay": "ST/RNZ1",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried EntityFrozenShadeCrystal: structural near: 21 vs 19 instructions, 80.0% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:ST/RNZ1:EntityGearSidewaysSmall",
+      "function": "EntityGearSidewaysSmall",
+      "overlay": "ST/RNZ1",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried EntityGearSidewaysSmall: structural near: 218 vs 218 instructions, 82.6% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:ST/RNZ1:EntityMedusaHeadBlue",
+      "function": "EntityMedusaHeadBlue",
+      "overlay": "ST/RNZ1",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried EntityMedusaHeadBlue: structural near: 121 vs 114 instructions, 69.8% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:ST/RNZ1:EntitySpikes",
+      "function": "EntitySpikes",
+      "overlay": "ST/RNZ1",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried EntitySpikes: structural near: 101 vs 101 instructions, 81.2% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:ST/RNZ1:EntitySpikesDamage",
+      "function": "EntitySpikesDamage",
+      "overlay": "ST/RNZ1",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried EntitySpikesDamage: structural near: 28 vs 28 instructions, 75.0% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:ST/RNZ1:EntitySpikesDust",
+      "function": "EntitySpikesDust",
+      "overlay": "ST/RNZ1",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried EntitySpikesDust: structural near: 45 vs 45 instructions, 73.3% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:ST/RNZ1:EntitySpikesParts",
+      "function": "EntitySpikesParts",
+      "overlay": "ST/RNZ1",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried EntitySpikesParts: structural near: 176 vs 176 instructions, 83.0% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:ST/RNZ1:EntitySplashWater",
+      "function": "EntitySplashWater",
+      "overlay": "ST/RNZ1",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried EntitySplashWater: structural near: 581 vs 581 instructions, 78.3% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:ST/RNZ1:EntitySurfacingWater",
+      "function": "EntitySurfacingWater",
+      "overlay": "ST/RNZ1",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried EntitySurfacingWater: structural near: 320 vs 320 instructions, 81.9% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:ST/RNZ1:EntityValhallaKnight",
+      "function": "EntityValhallaKnight",
+      "overlay": "ST/RNZ1",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried EntityValhallaKnight: structural near: 507 vs 507 instructions, 68.4% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:ST/RNZ1:EntityWallGear",
+      "function": "EntityWallGear",
+      "overlay": "ST/RNZ1",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried EntityWallGear: structural near: 108 vs 110 instructions, 66.1% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:ST/RNZ1:SpikesBreak",
+      "function": "SpikesBreak",
+      "overlay": "ST/RNZ1",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried SpikesBreak: structural near: 110 vs 110 instructions, 70.9% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:ST/RNZ1:func_us_801C8AAC_from_are",
+      "function": "func_us_801C8AAC_from_are",
+      "overlay": "ST/RNZ1",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried func_us_801C8AAC: structural near: 115 vs 115 instructions, 87.0% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:ST/RCEN:func_us_8019D260",
+      "function": "func_us_8019D260",
+      "overlay": "ST/RCEN",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried func_us_8019D260_from_rcen: structural near: 52 vs 52 instructions, 80.8% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:ST/RNO0:EntityJackOBonesJack",
+      "function": "EntityJackOBonesJack",
+      "overlay": "ST/RNO0",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried EntityJackOBonesJack: structural near: 177 vs 177 instructions, 78.0% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:BOSS/BO6:BO6_RicEntityCrashReboundStoneExplosion",
+      "function": "BO6_RicEntityCrashReboundStoneExplosion",
+      "overlay": "BOSS/BO6",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried RicEntityCrashReboundStoneExplosion: structural near: 236 vs 225 instructions, 77.2% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:BOSS/BO6:BO6_RicEntityCrashVibhuti",
+      "function": "BO6_RicEntityCrashVibhuti",
+      "overlay": "BOSS/BO6",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried RicEntityCrashVibhuti: structural near: 274 vs 257 instructions, 75.7% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:BOSS/BO6:BO6_RicEntityCrashHydroStorm",
+      "function": "BO6_RicEntityCrashHydroStorm",
+      "overlay": "BOSS/BO6",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried RicEntityCrashHydroStorm: structural near: 252 vs 266 instructions, 73.7% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:BOSS/BO6:BO6_RicEntitySubwpnThrownVibhuti",
+      "function": "BO6_RicEntitySubwpnThrownVibhuti",
+      "overlay": "BOSS/BO6",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried RicEntitySubwpnThrownVibhuti: structural near: 322 vs 318 instructions, 80.6% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:BOSS/BO6:BO6_RicEntitySubwpnAgunea",
+      "function": "BO6_RicEntitySubwpnAgunea",
+      "overlay": "BOSS/BO6",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried RicEntitySubwpnAgunea: structural near: 336 vs 332 instructions, 79.3% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:BOSS/BO6:BO6_RicEntitySubwpnHolyWaterFlame",
+      "function": "BO6_RicEntitySubwpnHolyWaterFlame",
+      "overlay": "BOSS/BO6",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried RicEntitySubwpnHolyWaterFlame: structural near: 387 vs 392 instructions, 68.8% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:BOSS/BO6:BO6_RicEntityAguneaCircle",
+      "function": "BO6_RicEntityAguneaCircle",
+      "overlay": "BOSS/BO6",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried RicEntityAguneaCircle: structural near: 430 vs 431 instructions, 77.6% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:BOSS/BO6:BO6_RicEntitySubwpnThrownAxe",
+      "function": "BO6_RicEntitySubwpnThrownAxe",
+      "overlay": "BOSS/BO6",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried RicEntitySubwpnThrownAxe: structural near: 450 vs 455 instructions, 74.3% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:BOSS/BO6:BO6_RicEntityCrashBible",
+      "function": "BO6_RicEntityCrashBible",
+      "overlay": "BOSS/BO6",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried RicEntityCrashBible: structural near: 491 vs 492 instructions, 78.7% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:BOSS/BO6:BO6_RicEntitySubwpnKnife",
+      "function": "BO6_RicEntitySubwpnKnife",
+      "overlay": "BOSS/BO6",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried RicEntitySubwpnKnife: structural near: 522 vs 518 instructions, 79.8% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:BOSS/BO6:BO6_EntityStopWatch",
+      "function": "BO6_EntityStopWatch",
+      "overlay": "BOSS/BO6",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried EntityStopWatch: structural near: 946 vs 999 instructions, 75.6% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:BOSS/BO6:BO6_RicEntityWhip",
+      "function": "BO6_RicEntityWhip",
+      "overlay": "BOSS/BO6",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried RicEntityWhip: structural near: 1030 vs 1036 instructions, 75.0% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:ST/RCHI:EntityBreakableWall",
+      "function": "EntityBreakableWall",
+      "overlay": "ST/RCHI",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried EntityBreakableWall: structural near: 375 vs 376 instructions, 71.9% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:ST/RCHI:EntityDemonSwitchWall",
+      "function": "EntityDemonSwitchWall",
+      "overlay": "ST/RCHI",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried EntityDemonSwitchWall: structural near: 272 vs 274 instructions, 71.8% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:ST/RNO0:EntityBladeSoldierDeathParts",
+      "function": "EntityBladeSoldierDeathParts",
+      "overlay": "ST/RNO0",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried EntityBladeSoldierDeathParts: structural near: 62 vs 62 instructions, 83.9% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:ST/RCEN:func_us_8019AA04",
+      "function": "func_us_8019AA04",
+      "overlay": "ST/RCEN",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried PlaySfxPositional: structural near: 62 vs 62 instructions, 71.0% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:ST/RNO0:EntityBreakable",
+      "function": "EntityBreakable",
+      "overlay": "ST/RNO0",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried EntityBreakable: structural near: 82 vs 92 instructions, 66.7% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:ST/RNO0:DrawLaserRing",
+      "function": "DrawLaserRing",
+      "overlay": "ST/RNO0",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried DrawLaserRing: structural near: 140 vs 140 instructions, 82.1% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:BOSS/BO6:BO6_RicEntitySubwpnCrashCrossParticles",
+      "function": "BO6_RicEntitySubwpnCrashCrossParticles",
+      "overlay": "BOSS/BO6",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried RicEntitySubwpnCrashCrossParticles: structural near: 218 vs 218 instructions, 82.1% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:ST/RNO0:EntityNovaLaser",
+      "function": "EntityNovaLaser",
+      "overlay": "ST/RNO0",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried EntityNovaLaser: structural near: 300 vs 300 instructions, 78.0% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:ST/RNO0:EntityNovaSkeleton",
+      "function": "EntityNovaSkeleton",
+      "overlay": "ST/RNO0",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried EntityNovaSkeleton: structural near: 314 vs 314 instructions, 75.8% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:ST/RNO0:EntityJackOBones",
+      "function": "EntityJackOBones",
+      "overlay": "ST/RNO0",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried EntityJackOBones: structural near: 324 vs 324 instructions, 75.6% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:BOSS/BO6:BO6_RicEntityAguneaLightning",
+      "function": "BO6_RicEntityAguneaLightning",
+      "overlay": "BOSS/BO6",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried RicEntityAguneaLightning: structural near: 392 vs 402 instructions, 82.6% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:BOSS/BO6:BO6_RicEntityAguneaHitEnemy",
+      "function": "BO6_RicEntityAguneaHitEnemy",
+      "overlay": "BOSS/BO6",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried RicEntityAguneaHitEnemy: structural near: 429 vs 429 instructions, 76.7% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:ST/RNO0:EntityRelicOrb",
+      "function": "EntityRelicOrb",
+      "overlay": "ST/RNO0",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried EntityRelicOrb: structural near: 692 vs 692 instructions, 79.6% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:ST/RCHI:EntityDemonSwitch",
+      "function": "EntityDemonSwitch",
+      "overlay": "ST/RCHI",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried EntityDemonSwitch: structural near: 57 vs 57 instructions, 70.2% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:ST/RCHI:EntityLargeGaibonProjectile",
+      "function": "EntityLargeGaibonProjectile",
+      "overlay": "ST/RCHI",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried EntityLargeGaibonProjectile: structural near: 138 vs 138 instructions, 71.7% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:BOSS/BO6:BO6_RicEntityCrashBibleBeam",
+      "function": "BO6_RicEntityCrashBibleBeam",
+      "overlay": "BOSS/BO6",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried RicEntityCrashBibleBeam: structural near: 350 vs 364 instructions, 79.3% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:ST/RNO0:EntitySealedDoor",
+      "function": "EntitySealedDoor",
+      "overlay": "ST/RNO0",
+      "status": "adaptable",
+      "detail": "scan-class: adaptable\nno usable twin in this tree; tried EntitySealedDoor: structural near: 861 vs 861 instructions, 76.0% aligned; code shape differs"
+    },
+    {
+      "record_id": "us:BOSS/BO6:BO6_RicCheckSubweapon",
+      "function": "BO6_RicCheckSubweapon",
+      "overlay": "BOSS/BO6",
+      "status": "needs-maps",
+      "detail": "scan-class: needs-maps\nno usable twin in this tree; tried RicCheckSubweapon: no distinct twin asm for RicCheckSubweapon; compiled fallback: no dependency-complete current donor object; pl_blueprints.c.o: object is older than a compiler dependency. Run a build before using it as twin evidence"
+    },
+    {
+      "record_id": "us:BOSS/BO6:BO6_RicEntityHitByLightning",
+      "function": "BO6_RicEntityHitByLightning",
+      "overlay": "BOSS/BO6",
+      "status": "needs-maps",
+      "detail": "scan-class: needs-maps\nno usable twin in this tree; tried RicEntityHitByLightning: no distinct twin asm for RicEntityHitByLightning; compiled fallback: no dependency-complete current donor object; pl_blueprints.c.o: object is older than a compiler dependency. Run a build before using it as twin evidence"
+    },
+    {
+      "record_id": "us:ST/SEL:func_801B9C80",
+      "function": "func_801B9C80",
+      "overlay": "ST/SEL",
+      "status": "needs-maps",
+      "detail": "scan-class: needs-maps\nno usable twin in this tree; tried CdDataCallback: no distinct twin asm for CdDataCallback; compiled fallback: compiled donor object is missing; run a build"
+    },
+    {
+      "record_id": "us:BOSS/BO6:BO6_RicEntityHitByCutBlood",
+      "function": "BO6_RicEntityHitByCutBlood",
+      "overlay": "BOSS/BO6",
+      "status": "needs-maps",
+      "detail": "scan-class: needs-maps\nno usable twin in this tree; tried RicEntityHitByCutBlood: no distinct twin asm for RicEntityHitByCutBlood; compiled fallback: no dependency-complete current donor object; pl_blueprints.c.o: object is older than a compiler dependency. Run a build before using it as twin evidence"
+    },
+    {
+      "record_id": "us:BOSS/BO6:BO6_RicEntityHitByIce",
+      "function": "BO6_RicEntityHitByIce",
+      "overlay": "BOSS/BO6",
+      "status": "needs-maps",
+      "detail": "scan-class: needs-maps\nno usable twin in this tree; tried RicEntityHitByIce: no distinct twin asm for RicEntityHitByIce; compiled fallback: no dependency-complete current donor object; pl_blueprints.c.o: object is older than a compiler dependency. Run a build before using it as twin evidence"
+    },
+    {
+      "record_id": "us:BOSS/BO6:BO6_RicEntityPlayerBlinkWhite",
+      "function": "BO6_RicEntityPlayerBlinkWhite",
+      "overlay": "BOSS/BO6",
+      "status": "needs-maps",
+      "detail": "scan-class: needs-maps\nno usable twin in this tree; tried RicEntityPlayerBlinkWhite: no distinct twin asm for RicEntityPlayerBlinkWhite; compiled fallback: no dependency-complete current donor object; pl_blueprints.c.o: object is older than a compiler dependency. Run a build before using it as twin evidence"
+    },
+    {
+      "record_id": "us:ST/RDAI:func_us_801BFE6C",
+      "function": "func_us_801BFE6C",
+      "overlay": "ST/RDAI",
+      "status": "needs-maps",
+      "detail": "scan-class: needs-maps\nno usable twin in this tree; tried func_us_801BFE6C: no distinct twin asm for func_us_801BFE6C; compiled fallback: no compiled US C consumer object exists for this header; check its include and splat wiring"
+    },
+    {
+      "record_id": "us:BOSS/BO6:BO6_RicStepStand",
+      "function": "BO6_RicStepStand",
+      "overlay": "BOSS/BO6",
+      "status": "needs-maps",
+      "detail": "scan-class: needs-maps\nno usable twin in this tree; tried RicStepStand: different length or opcode shape: 207 vs 153 instructions, 58.9% aligned; not a twin; MarSetAnimation: no distinct twin asm for MarSetAnimation; compiled fallback: compiled donor object is missing; run a build; SetEntityAnimation: no distinct twin asm for SetEntityAnimation; compiled fallback: compiled donor object is missing; run a build; RicSetAnimation: different length or opcode shape: 7 vs 153 instructions, 5.0% aligned; not a twin"
+    },
+    {
+      "record_id": "us:BOSS/BO6:BO6_RicEntityShrinkingPowerUpRing",
+      "function": "BO6_RicEntityShrinkingPowerUpRing",
+      "overlay": "BOSS/BO6",
+      "status": "needs-maps",
+      "detail": "scan-class: needs-maps\nno usable twin in this tree; tried RicEntityShrinkingPowerUpRing: no distinct twin asm for RicEntityShrinkingPowerUpRing; compiled fallback: no dependency-complete current donor object; pl_blueprints.c.o: object is older than a compiler dependency. Run a build before using it as twin evidence"
+    },
+    {
+      "record_id": "us:BOSS/BO2:EntityBossDoors",
+      "function": "EntityBossDoors",
+      "overlay": "BOSS/BO2",
+      "status": "not-twin",
+      "detail": "scan-class: not-twin\nno usable twin in this tree; tried EntityBossDoors: different length or opcode shape: 375 vs 352 instructions, 55.0% aligned; not a twin"
+    },
+    {
+      "record_id": "us:BOSS/BO3:func_us_801C3FB0_from_no4",
+      "function": "func_us_801C3FB0_from_no4",
+      "overlay": "BOSS/BO3",
+      "status": "not-twin",
+      "detail": "scan-class: not-twin\nno usable twin in this tree; tried func_us_801C3FB0: different length or opcode shape: 158 vs 156 instructions, 63.7% aligned; not a twin"
+    },
+    {
+      "record_id": "us:BOSS/BO5:CutsceneCameraPan",
+      "function": "CutsceneCameraPan",
+      "overlay": "BOSS/BO5",
+      "status": "not-twin",
+      "detail": "scan-class: not-twin\nno usable twin in this tree; tried CutsceneCameraPan: different length or opcode shape: 23 vs 24 instructions, 59.6% aligned; not a twin"
+    },
+    {
+      "record_id": "us:BOSS/BO5:EntityRbo3Door",
+      "function": "EntityRbo3Door",
+      "overlay": "BOSS/BO5",
+      "status": "not-twin",
+      "detail": "scan-class: not-twin\nno usable twin in this tree; tried EntityRbo3Door: different length or opcode shape: 187 vs 186 instructions, 63.8% aligned; not a twin"
+    },
+    {
+      "record_id": "us:BOSS/BO7:EntityBreakable",
+      "function": "EntityBreakable",
+      "overlay": "BOSS/BO7",
+      "status": "not-twin",
+      "detail": "scan-class: not-twin\nno usable twin in this tree; tried EntityBreakable: different length or opcode shape: 82 vs 164 instructions, 26.8% aligned; not a twin"
+    },
+    {
+      "record_id": "us:BOSS/BO7:EntityBreakableDebris",
+      "function": "EntityBreakableDebris",
+      "overlay": "BOSS/BO7",
+      "status": "not-twin",
+      "detail": "scan-class: not-twin\nno usable twin in this tree; tried EntityBreakableDebris: different length or opcode shape: 199 vs 254 instructions, 34.9% aligned; not a twin"
+    },
+    {
+      "record_id": "us:BOSS/BO7:EntityBreakableWallDebris",
+      "function": "EntityBreakableWallDebris",
+      "overlay": "BOSS/BO7",
+      "status": "not-twin",
+      "detail": "scan-class: not-twin\nno usable twin in this tree; tried EntityBreakableWallDebris: different length or opcode shape: 296 vs 172 instructions, 17.5% aligned; not a twin"
+    },
+    {
+      "record_id": "us:BOSS/RBO6:DecreaseBrightness",
+      "function": "DecreaseBrightness",
+      "overlay": "BOSS/RBO6",
+      "status": "not-twin",
+      "detail": "scan-class: not-twin\nno usable twin in this tree; tried DecreaseBrightness: different length or opcode shape: 26 vs 25 instructions, 62.7% aligned; not a twin"
+    },
+    {
+      "record_id": "us:BOSS/RBO6:PrimDecreaseBrightness",
+      "function": "PrimDecreaseBrightness",
+      "overlay": "BOSS/RBO6",
+      "status": "not-twin",
+      "detail": "scan-class: not-twin\nno usable twin in this tree; tried BO6_PrimDecreaseBrightness: different length or opcode shape: 28 vs 25 instructions, 49.1% aligned; not a twin"
+    },
+    {
+      "record_id": "us:BOSS/RBO7:EntityCtulhuDeath",
+      "function": "EntityCtulhuDeath",
+      "overlay": "BOSS/RBO7",
+      "status": "not-twin",
+      "detail": "scan-class: not-twin\nno usable twin in this tree; tried EntityCtulhuDeath: different length or opcode shape: 59 vs 61 instructions, 53.3% aligned; not a twin"
+    },
+    {
+      "record_id": "us:ST/RLIB:EntityBreakable",
+      "function": "EntityBreakable",
+      "overlay": "ST/RLIB",
+      "status": "not-twin",
+      "detail": "scan-class: not-twin\nno usable twin in this tree; tried EntityBreakable: different length or opcode shape: 82 vs 185 instructions, 21.0% aligned; not a twin"
+    },
+    {
+      "record_id": "us:ST/RNO1:EntityBackgroundBlock",
+      "function": "EntityBackgroundBlock",
+      "overlay": "ST/RNO1",
+      "status": "not-twin",
+      "detail": "scan-class: not-twin\nno usable twin in this tree; tried EntityBackgroundBlock: different length or opcode shape: 56 vs 101 instructions, 59.9% aligned; not a twin"
+    },
+    {
+      "record_id": "us:ST/RNO1:EntityBreakable",
+      "function": "EntityBreakable",
+      "overlay": "ST/RNO1",
+      "status": "not-twin",
+      "detail": "scan-class: not-twin\nno usable twin in this tree; tried EntityBreakable: different length or opcode shape: 82 vs 206 instructions, 30.6% aligned; not a twin"
+    },
+    {
+      "record_id": "us:ST/RNO1:RNO1_DebugInputWait",
+      "function": "RNO1_DebugInputWait",
+      "overlay": "ST/RNO1",
+      "status": "not-twin",
+      "detail": "scan-class: not-twin\nno usable twin in this tree; tried BO6_DebugInputWait: different length or opcode shape: 25 vs 25 instructions, 64.0% aligned; not a twin; DebugInputWait: different length or opcode shape: 25 vs 25 instructions, 64.0% aligned; not a twin"
+    },
+    {
+      "record_id": "us:ST/RNO2:EntityBreakable",
+      "function": "EntityBreakable",
+      "overlay": "ST/RNO2",
+      "status": "not-twin",
+      "detail": "scan-class: not-twin\nno usable twin in this tree; tried EntityBreakable: different length or opcode shape: 82 vs 224 instructions, 25.5% aligned; not a twin"
+    },
+    {
+      "record_id": "us:ST/RNO2:EntityKarasuman",
+      "function": "EntityKarasuman",
+      "overlay": "ST/RNO2",
+      "status": "not-twin",
+      "detail": "scan-class: not-twin\nno usable twin in this tree; tried EntityKarasuman: different length or opcode shape: 1048 vs 994 instructions, 63.9% aligned; not a twin"
+    },
+    {
+      "record_id": "us:ST/RNO2:EntitySealedDoor",
+      "function": "EntitySealedDoor",
+      "overlay": "ST/RNO2",
+      "status": "not-twin",
+      "detail": "scan-class: not-twin\nno usable twin in this tree; tried EntitySealedDoor: different length or opcode shape: 861 vs 869 instructions, 55.5% aligned; not a twin"
+    },
+    {
+      "record_id": "us:ST/RNO2:func_us_801B3D8C_from_bo0",
+      "function": "func_us_801B3D8C_from_bo0",
+      "overlay": "ST/RNO2",
+      "status": "not-twin",
+      "detail": "scan-class: not-twin\nno usable twin in this tree; tried func_us_801B3D8C: different length or opcode shape: 105 vs 105 instructions, 60.0% aligned; not a twin"
+    },
+    {
+      "record_id": "us:ST/RNO4:EntityBreakable",
+      "function": "EntityBreakable",
+      "overlay": "ST/RNO4",
+      "status": "not-twin",
+      "detail": "scan-class: not-twin\nno usable twin in this tree; tried EntityBreakable: different length or opcode shape: 82 vs 148 instructions, 37.4% aligned; not a twin"
+    },
+    {
+      "record_id": "us:ST/RNO4:EntityBreakableWall",
+      "function": "EntityBreakableWall",
+      "overlay": "ST/RNO4",
+      "status": "not-twin",
+      "detail": "scan-class: not-twin\nno usable twin in this tree; tried EntityBreakableWall: different length or opcode shape: 375 vs 173 instructions, 14.6% aligned; not a twin"
+    },
+    {
+      "record_id": "us:ST/RNO4:EntityBreakableWallDebris",
+      "function": "EntityBreakableWallDebris",
+      "overlay": "ST/RNO4",
+      "status": "not-twin",
+      "detail": "scan-class: not-twin\nno usable twin in this tree; tried EntityBreakableWallDebris: different length or opcode shape: 296 vs 98 instructions, 15.2% aligned; not a twin"
+    },
+    {
+      "record_id": "us:ST/RNO4:EntityRdaiUnk33",
+      "function": "EntityRdaiUnk33",
+      "overlay": "ST/RNO4",
+      "status": "not-twin",
+      "detail": "scan-class: not-twin\nno usable twin in this tree; tried EntityRdaiUnk33: different length or opcode shape: 168 vs 168 instructions, 64.9% aligned; not a twin"
+    },
+    {
+      "record_id": "us:ST/RNO4:func_us_801C1EE4_from_no4",
+      "function": "func_us_801C1EE4_from_no4",
+      "overlay": "ST/RNO4",
+      "status": "not-twin",
+      "detail": "scan-class: not-twin\nno usable twin in this tree; tried func_us_801C1EE4: different length or opcode shape: 178 vs 179 instructions, 43.7% aligned; not a twin"
+    },
+    {
+      "record_id": "us:ST/RNZ1:EntityBossDoorTrigger",
+      "function": "EntityBossDoorTrigger",
+      "overlay": "ST/RNZ1",
+      "status": "not-twin",
+      "detail": "scan-class: not-twin\nno usable twin in this tree; tried EntityBossDoorTrigger: different length or opcode shape: 226 vs 248 instructions, 59.1% aligned; not a twin"
+    },
+    {
+      "record_id": "us:ST/RNZ1:EntityBossDoors",
+      "function": "EntityBossDoors",
+      "overlay": "ST/RNZ1",
+      "status": "not-twin",
+      "detail": "scan-class: not-twin\nno usable twin in this tree; tried EntityBossDoors: different length or opcode shape: 375 vs 189 instructions, 15.2% aligned; not a twin"
+    },
+    {
+      "record_id": "us:ST/RNZ1:EntityBreakableWall",
+      "function": "EntityBreakableWall",
+      "overlay": "ST/RNZ1",
+      "status": "not-twin",
+      "detail": "scan-class: not-twin\nno usable twin in this tree; tried EntityBreakableWall: different length or opcode shape: 375 vs 226 instructions, 14.3% aligned; not a twin"
+    },
+    {
+      "record_id": "us:ST/RNZ1:EntityMedusaHeadSpawner",
+      "function": "EntityMedusaHeadSpawner",
+      "overlay": "ST/RNZ1",
+      "status": "not-twin",
+      "detail": "scan-class: not-twin\nno usable twin in this tree; tried EntityMedusaHeadYellow: different length or opcode shape: 9 vs 115 instructions, 11.3% aligned; not a twin"
+    },
+    {
+      "record_id": "us:ST/RNZ1:EntitySecretAreaDoor",
+      "function": "EntitySecretAreaDoor",
+      "overlay": "ST/RNZ1",
+      "status": "not-twin",
+      "detail": "scan-class: not-twin\nno usable twin in this tree; tried EntitySecretAreaDoor: different length or opcode shape: 182 vs 186 instructions, 62.0% aligned; not a twin"
+    },
+    {
+      "record_id": "us:ST/RNZ1:EntitySecretWallDebris",
+      "function": "EntitySecretWallDebris",
+      "overlay": "ST/RNZ1",
+      "status": "not-twin",
+      "detail": "scan-class: not-twin\nno usable twin in this tree; tried EntitySecretWallDebris: different length or opcode shape: 158 vs 167 instructions, 62.8% aligned; not a twin"
+    },
+    {
+      "record_id": "us:BOSS/BO6:func_us_801BC5C8",
+      "function": "func_us_801BC5C8",
+      "overlay": "BOSS/BO6",
+      "status": "not-twin",
+      "detail": "scan-class: not-twin\nno usable twin in this tree; tried func_us_801B77D8: different length or opcode shape: 16 vs 44 instructions, 16.7% aligned; not a twin; BO6_RicSetStep: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO6:func_us_801BC4F8",
+      "function": "func_us_801BC4F8",
+      "overlay": "BOSS/BO6",
+      "status": "not-twin",
+      "detail": "scan-class: not-twin\nno usable twin in this tree; tried func_us_801B77D8: different length or opcode shape: 16 vs 52 instructions, 14.7% aligned; not a twin; BO6_RicSetStep: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RCEN:EntityUnkId1B",
+      "function": "EntityUnkId1B",
+      "overlay": "ST/RCEN",
+      "status": "not-twin",
+      "detail": "scan-class: not-twin\nno usable twin in this tree; tried EntityUnkId1B: different length or opcode shape: 240 vs 59 instructions, 9.4% aligned; not a twin"
+    },
+    {
+      "record_id": "us:ST/RNO0:EntityUnkId1B",
+      "function": "EntityUnkId1B",
+      "overlay": "ST/RNO0",
+      "status": "not-twin",
+      "detail": "scan-class: not-twin\nno usable twin in this tree; tried EntityUnkId1B: different length or opcode shape: 240 vs 59 instructions, 9.4% aligned; not a twin"
+    },
+    {
+      "record_id": "us:BOSS/BO6:func_us_801BC2F0",
+      "function": "func_us_801BC2F0",
+      "overlay": "BOSS/BO6",
+      "status": "not-twin",
+      "detail": "scan-class: not-twin\nno usable twin in this tree; tried func_us_801B77D8: different length or opcode shape: 16 vs 60 instructions, 13.2% aligned; not a twin; BO6_RicSetStep: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO6:func_us_801BD384",
+      "function": "func_us_801BD384",
+      "overlay": "BOSS/BO6",
+      "status": "not-twin",
+      "detail": "scan-class: not-twin\nno usable twin in this tree; tried func_us_801B77D8: different length or opcode shape: 16 vs 62 instructions, 12.8% aligned; not a twin; BO6_RicSetStep: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO6:func_us_801BC678",
+      "function": "func_us_801BC678",
+      "overlay": "BOSS/BO6",
+      "status": "not-twin",
+      "detail": "scan-class: not-twin\nno usable twin in this tree; tried func_us_801B77D8: different length or opcode shape: 16 vs 162 instructions, 7.9% aligned; not a twin; BO6_RicSetStep: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO6:BO6_RicStepDead",
+      "function": "BO6_RicStepDead",
+      "overlay": "BOSS/BO6",
+      "status": "not-twin",
+      "detail": "scan-class: not-twin\nno usable twin in this tree; tried RicStepDead: different length or opcode shape: 396 vs 432 instructions, 56.3% aligned; not a twin"
+    },
+    {
+      "record_id": "us:BOSS/BO6:BO6_RicStepHit",
+      "function": "BO6_RicStepHit",
+      "overlay": "BOSS/BO6",
+      "status": "not-twin",
+      "detail": "scan-class: not-twin\nno usable twin in this tree; tried RicStepHit: different length or opcode shape: 699 vs 410 instructions, 40.0% aligned; not a twin"
+    },
+    {
+      "record_id": "us:BOSS/BO6:BO6_RicCheckInput",
+      "function": "BO6_RicCheckInput",
+      "overlay": "BOSS/BO6",
+      "status": "not-twin",
+      "detail": "scan-class: not-twin\nno usable twin in this tree; tried RicCheckInput: different length or opcode shape: 500 vs 488 instructions, 55.1% aligned; not a twin"
+    },
+    {
+      "record_id": "us:BOSS/BO6:BO6_RicEntitySubwpnReboundStone",
+      "function": "BO6_RicEntitySubwpnReboundStone",
+      "overlay": "BOSS/BO6",
+      "status": "not-twin",
+      "detail": "scan-class: not-twin\nno usable twin in this tree; tried RicEntitySubwpnReboundStone: different length or opcode shape: 528 vs 524 instructions, 60.3% aligned; not a twin"
+    },
+    {
+      "record_id": "us:BOSS/BO6:BO6_RicEntityCrashCrossBeam",
+      "function": "BO6_RicEntityCrashCrossBeam",
+      "overlay": "BOSS/BO6",
+      "status": "not-twin",
+      "detail": "scan-class: not-twin\nno usable twin in this tree; tried RicEntityCrashCrossBeam: different length or opcode shape: 558 vs 570 instructions, 52.1% aligned; not a twin"
+    },
+    {
+      "record_id": "us:BOSS/BO6:BO6_RicMain",
+      "function": "BO6_RicMain",
+      "overlay": "BOSS/BO6",
+      "status": "not-twin",
+      "detail": "scan-class: not-twin\nno usable twin in this tree; tried RicMain: different length or opcode shape: 753 vs 598 instructions, 47.8% aligned; not a twin"
+    },
+    {
+      "record_id": "us:ST/RCHI:EntityBreakableDebris",
+      "function": "EntityBreakableDebris",
+      "overlay": "ST/RCHI",
+      "status": "not-twin",
+      "detail": "scan-class: not-twin\nno usable twin in this tree; tried EntityBreakableDebris: different length or opcode shape: 199 vs 257 instructions, 35.1% aligned; not a twin"
+    },
+    {
+      "record_id": "us:ST/RCHI:EntityBreakableWallDebris",
+      "function": "EntityBreakableWallDebris",
+      "overlay": "ST/RCHI",
+      "status": "not-twin",
+      "detail": "scan-class: not-twin\nno usable twin in this tree; tried EntityBreakableWallDebris: different length or opcode shape: 296 vs 173 instructions, 17.5% aligned; not a twin"
+    },
+    {
+      "record_id": "us:ST/RCHI:EntitySlogra",
+      "function": "EntitySlogra",
+      "overlay": "ST/RCHI",
+      "status": "not-twin",
+      "detail": "scan-class: not-twin\nno usable twin in this tree; tried EntitySlogra: different length or opcode shape: 791 vs 801 instructions, 62.9% aligned; not a twin"
+    },
+    {
+      "record_id": "us:ST/RCHI:EntitySlograSpearProjectile",
+      "function": "EntitySlograSpearProjectile",
+      "overlay": "ST/RCHI",
+      "status": "not-twin",
+      "detail": "scan-class: not-twin\nno usable twin in this tree; tried EntitySlograSpearProjectile: different length or opcode shape: 73 vs 73 instructions, 64.4% aligned; not a twin"
+    },
+    {
+      "record_id": "us:ST/RDAI:func_us_801C6040",
+      "function": "func_us_801C6040",
+      "overlay": "ST/RDAI",
+      "status": "not-twin",
+      "detail": "scan-class: not-twin\nno usable twin in this tree; tried func_us_801C6040: different length or opcode shape: 364 vs 477 instructions, 8.1% aligned; not a twin"
+    },
+    {
+      "record_id": "us:ST/RCHI:EntityBreakable",
+      "function": "EntityBreakable",
+      "overlay": "ST/RCHI",
+      "status": "not-twin",
+      "detail": "scan-class: not-twin\nno usable twin in this tree; tried EntityBreakable: different length or opcode shape: 82 vs 156 instructions, 27.7% aligned; not a twin"
+    },
+    {
+      "record_id": "us:ST/RCHI:EntityGaibon",
+      "function": "EntityGaibon",
+      "overlay": "ST/RCHI",
+      "status": "not-twin",
+      "detail": "scan-class: not-twin\nno usable twin in this tree; tried EntityGaibon: different length or opcode shape: 1281 vs 1108 instructions, 62.7% aligned; not a twin"
+    },
+    {
+      "record_id": "us:BOSS/BO2:EntityCutsceneDialogue",
+      "function": "EntityCutsceneDialogue",
+      "overlay": "BOSS/BO2",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried EntityCutsceneDialogue: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO2:func_us_801A2610",
+      "function": "func_us_801A2610",
+      "overlay": "BOSS/BO2",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801A2610: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO2:func_us_801A269C",
+      "function": "func_us_801A269C",
+      "overlay": "BOSS/BO2",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801A269C: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO2:func_us_801A3E04",
+      "function": "func_us_801A3E04",
+      "overlay": "BOSS/BO2",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801A3E04: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO2:func_us_801A460C",
+      "function": "func_us_801A460C",
+      "overlay": "BOSS/BO2",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801A460C: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO2:func_us_801A6EF8",
+      "function": "func_us_801A6EF8",
+      "overlay": "BOSS/BO2",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801A6EF8: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO2:func_us_801A7340",
+      "function": "func_us_801A7340",
+      "overlay": "BOSS/BO2",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801A7340: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO2:func_us_801A75B4",
+      "function": "func_us_801A75B4",
+      "overlay": "BOSS/BO2",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801A75B4: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO2:func_us_801B37D0",
+      "function": "func_us_801B37D0",
+      "overlay": "BOSS/BO2",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801B37D0: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO2:func_us_801B385C",
+      "function": "func_us_801B385C",
+      "overlay": "BOSS/BO2",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801B385C: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO2:func_us_801B503C",
+      "function": "func_us_801B503C",
+      "overlay": "BOSS/BO2",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801B503C: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO2:func_us_801B52FC",
+      "function": "func_us_801B52FC",
+      "overlay": "BOSS/BO2",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801B52FC: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO3:EntityBgColumnsParallax_from_no4",
+      "function": "EntityBgColumnsParallax_from_no4",
+      "overlay": "BOSS/BO3",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried EntityBgColumnsParallax: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO3:func_us_8019E398",
+      "function": "func_us_8019E398",
+      "overlay": "BOSS/BO3",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_8019E398: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO3:func_us_8019F03C",
+      "function": "func_us_8019F03C",
+      "overlay": "BOSS/BO3",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_8019F03C: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO3:func_us_801A051C",
+      "function": "func_us_801A051C",
+      "overlay": "BOSS/BO3",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801A051C: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO3:func_us_801A069C",
+      "function": "func_us_801A069C",
+      "overlay": "BOSS/BO3",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801A069C: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO3:func_us_801A071C",
+      "function": "func_us_801A071C",
+      "overlay": "BOSS/BO3",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801A071C: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO3:func_us_801A07CC",
+      "function": "func_us_801A07CC",
+      "overlay": "BOSS/BO3",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801A07CC: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO3:func_us_801A09DC",
+      "function": "func_us_801A09DC",
+      "overlay": "BOSS/BO3",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801A09DC: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO3:func_us_801A0A80",
+      "function": "func_us_801A0A80",
+      "overlay": "BOSS/BO3",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801A0A80: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO3:func_us_801A1120",
+      "function": "func_us_801A1120",
+      "overlay": "BOSS/BO3",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801A1120: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO3:func_us_801A16E4",
+      "function": "func_us_801A16E4",
+      "overlay": "BOSS/BO3",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801A16E4: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO3:func_us_801A1BE8",
+      "function": "func_us_801A1BE8",
+      "overlay": "BOSS/BO3",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801A1BE8: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO3:func_us_801A2A90",
+      "function": "func_us_801A2A90",
+      "overlay": "BOSS/BO3",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801A2A90: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO3:func_us_801A2AEC",
+      "function": "func_us_801A2AEC",
+      "overlay": "BOSS/BO3",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801A2AEC: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO3:func_us_801A365C",
+      "function": "func_us_801A365C",
+      "overlay": "BOSS/BO3",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801A365C: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO3:func_us_801A3CD8",
+      "function": "func_us_801A3CD8",
+      "overlay": "BOSS/BO3",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801A3CD8: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO3:func_us_801A3EE0",
+      "function": "func_us_801A3EE0",
+      "overlay": "BOSS/BO3",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801A3EE0: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO3:func_us_801A42A8",
+      "function": "func_us_801A42A8",
+      "overlay": "BOSS/BO3",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801A42A8: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO3:func_us_801A4680",
+      "function": "func_us_801A4680",
+      "overlay": "BOSS/BO3",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801A4680: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO3:func_us_801A4988",
+      "function": "func_us_801A4988",
+      "overlay": "BOSS/BO3",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801A4988: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO3:func_us_801A4C0C",
+      "function": "func_us_801A4C0C",
+      "overlay": "BOSS/BO3",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801A4C0C: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO3:func_us_801A4E24",
+      "function": "func_us_801A4E24",
+      "overlay": "BOSS/BO3",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801A4E24: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO3:func_us_801A4FB8",
+      "function": "func_us_801A4FB8",
+      "overlay": "BOSS/BO3",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801A4FB8: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO3:func_us_801A516C",
+      "function": "func_us_801A516C",
+      "overlay": "BOSS/BO3",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801A516C: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO3:func_us_801A51E4",
+      "function": "func_us_801A51E4",
+      "overlay": "BOSS/BO3",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801A51E4: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO3:func_us_801A5338",
+      "function": "func_us_801A5338",
+      "overlay": "BOSS/BO3",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801A5338: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO3:func_us_801A57A4",
+      "function": "func_us_801A57A4",
+      "overlay": "BOSS/BO3",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801A57A4: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO3:func_us_801A5948",
+      "function": "func_us_801A5948",
+      "overlay": "BOSS/BO3",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801A5948: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO3:func_us_801A5F0C",
+      "function": "func_us_801A5F0C",
+      "overlay": "BOSS/BO3",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801A5F0C: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO3:func_us_801A6370",
+      "function": "func_us_801A6370",
+      "overlay": "BOSS/BO3",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801A6370: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO3:func_us_801A6568",
+      "function": "func_us_801A6568",
+      "overlay": "BOSS/BO3",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801A6568: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO5:func_us_801A19FC",
+      "function": "func_us_801A19FC",
+      "overlay": "BOSS/BO5",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801A19FC: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO5:func_us_801A1BA0",
+      "function": "func_us_801A1BA0",
+      "overlay": "BOSS/BO5",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801A1BA0: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO5:func_us_801A1C14",
+      "function": "func_us_801A1C14",
+      "overlay": "BOSS/BO5",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801A1C14: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO5:func_us_801A3B88",
+      "function": "func_us_801A3B88",
+      "overlay": "BOSS/BO5",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801A3B88: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO5:func_us_801A425C",
+      "function": "func_us_801A425C",
+      "overlay": "BOSS/BO5",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801A425C: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO5:func_us_801A4430",
+      "function": "func_us_801A4430",
+      "overlay": "BOSS/BO5",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801A4430: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO5:func_us_801A4494",
+      "function": "func_us_801A4494",
+      "overlay": "BOSS/BO5",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801A4494: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO5:func_us_801A5F88",
+      "function": "func_us_801A5F88",
+      "overlay": "BOSS/BO5",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801A5F88: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO5:func_us_801A62B4",
+      "function": "func_us_801A62B4",
+      "overlay": "BOSS/BO5",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801A62B4: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO5:func_us_801A66B0",
+      "function": "func_us_801A66B0",
+      "overlay": "BOSS/BO5",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801A66B0: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO7:func_us_80194D3C",
+      "function": "func_us_80194D3C",
+      "overlay": "BOSS/BO7",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_80194D3C: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO7:func_us_801959E0",
+      "function": "func_us_801959E0",
+      "overlay": "BOSS/BO7",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801959E0: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO7:func_us_80195AF0",
+      "function": "func_us_80195AF0",
+      "overlay": "BOSS/BO7",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_80195AF0: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO7:func_us_80195C50",
+      "function": "func_us_80195C50",
+      "overlay": "BOSS/BO7",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_80195C50: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO7:func_us_801963D8",
+      "function": "func_us_801963D8",
+      "overlay": "BOSS/BO7",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801963D8: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/RBO1:func_us_801923A8",
+      "function": "func_us_801923A8",
+      "overlay": "BOSS/RBO1",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801923A8: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/RBO1:func_us_80192C5C",
+      "function": "func_us_80192C5C",
+      "overlay": "BOSS/RBO1",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_80192C5C: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/RBO1:func_us_80192F84",
+      "function": "func_us_80192F84",
+      "overlay": "BOSS/RBO1",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_80192F84: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/RBO1:func_us_801936FC",
+      "function": "func_us_801936FC",
+      "overlay": "BOSS/RBO1",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801936FC: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/RBO1:func_us_80193C2C",
+      "function": "func_us_80193C2C",
+      "overlay": "BOSS/RBO1",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_80193C2C: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/RBO1:func_us_80193E24",
+      "function": "func_us_80193E24",
+      "overlay": "BOSS/RBO1",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_80193E24: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/RBO1:func_us_80194108",
+      "function": "func_us_80194108",
+      "overlay": "BOSS/RBO1",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_80194108: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/RBO1:func_us_801947E4",
+      "function": "func_us_801947E4",
+      "overlay": "BOSS/RBO1",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801947E4: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/RBO1:func_us_80194C50",
+      "function": "func_us_80194C50",
+      "overlay": "BOSS/RBO1",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_80194C50: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/RBO1:func_us_8019D260_from_rcen",
+      "function": "func_us_8019D260_from_rcen",
+      "overlay": "BOSS/RBO1",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_8019D260: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/RBO1:func_us_8019ED80_from_rbo2",
+      "function": "func_us_8019ED80_from_rbo2",
+      "overlay": "BOSS/RBO1",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_8019ED80: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/RBO2:EntityCutsceneDialogue",
+      "function": "EntityCutsceneDialogue",
+      "overlay": "BOSS/RBO2",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried EntityCutsceneDialogue: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/RBO2:func_us_8019B430",
+      "function": "func_us_8019B430",
+      "overlay": "BOSS/RBO2",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_8019B430: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/RBO2:func_us_8019B52C",
+      "function": "func_us_8019B52C",
+      "overlay": "BOSS/RBO2",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_8019B52C: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/RBO2:func_us_8019C718",
+      "function": "func_us_8019C718",
+      "overlay": "BOSS/RBO2",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_8019C718: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/RBO2:func_us_8019C924",
+      "function": "func_us_8019C924",
+      "overlay": "BOSS/RBO2",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_8019C924: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/RBO2:func_us_8019D260_from_rcen",
+      "function": "func_us_8019D260_from_rcen",
+      "overlay": "BOSS/RBO2",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_8019D260: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/RBO2:func_us_8019D4CC",
+      "function": "func_us_8019D4CC",
+      "overlay": "BOSS/RBO2",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_8019D4CC: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/RBO2:func_us_8019D950",
+      "function": "func_us_8019D950",
+      "overlay": "BOSS/RBO2",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_8019D950: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/RBO2:func_us_8019DA04",
+      "function": "func_us_8019DA04",
+      "overlay": "BOSS/RBO2",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_8019DA04: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/RBO2:func_us_8019E558",
+      "function": "func_us_8019E558",
+      "overlay": "BOSS/RBO2",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_8019E558: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/RBO2:func_us_8019E920",
+      "function": "func_us_8019E920",
+      "overlay": "BOSS/RBO2",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_8019E920: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/RBO2:func_us_8019ECCC",
+      "function": "func_us_8019ECCC",
+      "overlay": "BOSS/RBO2",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_8019ECCC: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/RBO2:func_us_8019ED80",
+      "function": "func_us_8019ED80",
+      "overlay": "BOSS/RBO2",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_8019ED80: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/RBO2:func_us_8019F260",
+      "function": "func_us_8019F260",
+      "overlay": "BOSS/RBO2",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_8019F260: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/RBO2:func_us_801A17C8",
+      "function": "func_us_801A17C8",
+      "overlay": "BOSS/RBO2",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801A17C8: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/RBO4:func_us_80197938",
+      "function": "func_us_80197938",
+      "overlay": "BOSS/RBO4",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_80197938: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/RBO4:func_us_8019818C",
+      "function": "func_us_8019818C",
+      "overlay": "BOSS/RBO4",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_8019818C: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/RBO4:func_us_8019846C",
+      "function": "func_us_8019846C",
+      "overlay": "BOSS/RBO4",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_8019846C: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/RBO4:func_us_80198A18",
+      "function": "func_us_80198A18",
+      "overlay": "BOSS/RBO4",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_80198A18: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/RBO6:func_us_8019D260_from_rcen",
+      "function": "func_us_8019D260_from_rcen",
+      "overlay": "BOSS/RBO6",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_8019D260: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/RBO6:func_us_8019D330_from_rcen",
+      "function": "func_us_8019D330_from_rcen",
+      "overlay": "BOSS/RBO6",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_8019D330: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/RBO6:func_us_8019DB9C",
+      "function": "func_us_8019DB9C",
+      "overlay": "BOSS/RBO6",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_8019DB9C: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/RBO6:func_us_8019EADC",
+      "function": "func_us_8019EADC",
+      "overlay": "BOSS/RBO6",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_8019EADC: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/RBO6:func_us_8019EE30",
+      "function": "func_us_8019EE30",
+      "overlay": "BOSS/RBO6",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_8019EE30: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/RBO6:func_us_8019F1CC",
+      "function": "func_us_8019F1CC",
+      "overlay": "BOSS/RBO6",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_8019F1CC: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/RBO6:func_us_8019FA78",
+      "function": "func_us_8019FA78",
+      "overlay": "BOSS/RBO6",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_8019FA78: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/RBO6:func_us_8019FB04",
+      "function": "func_us_8019FB04",
+      "overlay": "BOSS/RBO6",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_8019FB04: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/RBO6:func_us_8019FBC0",
+      "function": "func_us_8019FBC0",
+      "overlay": "BOSS/RBO6",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_8019FBC0: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/RBO6:func_us_8019FCB4",
+      "function": "func_us_8019FCB4",
+      "overlay": "BOSS/RBO6",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_8019FCB4: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/RBO6:func_us_801A01A4",
+      "function": "func_us_801A01A4",
+      "overlay": "BOSS/RBO6",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801A01A4: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/RBO6:func_us_801A0710",
+      "function": "func_us_801A0710",
+      "overlay": "BOSS/RBO6",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801A0710: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/RBO6:func_us_801A0860",
+      "function": "func_us_801A0860",
+      "overlay": "BOSS/RBO6",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801A0860: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/RBO6:func_us_801A0AB4",
+      "function": "func_us_801A0AB4",
+      "overlay": "BOSS/RBO6",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801A0AB4: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/RBO6:func_us_801A0DC0",
+      "function": "func_us_801A0DC0",
+      "overlay": "BOSS/RBO6",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801A0DC0: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/RBO6:func_us_801A1150",
+      "function": "func_us_801A1150",
+      "overlay": "BOSS/RBO6",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801A1150: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/RBO6:func_us_801A11DC",
+      "function": "func_us_801A11DC",
+      "overlay": "BOSS/RBO6",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801A11DC: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/RBO6:func_us_801A1B38",
+      "function": "func_us_801A1B38",
+      "overlay": "BOSS/RBO6",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801A1B38: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/RBO6:func_us_801A362C",
+      "function": "func_us_801A362C",
+      "overlay": "BOSS/RBO6",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801A362C: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/RBO6:func_us_801A367C",
+      "function": "func_us_801A367C",
+      "overlay": "BOSS/RBO6",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801A367C: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/RBO6:func_us_801A37B4",
+      "function": "func_us_801A37B4",
+      "overlay": "BOSS/RBO6",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801A37B4: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/RBO6:func_us_801A399C",
+      "function": "func_us_801A399C",
+      "overlay": "BOSS/RBO6",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801A399C: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/RBO6:func_us_801A3BE0",
+      "function": "func_us_801A3BE0",
+      "overlay": "BOSS/RBO6",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801A3BE0: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/RBO6:func_us_801A4028",
+      "function": "func_us_801A4028",
+      "overlay": "BOSS/RBO6",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801A4028: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/RBO6:func_us_801A4594",
+      "function": "func_us_801A4594",
+      "overlay": "BOSS/RBO6",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801A4594: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/RBO6:func_us_801A4F14",
+      "function": "func_us_801A4F14",
+      "overlay": "BOSS/RBO6",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801A4F14: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/RBO6:func_us_801B1738",
+      "function": "func_us_801B1738",
+      "overlay": "BOSS/RBO6",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801B1738: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/RBO6:func_us_801B2864",
+      "function": "func_us_801B2864",
+      "overlay": "BOSS/RBO6",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801B2864: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/RBO7:func_us_801940B4",
+      "function": "func_us_801940B4",
+      "overlay": "BOSS/RBO7",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801940B4: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/RBO7:func_us_801957C0",
+      "function": "func_us_801957C0",
+      "overlay": "BOSS/RBO7",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801957C0: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/RBO7:func_us_80195A8C",
+      "function": "func_us_80195A8C",
+      "overlay": "BOSS/RBO7",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_80195A8C: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/RBO7:func_us_80195D04",
+      "function": "func_us_80195D04",
+      "overlay": "BOSS/RBO7",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_80195D04: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/RBO7:func_us_801BAB18_from_bo0",
+      "function": "func_us_801BAB18_from_bo0",
+      "overlay": "BOSS/RBO7",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801BAB18: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/RBO8:func_us_801955A0",
+      "function": "func_us_801955A0",
+      "overlay": "BOSS/RBO8",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801955A0: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/RBO8:func_us_801955F8",
+      "function": "func_us_801955F8",
+      "overlay": "BOSS/RBO8",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801955F8: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/RBO8:func_us_80195938",
+      "function": "func_us_80195938",
+      "overlay": "BOSS/RBO8",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_80195938: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/RBO8:func_us_80195AD8",
+      "function": "func_us_80195AD8",
+      "overlay": "BOSS/RBO8",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_80195AD8: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/RBO8:func_us_80195D80",
+      "function": "func_us_80195D80",
+      "overlay": "BOSS/RBO8",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_80195D80: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/RBO8:func_us_80197B1C",
+      "function": "func_us_80197B1C",
+      "overlay": "BOSS/RBO8",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_80197B1C: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/RBO8:func_us_801980E4",
+      "function": "func_us_801980E4",
+      "overlay": "BOSS/RBO8",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801980E4: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/RBO8:func_us_80198210",
+      "function": "func_us_80198210",
+      "overlay": "BOSS/RBO8",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_80198210: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/RBO8:func_us_801983EC",
+      "function": "func_us_801983EC",
+      "overlay": "BOSS/RBO8",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801983EC: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/RBO8:func_us_80198964",
+      "function": "func_us_80198964",
+      "overlay": "BOSS/RBO8",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_80198964: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/RBO8:func_us_8019921C",
+      "function": "func_us_8019921C",
+      "overlay": "BOSS/RBO8",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_8019921C: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/RBO8:func_us_8019943C",
+      "function": "func_us_8019943C",
+      "overlay": "BOSS/RBO8",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_8019943C: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/RBO8:func_us_8019953C",
+      "function": "func_us_8019953C",
+      "overlay": "BOSS/RBO8",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_8019953C: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/RBO8:func_us_80199A58",
+      "function": "func_us_80199A58",
+      "overlay": "BOSS/RBO8",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_80199A58: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/RBO8:func_us_8019C7B8_from_rcen",
+      "function": "func_us_8019C7B8_from_rcen",
+      "overlay": "BOSS/RBO8",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_8019C7B8: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RLIB:func_us_801ADBE8",
+      "function": "func_us_801ADBE8",
+      "overlay": "ST/RLIB",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801ADBE8: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RLIB:func_us_801AE414",
+      "function": "func_us_801AE414",
+      "overlay": "ST/RLIB",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801AE414: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RLIB:func_us_801AE534",
+      "function": "func_us_801AE534",
+      "overlay": "ST/RLIB",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801AE534: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RLIB:func_us_801AE7AC_from_lib",
+      "function": "func_us_801AE7AC_from_lib",
+      "overlay": "ST/RLIB",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801AE7AC: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RLIB:func_us_801AE84C_from_lib",
+      "function": "func_us_801AE84C_from_lib",
+      "overlay": "ST/RLIB",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801AE84C: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RLIB:func_us_801AED4C",
+      "function": "func_us_801AED4C",
+      "overlay": "ST/RLIB",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801AED4C: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RLIB:func_us_801AEFE0",
+      "function": "func_us_801AEFE0",
+      "overlay": "ST/RLIB",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801AEFE0: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RLIB:func_us_801AF11C",
+      "function": "func_us_801AF11C",
+      "overlay": "ST/RLIB",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801AF11C: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RLIB:func_us_801AF280_from_lib",
+      "function": "func_us_801AF280_from_lib",
+      "overlay": "ST/RLIB",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801AF280: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RLIB:func_us_801AF448",
+      "function": "func_us_801AF448",
+      "overlay": "ST/RLIB",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801AF448: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RLIB:func_us_801AF538_from_lib",
+      "function": "func_us_801AF538_from_lib",
+      "overlay": "ST/RLIB",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801AF538: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RLIB:func_us_801AF7B8_from_lib",
+      "function": "func_us_801AF7B8_from_lib",
+      "overlay": "ST/RLIB",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801AF7B8: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RLIB:func_us_801AF9E8",
+      "function": "func_us_801AF9E8",
+      "overlay": "ST/RLIB",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801AF9E8: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RLIB:func_us_801AFC88",
+      "function": "func_us_801AFC88",
+      "overlay": "ST/RLIB",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801AFC88: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RLIB:func_us_801BAF60_from_lib",
+      "function": "func_us_801BAF60_from_lib",
+      "overlay": "ST/RLIB",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801BAF60: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RLIB:func_us_801D8D44_from_no4",
+      "function": "func_us_801D8D44_from_no4",
+      "overlay": "ST/RLIB",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801D8D44: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RNO1:func_us_80198A18_from_rbo4",
+      "function": "func_us_80198A18_from_rbo4",
+      "overlay": "ST/RNO1",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_80198A18: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RNO1:func_us_801A68AC",
+      "function": "func_us_801A68AC",
+      "overlay": "ST/RNO1",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801A68AC: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RNO1:func_us_801A700C",
+      "function": "func_us_801A700C",
+      "overlay": "ST/RNO1",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801A700C: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RNO1:func_us_801A86A8",
+      "function": "func_us_801A86A8",
+      "overlay": "ST/RNO1",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801A86A8: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RNO1:func_us_801A9A8C",
+      "function": "func_us_801A9A8C",
+      "overlay": "ST/RNO1",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801A9A8C: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RNO1:func_us_801A9BEC",
+      "function": "func_us_801A9BEC",
+      "overlay": "ST/RNO1",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801A9BEC: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RNO2:func_us_801C39A4",
+      "function": "func_us_801C39A4",
+      "overlay": "ST/RNO2",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801C39A4: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RNO2:func_us_801C4960",
+      "function": "func_us_801C4960",
+      "overlay": "ST/RNO2",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801C4960: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RNO2:func_us_801C4C0C",
+      "function": "func_us_801C4C0C",
+      "overlay": "ST/RNO2",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801C4C0C: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RNO2:func_us_801C4EA8",
+      "function": "func_us_801C4EA8",
+      "overlay": "ST/RNO2",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801C4EA8: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RNO2:func_us_801CAB8C",
+      "function": "func_us_801CAB8C",
+      "overlay": "ST/RNO2",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801CAB8C: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RNO4:EntityBgColumnsParallax_from_no4",
+      "function": "EntityBgColumnsParallax_from_no4",
+      "overlay": "ST/RNO4",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried EntityBgColumnsParallax: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RNO4:func_us_801A071C_from_bo3",
+      "function": "func_us_801A071C_from_bo3",
+      "overlay": "ST/RNO4",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801A071C: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RNO4:func_us_801A07CC_from_bo3",
+      "function": "func_us_801A07CC_from_bo3",
+      "overlay": "ST/RNO4",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801A07CC: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RNO4:func_us_801BBE58_from_rnz1",
+      "function": "func_us_801BBE58_from_rnz1",
+      "overlay": "ST/RNO4",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801BBE58: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RNO4:func_us_801BC650_from_rnz1",
+      "function": "func_us_801BC650_from_rnz1",
+      "overlay": "ST/RNO4",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801BC650: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RNO4:func_us_801BCA5C_from_rnz1",
+      "function": "func_us_801BCA5C_from_rnz1",
+      "overlay": "ST/RNO4",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801BCA5C: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RNO4:func_us_801BCB9C_from_rnz1",
+      "function": "func_us_801BCB9C_from_rnz1",
+      "overlay": "ST/RNO4",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801BCB9C: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RNO4:func_us_801BCD80_from_rnz1",
+      "function": "func_us_801BCD80_from_rnz1",
+      "overlay": "ST/RNO4",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801BCD80: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RNO4:func_us_801BCE4C_from_rnz1",
+      "function": "func_us_801BCE4C_from_rnz1",
+      "overlay": "ST/RNO4",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801BCE4C: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RNO4:func_us_801BCFC8_from_rnz1",
+      "function": "func_us_801BCFC8_from_rnz1",
+      "overlay": "ST/RNO4",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801BCFC8: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RNO4:func_us_801C5364",
+      "function": "func_us_801C5364",
+      "overlay": "ST/RNO4",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801C5364: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RNO4:func_us_801C5C78",
+      "function": "func_us_801C5C78",
+      "overlay": "ST/RNO4",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801C5C78: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RNO4:func_us_801C5EE4",
+      "function": "func_us_801C5EE4",
+      "overlay": "ST/RNO4",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801C5EE4: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RNO4:func_us_801C81C8",
+      "function": "func_us_801C81C8",
+      "overlay": "ST/RNO4",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801C81C8: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RNO4:func_us_801C8668",
+      "function": "func_us_801C8668",
+      "overlay": "ST/RNO4",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801C8668: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RNO4:func_us_801C870C",
+      "function": "func_us_801C870C",
+      "overlay": "ST/RNO4",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801C870C: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RNO4:func_us_801C9048",
+      "function": "func_us_801C9048",
+      "overlay": "ST/RNO4",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801C9048: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RNO4:func_us_801C909C",
+      "function": "func_us_801C909C",
+      "overlay": "ST/RNO4",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801C909C: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RNO4:func_us_801D511C",
+      "function": "func_us_801D511C",
+      "overlay": "ST/RNO4",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801D511C: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RNO4:func_us_801D58FC",
+      "function": "func_us_801D58FC",
+      "overlay": "ST/RNO4",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801D58FC: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RNO4:func_us_801D5BA4",
+      "function": "func_us_801D5BA4",
+      "overlay": "ST/RNO4",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801D5BA4: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RNO4:func_us_801D5DC8",
+      "function": "func_us_801D5DC8",
+      "overlay": "ST/RNO4",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801D5DC8: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RNO4:func_us_801D5E90",
+      "function": "func_us_801D5E90",
+      "overlay": "ST/RNO4",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801D5E90: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RNO4:func_us_801D68E0",
+      "function": "func_us_801D68E0",
+      "overlay": "ST/RNO4",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801D68E0: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RNO4:func_us_801D6B8C",
+      "function": "func_us_801D6B8C",
+      "overlay": "ST/RNO4",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801D6B8C: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RNZ1:func_us_801A8F7C",
+      "function": "func_us_801A8F7C",
+      "overlay": "ST/RNZ1",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801A8F7C: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RNZ1:func_us_801A9994",
+      "function": "func_us_801A9994",
+      "overlay": "ST/RNZ1",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801A9994: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RNZ1:func_us_801A9DB8",
+      "function": "func_us_801A9DB8",
+      "overlay": "ST/RNZ1",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801A9DB8: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RNZ1:func_us_801AAF00",
+      "function": "func_us_801AAF00",
+      "overlay": "ST/RNZ1",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801AAF00: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RNZ1:func_us_801AB04C",
+      "function": "func_us_801AB04C",
+      "overlay": "ST/RNZ1",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801AB04C: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RNZ1:func_us_801AB198",
+      "function": "func_us_801AB198",
+      "overlay": "ST/RNZ1",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801AB198: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RNZ1:func_us_801AB380",
+      "function": "func_us_801AB380",
+      "overlay": "ST/RNZ1",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801AB380: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RNZ1:func_us_801AB768",
+      "function": "func_us_801AB768",
+      "overlay": "ST/RNZ1",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801AB768: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RNZ1:func_us_801ABA38",
+      "function": "func_us_801ABA38",
+      "overlay": "ST/RNZ1",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801ABA38: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RNZ1:func_us_801ABB58",
+      "function": "func_us_801ABB58",
+      "overlay": "ST/RNZ1",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801ABB58: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RNZ1:func_us_801ABDE4",
+      "function": "func_us_801ABDE4",
+      "overlay": "ST/RNZ1",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801ABDE4: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RNZ1:func_us_801BBE58",
+      "function": "func_us_801BBE58",
+      "overlay": "ST/RNZ1",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801BBE58: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RNZ1:func_us_801BC650",
+      "function": "func_us_801BC650",
+      "overlay": "ST/RNZ1",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801BC650: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RNZ1:func_us_801BCA5C",
+      "function": "func_us_801BCA5C",
+      "overlay": "ST/RNZ1",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801BCA5C: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RNZ1:func_us_801BCB9C",
+      "function": "func_us_801BCB9C",
+      "overlay": "ST/RNZ1",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801BCB9C: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RNZ1:func_us_801BCD80",
+      "function": "func_us_801BCD80",
+      "overlay": "ST/RNZ1",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801BCD80: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RNZ1:func_us_801BCE4C",
+      "function": "func_us_801BCE4C",
+      "overlay": "ST/RNZ1",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801BCE4C: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RNZ1:func_us_801BCFC8",
+      "function": "func_us_801BCFC8",
+      "overlay": "ST/RNZ1",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801BCFC8: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RNZ1:func_us_801BD0EC",
+      "function": "func_us_801BD0EC",
+      "overlay": "ST/RNZ1",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801BD0EC: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RNZ1:func_us_801BD184",
+      "function": "func_us_801BD184",
+      "overlay": "ST/RNZ1",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801BD184: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RNZ1:func_us_801BD324",
+      "function": "func_us_801BD324",
+      "overlay": "ST/RNZ1",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801BD324: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RNZ1:func_us_801BD398",
+      "function": "func_us_801BD398",
+      "overlay": "ST/RNZ1",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801BD398: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RNZ1:func_us_801BDA24",
+      "function": "func_us_801BDA24",
+      "overlay": "ST/RNZ1",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801BDA24: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO6:func_us_801BD47C",
+      "function": "func_us_801BD47C",
+      "overlay": "BOSS/BO6",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801BD47C: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO0:func_us_801B20F4",
+      "function": "func_us_801B20F4",
+      "overlay": "BOSS/BO0",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801B20F4: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO0:func_us_801B7C44",
+      "function": "func_us_801B7C44",
+      "overlay": "BOSS/BO0",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801B7C44: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO0:func_us_801B7BAC",
+      "function": "func_us_801B7BAC",
+      "overlay": "BOSS/BO0",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801B7BAC: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO0:func_us_801B5470",
+      "function": "func_us_801B5470",
+      "overlay": "BOSS/BO0",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801B5470: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO0:func_us_801B17BC",
+      "function": "func_us_801B17BC",
+      "overlay": "BOSS/BO0",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801B17BC: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO6:func_us_801BA9D0",
+      "function": "func_us_801BA9D0",
+      "overlay": "BOSS/BO6",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801BA9D0: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RCEN:func_us_8019FD4C",
+      "function": "func_us_8019FD4C",
+      "overlay": "ST/RCEN",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_8019FD4C: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RNO0:func_us_8019FD4C_from_rcen",
+      "function": "func_us_8019FD4C_from_rcen",
+      "overlay": "ST/RNO0",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_8019FD4C: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO0:func_us_801B888C",
+      "function": "func_us_801B888C",
+      "overlay": "BOSS/BO0",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801B888C: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO0:func_us_801B1864",
+      "function": "func_us_801B1864",
+      "overlay": "BOSS/BO0",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801B1864: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO0:func_us_801B8794",
+      "function": "func_us_801B8794",
+      "overlay": "BOSS/BO0",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801B8794: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO6:func_us_801BB5BC",
+      "function": "func_us_801BB5BC",
+      "overlay": "BOSS/BO6",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801BB5BC: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RCEN:func_us_8019C4EC",
+      "function": "func_us_8019C4EC",
+      "overlay": "ST/RCEN",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_8019CDA0: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO0:func_us_801B19FC",
+      "function": "func_us_801B19FC",
+      "overlay": "BOSS/BO0",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801B19FC: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RNO0:func_us_801CF24C",
+      "function": "func_us_801CF24C",
+      "overlay": "ST/RNO0",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801CF24C: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RCEN:func_us_8019B5A4",
+      "function": "func_us_8019B5A4",
+      "overlay": "ST/RCEN",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_8019CDA0: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RNO0:func_us_801CFB20",
+      "function": "func_us_801CFB20",
+      "overlay": "ST/RNO0",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801CFB20: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RNO0:func_us_801CF64C",
+      "function": "func_us_801CF64C",
+      "overlay": "ST/RNO0",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801CF64C: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RNO0:func_us_801D2038",
+      "function": "func_us_801D2038",
+      "overlay": "ST/RNO0",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801D2038: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RCEN:func_us_8019C610",
+      "function": "func_us_8019C610",
+      "overlay": "ST/RCEN",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_8019CDA0: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RNO0:func_us_801CF7D0",
+      "function": "func_us_801CF7D0",
+      "overlay": "ST/RNO0",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801CF7D0: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RNO0:func_us_801CF968",
+      "function": "func_us_801CF968",
+      "overlay": "ST/RNO0",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801CF968: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO0:func_us_801B24CC",
+      "function": "func_us_801B24CC",
+      "overlay": "BOSS/BO0",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801B24CC: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RNO0:func_us_801CF08C",
+      "function": "func_us_801CF08C",
+      "overlay": "ST/RNO0",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801CF08C: no extractable definition"
+    },
+    {
+      "record_id": "us:MAIN:dma_execute",
+      "function": "dma_execute",
+      "overlay": "MAIN",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried dma_execute: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO0:func_us_801B8970",
+      "function": "func_us_801B8970",
+      "overlay": "BOSS/BO0",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801B8970: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO0:func_us_801B13A8",
+      "function": "func_us_801B13A8",
+      "overlay": "BOSS/BO0",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801B13A8: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RCEN:func_us_8019B6D4",
+      "function": "func_us_8019B6D4",
+      "overlay": "ST/RCEN",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_8019B6D4: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RNO0:func_us_801B7104",
+      "function": "func_us_801B7104",
+      "overlay": "ST/RNO0",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801B7104: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO6:func_us_801B94CC",
+      "function": "func_us_801B94CC",
+      "overlay": "BOSS/BO6",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801B94CC: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO0:func_us_801AF8C0",
+      "function": "func_us_801AF8C0",
+      "overlay": "BOSS/BO0",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801AF8C0: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RNO0:func_us_801CF380",
+      "function": "func_us_801CF380",
+      "overlay": "ST/RNO0",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801CF380: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RNO0:func_us_801D136C",
+      "function": "func_us_801D136C",
+      "overlay": "ST/RNO0",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801D136C: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO0:func_us_801BA4AC",
+      "function": "func_us_801BA4AC",
+      "overlay": "BOSS/BO0",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801BA4AC: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO6:func_us_801BE79C",
+      "function": "func_us_801BE79C",
+      "overlay": "BOSS/BO6",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801BE79C: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO0:func_us_801AF604",
+      "function": "func_us_801AF604",
+      "overlay": "BOSS/BO0",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801AF604: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO0:func_us_801B21F0",
+      "function": "func_us_801B21F0",
+      "overlay": "BOSS/BO0",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801B21F0: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO0:func_us_801AF31C",
+      "function": "func_us_801AF31C",
+      "overlay": "BOSS/BO0",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801AF31C: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO0:func_us_801BA128",
+      "function": "func_us_801BA128",
+      "overlay": "BOSS/BO0",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801BA128: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RCEN:func_us_8019D330",
+      "function": "func_us_8019D330",
+      "overlay": "ST/RCEN",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_8019D330: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO0:func_us_801B619C",
+      "function": "func_us_801B619C",
+      "overlay": "BOSS/BO0",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801B619C: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO0:func_us_801B9BEC",
+      "function": "func_us_801B9BEC",
+      "overlay": "BOSS/BO0",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801B9BEC: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RNO0:func_us_801D1BF0",
+      "function": "func_us_801D1BF0",
+      "overlay": "ST/RNO0",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801D1BF0: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO0:func_us_801AFAF4",
+      "function": "func_us_801AFAF4",
+      "overlay": "BOSS/BO0",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801AFAF4: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RCEN:func_us_8019CDF8",
+      "function": "func_us_8019CDF8",
+      "overlay": "ST/RCEN",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_8019CDF8: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO0:func_us_801B76E4",
+      "function": "func_us_801B76E4",
+      "overlay": "BOSS/BO0",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801B76E4: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RCEN:func_us_8019FE9C",
+      "function": "func_us_8019FE9C",
+      "overlay": "ST/RCEN",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_8019FE9C: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO6:func_us_801C9DE8",
+      "function": "func_us_801C9DE8",
+      "overlay": "BOSS/BO6",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801C9DE8: no extractable definition"
+    },
+    {
+      "record_id": "us:MAIN:_SsContDataEntry",
+      "function": "_SsContDataEntry",
+      "overlay": "MAIN",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried _SsContDataEntry: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO0:func_us_801B30AC",
+      "function": "func_us_801B30AC",
+      "overlay": "BOSS/BO0",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801B30AC: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RCEN:func_us_8019C7B8",
+      "function": "func_us_8019C7B8",
+      "overlay": "ST/RCEN",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_8019C7B8: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RNO0:func_us_801D15C0",
+      "function": "func_us_801D15C0",
+      "overlay": "ST/RNO0",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801D15C0: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO0:func_us_801B65C0",
+      "function": "func_us_801B65C0",
+      "overlay": "BOSS/BO0",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801B65C0: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RNO0:func_us_801D0CFC",
+      "function": "func_us_801D0CFC",
+      "overlay": "ST/RNO0",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801D0CFC: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RNO0:func_us_801D068C",
+      "function": "func_us_801D068C",
+      "overlay": "ST/RNO0",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801D068C: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RNO0:func_us_801CFEA0",
+      "function": "func_us_801CFEA0",
+      "overlay": "ST/RNO0",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801CFEA0: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO0:func_us_801B551C",
+      "function": "func_us_801B551C",
+      "overlay": "BOSS/BO0",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801B551C: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RCEN:func_us_801ABD24",
+      "function": "func_us_801ABD24",
+      "overlay": "ST/RCEN",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801ABD24: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO0:func_us_801B2690",
+      "function": "func_us_801B2690",
+      "overlay": "BOSS/BO0",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801B2690: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RCEN:EntityShaft",
+      "function": "EntityShaft",
+      "overlay": "ST/RCEN",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried EntityShaft: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO0:func_us_801AE858",
+      "function": "func_us_801AE858",
+      "overlay": "BOSS/BO0",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801AE858: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO0:func_us_801B6CA4",
+      "function": "func_us_801B6CA4",
+      "overlay": "BOSS/BO0",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801B6CA4: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO0:func_us_801B7CC8",
+      "function": "func_us_801B7CC8",
+      "overlay": "BOSS/BO0",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801B7CC8: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO0:func_us_801BB08C",
+      "function": "func_us_801BB08C",
+      "overlay": "BOSS/BO0",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801BB08C: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RCEN:func_us_8019B8A8",
+      "function": "func_us_8019B8A8",
+      "overlay": "ST/RCEN",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_8019B8A8: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO0:func_us_801B8D8C",
+      "function": "func_us_801B8D8C",
+      "overlay": "BOSS/BO0",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801B8D8C: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RDAI:func_us_801B1C34",
+      "function": "func_us_801B1C34",
+      "overlay": "ST/RDAI",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801B1C34: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RDAI:func_us_801B2C28",
+      "function": "func_us_801B2C28",
+      "overlay": "ST/RDAI",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801B2C28: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RDAI:func_us_801B3368",
+      "function": "func_us_801B3368",
+      "overlay": "ST/RDAI",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801B3368: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RDAI:func_us_801BF830",
+      "function": "func_us_801BF830",
+      "overlay": "ST/RDAI",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801BF830: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RDAI:func_us_801C0240",
+      "function": "func_us_801C0240",
+      "overlay": "ST/RDAI",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801C0240: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RDAI:func_us_801C0528",
+      "function": "func_us_801C0528",
+      "overlay": "ST/RDAI",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801C0528: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RDAI:func_us_801C0898",
+      "function": "func_us_801C0898",
+      "overlay": "ST/RDAI",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801C0898: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RDAI:func_us_801C0C44",
+      "function": "func_us_801C0C44",
+      "overlay": "ST/RDAI",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801C0C44: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RDAI:func_us_801C17E8",
+      "function": "func_us_801C17E8",
+      "overlay": "ST/RDAI",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801C17E8: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RDAI:func_us_801C1DE8",
+      "function": "func_us_801C1DE8",
+      "overlay": "ST/RDAI",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801C1DE8: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RDAI:func_us_801C21E4",
+      "function": "func_us_801C21E4",
+      "overlay": "ST/RDAI",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801C21E4: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RDAI:func_us_801C3580",
+      "function": "func_us_801C3580",
+      "overlay": "ST/RDAI",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801C3580: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RDAI:func_us_801C4C4C",
+      "function": "func_us_801C4C4C",
+      "overlay": "ST/RDAI",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801C4C4C: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RNO0:func_us_801CFE6C",
+      "function": "func_us_801CFE6C",
+      "overlay": "ST/RNO0",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801CFE6C: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO0:func_us_801B1DDC",
+      "function": "func_us_801B1DDC",
+      "overlay": "BOSS/BO0",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801B1DDC: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO0:func_us_801B1EDC",
+      "function": "func_us_801B1EDC",
+      "overlay": "BOSS/BO0",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801B1EDC: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO0:func_us_801B5E08",
+      "function": "func_us_801B5E08",
+      "overlay": "BOSS/BO0",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801B5E08: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO0:func_us_801AD26C",
+      "function": "func_us_801AD26C",
+      "overlay": "BOSS/BO0",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801AD26C: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO0:func_us_801B5D6C",
+      "function": "func_us_801B5D6C",
+      "overlay": "BOSS/BO0",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801B5D6C: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO0:func_us_801B6520",
+      "function": "func_us_801B6520",
+      "overlay": "BOSS/BO0",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801B6520: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO0:func_us_801B171C",
+      "function": "func_us_801B171C",
+      "overlay": "BOSS/BO0",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801B171C: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RNO0:func_801CD78C_801CEB40",
+      "function": "func_801CD78C_801CEB40",
+      "overlay": "ST/RNO0",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_801CD78C_801CEB40: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO0:func_us_801B1950",
+      "function": "func_us_801B1950",
+      "overlay": "BOSS/BO0",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801B1950: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO0:func_us_801B2044",
+      "function": "func_us_801B2044",
+      "overlay": "BOSS/BO0",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801B2044: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO0:func_us_801B163C",
+      "function": "func_us_801B163C",
+      "overlay": "BOSS/BO0",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801B163C: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO0:func_us_801B1F5C",
+      "function": "func_us_801B1F5C",
+      "overlay": "BOSS/BO0",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801B1F5C: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO0:func_us_801B1CE0",
+      "function": "func_us_801B1CE0",
+      "overlay": "BOSS/BO0",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801B1CE0: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO6:func_us_801B8E80",
+      "function": "func_us_801B8E80",
+      "overlay": "BOSS/BO6",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801B8E80: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO0:func_us_801B1B30",
+      "function": "func_us_801B1B30",
+      "overlay": "BOSS/BO0",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801B1B30: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO0:func_us_801BA724",
+      "function": "func_us_801BA724",
+      "overlay": "BOSS/BO0",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801BA724: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RNO0:func_us_801CEEB4",
+      "function": "func_us_801CEEB4",
+      "overlay": "ST/RNO0",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801CEEB4: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO0:func_us_801B8B64",
+      "function": "func_us_801B8B64",
+      "overlay": "BOSS/BO0",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801B8B64: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RNO0:func_us_801D2264",
+      "function": "func_us_801D2264",
+      "overlay": "ST/RNO0",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801D2264: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO0:func_us_801B5E8C",
+      "function": "func_us_801B5E8C",
+      "overlay": "BOSS/BO0",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801B5E8C: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO6:func_us_801A7DC0",
+      "function": "func_us_801A7DC0",
+      "overlay": "BOSS/BO6",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801A7DC0: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO0:func_us_801AD338",
+      "function": "func_us_801AD338",
+      "overlay": "BOSS/BO0",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801AD338: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO0:func_us_801B365C",
+      "function": "func_us_801B365C",
+      "overlay": "BOSS/BO0",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801B365C: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RDAI:func_us_801C2418",
+      "function": "func_us_801C2418",
+      "overlay": "ST/RDAI",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801C2418: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RDAI:func_us_801C5AA0",
+      "function": "func_us_801C5AA0",
+      "overlay": "ST/RDAI",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801C5AA0: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RNO0:func_us_801CFD70",
+      "function": "func_us_801CFD70",
+      "overlay": "ST/RNO0",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801CFD70: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO6:EntityShaft",
+      "function": "EntityShaft",
+      "overlay": "BOSS/BO6",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried EntityShaft: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/BO0:func_us_801BAB18",
+      "function": "func_us_801BAB18",
+      "overlay": "BOSS/BO0",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801BAB18: no extractable definition"
+    },
+    {
+      "record_id": "us:ST/RDAI:func_us_801C4B2C",
+      "function": "func_us_801C4B2C",
+      "overlay": "ST/RDAI",
+      "status": "no-twin",
+      "detail": "scan-class: no-twin\nno usable twin in this tree; tried func_us_801C4B2C: no extractable definition"
+    },
+    {
+      "record_id": "us:BOSS/RBO8:func_801D0B40",
+      "function": "func_801D0B40",
+      "overlay": "BOSS/RBO8",
+      "status": "error",
+      "detail": "scan-class: error\nno usable twin in this tree; tried func_801D0B40: same instruction shape, but 1 operand mapping(s) conflict or are unexplained"
+    }
+  ]
+}

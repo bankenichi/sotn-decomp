@@ -1,0 +1,1416 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sotn-decomp.local/search-ledger.schema.json",
+  "title": "SOTN instrumented search ledger event",
+  "description": "One append-only JSON object per line. Artifact writes must be durable before the referencing event is appended. Event hashes cover canonical JSON excluding event_hash.",
+  "oneOf": [
+    {
+      "allOf": [
+        {
+          "$ref": "#/$defs/event_base"
+        },
+        {
+          "properties": {
+            "event_type": {
+              "const": "run_started"
+            },
+            "payload": {
+              "$ref": "#/$defs/run_manifest"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "allOf": [
+        {
+          "$ref": "#/$defs/event_base"
+        },
+        {
+          "properties": {
+            "event_type": {
+              "const": "task_scheduled"
+            },
+            "payload": {
+              "$ref": "#/$defs/search_task"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "allOf": [
+        {
+          "$ref": "#/$defs/event_base"
+        },
+        {
+          "properties": {
+            "event_type": {
+              "const": "task_started"
+            },
+            "payload": {
+              "$ref": "#/$defs/search_task"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "allOf": [
+        {
+          "$ref": "#/$defs/event_base"
+        },
+        {
+          "properties": {
+            "event_type": {
+              "const": "mutation_materialized"
+            },
+            "payload": {
+              "$ref": "#/$defs/mutation_event"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "allOf": [
+        {
+          "$ref": "#/$defs/event_base"
+        },
+        {
+          "properties": {
+            "event_type": {
+              "const": "candidate_materialized"
+            },
+            "payload": {
+              "$ref": "#/$defs/candidate_record"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "allOf": [
+        {
+          "$ref": "#/$defs/event_base"
+        },
+        {
+          "properties": {
+            "event_type": {
+              "const": "evaluation_completed"
+            },
+            "payload": {
+              "$ref": "#/$defs/evaluation_event"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "allOf": [
+        {
+          "$ref": "#/$defs/event_base"
+        },
+        {
+          "properties": {
+            "event_type": {
+              "const": "archive_decided"
+            },
+            "payload": {
+              "$ref": "#/$defs/archive_decision"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "allOf": [
+        {
+          "$ref": "#/$defs/event_base"
+        },
+        {
+          "properties": {
+            "event_type": {
+              "const": "task_completed"
+            },
+            "payload": {
+              "$ref": "#/$defs/task_terminal"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "allOf": [
+        {
+          "$ref": "#/$defs/event_base"
+        },
+        {
+          "properties": {
+            "event_type": {
+              "const": "task_interrupted"
+            },
+            "payload": {
+              "$ref": "#/$defs/interruption"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "allOf": [
+        {
+          "$ref": "#/$defs/event_base"
+        },
+        {
+          "properties": {
+            "event_type": {
+              "const": "checkpoint_committed"
+            },
+            "payload": {
+              "$ref": "#/$defs/checkpoint"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "allOf": [
+        {
+          "$ref": "#/$defs/event_base"
+        },
+        {
+          "properties": {
+            "event_type": {
+              "const": "exhaustion_recorded"
+            },
+            "payload": {
+              "$ref": "#/$defs/exhaustion_receipt"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "allOf": [
+        {
+          "$ref": "#/$defs/event_base"
+        },
+        {
+          "properties": {
+            "event_type": {
+              "const": "run_stopped"
+            },
+            "payload": {
+              "$ref": "#/$defs/run_stop"
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "$defs": {
+    "hash": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/+-]*$"
+    },
+    "lane": {
+      "type": "string",
+      "enum": [
+        "upstream_current",
+        "upstream_pinned",
+        "upstream_open_pr",
+        "mipsmatch_exact",
+        "preserved_candidate",
+        "shared_header",
+        "transplant",
+        "whole_tu",
+        "dependency_closure",
+        "multi_donor",
+        "cfg_dataflow",
+        "m2c_ensemble",
+        "idiom_atlas",
+        "bounded_synthesis",
+        "permuter_random",
+        "permuter_targeted",
+        "permuter_recombine",
+        "permuter_ddmin",
+        "model_fleet",
+        "model_expensive"
+      ]
+    },
+    "artifact_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "content_hash",
+        "path",
+        "media_type",
+        "byte_size"
+      ],
+      "properties": {
+        "content_hash": {
+          "$ref": "#/$defs/hash"
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Repository-relative or run-root-relative path. Absolute paths are forbidden."
+        },
+        "media_type": {
+          "type": "string",
+          "minLength": 1
+        },
+        "byte_size": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "score_components": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "stack",
+        "regalloc",
+        "reordering",
+        "insertion",
+        "deletion"
+      ],
+      "properties": {
+        "stack": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "regalloc": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "reordering": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "insertion": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "deletion": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "score_vector": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "compile_status",
+        "elapsed_ms",
+        "total",
+        "components",
+        "weights",
+        "object_hash",
+        "mismatch_signature",
+        "first_divergence",
+        "target_instruction_count",
+        "candidate_instruction_count",
+        "diagnostic_artifact",
+        "scorer_algorithm",
+        "compiler_identity"
+      ],
+      "properties": {
+        "compile_status": {
+          "type": "string",
+          "enum": [
+            "success",
+            "failed",
+            "timeout"
+          ]
+        },
+        "elapsed_ms": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "total": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "components": {
+          "$ref": "#/$defs/score_components"
+        },
+        "weights": {
+          "$ref": "#/$defs/score_components"
+        },
+        "object_hash": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/hash"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "mismatch_signature": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/hash"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "first_divergence": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "target_index",
+                "candidate_index"
+              ],
+              "properties": {
+                "target_index": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "candidate_index": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "target_instruction": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "candidate_instruction": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        "target_instruction_count": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "candidate_instruction_count": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "diagnostic_artifact": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/artifact_ref"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "scorer_algorithm": {
+          "type": "string",
+          "enum": [
+            "difflib",
+            "levenshtein"
+          ]
+        },
+        "compiler_identity": {
+          "$ref": "#/$defs/hash"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "compile_status": {
+                "const": "success"
+              }
+            },
+            "required": [
+              "compile_status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "total": {
+                "type": "integer"
+              },
+              "object_hash": {
+                "$ref": "#/$defs/hash"
+              },
+              "mismatch_signature": {
+                "$ref": "#/$defs/hash"
+              },
+              "target_instruction_count": {
+                "type": "integer"
+              },
+              "candidate_instruction_count": {
+                "type": "integer"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "compile_status": {
+                "enum": [
+                  "failed",
+                  "timeout"
+                ]
+              }
+            },
+            "required": [
+              "compile_status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "total": {
+                "type": "null"
+              },
+              "object_hash": {
+                "type": "null"
+              },
+              "mismatch_signature": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "patch_hunk": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ordinal",
+        "before",
+        "after",
+        "leading_context",
+        "trailing_context"
+      ],
+      "properties": {
+        "ordinal": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "before": {
+          "type": "string"
+        },
+        "after": {
+          "type": "string"
+        },
+        "leading_context": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 16
+        },
+        "trailing_context": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 16
+        },
+        "ast_path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "grouped_patch": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "patch_id",
+        "format",
+        "base_source_hash",
+        "atomic",
+        "hunks"
+      ],
+      "properties": {
+        "patch_id": {
+          "$ref": "#/$defs/hash"
+        },
+        "format": {
+          "type": "string",
+          "enum": [
+            "canonical_tokens",
+            "ast",
+            "line_context"
+          ]
+        },
+        "base_source_hash": {
+          "$ref": "#/$defs/hash"
+        },
+        "atomic": {
+          "const": true
+        },
+        "hunks": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/patch_hunk"
+          }
+        }
+      }
+    },
+    "mutation_event": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mutation_id",
+        "parent_candidate_id",
+        "recipient_id",
+        "lane",
+        "pass_kind",
+        "mutation_seed",
+        "grouped_patch",
+        "donor_candidate_ids",
+        "replay_status",
+        "result_source_hash"
+      ],
+      "properties": {
+        "mutation_id": {
+          "$ref": "#/$defs/hash"
+        },
+        "parent_candidate_id": {
+          "$ref": "#/$defs/hash"
+        },
+        "recipient_id": {
+          "$ref": "#/$defs/id"
+        },
+        "lane": {
+          "$ref": "#/$defs/lane"
+        },
+        "pass_kind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "mutation_seed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "grouped_patch": {
+          "$ref": "#/$defs/grouped_patch"
+        },
+        "donor_candidate_ids": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/hash"
+          }
+        },
+        "replay_status": {
+          "type": "string",
+          "enum": [
+            "applied",
+            "conflict",
+            "invalid",
+            "no_change"
+          ]
+        },
+        "result_source_hash": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/hash"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "replay_status": {
+                "const": "applied"
+              }
+            },
+            "required": [
+              "replay_status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "result_source_hash": {
+                "$ref": "#/$defs/hash"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "replay_status": {
+                "enum": [
+                  "conflict",
+                  "invalid",
+                  "no_change"
+                ]
+              }
+            },
+            "required": [
+              "replay_status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "result_source_hash": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "run_manifest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "run_id",
+        "created_at",
+        "parent_run",
+        "queue_record_ids",
+        "function_ids",
+        "source_identity",
+        "target_identities",
+        "compiler_identity",
+        "tool_identities",
+        "config_identity",
+        "schema_identity",
+        "run_seed",
+        "epoch_size",
+        "frontier_cap",
+        "tier_order"
+      ],
+      "properties": {
+        "run_id": {
+          "$ref": "#/$defs/id"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "parent_run": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "run_id",
+                "last_valid_sequence",
+                "last_valid_event_hash"
+              ],
+              "properties": {
+                "run_id": {
+                  "$ref": "#/$defs/id"
+                },
+                "last_valid_sequence": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "last_valid_event_hash": {
+                  "$ref": "#/$defs/hash"
+                }
+              }
+            }
+          ]
+        },
+        "queue_record_ids": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/id"
+          }
+        },
+        "function_ids": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/id"
+          }
+        },
+        "source_identity": {
+          "$ref": "#/$defs/hash"
+        },
+        "target_identities": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {
+            "$ref": "#/$defs/hash"
+          }
+        },
+        "compiler_identity": {
+          "$ref": "#/$defs/hash"
+        },
+        "tool_identities": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {
+            "$ref": "#/$defs/hash"
+          }
+        },
+        "config_identity": {
+          "$ref": "#/$defs/hash"
+        },
+        "schema_identity": {
+          "$ref": "#/$defs/hash"
+        },
+        "run_seed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "epoch_size": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4096
+        },
+        "frontier_cap": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1024
+        },
+        "tier_order": {
+          "type": "array",
+          "minItems": 5,
+          "maxItems": 5,
+          "uniqueItems": true,
+          "prefixItems": [
+            {
+              "const": "exact_deterministic"
+            },
+            {
+              "const": "structural_dependency"
+            },
+            {
+              "const": "cheap_generated"
+            },
+            {
+              "const": "compiler_guided"
+            },
+            {
+              "const": "model"
+            }
+          ]
+        }
+      }
+    },
+    "search_task": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "task_id",
+        "recipient_id",
+        "lane",
+        "tier",
+        "operation",
+        "parent_candidate_ids",
+        "budget_ordinal",
+        "task_seed",
+        "config_identity",
+        "state"
+      ],
+      "properties": {
+        "task_id": {
+          "$ref": "#/$defs/id"
+        },
+        "recipient_id": {
+          "$ref": "#/$defs/id"
+        },
+        "lane": {
+          "$ref": "#/$defs/lane"
+        },
+        "tier": {
+          "type": "string",
+          "enum": [
+            "exact_deterministic",
+            "structural_dependency",
+            "cheap_generated",
+            "compiler_guided",
+            "model"
+          ]
+        },
+        "operation": {
+          "type": "string",
+          "minLength": 1
+        },
+        "parent_candidate_ids": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/hash"
+          }
+        },
+        "budget_ordinal": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "task_seed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "config_identity": {
+          "$ref": "#/$defs/hash"
+        },
+        "state": {
+          "type": "string",
+          "enum": [
+            "scheduled",
+            "started",
+            "completed",
+            "rejected",
+            "interrupted"
+          ]
+        }
+      }
+    },
+    "candidate_record": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "candidate_id",
+        "recipient_id",
+        "source_artifact",
+        "parent_candidate_ids",
+        "mutation_id",
+        "lane",
+        "depth",
+        "evaluation",
+        "status"
+      ],
+      "properties": {
+        "candidate_id": {
+          "$ref": "#/$defs/hash"
+        },
+        "recipient_id": {
+          "$ref": "#/$defs/id"
+        },
+        "source_artifact": {
+          "$ref": "#/$defs/artifact_ref"
+        },
+        "parent_candidate_ids": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/hash"
+          }
+        },
+        "mutation_id": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/hash"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "lane": {
+          "$ref": "#/$defs/lane"
+        },
+        "depth": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "evaluation": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/score_vector"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "materialized",
+            "evaluated",
+            "scalar_elite",
+            "pareto",
+            "dominated",
+            "rejected",
+            "zero_pending_oracle",
+            "archived"
+          ]
+        }
+      }
+    },
+    "score_deltas": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "total",
+        "stack",
+        "regalloc",
+        "reordering",
+        "insertion",
+        "deletion"
+      ],
+      "properties": {
+        "total": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "stack": {
+          "type": "integer"
+        },
+        "regalloc": {
+          "type": "integer"
+        },
+        "reordering": {
+          "type": "integer"
+        },
+        "insertion": {
+          "type": "integer"
+        },
+        "deletion": {
+          "type": "integer"
+        }
+      }
+    },
+    "evaluation_event": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "task_id",
+        "recipient_id",
+        "candidate_id",
+        "baseline_candidate_id",
+        "before",
+        "after",
+        "deltas",
+        "cache_key",
+        "decision"
+      ],
+      "properties": {
+        "task_id": {
+          "$ref": "#/$defs/id"
+        },
+        "recipient_id": {
+          "$ref": "#/$defs/id"
+        },
+        "candidate_id": {
+          "$ref": "#/$defs/hash"
+        },
+        "baseline_candidate_id": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/hash"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "before": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/score_vector"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "after": {
+          "$ref": "#/$defs/score_vector"
+        },
+        "deltas": {
+          "$ref": "#/$defs/score_deltas"
+        },
+        "cache_key": {
+          "$ref": "#/$defs/hash"
+        },
+        "decision": {
+          "type": "string",
+          "enum": [
+            "scalar_elite",
+            "pareto",
+            "dominated",
+            "compile_failed",
+            "rejected",
+            "zero_pending_oracle"
+          ]
+        }
+      }
+    },
+    "archive_decision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "candidate_id",
+        "recipient_id",
+        "decision",
+        "scalar_elite_candidate_id",
+        "pareto_candidate_ids",
+        "reason"
+      ],
+      "properties": {
+        "candidate_id": {
+          "$ref": "#/$defs/hash"
+        },
+        "recipient_id": {
+          "$ref": "#/$defs/id"
+        },
+        "decision": {
+          "type": "string",
+          "enum": [
+            "retain_scalar_elite",
+            "retain_pareto",
+            "retain_both",
+            "archive_dominated",
+            "reject"
+          ]
+        },
+        "scalar_elite_candidate_id": {
+          "$ref": "#/$defs/hash"
+        },
+        "pareto_candidate_ids": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/hash"
+          }
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "task_terminal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "task_id",
+        "state",
+        "result_artifacts",
+        "reason"
+      ],
+      "properties": {
+        "task_id": {
+          "$ref": "#/$defs/id"
+        },
+        "state": {
+          "type": "string",
+          "enum": [
+            "completed",
+            "rejected"
+          ]
+        },
+        "result_artifacts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/artifact_ref"
+          }
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "interruption": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "task_id",
+        "reason",
+        "retry_same_identity"
+      ],
+      "properties": {
+        "task_id": {
+          "$ref": "#/$defs/id"
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "retry_same_identity": {
+          "const": true
+        }
+      }
+    },
+    "checkpoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "through_sequence",
+        "through_event_hash",
+        "checkpoint_artifact"
+      ],
+      "properties": {
+        "through_sequence": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "through_event_hash": {
+          "$ref": "#/$defs/hash"
+        },
+        "checkpoint_artifact": {
+          "$ref": "#/$defs/artifact_ref"
+        }
+      }
+    },
+    "exhaustion_receipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "receipt_id",
+        "recipient_id",
+        "lane",
+        "tier",
+        "tool_identities",
+        "config_identity",
+        "input_identities",
+        "budget",
+        "attempts",
+        "rejection_counts",
+        "best_candidate_ids",
+        "complete",
+        "completion_reason",
+        "receipt_artifact"
+      ],
+      "properties": {
+        "receipt_id": {
+          "$ref": "#/$defs/hash"
+        },
+        "recipient_id": {
+          "$ref": "#/$defs/id"
+        },
+        "lane": {
+          "$ref": "#/$defs/lane"
+        },
+        "tier": {
+          "type": "string",
+          "enum": [
+            "exact_deterministic",
+            "structural_dependency",
+            "cheap_generated",
+            "compiler_guided",
+            "model"
+          ]
+        },
+        "tool_identities": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {
+            "$ref": "#/$defs/hash"
+          }
+        },
+        "config_identity": {
+          "$ref": "#/$defs/hash"
+        },
+        "input_identities": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/hash"
+          }
+        },
+        "budget": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "unit",
+            "limit",
+            "consumed"
+          ],
+          "properties": {
+            "unit": {
+              "type": "string",
+              "enum": [
+                "tasks",
+                "attempts",
+                "iterations",
+                "candidates",
+                "seconds"
+              ]
+            },
+            "limit": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "consumed": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "attempts": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "rejection_counts": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "best_candidate_ids": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/hash"
+          }
+        },
+        "complete": {
+          "const": true
+        },
+        "completion_reason": {
+          "type": "string",
+          "enum": [
+            "budget_exhausted",
+            "search_space_exhausted",
+            "inapplicable",
+            "matched_pending_oracle",
+            "operator_stop",
+            "superseded_by_stronger_evidence"
+          ]
+        },
+        "receipt_artifact": {
+          "$ref": "#/$defs/artifact_ref"
+        }
+      }
+    },
+    "run_stop": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "reason",
+        "last_committed_task_id",
+        "pending_task_ids",
+        "budget_snapshot_hash",
+        "resumable"
+      ],
+      "properties": {
+        "reason": {
+          "type": "string",
+          "enum": [
+            "graceful_stop",
+            "completed",
+            "oracle_candidate_found",
+            "fatal_integrity_error"
+          ]
+        },
+        "last_committed_task_id": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "pending_task_ids": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/id"
+          }
+        },
+        "budget_snapshot_hash": {
+          "$ref": "#/$defs/hash"
+        },
+        "resumable": {
+          "type": "boolean"
+        }
+      }
+    },
+    "event_base": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "sequence",
+        "event_id",
+        "previous_event_hash",
+        "event_hash",
+        "recorded_at",
+        "run_id",
+        "event_type",
+        "payload"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": "1.0.0"
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "event_id": {
+          "$ref": "#/$defs/id"
+        },
+        "previous_event_hash": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/hash"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "event_hash": {
+          "$ref": "#/$defs/hash"
+        },
+        "recorded_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "run_id": {
+          "$ref": "#/$defs/id"
+        },
+        "event_type": {
+          "type": "string"
+        },
+        "payload": {}
+      }
+    }
+  }
+}

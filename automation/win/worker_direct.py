@@ -4207,6 +4207,26 @@ def build_prompt(rec: dict, ctx: dict, feedback: str = "") -> str:
 _LOCK_WAIT_TOTAL = 0.0
 
 
+def _build_lock_owner_alive(path: str) -> bool | None:
+    """True/False for a parseable lock owner, None while publication is incomplete."""
+    try:
+        raw = Path(path).read_text(encoding="ascii", errors="strict").split()
+        pid = int(raw[0])
+    except (OSError, ValueError, IndexError):
+        return None
+    if pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except OSError:
+        return False
+    return True
+
+
 class BuildLock:
     """Cross-process lock around apply -> build -> verify -> restore.
 
@@ -4259,7 +4279,9 @@ class BuildLock:
                     age = time.time() - os.path.getmtime(self.path)
                 except OSError:
                     continue
-                if age > self.stale_after:
+                dead_owner = (
+                    age > 10.0 and _build_lock_owner_alive(self.path) is False)
+                if age > self.stale_after or dead_owner:
                     # STEAL BY RENAME, NOT BY UNLINK.
                     #
                     # unlink was a TOCTOU: A and B both measure the same stale
@@ -4277,7 +4299,8 @@ class BuildLock:
                     try:
                         os.rename(self.path, steal)
                         os.unlink(steal)
-                        print(f"[lock] broke stale lock ({age:.0f}s old)")
+                        reason = "dead owner" if dead_owner else "stale age"
+                        print(f"[lock] broke {reason} lock ({age:.0f}s old)")
                     except OSError:
                         pass          # someone else won the steal; re-loop
                     continue
@@ -5137,7 +5160,10 @@ def _validated_support_declarations(declarations: list[str] | None) -> list[str]
         item = raw.strip()
         if item.startswith("#"):
             if ("\n" in item or "\\" in item or not re.fullmatch(
-                    r"#define[ \t]+[A-Za-z_]\w*[ \t]+[^\r\n]+", item)):
+                    r"#define[ \t]+[A-Za-z_]\w*"
+                    r"(?:\([ \t]*(?:[A-Za-z_]\w*(?:[ \t]*,[ \t]*"
+                    r"[A-Za-z_]\w*)*)?[ \t]*\))?"
+                    r"[ \t]+[^\r\n]+", item)):
                 raise RuntimeError("unsupported score-receipt macro declaration")
         else:
             item = re.sub(r"\s+", " ", item)
@@ -5167,7 +5193,8 @@ def _prepare_candidate_body(original: str, code: str, fn: str,
     return retained + derived + exact
 
 
-def apply_code(ctx: dict, fn: str, code: str) -> str:
+def apply_code(ctx: dict, fn: str, code: str,
+               support_declarations: list[str] | None = None) -> str:
     """Replace the INCLUDE_ASM line with the generated C. Returns the original."""
     path = win_path(ctx["src_rel"])
     original, nl = _read_raw(path)
@@ -5182,7 +5209,9 @@ def apply_code(ctx: dict, fn: str, code: str) -> str:
     # would have been wrong: src/st/rdai/unk_3F6B4.c has an #include BELOW the
     # func_us_801BF830 stub, so a declaration placed after it is invisible to
     # exactly the function that needs it.
-    body = _prepare_candidate_body(original, code, fn, ctx["src_rel"])
+    body = _prepare_candidate_body(
+        original, code, fn, ctx["src_rel"],
+        support_declarations=support_declarations)
     # The model emits LF; convert the insert to the file's own convention.
     body = body.replace("\r\n", "\n").replace("\n", nl)
     if not journal_write(ctx["src_rel"], original):  # BEFORE the write, not after
@@ -5192,7 +5221,11 @@ def apply_code(ctx: dict, fn: str, code: str) -> str:
     return original
 
 
-def apply_code_batch(items: list[tuple[dict, str, str]]) -> dict[str, str]:
+def apply_code_batch(
+        items: list[
+            tuple[dict, str, str] |
+            tuple[dict, str, str, list[str]]
+        ]) -> dict[str, str]:
     """Apply several bodies as one crash-recoverable source transaction.
 
     A batch may span files and may replace several stubs in one file. Every
@@ -5203,7 +5236,16 @@ def apply_code_batch(items: list[tuple[dict, str, str]]) -> dict[str, str]:
     originals: dict[str, str] = {}
     updated: dict[str, str] = {}
     newlines: dict[str, str] = {}
-    for ctx, fn, code in items:
+    for item in items:
+        if len(item) == 3:
+            ctx, fn, code = item
+            support_declarations = None
+        elif len(item) == 4:
+            ctx, fn, code, support_declarations = item
+        else:
+            raise RuntimeError(
+                "batch candidate must have context, function, body, and "
+                "optional support declarations")
         src_rel = ctx["src_rel"]
         if src_rel not in originals:
             originals[src_rel], newlines[src_rel] = _read_raw(win_path(src_rel))
@@ -5214,7 +5256,9 @@ def apply_code_batch(items: list[tuple[dict, str, str]]) -> dict[str, str]:
         if not pattern.search(updated[src_rel]):
             raise RuntimeError(
                 f"INCLUDE_ASM stub for {fn} not found in {src_rel}")
-        body = _prepare_candidate_body(updated[src_rel], code, fn, src_rel)
+        body = _prepare_candidate_body(
+            updated[src_rel], code, fn, src_rel,
+            support_declarations=support_declarations)
         body = body.replace("\r\n", "\n").replace("\n", newlines[src_rel])
         updated[src_rel] = pattern.sub(lambda _m: body, updated[src_rel], count=1)
 

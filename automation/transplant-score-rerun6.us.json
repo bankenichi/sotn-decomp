@@ -1,0 +1,173 @@
+{
+  "schema": 1,
+  "mode": "score",
+  "record_count": 9,
+  "summary": {
+    "scored": 9
+  },
+  "records": [
+    {
+      "function": "DrawFacade",
+      "score": 0,
+      "status": "scored",
+      "archive": "nonmatchings/.adapt-scores/20260827-010314-4294-507202/DrawFacade",
+      "debug_archive": "nonmatchings/.adapt-scores/20260827-010314-4294-507202/DrawFacade/debug-runs/20260827-010313-4294",
+      "archive_detail": "renamed into the isolated score archive; rebased settings.toml and preserved settings.prearchive.toml",
+      "relocation_addresses": {},
+      "relocation_aliases": {},
+      "context": {},
+      "recovery": [],
+      "detail": "base score captured",
+      "overlay": "ST/RNO2",
+      "record_id": "us:ST/RNO2:DrawFacade"
+    },
+    {
+      "function": "DrawRoof",
+      "score": 0,
+      "status": "scored",
+      "archive": "nonmatchings/.adapt-scores/20260827-010322-4294-591337/DrawRoof",
+      "debug_archive": "nonmatchings/.adapt-scores/20260827-010322-4294-591337/DrawRoof/debug-runs/20260827-010322-4294",
+      "archive_detail": "renamed into the isolated score archive; rebased settings.toml and preserved settings.prearchive.toml",
+      "relocation_addresses": {},
+      "relocation_aliases": {},
+      "context": {},
+      "recovery": [],
+      "detail": "base score captured",
+      "overlay": "ST/RNO2",
+      "record_id": "us:ST/RNO2:DrawRoof"
+    },
+    {
+      "function": "DrawSides",
+      "score": 0,
+      "status": "scored",
+      "archive": "nonmatchings/.adapt-scores/20260827-010332-4294-830208/DrawSides",
+      "debug_archive": "nonmatchings/.adapt-scores/20260827-010332-4294-830208/DrawSides/debug-runs/20260827-010331-4294",
+      "archive_detail": "renamed into the isolated score archive; rebased settings.toml and preserved settings.prearchive.toml",
+      "relocation_addresses": {},
+      "relocation_aliases": {},
+      "context": {},
+      "recovery": [],
+      "detail": "base score captured",
+      "overlay": "ST/RNO2",
+      "record_id": "us:ST/RNO2:DrawSides"
+    },
+    {
+      "function": "SetupPrimsForEntitySpriteParts",
+      "score": 0,
+      "status": "scored",
+      "archive": "nonmatchings/.adapt-scores/20260827-010536-4294-240036/SetupPrimsForEntitySpriteParts",
+      "debug_archive": "nonmatchings/.adapt-scores/20260827-010536-4294-240036/SetupPrimsForEntitySpriteParts/debug-runs/20260827-010536-4294",
+      "archive_detail": "renamed into the isolated score archive; rebased settings.toml and preserved settings.prearchive.toml",
+      "relocation_addresses": {},
+      "relocation_aliases": {},
+      "context": {
+        "prior_score": 10,
+        "prior_archive": "nonmatchings/.adapt-scores/20260827-010533-4294-671085/SetupPrimsForEntitySpriteParts",
+        "relocation_aliases": {
+          "sprites_chi_7": "D_us_801BE9C4"
+        }
+      },
+      "recovery": [],
+      "detail": "base score captured",
+      "overlay": "ST/RNO4",
+      "record_id": "us:ST/RNO4:SetupPrimsForEntitySpriteParts"
+    },
+    {
+      "function": "EntityBossRoomBlock",
+      "score": 10,
+      "status": "scored",
+      "archive": "nonmatchings/.adapt-scores/20260827-010427-4294-099454/EntityBossRoomBlock",
+      "debug_archive": "nonmatchings/.adapt-scores/20260827-010427-4294-099454/EntityBossRoomBlock/debug-runs/20260827-010426-4294",
+      "archive_detail": "renamed into the isolated score archive; rebased settings.toml and preserved settings.prearchive.toml",
+      "relocation_addresses": {},
+      "relocation_aliases": {},
+      "context": {
+        "prior_score": 40,
+        "prior_archive": "nonmatchings/.adapt-scores/20260827-010424-4294-662874/EntityBossRoomBlock",
+        "relocation_aliases": {
+          "g_EInitBossDoor": "D_us_801804DC",
+          "g_BossFlag": "D_us_801A1F1C"
+        }
+      },
+      "recovery": [],
+      "detail": "base score captured",
+      "overlay": "BOSS/RBO1",
+      "record_id": "us:BOSS/RBO1:EntityBossRoomBlock"
+    },
+    {
+      "function": "EntityImp",
+      "score": 15,
+      "status": "scored",
+      "archive": "nonmatchings/.adapt-scores/20260827-010459-4294-653355/EntityImp",
+      "debug_archive": "nonmatchings/.adapt-scores/20260827-010459-4294-653355/EntityImp/debug-runs/20260827-010458-4294",
+      "archive_detail": "renamed into the isolated score archive; rebased settings.toml and preserved settings.prearchive.toml",
+      "relocation_addresses": {},
+      "relocation_aliases": {},
+      "context": {
+        "prior_score": 125,
+        "prior_archive": "nonmatchings/.adapt-scores/20260827-010455-4294-189579/EntityImp",
+        "relocation_aliases": {
+          "anim_imp": "D_us_80182B78"
+        }
+      },
+      "recovery": [],
+      "detail": "base score captured",
+      "overlay": "ST/RNO4",
+      "record_id": "us:ST/RNO4:EntityImp"
+    },
+    {
+      "function": "EntityPrisoner",
+      "score": 20,
+      "status": "scored",
+      "archive": "nonmatchings/.adapt-scores/20260827-010523-4294-616287/EntityPrisoner",
+      "debug_archive": "nonmatchings/.adapt-scores/20260827-010523-4294-616287/EntityPrisoner/debug-runs/20260827-010522-4294",
+      "archive_detail": "renamed into the isolated score archive; rebased settings.toml and preserved settings.prearchive.toml",
+      "relocation_addresses": {},
+      "relocation_aliases": {},
+      "context": {
+        "prior_score": 60,
+        "prior_archive": "nonmatchings/.adapt-scores/20260827-010520-4294-254918/EntityPrisoner",
+        "relocation_aliases": {
+          "g_EInitPrisoner": "D_us_801808C8",
+          "D_us_80180E58": "D_us_80180E68",
+          "D_us_80180E7C": "D_us_80180E8C",
+          "D_us_80180E84": "D_us_80180E94"
+        }
+      },
+      "recovery": [],
+      "detail": "base score captured",
+      "overlay": "ST/RNO2",
+      "record_id": "us:ST/RNO2:EntityPrisoner"
+    },
+    {
+      "function": "EntityBell",
+      "score": 845,
+      "status": "scored",
+      "archive": "nonmatchings/.adapt-scores/20260827-010405-4294-807604/EntityBell",
+      "debug_archive": "nonmatchings/.adapt-scores/20260827-010405-4294-807604/EntityBell/debug-runs/20260827-010404-4294",
+      "archive_detail": "renamed into the isolated score archive; rebased settings.toml and preserved settings.prearchive.toml",
+      "relocation_addresses": {},
+      "relocation_aliases": {},
+      "context": {},
+      "recovery": [],
+      "detail": "base score captured",
+      "overlay": "BOSS/BO5",
+      "record_id": "us:BOSS/BO5:EntityBell"
+    },
+    {
+      "function": "func_us_801AE8E8_from_lib",
+      "score": 2030,
+      "status": "scored",
+      "archive": "nonmatchings/.adapt-scores/20260827-010610-4294-780221/func_us_801AE8E8_from_lib",
+      "debug_archive": "nonmatchings/.adapt-scores/20260827-010610-4294-780221/func_us_801AE8E8_from_lib/debug-runs/20260827-010609-4294",
+      "archive_detail": "renamed into the isolated score archive; rebased settings.toml and preserved settings.prearchive.toml",
+      "relocation_addresses": {},
+      "relocation_aliases": {},
+      "context": {},
+      "recovery": [],
+      "detail": "base score captured",
+      "overlay": "ST/RLIB",
+      "record_id": "us:ST/RLIB:func_us_801AE8E8_from_lib"
+    }
+  ]
+}
