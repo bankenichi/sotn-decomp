@@ -350,6 +350,48 @@ race, slowdown and p-at-h concerns conflict with this coordinator model.
 The tier order is a hard scheduling constraint. Yield measurements may choose
 within a tier, never jump over an incomplete cheaper tier.
 
+### Evidence-derived compiler knowledge
+
+The compiler idiom atlas has two evidence producers and one shared,
+content-addressed store:
+
+1. A draft-to-landed miner compares an initial m2c artifact with its verified
+   landed source only when provenance proves both endpoints and their recipient.
+   Missing drafts, ambiguous generations and manually reconstructed ancestry are
+   typed refusals, never inferred pairs.
+2. A micro-corpus compiles bounded C constructs through the repository's exact
+   PSX pipeline, including `cc1-psx-26`, `maspsx` and the configured
+   assembler. Every observation is bound to the executable, arguments, config
+   and target identities.
+
+The shared observations may drive deterministic source rewrites, mutation-lane
+ranking and model context. They never bypass ordinary compilation, scoring,
+archiving or oracle handling. Measured weights are applied only in a later run
+whose manifest records them; a run cannot train on its own outcomes and change
+its scheduling policy in place.
+
+The m2c ensemble treats context as a searched input. It may vary declaration,
+translation-unit and donor context within the manifest budget, deduplicate
+identical drafts before compilation and retain the best evaluated candidate.
+For model work, the deterministic lanes select one ranked context package rather
+than multiplying paid calls.
+
+Cross-version US, HD, PSPEU and Saturn bodies are semantic donors, not byte
+transplants. Donor discovery records version, symbol or structural signature,
+source artifact and compatibility evidence. Struct-layout inference is another
+Tier 2 evidence producer: matched field accesses may propose typed layouts, but
+a proposal becomes a candidate only through a compiler-bound, scored rewrite.
+
+A read-only success-pattern miner aggregates completed ledger lineages by
+recipient archetype, overlay and score signature. It publishes recommendations
+and queue-note evidence without mutating the ledger, queue status or active run
+policy.
+
+A data-segment search lane is deliberately outside this delivery. Its byte
+serialization candidates require a different recipient and evaluator contract.
+It receives a separate design after the function-search system is validated,
+rather than weakening the current schema with an untested union.
+
 ## 12. Stop, crash and resume protocol
 
 ### Graceful stop

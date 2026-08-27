@@ -733,6 +733,397 @@ Acceptance:
 - roadmap outcomes describe what exists, not future intent;
 - no existing document is wholesale rewritten.
 
+## 13A. Evidence-derived search supplement
+
+> **For agentic workers:** implement each task with a focused failing test,
+> stop at its commit boundary, and return the exact changed paths and test
+> verdict. Subagents do not build, use git, write the queue or edit `src/`.
+
+**Goal:** turn proven draft corrections and the exact PSX compiler into
+reusable, compiler-bound search evidence, then consume that evidence in the
+existing lane and ledger contracts.
+
+**Architecture:** two producers publish immutable compiler observations: a
+provenance-strict draft-to-landed miner and an exact `cc1-psx-26`
+micro-corpus. Deterministic lane adapters consume those observations through
+the ordinary candidate evaluator. A separate read-only aggregator learns from
+completed ledger lineages without changing an active run.
+
+**Tech stack:** Python standard library, the existing PSX preprocessing and
+compiler pipeline, vendored decomp-permuter scorer types, JSON schema and the
+content-addressed search archive.
+
+**Spec:** `docs/superpowers/specs/2026-08-26-instrumented-search-system-design.md`
+
+### Task 9.1: Exact compiler micro-harness and real scorer fixtures
+
+**Files:**
+
+- create `automation/compiler_corpus.py`;
+- create `automation/test_compiler_corpus.py`;
+- replace `automation/fixtures/search/scorer-v1.json`;
+- modify `tools/decomp-permuter/test/compile.sh`;
+- modify `tools/decomp-permuter/test/test_perm.py`;
+- modify `automation/test_search_permuter_vendor.py`.
+
+**Interfaces:**
+
+- produces `CompilerPipelineIdentity` with executable, executable hash,
+  ordered arguments, environment defines and tool hashes;
+- produces `compile_snippet(source: str, case_id: str) -> CorpusObservation`;
+- `CorpusObservation` carries source hash, object hash, disassembly hash,
+  score vector and pipeline identity;
+- consumes no queue state and never invokes a full repository build.
+
+```python
+@dataclass(frozen=True)
+class CompilerPipelineIdentity:
+    executable: str
+    executable_hash: str
+    arguments: tuple[str, ...]
+    environment_defines: tuple[str, ...]
+    tool_hashes: tuple[tuple[str, str], ...]
+```
+
+- [ ] **Step 1: Make the vendored compatibility surface runnable**
+
+Change the test compiler from the unavailable big-endian executable to the
+little-endian cross compiler already required by this repository:
+
+```bash
+#!/bin/bash
+mipsel-linux-gnu-gcc -O2 -fno-PIC -fno-common -ffreestanding \
+  -mno-shared -mno-abicalls -G 0 -c "$@"
+```
+
+Keep the wrapper's focused rerun diagnostic. Do not convert a missing compiler
+into a passing skip.
+
+- [ ] **Step 2: Prove the vendored suite and subset runner**
+
+Run:
+
+```text
+run_automation run_selftests.py --only test_selftest_runner.py \
+  --only test_search_permuter_vendor.py --jobs 2
+```
+
+Expected: both suites pass. A missing executable must name that executable in
+the final diagnostic line.
+
+- [ ] **Step 3: Write the compiler-corpus failure tests**
+
+The focused test constructs two identical cases and one changed case:
+
+```python
+first = compile_snippet("int f(int x) { return x + 1; }", "plus-one-a")
+retry = compile_snippet("int f(int x) { return x + 1; }", "plus-one-b")
+changed = compile_snippet("int f(int x) { return x + 2; }", "plus-two")
+assert first.object_hash == retry.object_hash
+assert first.disassembly_hash == retry.disassembly_hash
+assert first.pipeline_identity == retry.pipeline_identity
+assert changed.source_hash != first.source_hash
+assert changed.object_hash != first.object_hash
+```
+
+The test also changes one compiler argument and asserts that the pipeline
+identity changes before compilation.
+
+- [ ] **Step 4: Implement one exact pipeline adapter**
+
+`compiler_corpus.py` must use the repository's configured PSX stages and
+record their hashes. It materializes all intermediates in one temporary
+directory, validates every subprocess return code, hashes the final object and
+normalized disassembly, then deletes the temporary directory. The stable
+serialization is:
+
+```python
+@dataclass(frozen=True)
+class CorpusObservation:
+    case_id: str
+    source_hash: str
+    object_hash: str
+    disassembly_hash: str
+    pipeline_identity: str
+    score: Mapping[str, object]
+```
+
+No path inside the temporary directory may appear in the record.
+
+- [ ] **Step 5: Replace the synthetic scorer fixture**
+
+Populate `scorer-v1.json` with actual observations covering exact match,
+reordering, register allocation, stack differences, insertion, deletion and
+compile failure. Each successful case carries real source, object,
+disassembly, mismatch and compiler identities. Compile failure carries no fake
+object hash or zero score.
+
+- [ ] **Step 6: Run focused tests**
+
+Run the compiler-corpus, vendored permuter, historical fixture and schema
+suites through `run_selftests.py --only`. Expected: all pass without a full
+repository build.
+
+- [ ] **Step 7: Commit boundary**
+
+Stage only the six paths named in this task and commit:
+`feat: add exact compiler evidence fixtures`.
+
+### Task 9.2: Provenance-strict draft-to-landed miner
+
+**Files:**
+
+- create `automation/draft_landed_miner.py`;
+- create `automation/test_draft_landed_miner.py`;
+- extend `automation/compiler_idioms.py`;
+- extend `automation/test_compiler_idioms.py`;
+- extend `automation/search-ledger.schema.json` only if the existing
+  provenance record cannot represent the observation losslessly.
+
+**Interfaces:**
+
+- consumes candidate history, queue provenance and verified landing commits;
+- produces `DraftLandedObservation` and zero or more
+  `CompilerIdiomObservation` values;
+- never chooses a "likely" draft when exact provenance is absent.
+
+```python
+@dataclass(frozen=True)
+from search_types import ArtifactRef, GroupedPatch
+
+@dataclass(frozen=True)
+class CompilerIdiomObservation:
+    observation_id: str
+    compiler_identity: str
+    before: ArtifactRef
+    after: ArtifactRef
+    grouped_patches: tuple[GroupedPatch, ...]
+    supporting_pair_hashes: tuple[str, ...]
+
+@dataclass(frozen=True)
+class DraftLandedObservation:
+    recipient_id: str
+    draft: ArtifactRef
+    landed: ArtifactRef
+    landing_commit: str
+    compiler_identity: str
+    grouped_patches: tuple[GroupedPatch, ...]
+    evidence: tuple[str, ...]
+```
+
+- [ ] **Step 1: Write refusal-first tests**
+
+Fixtures cover an exact pair, two ambiguous draft generations, a missing
+landing commit, mismatched recipients and a complete pair. The first four
+cases must emit typed receipts and no observation.
+
+- [ ] **Step 2: Implement exact endpoint resolution**
+
+Resolve both artifacts from recorded provenance, confirm their content hashes
+and recipient, confirm the landing commit contains the landed artifact, then
+derive grouped patches. Do not read modification times or infer chronology
+from filenames.
+
+- [ ] **Step 3: Extract recurring transformations**
+
+Normalize identifiers only where type and field evidence proves equivalence.
+Keep declaration order, control-flow shape and expression shape as separate
+features. An idiom observation records its support count and every contributing
+pair hash.
+
+- [ ] **Step 4: Measure rather than assume value**
+
+For each mechanically applicable idiom, evaluate the original draft and the
+rewritten draft through the same scorer identity. Publish the observation only
+when the score vector improves or the rewrite produces an exact object hash.
+
+- [ ] **Step 5: Run focused tests and commit**
+
+Run both miner and idiom suites. Stage only this task's paths and commit:
+`feat: mine proven draft corrections`.
+
+### Task 9.3: Context search and cross-version semantic donors
+
+**Files:**
+
+- create `automation/search_contexts.py`;
+- create `automation/test_search_contexts.py`;
+- extend `automation/search_lanes.py`;
+- extend `automation/test_search_lanes.py`.
+
+**Interfaces:**
+
+- `context_variants(manifest, recipient) -> tuple[ContextVariant, ...]`;
+- `cross_version_donors(recipient) -> tuple[DonorEvidence, ...]`;
+- every variant and donor has a content identity and bounded ordinal;
+- results flow through the coordinator's ordinary candidate and receipt APIs.
+
+```python
+@dataclass(frozen=True)
+from search_types import ArtifactRef
+
+@dataclass(frozen=True)
+class DonorEvidence:
+    donor_id: str
+    recipient_id: str
+    version: str
+    source: ArtifactRef
+    match_kind: str
+    signature: str
+
+@dataclass(frozen=True)
+class ContextVariant:
+    context_id: str
+    kind: str
+    artifacts: tuple[ArtifactRef, ...]
+    provenance: tuple[str, ...]
+    ordinal: int
+```
+
+- [ ] **Step 1: Write subset and no-fallback tests**
+
+A two-recipient manifest must produce no context task for a third recipient.
+An unknown symbol and an incompatible version must emit explicit inapplicable
+receipts rather than falling back to another queue record.
+
+- [ ] **Step 2: Implement deterministic m2c context variants**
+
+Enumerate minimal, declarations, whole-TU and donor-enriched contexts in stable
+order. Deduplicate identical m2c output before compilation. Charge the manifest
+budget per unique compiled candidate, not per identical context input.
+
+- [ ] **Step 3: Implement semantic donor discovery**
+
+Search US, HD, PSPEU and Saturn by exact symbol first, then bounded instruction,
+CFG and dataflow signatures. Preserve version, source artifact and match reason.
+Never transplant version-specific bytes, registers or branch displacements.
+
+- [ ] **Step 4: Rank one model context package**
+
+Before Tier 5, rank context packages using declaration closure, donor
+compatibility and measured m2c score. Send one selected package to a model task.
+The selection and rejected alternatives are durable task provenance.
+
+- [ ] **Step 5: Run focused tests and commit**
+
+Run context, lane and coordinator suites. Stage only this task's paths and
+commit: `feat: search context and version donors`.
+
+### Task 9.4: Struct-layout evidence lane
+
+**Files:**
+
+- create `automation/struct_layout_inference.py`;
+- create `automation/test_struct_layout_inference.py`;
+- extend `automation/search_lanes.py`;
+- extend `automation/test_search_lanes.py`.
+
+**Interfaces:**
+
+- consumes matched source field accesses, assembly load/store widths and
+  existing `member_types.py` results;
+- produces `StructLayoutProposal` or a typed conflict receipt;
+- proposals are compiler-bound evidence and cannot edit headers directly.
+
+```python
+@dataclass(frozen=True)
+from search_types import ArtifactRef
+
+@dataclass(frozen=True)
+class FieldConstraint:
+    offset: int
+    width: int
+    access_kind: str
+    source: ArtifactRef
+
+@dataclass(frozen=True)
+class StructLayoutProposal:
+    type_name: str
+    compiler_identity: str
+    fields: tuple[FieldConstraint, ...]
+    supporting_artifacts: tuple[ArtifactRef, ...]
+    conflicts: tuple[str, ...]
+```
+
+- [ ] **Step 1: Write constraint and conflict tests**
+
+Cover compatible byte/halfword/word accesses, overlapping incompatible widths,
+union alternatives and an offset already named by an existing member.
+
+- [ ] **Step 2: Implement deterministic constraint aggregation**
+
+Group observations by type identity and compiler, sort by offset and width, and
+retain every source artifact. Never merge observations across compiler
+identities.
+
+- [ ] **Step 3: Route proposals through evaluation**
+
+Render a temporary candidate declaration or typed expression, compile and
+score it, and archive the result. A proposal is not proof until an evaluation
+records the effect.
+
+- [ ] **Step 4: Run focused tests and commit**
+
+Run layout, member-type, lane and schema suites. Stage only this task's paths
+and commit: `feat: infer typed layout evidence`.
+
+### Task 9.5: Completed-lineage success miner
+
+**Files:**
+
+- create `automation/search_patterns.py`;
+- create `automation/test_search_patterns.py`;
+- extend `automation/search_coordinator.py` only to read a prior immutable
+  recommendation artifact at run creation;
+- extend `automation/test_search_coordinator.py`.
+
+**Interfaces:**
+
+- consumes validated, completed ledger prefixes only;
+- produces an immutable `SearchPatternReport`;
+- cannot modify an active manifest, queue status or ledger history.
+
+```python
+from search_types import ArtifactRef
+
+@dataclass(frozen=True)
+class SearchPatternReport:
+    report_id: str
+    source_ledgers: tuple[str, ...]
+    recommendations: tuple[Mapping[str, object], ...]
+    artifact: ArtifactRef
+```
+
+- [ ] **Step 1: Write leakage-prevention tests**
+
+A report generated during run A cannot change run A scheduling. Run B may use
+that report only when its manifest records the report artifact hash. Corrupt or
+partial ledgers are rejected.
+
+- [ ] **Step 2: Aggregate winning evidence**
+
+Rank mutation pass, grouped patch, lane, overlay, function archetype and first
+divergence combinations. Record sample count, successes, failures and exact
+source ledger hashes. Do not publish a recommendation from one observation.
+
+- [ ] **Step 3: Publish derivation summaries**
+
+Render bounded queue-note text from completed winning lineages. Publishing a
+note remains a separate explicit queue operation; the miner itself is
+read-only.
+
+- [ ] **Step 4: Run focused tests and commit**
+
+Run pattern, recovery, ledger and coordinator suites. Stage only this task's
+paths and commit: `feat: aggregate successful search lineages`.
+
+### Deferred subsystem: data-segment search
+
+Do not generalize `CandidateRecord` during this delivery. Open a separate
+design after function-search validation for byte-serialization candidates,
+data-specific score vectors and data recipient identities. Preserve the
+suggestion in `ROADMAP.md`; do not mark it complete or superseded.
+
 ## 14. Validation sequence
 
 Luna may run focused Python tests after each edit. Luna must not build.
