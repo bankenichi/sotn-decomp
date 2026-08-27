@@ -15,7 +15,7 @@ in each case so you can tell a deliberate choice from an accident.
 | live authority | current value |
 |---|---|
 | Build oracle | **113/113** from the artifacts on disk |
-| Decompiled | **94.1%**, 8179/8730 functions; 551 US `INCLUDE_ASM` stubs remain |
+| Decompiled | **94.1%**, 8180/8730 functions; 550 US `INCLUDE_ASM` stubs remain |
 | Queue | 983 records: 425 matched, 388 todo, 123 escalated, 41 deferred, 6 near |
 | Provenance | upstream-harvest 47, shim-segment 9, shim-header 55, transplant 135, twin-port 31, permuter 18, claude-manual 6, model-fleet 58, unknown 66 |
 | Automation | 86 modules, 29 suites plus 36 module self-tests, 90 tools, 69 diagnostics |
