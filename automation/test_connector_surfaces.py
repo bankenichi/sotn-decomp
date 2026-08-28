@@ -34,6 +34,13 @@ REPO = Path(__file__).resolve().parent.parent
 MCP = REPO / "automation" / "mcp"
 sys.path.insert(0, str(MCP))
 
+# Keep this explicit even while it is empty. A top-level suite may be omitted
+# from the connector only when it is deliberately unsupported, and the reason
+# must live beside the exclusion rather than hiding in a broad glob exception.
+# The PSX compiler corpus is supported through the WSL connector and therefore
+# must not be added here merely because a local shell lacks its toolchain.
+UNSUPPORTED_TOP_LEVEL_TESTS: dict[str, str] = {}
+
 import pathlib
 
 FAILS: list[str] = []
@@ -1711,14 +1718,42 @@ def main() -> int:
         check(not _undocumented,
               f"every callable tool has a reference row: {_undocumented}")
 
-        # TOOLING.md says every remaining top-level test is callable through
-        # run_automation. That is a machine claim, so a threshold or spot check
-        # would merely postpone the next stale-doc failure.
-        _tests = {p.name for p in (REPO / "automation").glob("test_*.py")}
-        _uncallable_tests = sorted(_tests - set(cc.AUTOMATION_SCRIPTS))
-        check(not _uncallable_tests,
-              f"every focused test named by the blanket doc claim is callable: "
-              f"{_uncallable_tests}")
+
+    # run_selftests.suites() is the discovery source for the consolidated
+    # runner. Check that exact set, rather than a second glob that can drift or
+    # silently bless arbitrary scripts, and exercise the same command builder
+    # that run_automation exposes for each supported suite.
+    print("\nrun_selftests discoveries are directly callable")
+    if str(REPO / "automation") not in sys.path:
+        sys.path.insert(0, str(REPO / "automation"))
+    import run_selftests as _selftest_runner
+
+    _discovered_tests = {p.name for p in _selftest_runner.suites()}
+    _excluded_tests = set(UNSUPPORTED_TOP_LEVEL_TESTS)
+    _bad_exclusions = sorted(
+        name for name, reason in UNSUPPORTED_TOP_LEVEL_TESTS.items()
+        if name not in _discovered_tests or not reason.strip()
+    )
+    check(not _bad_exclusions,
+          "every unsupported suite exclusion names a discovered test and "
+          f"carries a reason ({_bad_exclusions})")
+    _supported_tests = _discovered_tests - _excluded_tests
+    _uncallable_tests = []
+    for _name in sorted(_supported_tests):
+        try:
+            _argv = cc.REGISTRY["run_automation"](script=_name)
+        except Exception as _exc:  # Rejected
+            _uncallable_tests.append(f"{_name}: {_exc}")
+            continue
+        _expected = [cc.PYTHON, "automation/" + _name]
+        if _argv != _expected:
+            _uncallable_tests.append(
+                f"{_name}: expected {_expected!r}, got {_argv!r}")
+    check(not _uncallable_tests,
+          "every supported run_selftests suite is directly callable through "
+          f"run_automation ({_uncallable_tests})")
+    check("test_compiler_corpus.py" in _supported_tests,
+          "the PSX compiler corpus remains a supported strict suite")
 
     print("\nAGENTS.md points at the roadmap and requires keeping it current")
     _agents = REPO / "AGENTS.md"
@@ -1728,6 +1763,17 @@ def main() -> int:
         check("ROADMAP.md" in _a, "AGENTS.md references ROADMAP.md")
         check("docs/TOOLING.md" in _a, "AGENTS.md references docs/TOOLING.md")
         check("docs/CONNECTORS.md" in _a, "AGENTS.md references docs/CONNECTORS.md")
+        check(
+            "Do not interrupt active subagents for progress." in _a
+            and "A missed checkpoint or" in _a
+            and "absence of file writes during reasoning is not evidence of a stall." in _a
+            and "Prefer non-interrupting messages and waiting for completion." in _a
+            and "Report collaboration state from evidence only." in _a
+            and "Never infer or report UI-visible worker state from an" in _a
+            and "absent mailbox event." in _a
+            and "retract unsupported claims and request redelivery." in _a,
+            "AGENTS.md preserves the active-subagent evidence controls",
+        )
         check(len(_a) > 2000,
               f"AGENTS.md is not a stub ({len(_a)} bytes; it was 47)")
     check((REPO / "docs" / "CONNECTORS.md").is_file(), "docs/CONNECTORS.md exists")

@@ -131,6 +131,40 @@
         {
           "properties": {
             "event_type": {
+              "const": "oracle_requested"
+            },
+            "payload": {
+              "$ref": "#/$defs/oracle_request"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "allOf": [
+        {
+          "$ref": "#/$defs/event_base"
+        },
+        {
+          "properties": {
+            "event_type": {
+              "const": "oracle_result_recorded"
+            },
+            "payload": {
+              "$ref": "#/$defs/oracle_receipt"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "allOf": [
+        {
+          "$ref": "#/$defs/event_base"
+        },
+        {
+          "properties": {
+            "event_type": {
               "const": "task_completed"
             },
             "payload": {
@@ -704,6 +738,9 @@
         "parent_run",
         "queue_record_ids",
         "function_ids",
+        "subset_identity",
+        "queue_evidence_identity",
+        "selected_lanes",
         "source_identity",
         "target_identities",
         "compiler_identity",
@@ -713,6 +750,8 @@
         "run_seed",
         "epoch_size",
         "frontier_cap",
+        "coordinator_budget",
+        "lane_budgets",
         "tier_order"
       ],
       "properties": {
@@ -753,7 +792,7 @@
         },
         "queue_record_ids": {
           "type": "array",
-          "minItems": 1,
+          "minItems": 0,
           "uniqueItems": true,
           "items": {
             "$ref": "#/$defs/id"
@@ -761,18 +800,33 @@
         },
         "function_ids": {
           "type": "array",
-          "minItems": 1,
+          "minItems": 0,
           "uniqueItems": true,
           "items": {
             "$ref": "#/$defs/id"
           }
+        },
+        "subset_identity": {
+          "$ref": "#/$defs/hash"
+        },
+        "queue_evidence_identity": {
+          "$ref": "#/$defs/hash"
+        },
+        "selected_lanes": {
+          "type": "array",
+          "maxItems": 20,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/lane"
+          },
+          "minItems": 0
         },
         "source_identity": {
           "$ref": "#/$defs/hash"
         },
         "target_identities": {
           "type": "object",
-          "minProperties": 1,
+          "minProperties": 0,
           "additionalProperties": {
             "$ref": "#/$defs/hash"
           }
@@ -807,6 +861,9 @@
           "minimum": 1,
           "maximum": 1024
         },
+        "coordinator_budget": {
+          "$ref": "#/$defs/coordinator_budget"
+        },
         "tier_order": {
           "type": "array",
           "minItems": 5,
@@ -829,8 +886,1138 @@
               "const": "model"
             }
           ]
+        },
+        "lane_budgets": {
+          "type": "object",
+          "additionalProperties": false,
+          "minProperties": 0,
+          "maxProperties": 20,
+          "properties": {
+            "upstream_current": {
+              "$ref": "#/$defs/manifest_budget"
+            },
+            "upstream_pinned": {
+              "$ref": "#/$defs/manifest_budget"
+            },
+            "upstream_open_pr": {
+              "$ref": "#/$defs/manifest_budget"
+            },
+            "mipsmatch_exact": {
+              "$ref": "#/$defs/manifest_budget"
+            },
+            "preserved_candidate": {
+              "$ref": "#/$defs/manifest_budget"
+            },
+            "shared_header": {
+              "$ref": "#/$defs/manifest_budget"
+            },
+            "transplant": {
+              "$ref": "#/$defs/manifest_budget"
+            },
+            "whole_tu": {
+              "$ref": "#/$defs/manifest_budget"
+            },
+            "dependency_closure": {
+              "$ref": "#/$defs/manifest_budget"
+            },
+            "multi_donor": {
+              "$ref": "#/$defs/manifest_budget"
+            },
+            "cfg_dataflow": {
+              "$ref": "#/$defs/manifest_budget"
+            },
+            "m2c_ensemble": {
+              "$ref": "#/$defs/manifest_budget"
+            },
+            "idiom_atlas": {
+              "$ref": "#/$defs/manifest_budget"
+            },
+            "bounded_synthesis": {
+              "$ref": "#/$defs/manifest_budget"
+            },
+            "permuter_random": {
+              "$ref": "#/$defs/manifest_budget"
+            },
+            "permuter_targeted": {
+              "$ref": "#/$defs/manifest_budget"
+            },
+            "permuter_recombine": {
+              "$ref": "#/$defs/manifest_budget"
+            },
+            "permuter_ddmin": {
+              "$ref": "#/$defs/manifest_budget"
+            },
+            "model_fleet": {
+              "$ref": "#/$defs/manifest_budget"
+            },
+            "model_expensive": {
+              "$ref": "#/$defs/manifest_budget"
+            }
+          }
         }
-      }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "queue_record_ids": {
+                "minItems": 1
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "selected_lanes": {
+                "minItems": 1
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "selected_lanes": {
+                "contains": {
+                  "const": "upstream_current"
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "lane_budgets": {
+                "required": [
+                  "upstream_current"
+                ]
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "lane_budgets": {
+                "not": {
+                  "required": [
+                    "upstream_current"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "selected_lanes": {
+                "contains": {
+                  "const": "upstream_pinned"
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "lane_budgets": {
+                "required": [
+                  "upstream_pinned"
+                ]
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "lane_budgets": {
+                "not": {
+                  "required": [
+                    "upstream_pinned"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "selected_lanes": {
+                "contains": {
+                  "const": "upstream_open_pr"
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "lane_budgets": {
+                "required": [
+                  "upstream_open_pr"
+                ]
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "lane_budgets": {
+                "not": {
+                  "required": [
+                    "upstream_open_pr"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "selected_lanes": {
+                "contains": {
+                  "const": "mipsmatch_exact"
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "lane_budgets": {
+                "required": [
+                  "mipsmatch_exact"
+                ]
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "lane_budgets": {
+                "not": {
+                  "required": [
+                    "mipsmatch_exact"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "selected_lanes": {
+                "contains": {
+                  "const": "preserved_candidate"
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "lane_budgets": {
+                "required": [
+                  "preserved_candidate"
+                ]
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "lane_budgets": {
+                "not": {
+                  "required": [
+                    "preserved_candidate"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "selected_lanes": {
+                "contains": {
+                  "const": "shared_header"
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "lane_budgets": {
+                "required": [
+                  "shared_header"
+                ]
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "lane_budgets": {
+                "not": {
+                  "required": [
+                    "shared_header"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "selected_lanes": {
+                "contains": {
+                  "const": "transplant"
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "lane_budgets": {
+                "required": [
+                  "transplant"
+                ]
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "lane_budgets": {
+                "not": {
+                  "required": [
+                    "transplant"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "selected_lanes": {
+                "contains": {
+                  "const": "whole_tu"
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "lane_budgets": {
+                "required": [
+                  "whole_tu"
+                ]
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "lane_budgets": {
+                "not": {
+                  "required": [
+                    "whole_tu"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "selected_lanes": {
+                "contains": {
+                  "const": "dependency_closure"
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "lane_budgets": {
+                "required": [
+                  "dependency_closure"
+                ]
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "lane_budgets": {
+                "not": {
+                  "required": [
+                    "dependency_closure"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "selected_lanes": {
+                "contains": {
+                  "const": "multi_donor"
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "lane_budgets": {
+                "required": [
+                  "multi_donor"
+                ]
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "lane_budgets": {
+                "not": {
+                  "required": [
+                    "multi_donor"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "selected_lanes": {
+                "contains": {
+                  "const": "cfg_dataflow"
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "lane_budgets": {
+                "required": [
+                  "cfg_dataflow"
+                ]
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "lane_budgets": {
+                "not": {
+                  "required": [
+                    "cfg_dataflow"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "selected_lanes": {
+                "contains": {
+                  "const": "m2c_ensemble"
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "lane_budgets": {
+                "required": [
+                  "m2c_ensemble"
+                ]
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "lane_budgets": {
+                "not": {
+                  "required": [
+                    "m2c_ensemble"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "selected_lanes": {
+                "contains": {
+                  "const": "idiom_atlas"
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "lane_budgets": {
+                "required": [
+                  "idiom_atlas"
+                ]
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "lane_budgets": {
+                "not": {
+                  "required": [
+                    "idiom_atlas"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "selected_lanes": {
+                "contains": {
+                  "const": "bounded_synthesis"
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "lane_budgets": {
+                "required": [
+                  "bounded_synthesis"
+                ]
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "lane_budgets": {
+                "not": {
+                  "required": [
+                    "bounded_synthesis"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "selected_lanes": {
+                "contains": {
+                  "const": "permuter_random"
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "lane_budgets": {
+                "required": [
+                  "permuter_random"
+                ]
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "lane_budgets": {
+                "not": {
+                  "required": [
+                    "permuter_random"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "selected_lanes": {
+                "contains": {
+                  "const": "permuter_targeted"
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "lane_budgets": {
+                "required": [
+                  "permuter_targeted"
+                ]
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "lane_budgets": {
+                "not": {
+                  "required": [
+                    "permuter_targeted"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "selected_lanes": {
+                "contains": {
+                  "const": "permuter_recombine"
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "lane_budgets": {
+                "required": [
+                  "permuter_recombine"
+                ]
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "lane_budgets": {
+                "not": {
+                  "required": [
+                    "permuter_recombine"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "selected_lanes": {
+                "contains": {
+                  "const": "permuter_ddmin"
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "lane_budgets": {
+                "required": [
+                  "permuter_ddmin"
+                ]
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "lane_budgets": {
+                "not": {
+                  "required": [
+                    "permuter_ddmin"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "selected_lanes": {
+                "contains": {
+                  "const": "model_fleet"
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "lane_budgets": {
+                "required": [
+                  "model_fleet"
+                ]
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "lane_budgets": {
+                "not": {
+                  "required": [
+                    "model_fleet"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "selected_lanes": {
+                "contains": {
+                  "const": "model_expensive"
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "lane_budgets": {
+                "required": [
+                  "model_expensive"
+                ]
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "lane_budgets": {
+                "not": {
+                  "required": [
+                    "model_expensive"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "selected_lanes": {
+                "contains": {
+                  "const": "upstream_current"
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "tool_identities": {
+                "required": [
+                  "upstream_current"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "selected_lanes": {
+                "contains": {
+                  "const": "upstream_pinned"
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "tool_identities": {
+                "required": [
+                  "upstream_pinned"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "selected_lanes": {
+                "contains": {
+                  "const": "upstream_open_pr"
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "tool_identities": {
+                "required": [
+                  "upstream_open_pr"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "selected_lanes": {
+                "contains": {
+                  "const": "mipsmatch_exact"
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "tool_identities": {
+                "required": [
+                  "mipsmatch_exact"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "selected_lanes": {
+                "contains": {
+                  "const": "preserved_candidate"
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "tool_identities": {
+                "required": [
+                  "preserved_candidate"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "selected_lanes": {
+                "contains": {
+                  "const": "shared_header"
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "tool_identities": {
+                "required": [
+                  "shared_header"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "selected_lanes": {
+                "contains": {
+                  "const": "transplant"
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "tool_identities": {
+                "required": [
+                  "transplant"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "selected_lanes": {
+                "contains": {
+                  "const": "whole_tu"
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "tool_identities": {
+                "required": [
+                  "whole_tu"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "selected_lanes": {
+                "contains": {
+                  "const": "dependency_closure"
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "tool_identities": {
+                "required": [
+                  "dependency_closure"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "selected_lanes": {
+                "contains": {
+                  "const": "multi_donor"
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "tool_identities": {
+                "required": [
+                  "multi_donor"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "selected_lanes": {
+                "contains": {
+                  "const": "cfg_dataflow"
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "tool_identities": {
+                "required": [
+                  "cfg_dataflow"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "selected_lanes": {
+                "contains": {
+                  "const": "m2c_ensemble"
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "tool_identities": {
+                "required": [
+                  "m2c_ensemble"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "selected_lanes": {
+                "contains": {
+                  "const": "idiom_atlas"
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "tool_identities": {
+                "required": [
+                  "idiom_atlas"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "selected_lanes": {
+                "contains": {
+                  "const": "bounded_synthesis"
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "tool_identities": {
+                "required": [
+                  "bounded_synthesis"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "selected_lanes": {
+                "contains": {
+                  "const": "permuter_random"
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "tool_identities": {
+                "required": [
+                  "permuter_random"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "selected_lanes": {
+                "contains": {
+                  "const": "permuter_targeted"
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "tool_identities": {
+                "required": [
+                  "permuter_targeted"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "selected_lanes": {
+                "contains": {
+                  "const": "permuter_recombine"
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "tool_identities": {
+                "required": [
+                  "permuter_recombine"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "selected_lanes": {
+                "contains": {
+                  "const": "permuter_ddmin"
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "tool_identities": {
+                "required": [
+                  "permuter_ddmin"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "selected_lanes": {
+                "contains": {
+                  "const": "model_fleet"
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "tool_identities": {
+                "required": [
+                  "model_fleet"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "selected_lanes": {
+                "contains": {
+                  "const": "model_expensive"
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "tool_identities": {
+                "required": [
+                  "model_expensive"
+                ]
+              }
+            }
+          }
+        }
+      ],
+      "anyOf": [
+        {
+          "properties": {
+            "queue_record_ids": {
+              "minItems": 0,
+              "maxItems": 0
+            },
+            "function_ids": {
+              "minItems": 0,
+              "maxItems": 0
+            }
+          }
+        },
+        {
+          "properties": {
+            "queue_record_ids": {
+              "minItems": 1
+            },
+            "function_ids": {
+              "minItems": 1
+            }
+          }
+        }
+      ]
     },
     "search_task": {
       "type": "object",
@@ -1251,33 +2438,7 @@
           }
         },
         "budget": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": [
-            "unit",
-            "limit",
-            "consumed"
-          ],
-          "properties": {
-            "unit": {
-              "type": "string",
-              "enum": [
-                "tasks",
-                "attempts",
-                "iterations",
-                "candidates",
-                "seconds"
-              ]
-            },
-            "limit": {
-              "type": "integer",
-              "minimum": 0
-            },
-            "consumed": {
-              "type": "integer",
-              "minimum": 0
-            }
-          }
+          "$ref": "#/$defs/budget"
         },
         "attempts": {
           "type": "integer",
@@ -1411,6 +2572,145 @@
         },
         "payload": {}
       }
+    },
+    "oracle_request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "request_id",
+        "task_id",
+        "recipient_id",
+        "candidate_id",
+        "source_hash",
+        "candidate",
+        "config_identity",
+        "oracle_identity",
+        "request_artifact"
+      ],
+      "properties": {
+        "request_id": {
+          "$ref": "#/$defs/hash"
+        },
+        "task_id": {
+          "$ref": "#/$defs/id"
+        },
+        "recipient_id": {
+          "$ref": "#/$defs/id"
+        },
+        "candidate_id": {
+          "$ref": "#/$defs/hash"
+        },
+        "source_hash": {
+          "$ref": "#/$defs/hash"
+        },
+        "candidate": {
+          "$ref": "#/$defs/candidate_record"
+        },
+        "config_identity": {
+          "$ref": "#/$defs/hash"
+        },
+        "oracle_identity": {
+          "$ref": "#/$defs/hash"
+        },
+        "request_artifact": {
+          "$ref": "#/$defs/artifact_ref"
+        }
+      }
+    },
+    "oracle_receipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "receipt_id",
+        "request_id",
+        "oracle_identity",
+        "outcome",
+        "result",
+        "result_artifact"
+      ],
+      "properties": {
+        "receipt_id": {
+          "$ref": "#/$defs/hash"
+        },
+        "request_id": {
+          "$ref": "#/$defs/hash"
+        },
+        "oracle_identity": {
+          "$ref": "#/$defs/hash"
+        },
+        "outcome": {
+          "type": "string",
+          "enum": [
+            "matched",
+            "not_matched",
+            "error"
+          ]
+        },
+        "result": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "result_artifact": {
+          "$ref": "#/$defs/artifact_ref"
+        }
+      }
+    },
+    "budget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "unit",
+        "limit",
+        "consumed"
+      ],
+      "properties": {
+        "unit": {
+          "type": "string",
+          "enum": [
+            "tasks",
+            "attempts",
+            "iterations",
+            "candidates",
+            "seconds"
+          ]
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "consumed": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "manifest_budget": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/budget"
+        },
+        {
+          "properties": {
+            "consumed": {
+              "const": 0
+            }
+          }
+        }
+      ]
+    },
+    "coordinator_budget": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/manifest_budget"
+        },
+        {
+          "properties": {
+            "unit": {
+              "const": "tasks"
+            }
+          }
+        }
+      ]
     }
   }
 }

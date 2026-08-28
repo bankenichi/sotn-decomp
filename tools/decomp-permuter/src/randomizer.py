@@ -1,5 +1,8 @@
 import bisect
 import copy
+import difflib
+import hashlib
+import json
 import sys
 from dataclasses import dataclass, field
 from random import Random
@@ -89,6 +92,90 @@ T = TypeVar("T")
 
 class RandomizationFailure(Exception):
     pass
+
+
+@dataclass(frozen=True)
+class MutationResult:
+    """Result from one randomization operation.
+
+    Only an operation given an explicit seed is replay-authoritative.  The
+    legacy unseeded path keeps its mutable random stream and must not expose
+    an incomplete MT state cell as a replay seed.
+    """
+
+    mutation_id: str
+    pass_kind: Optional[str]
+    mutation_seed: Optional[int]
+    attempts: int
+    before_source: str
+    after_source: str
+    status: str
+    grouped_patch: Optional[Mapping[str, object]]
+    failed_passes: Tuple[str, ...] = ()
+    replay_authoritative: bool = False
+
+    @property
+    def source(self) -> str:
+        return self.after_source
+
+    def to_dict(self) -> Dict[str, object]:
+        return {
+            "mutation_id": self.mutation_id,
+            "pass_kind": self.pass_kind,
+            "mutation_seed": self.mutation_seed,
+            "attempts": self.attempts,
+            "before_source": self.before_source,
+            "after_source": self.after_source,
+            "status": self.status,
+            "grouped_patch": dict(self.grouped_patch) if self.grouped_patch else None,
+            "failed_passes": list(self.failed_passes),
+            "replay_authoritative": self.replay_authoritative,
+        }
+
+
+def _instrumented_patch(before: str, after: str) -> Mapping[str, object]:
+    before_lines = before.splitlines(keepends=True)
+    after_lines = after.splitlines(keepends=True)
+    hunks = []
+    ordinal = 0
+    for tag, i1, i2, j1, j2 in difflib.SequenceMatcher(
+        a=before_lines, b=after_lines, autojunk=False
+    ).get_opcodes():
+        if tag == "equal":
+            continue
+        hunks.append(
+            {
+                "ordinal": ordinal,
+                "before": "".join(before_lines[i1:i2]),
+                "after": "".join(after_lines[j1:j2]),
+                "leading_context": before_lines[max(0, i1 - 3):i1],
+                "trailing_context": before_lines[i2:i2 + 3],
+                "ast_path": None,
+            }
+        )
+        ordinal += 1
+    if not hunks:
+        hunks = [
+            {
+                "ordinal": 0,
+                "before": before,
+                "after": before,
+                "leading_context": [],
+                "trailing_context": [],
+                "ast_path": None,
+            }
+        ]
+    base_hash = "sha256:" + hashlib.sha256(before.encode("utf-8")).hexdigest()
+    identity = {
+        "format": "line_context",
+        "base_source_hash": base_hash,
+        "atomic": True,
+        "hunks": hunks,
+    }
+    patch_id = "sha256:" + hashlib.sha256(
+        json.dumps(identity, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    ).hexdigest()
+    return dict(identity, patch_id=patch_id)
 
 
 def ensure(condition: object) -> None:
@@ -2459,14 +2546,88 @@ class Randomizer:
             for method in RANDOMIZATION_PASSES
         ]
 
-    def randomize(self, ast: ca.FileAST, fn_name: str) -> None:
+    def randomize(
+        self,
+        ast: ca.FileAST,
+        fn_name: str,
+        *,
+        seed: Optional[int] = None,
+        max_attempts: Optional[int] = None,
+    ) -> MutationResult:
+        if max_attempts is not None and max_attempts < 0:
+            raise ValueError("max_attempts must be nonnegative")
+        before_source = ast_util.to_c(ast)
+        # Preserve the legacy mutable stream when no seed is supplied, but do
+        # not pretend that one incomplete MT state cell can reproduce it.  An
+        # instrumented caller always supplies an explicit seed and receives a
+        # replay-authoritative result.
+        operation_seed = seed
+        replay_authoritative = seed is not None
+        random = self.random if seed is None else Random(seed)
         fn = ast_util.extract_fn(ast, fn_name)[0]
         indices = ast_util.compute_node_indices(fn)
-        region = get_randomization_region(fn, indices, self.random)
+        region = get_randomization_region(fn, indices, random)
+        failed_passes: List[str] = []
+        attempts = 0
+        if max_attempts == 0:
+            return MutationResult(
+                mutation_id="sha256:" + hashlib.sha256(
+                    (str(operation_seed) + ":failed").encode("utf-8")
+                ).hexdigest(),
+                pass_kind=None,
+                mutation_seed=operation_seed,
+                attempts=0,
+                before_source=before_source,
+                after_source=before_source,
+                status="failed",
+                grouped_patch=None,
+                failed_passes=(),
+                replay_authoritative=replay_authoritative,
+            )
         while True:
-            method = random_weighted(self.random, self.methods)
+            attempts += 1
+            method = random_weighted(random, self.methods)
             try:
-                method(fn, ast, indices, region, self.random)
-                break
+                method(fn, ast, indices, region, random)
+                after_source = ast_util.to_c(ast)
+                status = "no_change" if after_source == before_source else "applied"
+                grouped_patch = _instrumented_patch(before_source, after_source)
+                identity = {
+                    "pass_kind": method.__name__,
+                    "mutation_seed": operation_seed,
+                    "before_source_hash": "sha256:" + hashlib.sha256(before_source.encode("utf-8")).hexdigest(),
+                    "after_source_hash": "sha256:" + hashlib.sha256(after_source.encode("utf-8")).hexdigest(),
+                    "grouped_patch": grouped_patch,
+                }
+                mutation_id = "sha256:" + hashlib.sha256(
+                    json.dumps(identity, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+                ).hexdigest()
+                return MutationResult(
+                    mutation_id=mutation_id,
+                    pass_kind=method.__name__,
+                    mutation_seed=operation_seed,
+                    attempts=attempts,
+                    before_source=before_source,
+                    after_source=after_source,
+                    status=status,
+                    grouped_patch=grouped_patch,
+                    failed_passes=tuple(failed_passes),
+                    replay_authoritative=replay_authoritative,
+                )
             except RandomizationFailure:
-                pass
+                failed_passes.append(method.__name__)
+                if max_attempts is not None and attempts >= max_attempts:
+                    return MutationResult(
+                        mutation_id="sha256:" + hashlib.sha256(
+                            (str(operation_seed) + ":failed").encode("utf-8")
+                        ).hexdigest(),
+                        pass_kind=None,
+                        mutation_seed=operation_seed,
+                        attempts=attempts,
+                        before_source=before_source,
+                        after_source=before_source,
+                        status="failed",
+                        grouped_patch=None,
+                        failed_passes=tuple(failed_passes),
+                        replay_authoritative=replay_authoritative,
+                    )

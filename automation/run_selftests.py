@@ -79,6 +79,22 @@ def suites() -> list[Path]:
     return sorted(HERE.glob("test_*.py"))
 
 
+def select_named(
+        test_suites: list[Path],
+        modules: list[Path],
+        only: list[str],
+        ) -> tuple[list[Path], list[Path], list[str]]:
+    """Select exact filenames without substring fallback."""
+    requested = {name.strip() for name in only if name.strip()}
+    available = {path.name for path in test_suites + modules}
+    missing = sorted(requested - available)
+    return (
+        [path for path in test_suites if path.name in requested],
+        [path for path in modules if path.name in requested],
+        missing,
+    )
+
+
 def _label(path: Path, args: tuple[str, ...]) -> str:
     return path.name + (" " + " ".join(args) if args else "")
 
@@ -161,9 +177,16 @@ def run_one(path: Path, timeout: int,
         r = subprocess.run([sys.executable, str(path), *args], cwd=str(REPO),
                            capture_output=True, text=True, timeout=timeout)
         out = ((r.stdout or "") + (r.stderr or "")).strip().splitlines()
-        tail = out[-1] if out else "(no output)"
+        if r.returncode == 0:
+            tail = out[-1] if out else "(no output)"
+            tail = tail[:90]
+        else:
+            # A nested suite's final line is often only "FAILED". Preserve the
+            # diagnostic tail so a focused run explains the failure in one job.
+            tail = " | ".join(line.strip() for line in out[-16:] if line.strip())
+            tail = tail[-1200:]
         # A suite reports its own verdict; the exit code is the contract.
-        return label, r.returncode == 0, time.time() - t0, tail[:90]
+        return label, r.returncode == 0, time.time() - t0, tail
     except subprocess.TimeoutExpired:
         return label, False, time.time() - t0, f"TIMED OUT after {timeout}s"
     except OSError as e:
@@ -180,6 +203,9 @@ def main() -> int:
                     help=f"concurrent suites (default {DEFAULT_JOBS}). Suites "
                          "that take BuildLock always run serially regardless")
     ap.add_argument("--failed-only", action="store_true")
+    ap.add_argument(
+        "--only", action="append", default=[],
+        help="run only this exact suite filename; repeat for multiple suites")
     ap.add_argument("--self-test", action="store_true",
                     help="exercise runner scheduling without launching suites")
     a = ap.parse_args()
@@ -204,10 +230,17 @@ def main() -> int:
     if not all_suites:
         print(f"no test_*.py under {HERE}", file=sys.stderr)
         return 2
+    mods = selftest_modules()
+    if a.only:
+        all_suites, mods, missing = select_named(all_suites, mods, a.only)
+        if missing:
+            print("unknown --only suite(s): " + ", ".join(missing), file=sys.stderr)
+            return 2
+        if not all_suites and not mods:
+            print("--only selected no suites", file=sys.stderr)
+            return 2
     parallel = [p for p in all_suites if p.name not in SERIAL]
     serial = [p for p in all_suites if p.name in SERIAL]
-
-    mods = selftest_modules()
 
     rows: list[tuple[str, bool, float, str]] = []
     t0 = time.time()

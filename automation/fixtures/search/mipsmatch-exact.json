@@ -1,0 +1,48 @@
+[
+  {
+    "recipient_id": "record-1",
+    "exact": true,
+    "fingerprint_equal": true,
+    "match_kind": "exact",
+    "reference_id": "sha256:8255d4abb33e147a137a61487dded1c53902cb322ef7b0bbb1991f7cc3ce52e2",
+    "reference_identity": "sha256:8255d4abb33e147a137a61487dded1c53902cb322ef7b0bbb1991f7cc3ce52e2",
+    "map_content_hash": "sha256:f9640c760518ad1509f5db4f0b55ea4e40452c96a9bfcf407156f58b9fd5d369",
+    "map_content": "map fixture for mipsmatch\n",
+    "elf_content_hash": "sha256:f2204038b9dd603f1bb10c7817ffc44b71c68d851363ffdf6846521ca910f8c1",
+    "elf_content": "elf fixture for mipsmatch\n",
+    "tool_identity": "sha256:eb3d4c22731999b4afdf92c17afabbc682c2e0152f87b80f307c0e8ccd8e2830",
+    "tool_content": "mipsmatch tool fixture\n",
+    "fingerprint": "sha256:a6ac508f554217b43a31773a2082c2b83906f900b5ebce53594ef21b6cfea238",
+    "target_fingerprint": "sha256:a6ac508f554217b43a31773a2082c2b83906f900b5ebce53594ef21b6cfea238",
+    "candidate_fingerprint": "sha256:a6ac508f554217b43a31773a2082c2b83906f900b5ebce53594ef21b6cfea238",
+    "body_hash": "sha256:91309521784e621c99373de668e2222dcd6386cacdd141ae5175187107845cb6",
+    "match_source": "fingerprint-a",
+    "body": "int func_lane(void) { return 7; }\n"
+  },
+  {
+    "recipient_id": "record-1",
+    "exact": true,
+    "fingerprint_equal": true,
+    "match_kind": "exact",
+    "reference_id": "sha256:8255d4abb33e147a137a61487dded1c53902cb322ef7b0bbb1991f7cc3ce52e2",
+    "reference_identity": "sha256:8255d4abb33e147a137a61487dded1c53902cb322ef7b0bbb1991f7cc3ce52e2",
+    "map_content_hash": "sha256:f9640c760518ad1509f5db4f0b55ea4e40452c96a9bfcf407156f58b9fd5d369",
+    "map_content": "map fixture for mipsmatch\n",
+    "elf_content_hash": "sha256:f2204038b9dd603f1bb10c7817ffc44b71c68d851363ffdf6846521ca910f8c1",
+    "elf_content": "elf fixture for mipsmatch\n",
+    "tool_identity": "sha256:eb3d4c22731999b4afdf92c17afabbc682c2e0152f87b80f307c0e8ccd8e2830",
+    "tool_content": "mipsmatch tool fixture\n",
+    "fingerprint": "sha256:a6ac508f554217b43a31773a2082c2b83906f900b5ebce53594ef21b6cfea238",
+    "target_fingerprint": "sha256:a6ac508f554217b43a31773a2082c2b83906f900b5ebce53594ef21b6cfea238",
+    "candidate_fingerprint": "sha256:a6ac508f554217b43a31773a2082c2b83906f900b5ebce53594ef21b6cfea238",
+    "body_hash": "sha256:91309521784e621c99373de668e2222dcd6386cacdd141ae5175187107845cb6",
+    "match_source": "fingerprint-b",
+    "body": "int func_lane(void) { return 7; }\n"
+  },
+  {
+    "recipient_id": "record-2",
+    "exact": false,
+    "match_kind": "near",
+    "body": "int other_lane(void) { return 8; }\n"
+  }
+]

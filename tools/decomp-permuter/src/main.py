@@ -236,6 +236,11 @@ def cycle_seeds(permuters: List[Permuter]) -> Iterable[Tuple[int, int]]:
             i += 1
 
 
+def run_one_task(permuter: Permuter, seed: int) -> EvalResult:
+    """Run exactly one coordinator-owned seed without changing CLI behavior."""
+    return permuter.execute_task(seed)
+
+
 def multiprocess_worker(
     permuters: List[Permuter],
     input_queue: "Queue[Task]",
@@ -371,6 +376,13 @@ def run_inner(options: Options, heartbeat: Callable[[], None]) -> List[int]:
             algorithm=options.algorithm,
             debug_mode=options.debug_mode,
             symbol_map=symbol_map,
+            compiler_command=compile_cmd,
+            compiler_args=("{source}", "-o", "{object}"),
+            compiler_config={
+                "compiler_type": compiler_type,
+                "show_errors": options.show_errors,
+                "debug_mode": options.debug_mode,
+            },
         )
         c_source = preprocess(base_c)
 

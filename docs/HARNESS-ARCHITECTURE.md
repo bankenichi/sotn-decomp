@@ -18,7 +18,7 @@ in each case so you can tell a deliberate choice from an accident.
 | Decompiled | **94.1%**, 8180/8730 functions; 550 US `INCLUDE_ASM` stubs remain |
 | Queue | 983 records: 433 matched, 380 todo, 123 escalated, 41 deferred, 6 near |
 | Provenance | upstream-harvest 55, shim-segment 9, shim-header 55, transplant 135, twin-port 31, permuter 18, claude-manual 6, model-fleet 58, unknown 66 |
-| Automation | 102 modules, 38 suites plus 36 module self-tests, 90 tools, 78 diagnostics |
+| Automation | 114 modules, 44 suites plus 36 module self-tests, 90 tools, 84 diagnostics |
 
 This block is regenerated from the same queue, checksum manifest, linker maps, provenance classifier, and connector inventory as `README.md`.
 <!-- LIVE-STATUS:END -->
@@ -27,7 +27,7 @@ This block is regenerated from the same queue, checksum manifest, linker maps, p
 
 ## 1. The oracle
 
-One thing decides whether work is correct: the 81 SHA-1 hashes in
+One thing decides whether work is correct: the 113 configured artifact hashes in
 `config/check.us.sha`. A function is matched when the overlay binary containing
 it is byte-identical to the original. Not "looks right", not "compiles", not a
 percentage from a diff tool.
@@ -569,7 +569,7 @@ Nothing below is supplied by an operator.
 `transplant.py` implements no apply, build or revert. It calls
 `permuter_supervisor.land_match`, the one sequence hardened against a mid-build
 crash: the fleet's own `.build.lock`, the journal written BEFORE the edit, a
-rebuild, all 81 SHA-1s verified independently of make's exit code, and an
+rebuild, all 113 configured artifact hashes verified independently of make's exit code, and an
 unconditional revert PROVEN by `_assert_reverted`. A second copy of that
 sequence would be a second thing to get wrong.
 

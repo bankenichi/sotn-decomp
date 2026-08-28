@@ -1,0 +1,47 @@
+[
+  {
+    "donor_id": "donor-dataflow",
+    "recipient_id": "record-1",
+    "version": "v3",
+    "source": "corpus/dataflow.c",
+    "match_kind": "dataflow",
+    "signature": "dataflow-sig",
+    "source_identity": "sha256:91309521784e621c99373de668e2222dcd6386cacdd141ae5175187107845cb6",
+    "body": "int func_lane(void) { return 7; }\n",
+    "constants": {"return_value": 7}
+  },
+  {
+    "donor_id": "donor-cfg",
+    "recipient_id": "record-1",
+    "version": "v2",
+    "source": "corpus/cfg.c",
+    "match_kind": "cfg",
+    "signature": "cfg-sig",
+    "source_identity": "sha256:91309521784e621c99373de668e2222dcd6386cacdd141ae5175187107845cb6",
+    "body": "int func_lane(void) { return 7; }\n",
+    "constants": {"return_value": 7}
+  },
+  {
+    "donor_id": "donor-instruction",
+    "recipient_id": "record-1",
+    "version": "v1",
+    "source": "corpus/instruction.c",
+    "match_kind": "instruction",
+    "signature": "instruction-sig",
+    "source_identity": "sha256:91309521784e621c99373de668e2222dcd6386cacdd141ae5175187107845cb6",
+    "body": "int func_lane(void) { return 7; }\n",
+    "constants": {"return_value": 7}
+  },
+  {
+    "donor_id": "donor-symbol",
+    "recipient_id": "record-1",
+    "version": "v1",
+    "source": "corpus/symbol.c",
+    "match_kind": "symbol",
+    "signature": "symbol-sig",
+    "source_identity": "sha256:91309521784e621c99373de668e2222dcd6386cacdd141ae5175187107845cb6",
+    "symbol": "func_lane",
+    "body": "int func_lane(void) { return 7; }\n",
+    "constants": {"return_value": 7}
+  }
+]

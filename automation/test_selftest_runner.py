@@ -42,6 +42,16 @@ def main() -> int:
     check(1 <= runner.DEFAULT_JOBS <= 8,
           "the default worker count is bounded to the verified ceiling")
 
+    selected_tests, selected_modules, missing = runner.select_named(
+        tests, modules, ["test_b.py", "module_a.py"])
+    check(selected_tests == [tests[1]] and selected_modules == [modules[0]],
+          "--only selects exact test and module filenames")
+    check(not missing, "known --only suite names are accepted")
+    _tests, _modules, missing = runner.select_named(
+        tests, modules, ["test"])
+    check(not _tests and not _modules and missing == ["test"],
+          "--only refuses substrings instead of silently broadening scope")
+
     old_cache, old_logs = runner.TIMING_CACHE, runner.JOB_LOGS
     try:
         with tempfile.TemporaryDirectory() as td:
@@ -58,10 +68,20 @@ def main() -> int:
                 ("slow.py --self-test", True, 12.3, "all checks passed")
             ])
             cached = json.loads(runner.TIMING_CACHE.read_text(encoding="utf-8"))
+            failing = root / "nested_failure.py"
+            failing.write_text(
+                "print('specific nested failure detail')\n"
+                "raise SystemExit(1)\n",
+                encoding="utf-8",
+            )
+            failure_row = runner.run_one(failing, timeout=5)
         check(recovered.get("slow.py --self-test") == 12.3,
               "timings recover from an existing job table")
         check(cached.get("slow.py --self-test") == 12.3,
               "the refreshed timing cache is valid JSON")
+        check(not failure_row[1] and
+              "specific nested failure detail" in failure_row[3],
+              "failed nested suites retain actionable diagnostic output")
     finally:
         runner.TIMING_CACHE, runner.JOB_LOGS = old_cache, old_logs
 

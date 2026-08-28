@@ -7,6 +7,8 @@ import re
 import time
 import traceback
 from typing import (
+    Any,
+    Callable,
     Dict,
     Iterator,
     List,
@@ -23,7 +25,7 @@ from .perm.perm import EvalState
 from .perm.eval import perm_evaluate_one, perm_gen_all_seeds
 from .perm.parse import perm_parse
 from .profiler import Profiler, Timer
-from .scorer import Scorer
+from .scorer import Scorer, ScoreResult
 from .helpers import trim_source
 
 
@@ -92,6 +94,7 @@ class Permuter:
         score_threshold: Optional[int],
         debug_mode: bool,
         speed: int,
+        event_sink: Optional[Callable[[Any], None]] = None,
     ) -> None:
         self.dir = dir
         self.compiler = compiler
@@ -128,6 +131,8 @@ class Permuter:
         self._better_only = better_only
         self._score_threshold = score_threshold
         self._debug_mode = debug_mode
+        self.event_sink = event_sink
+        self.base_score_vector: Optional[Any] = None
         (
             self.base_score,
             self.base_hash,
@@ -137,7 +142,7 @@ class Permuter:
         self.hashes = {self.base_hash}
         self._cur_cand: Optional[Candidate] = None
         self._last_score: Optional[int] = None
-        self._score_for_source: Dict[bytes, int] = {}
+        self._score_for_source: Dict[bytes, object] = {}
         self.speed = speed
 
     def _create_and_score_base(self) -> Tuple[int, str, str]:
@@ -158,6 +163,7 @@ class Permuter:
             raise CandidateConstructionFailure(f"Unable to compile {self.source_file}")
         base_result = base_cand.score(self.scorer, o_file)
         assert base_result.hash is not None
+        self.base_score_vector = base_result.score_vector
         return base_result.score, base_result.hash, base_cand.get_source()
 
     def _need_to_send_source(self, result: CandidateResult) -> bool:
@@ -195,8 +201,9 @@ class Permuter:
                 rng_seed=rng_seed,
             )
 
+        mutation = None
         if self._permutations.is_random():
-            self._cur_cand.randomize_ast()
+            mutation = self._cur_cand.randomize_ast()
 
         profiler.add_stat(Profiler.StatType.perm, timer.tick())
 
@@ -206,7 +213,17 @@ class Permuter:
 
         old_score = self._score_for_source.get(source_hash)
         if old_score is not None:
-            result = CandidateResult(score=old_score, hash=None, source=cand_source)
+            if hasattr(old_score, "legacy_score"):
+                old_value = old_score.legacy_score
+            else:
+                old_value = int(old_score)
+            result = CandidateResult(
+                score=old_value,
+                hash=None,
+                source=cand_source,
+                score_vector=old_score,
+                mutation=mutation,
+            )
         else:
             o_file = self._cur_cand.compile(self.compiler)
             if not o_file and self._show_errors:
@@ -214,10 +231,13 @@ class Permuter:
             profiler.add_stat(Profiler.StatType.compile, timer.tick())
 
             result = self._cur_cand.score(self.scorer, o_file)
+            result.mutation = mutation
             profiler.add_stat(Profiler.StatType.score, timer.tick())
 
             if len(self._score_for_source) < 100000:  # prevent unbounded memory usage
-                self._score_for_source[source_hash] = result.score
+                self._score_for_source[source_hash] = (
+                    result.score_vector if result.score_vector is not None else result.score
+                )
 
         if self.need_profiler:
             result.profiler = profiler
@@ -228,7 +248,72 @@ class Permuter:
             result.source = None
             result.hash = None
 
+        if self.event_sink is not None:
+            if mutation is not None:
+                self.event_sink(mutation)
+            self.event_sink(result)
+
         return result
+
+    def _execute_task_stateless(
+        self, seed: int, task_identity: Optional[str]
+    ) -> CandidateResult:
+        """Evaluate one task using only immutable inputs and local state.
+
+        The ordinary permuter loop intentionally reuses ``_cur_cand`` and its
+        random stream for legacy throughput.  Coordinator tasks cannot do
+        that: a retry may arrive on a dirty worker or a fresh worker and must
+        produce the same source and mutation provenance.  This path therefore
+        allocates a fresh evaluation state, candidate and explicit randomizer
+        for every task and bypasses the score cache.
+        """
+        identity = task_identity if task_identity is not None else str(seed)
+        seed_material = f"{identity}\0{seed}".encode("utf-8")
+        rng_seed = int.from_bytes(hashlib.sha256(seed_material).digest()[:8], "big")
+        eval_state = EvalState()
+        candidate_source = self._permutations.evaluate(seed, eval_state)
+        candidate = Candidate.from_source(
+            candidate_source,
+            eval_state,
+            self.fn_name,
+            self.randomization_weights,
+            rng_seed=rng_seed,
+        )
+        mutation = None
+        if self._permutations.is_random():
+            mutation = candidate.randomize_ast(seed=rng_seed)
+        o_file = candidate.compile(self.compiler, show_errors=self._show_errors)
+        if not o_file and self._show_errors:
+            raise _CompileFailure()
+        result = candidate.score(self.scorer, o_file)
+        result.mutation = mutation
+        if self.event_sink is not None:
+            if mutation is not None:
+                self.event_sink(mutation)
+            self.event_sink(result)
+        return result
+
+    def execute_task(
+        self, seed: int, *, task_identity: Optional[str] = None
+    ) -> EvalResult:
+        """Execute one deterministic task without consulting mutable loop state."""
+        if isinstance(seed, bool) or not isinstance(seed, int) or seed < 0:
+            raise ValueError("task seed must be a nonnegative integer")
+        if task_identity is not None and (
+            not isinstance(task_identity, str) or not task_identity
+        ):
+            raise ValueError("task identity must be a nonempty string")
+        identity = task_identity if task_identity is not None else str(seed)
+        seed_material = f"{identity}\0{seed}".encode("utf-8")
+        rng_seed = int.from_bytes(hashlib.sha256(seed_material).digest()[:8], "big")
+        try:
+            return self._execute_task_stateless(seed, task_identity)
+        except _CompileFailure:
+            return EvalError(exc_str=None, seed=(seed, rng_seed))
+        except Exception:
+            return EvalError(exc_str=traceback.format_exc(), seed=(seed, rng_seed))
+
+    run_task = execute_task
 
     def should_output(self, result: CandidateResult) -> bool:
         """Check whether a result should be outputted. This must be more liberal

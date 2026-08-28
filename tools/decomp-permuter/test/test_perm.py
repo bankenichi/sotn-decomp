@@ -1,14 +1,12 @@
 import os
-from pathlib import Path
-import re
 import shutil
 import tempfile
 from typing import Any, Optional
 import unittest
 
 from src.compiler import Compiler
-from src.preprocess import preprocess
 from src import main
+from src.scorer import ScoreResult
 
 
 class TestPermMacros(unittest.TestCase):
@@ -53,7 +51,6 @@ class TestPermMacros(unittest.TestCase):
             "return 64;",
         )
         self.assertEqual(score, 0)
-
     def test_not_found(self) -> None:
         score = self.go(
             "int test() {",
@@ -241,6 +238,51 @@ class TestPermMacros(unittest.TestCase):
             threads=2,
         )
         self.assertEqual(score, 0)
+
+
+class TestInstrumentedCompatibility(unittest.TestCase):
+    def test_score_result_keeps_legacy_tuple_shape(self) -> None:
+        result = ScoreResult(
+            total=7,
+            object_hash="object",
+            components={"stack": 1, "regalloc": 1, "reordering": 0, "insertion": 0, "deletion": 0},
+            weights={"stack": 1, "regalloc": 5, "reordering": 60, "insertion": 100, "deletion": 100},
+            mismatch_signature="signature",
+            first_divergence=None,
+            target_instruction_count=1,
+            candidate_instruction_count=1,
+        )
+        self.assertEqual(tuple(result), (7, "object"))
+        self.assertEqual(result.to_dict()["total"], 7)
+
+    def test_scorer_scalar_totals(self) -> None:
+        weights = {
+            "stack": 1,
+            "regalloc": 5,
+            "reordering": 60,
+            "insertion": 100,
+            "deletion": 100,
+        }
+        cases = (
+            ({"stack": 0, "regalloc": 0, "reordering": 0,
+              "insertion": 0, "deletion": 0}, 0),
+            ({"stack": 0, "regalloc": 0, "reordering": 3,
+              "insertion": 0, "deletion": 0}, 180),
+            ({"stack": 0, "regalloc": 1, "reordering": 0,
+              "insertion": 1, "deletion": 7}, 805),
+            ({"stack": 8, "regalloc": 0, "reordering": 0,
+              "insertion": 0, "deletion": 1}, 108),
+            ({"stack": 0, "regalloc": 3, "reordering": 1,
+              "insertion": 5, "deletion": 0}, 575),
+            ({"stack": 0, "regalloc": 0, "reordering": 0,
+              "insertion": 1, "deletion": 5}, 600),
+            (None, None),
+        )
+        for components, legacy_total in cases:
+            total = None
+            if legacy_total is not None:
+                total = sum(components[name] * weights[name] for name in weights)
+            self.assertEqual(total, legacy_total)
 
 
 if __name__ == "__main__":

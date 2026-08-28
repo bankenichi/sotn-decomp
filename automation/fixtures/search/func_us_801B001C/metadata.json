@@ -1,0 +1,75 @@
+{
+  "fixture_kind": "historical-body-fixture",
+  "function_id": "func_us_801B001C",
+  "original_permuter_lineage_available": false,
+  "score_evidence": {
+    "combined-score-10.c": {
+      "provenance": "operator-supplied body from nonmatchings/func_us_801B001C/hypothesis-combined-70s.c",
+      "score": 10,
+      "source": "nonmatchings/.adapt-scores/20260822-083537-84535-665662/func_us_801B001C-2/adapt-score.json"
+    },
+    "final-score-0.c": {
+      "provenance": "operator-supplied body from nonmatchings/func_us_801B001C/hypothesis-score-zero.c",
+      "score": 0,
+      "source": "nonmatchings/.adapt-scores/20260822-083612-84576-645039/func_us_801B001C-2/adapt-score.json"
+    }
+  },
+  "source_note": "Bodies are exact extractions from preserved whole-file hypotheses. The original permuter event stream is unavailable, so this fixture does not infer parentage or sibling ordering.",
+  "source_root": "nonmatchings/func_us_801B001C",
+  "sources": {
+    "base.c": {
+      "body_bytes": 6067,
+      "body_sha256": "sha256:8fbf515d85a7dc2e6e60f29aecea16e16e90622c133627492bbfeccc659cad7d",
+      "path": "nonmatchings/func_us_801B001C/hypothesis-a0-params.c",
+      "source_sha256": "sha256:8fcf29bde1699dd3d82d6d24b776d15880c7e8531385e79b5e60ed85f54d274c"
+    },
+    "combined-score-10.c": {
+      "body_bytes": 6551,
+      "body_sha256": "sha256:f7276a7402bc2ac3b39edbaed88e570ef69ddc952b28c805e8bc75aa16593e91",
+      "path": "nonmatchings/func_us_801B001C/hypothesis-combined-70s.c",
+      "source_sha256": "sha256:528cd90cfef9a2d20b2320ebadfbb1fa25284aaa3efdb8a4d92e04adeb81d737"
+    },
+    "final-score-0.c": {
+      "body_bytes": 6580,
+      "body_sha256": "sha256:c26f935207f1d6ea5f34a60e1c4211638f1272ce3572544a5674f58b76842c83",
+      "path": "nonmatchings/func_us_801B001C/hypothesis-score-zero.c",
+      "source_sha256": "sha256:3d725365c52c5ba5c743b3ff3f1337af986f2bd00500c2c1287dafb4b0363758"
+    },
+    "hypothesis-combined-70s.c": {
+      "body_bytes": 6551,
+      "body_sha256": "sha256:f7276a7402bc2ac3b39edbaed88e570ef69ddc952b28c805e8bc75aa16593e91",
+      "path": "nonmatchings/func_us_801B001C/hypothesis-combined-70s.c",
+      "source_sha256": "sha256:528cd90cfef9a2d20b2320ebadfbb1fa25284aaa3efdb8a4d92e04adeb81d737"
+    },
+    "hypothesis-score-zero.c": {
+      "body_bytes": 6580,
+      "body_sha256": "sha256:c26f935207f1d6ea5f34a60e1c4211638f1272ce3572544a5674f58b76842c83",
+      "path": "nonmatchings/func_us_801B001C/hypothesis-score-zero.c",
+      "source_sha256": "sha256:3d725365c52c5ba5c743b3ff3f1337af986f2bd00500c2c1287dafb4b0363758"
+    },
+    "sibling-case-order.c": {
+      "body_bytes": 6767,
+      "body_sha256": "sha256:14b36faa64bd8f937ed6d8768c97828b9797fa739c3309bf4fe628d8a3ce6597",
+      "path": "nonmatchings/func_us_801B001C/hypothesis-case-param-first.c",
+      "source_sha256": "sha256:416c166a910cc43938ac6381c5972b89472bb68842080d8c7b0fe97a7ca27028"
+    },
+    "sibling-declaration-order.c": {
+      "body_bytes": 6048,
+      "body_sha256": "sha256:915381926ddbe7c925401f83cae93a47c40499afe030371bbef1621bfd65f572",
+      "path": "nonmatchings/func_us_801B001C/hypothesis-decl-interleave.c",
+      "source_sha256": "sha256:32158e0eb77eb8040c86bc7b4ffda0051a366339f22ceb8fdc7a736045f9787c"
+    },
+    "sibling-parameter-order.c": {
+      "body_bytes": 6057,
+      "body_sha256": "sha256:930f7faa9257caca1b97adfcc1a73325c1c2b5e7f06ce24b36ce8bb72fdb09f4",
+      "path": "nonmatchings/func_us_801B001C/hypothesis-register-params.c",
+      "source_sha256": "sha256:2ec3dcf006a9480684e9af16d9148bc2ebb34a7f54d8483ba544c1ce0d53aeed"
+    },
+    "sibling-register-layout.c": {
+      "body_bytes": 6459,
+      "body_sha256": "sha256:96c7a42dee1eb789a551175455022b2da622ec2f675728db671e2a938eac8980",
+      "path": "nonmatchings/func_us_801B001C/hypothesis-fixed-register-order.c",
+      "source_sha256": "sha256:51b73818c06ac99ff13f17feeb17faf1a0ce883cbfc57d55bc98224128480cc2"
+    }
+  }
+}

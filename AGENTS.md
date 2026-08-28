@@ -75,6 +75,21 @@ These are absolute. Each exists because breaking it cost real work.
     failure, record the violated rule here or beside the affected tool and add
     an automated refusal or regression test where practical. Do not answer with
     agreement or reassurance in place of a durable correction.
+18. **Do not interrupt active subagents for progress.** A missed checkpoint or
+    absence of file writes during reasoning is not evidence of a stall. Interrupt
+    only when concrete evidence shows repeated looping, inactivity beyond the
+    expected duration of the active operation, scope violation, or unsafe action.
+    Prefer non-interrupting messages and waiting for completion.
+19. **Report collaboration state from evidence only.** Collaboration mailbox
+    delivery state is not proof that a subagent did or did not reply or reach a
+    response boundary. Never infer or report UI-visible worker state from an
+    absent mailbox event. State only what the collaboration tool actually
+    returned. If the owner reports a visible reply that the root agent cannot
+    see, retract unsupported claims and request redelivery.
+20. **The lead owns planning and orchestration.** Do not delegate document
+    updates, planning, orchestration, coordination, or lead review to subagents.
+    Subagents are reserved for substantive implementation work that the owner
+    explicitly authorizes for delegation.
 
 ## 3. Where everything is
 

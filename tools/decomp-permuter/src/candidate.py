@@ -1,7 +1,7 @@
 import copy
 from dataclasses import dataclass, field
 import functools
-from typing import Mapping, Optional, Tuple
+from typing import Any, Mapping, Optional, Tuple
 
 from pycparser import c_ast as ca
 
@@ -24,6 +24,9 @@ class CandidateResult:
     hash: Optional[str]
     source: Optional[str]
     profiler: Optional[Profiler] = None
+    # Optional fields keep the legacy worker message shape when disabled.
+    score_vector: Optional[Any] = None
+    mutation: Optional[Any] = None
 
 
 @dataclass
@@ -41,6 +44,7 @@ class Candidate:
     score_value: Optional[int] = field(init=False, default=None)
     score_hash: Optional[str] = field(init=False, default=None)
     _cache_source: Optional[str] = field(init=False, default=None)
+    last_mutation: Optional[Any] = field(init=False, default=None)
 
     @staticmethod
     @functools.lru_cache(maxsize=16)
@@ -77,9 +81,12 @@ class Candidate:
             randomizer=Randomizer(randomization_weights, rng_seed),
         )
 
-    def randomize_ast(self) -> None:
-        self.randomizer.randomize(self.ast, self.fn_name)
+    def randomize_ast(self, *, seed: Optional[int] = None) -> Any:
+        self.last_mutation = self.randomizer.randomize(
+            self.ast, self.fn_name, seed=seed
+        )
         self._cache_source = None
+        return self.last_mutation
 
     def get_source(self) -> str:
         if self._cache_source is None:
@@ -94,10 +101,19 @@ class Candidate:
         self.score_value = None
         self.score_hash = None
         try:
-            self.score_value, self.score_hash = scorer.score(o_file)
+            score_result = scorer.score(o_file)
+            if hasattr(score_result, "legacy_score"):
+                self.score_value = score_result.legacy_score
+                self.score_hash = score_result.legacy_hash or None
+            else:
+                self.score_value, self.score_hash = score_result
         finally:
             if o_file:
                 try_remove(o_file)
         return CandidateResult(
-            score=self.score_value, hash=self.score_hash, source=self.get_source()
+            score=self.score_value,
+            hash=self.score_hash,
+            source=self.get_source(),
+            score_vector=score_result if "score_result" in locals() else None,
+            mutation=self.last_mutation,
         )

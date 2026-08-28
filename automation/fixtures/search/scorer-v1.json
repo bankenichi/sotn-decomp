@@ -1,0 +1,507 @@
+{
+  "cases": [
+    {
+      "kind": "exact",
+      "name": "exact",
+      "observation": {
+        "case_id": "fixture-exact",
+        "disassembly_hash": "sha256:234c4c526f2c51caffaaa32077bb75fa88038ee4a6de0c82256506da32970f9f",
+        "object_hash": "sha256:9fb0f50f1a6f53abcc446143ddc4cb442762047ca6a5c0c8489fea37aee0be71",
+        "pipeline_identity": "sha256:41d697608b096b6ea75eb7febc002c9be0508559af7fc1616be02dda4382eb0f",
+        "score": {
+          "candidate_instruction_count": 2,
+          "compile_status": "success",
+          "compiler_identity": "sha256:41d697608b096b6ea75eb7febc002c9be0508559af7fc1616be02dda4382eb0f",
+          "components": {
+            "deletion": 0,
+            "insertion": 0,
+            "regalloc": 0,
+            "reordering": 0,
+            "stack": 0
+          },
+          "diagnostic_artifact": null,
+          "elapsed_ms": 0,
+          "first_divergence": null,
+          "mismatch_signature": "sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "object_hash": "sha256:234c4c526f2c51caffaaa32077bb75fa88038ee4a6de0c82256506da32970f9f",
+          "scorer_algorithm": "difflib",
+          "target_instruction_count": 2,
+          "total": 0,
+          "weights": {
+            "deletion": 100,
+            "insertion": 100,
+            "regalloc": 5,
+            "reordering": 60,
+            "stack": 1
+          }
+        },
+        "source_hash": "sha256:b7651fd1d38ee8aeaa714efa6deabf411746fe6d2f8e69a67eccb91ed10c669e"
+      },
+      "source": "int f(int x) { return x + 1; }\n",
+      "target": "int f(int x) { return x + 1; }\n",
+      "legacy_total": 0,
+      "components": {
+        "deletion": 0,
+        "insertion": 0,
+        "regalloc": 0,
+        "reordering": 0,
+        "stack": 0
+      }
+    },
+    {
+      "kind": "reordering",
+      "name": "reorder",
+      "observation": {
+        "case_id": "fixture-reorder",
+        "disassembly_hash": "sha256:6a258ce42fdc5bc5d355a73903c9dfba91b230075b68d10887147bfd395991dd",
+        "object_hash": "sha256:5acb947d234c5b0ba2e0a22dc35b7a6d26dd2a387642beaa4dc9df5bef698452",
+        "pipeline_identity": "sha256:41d697608b096b6ea75eb7febc002c9be0508559af7fc1616be02dda4382eb0f",
+        "score": {
+          "candidate_instruction_count": 8,
+          "compile_status": "success",
+          "compiler_identity": "sha256:41d697608b096b6ea75eb7febc002c9be0508559af7fc1616be02dda4382eb0f",
+          "components": {
+            "deletion": 0,
+            "insertion": 0,
+            "regalloc": 0,
+            "reordering": 3,
+            "stack": 0
+          },
+          "diagnostic_artifact": null,
+          "elapsed_ms": 0,
+          "first_divergence": {
+            "candidate_index": 1,
+            "candidate_instruction": null,
+            "target_index": 1,
+            "target_instruction": "addiu\tv1,v0,2"
+          },
+          "mismatch_signature": "sha256:ac90010e9ab1109d013c86f511643483c62969d1e9a99dad172e83de465c6439",
+          "object_hash": "sha256:6a258ce42fdc5bc5d355a73903c9dfba91b230075b68d10887147bfd395991dd",
+          "scorer_algorithm": "difflib",
+          "target_instruction_count": 8,
+          "total": 180,
+          "weights": {
+            "deletion": 100,
+            "insertion": 100,
+            "regalloc": 5,
+            "reordering": 60,
+            "stack": 1
+          }
+        },
+        "source_hash": "sha256:7beed11f73a5011274f3ca2a8e5a832e806f7e9bb9b1cbe1de590edb94fda7c6"
+      },
+      "source": "volatile int g_a; volatile int g_b; int f(int x) { g_a = x << 1; g_b = x + 2; return x; }\n",
+      "target": "volatile int g_a; volatile int g_b; int f(int x) { g_b = x + 2; g_a = x << 1; return x; }\n",
+      "legacy_total": 180,
+      "components": {
+        "deletion": 0,
+        "insertion": 0,
+        "regalloc": 0,
+        "reordering": 3,
+        "stack": 0
+      }
+    },
+    {
+      "kind": "register-allocation",
+      "name": "register",
+      "observation": {
+        "case_id": "fixture-register",
+        "disassembly_hash": "sha256:a393f2eae14fae5b041b1c640a6f92f354ce19a72a520768c7658a532c990a54",
+        "object_hash": "sha256:0a5c85b2acb1fd6b50616c16e1603463f28f3aaf01e93d846dbf0d2a283496af",
+        "pipeline_identity": "sha256:41d697608b096b6ea75eb7febc002c9be0508559af7fc1616be02dda4382eb0f",
+        "score": {
+          "candidate_instruction_count": 3,
+          "compile_status": "success",
+          "compiler_identity": "sha256:41d697608b096b6ea75eb7febc002c9be0508559af7fc1616be02dda4382eb0f",
+          "components": {
+            "deletion": 7,
+            "insertion": 1,
+            "regalloc": 1,
+            "reordering": 0,
+            "stack": 0
+          },
+          "diagnostic_artifact": null,
+          "elapsed_ms": 0,
+          "first_divergence": {
+            "candidate_index": 0,
+            "candidate_instruction": null,
+            "target_index": 0,
+            "target_instruction": "addiu\tsp,sp,-0x8"
+          },
+          "mismatch_signature": "sha256:321a953337aa2bcfb7b3a6057ac046806a256b506a1dea361c5c2ad1ef8e2233",
+          "object_hash": "sha256:a393f2eae14fae5b041b1c640a6f92f354ce19a72a520768c7658a532c990a54",
+          "scorer_algorithm": "difflib",
+          "target_instruction_count": 9,
+          "total": 805,
+          "weights": {
+            "deletion": 100,
+            "insertion": 100,
+            "regalloc": 5,
+            "reordering": 60,
+            "stack": 1
+          }
+        },
+        "source_hash": "sha256:5f0e1ee95d6fc717a7c83879bc1fb71705faead581b363a93ca239cb9abdfbc1"
+      },
+      "source": "int f(int x, int y) { int a = x + 1; int b = y + 2; return a + b; }\n",
+      "target": "int f(int x, int y) { register int a asm(\"$16\") = x + 1; register int b asm(\"$17\") = y + 2; return a + b; }\n",
+      "legacy_total": 805,
+      "components": {
+        "deletion": 7,
+        "insertion": 1,
+        "regalloc": 1,
+        "reordering": 0,
+        "stack": 0
+      }
+    },
+    {
+      "kind": "stack",
+      "name": "stack",
+      "observation": {
+        "case_id": "fixture-stack",
+        "disassembly_hash": "sha256:91ade1ee75ac213317c2c84ac33a144fdba1dca9732fa2bb2023971d21dc452b",
+        "object_hash": "sha256:c34afda0ddbd258c0192c12c1ec77bbc0b295c37c1b4c8e249b2eba7696e29c5",
+        "pipeline_identity": "sha256:41d697608b096b6ea75eb7febc002c9be0508559af7fc1616be02dda4382eb0f",
+        "score": {
+          "candidate_instruction_count": 5,
+          "compile_status": "success",
+          "compiler_identity": "sha256:41d697608b096b6ea75eb7febc002c9be0508559af7fc1616be02dda4382eb0f",
+          "components": {
+            "deletion": 1,
+            "insertion": 0,
+            "regalloc": 0,
+            "reordering": 0,
+            "stack": 8
+          },
+          "diagnostic_artifact": null,
+          "elapsed_ms": 0,
+          "first_divergence": {
+            "candidate_index": 1,
+            "candidate_instruction": null,
+            "target_index": 1,
+            "target_instruction": "sw\tzero,0(sp)"
+          },
+          "mismatch_signature": "sha256:36b16054a5d9d544557398f0cdb84e846f06da2ce80468952eae6a9da52b97b5",
+          "object_hash": "sha256:91ade1ee75ac213317c2c84ac33a144fdba1dca9732fa2bb2023971d21dc452b",
+          "scorer_algorithm": "difflib",
+          "target_instruction_count": 6,
+          "total": 108,
+          "weights": {
+            "deletion": 100,
+            "insertion": 100,
+            "regalloc": 5,
+            "reordering": 60,
+            "stack": 1
+          }
+        },
+        "source_hash": "sha256:d6b7e20376a8098686d12cc92fa580dbb2786e8eec6d91cec66eac0a9f48af94"
+      },
+      "source": "int f(int x) { volatile int local = x; return local; }\n",
+      "target": "int f(int x) { volatile int pad = 0; volatile int local = x; return local; }\n",
+      "legacy_total": 108,
+      "components": {
+        "deletion": 1,
+        "insertion": 0,
+        "regalloc": 0,
+        "reordering": 0,
+        "stack": 8
+      }
+    },
+    {
+      "kind": "insertion",
+      "name": "insertion",
+      "observation": {
+        "case_id": "fixture-insertion",
+        "disassembly_hash": "sha256:7a7d20fec519209463c4a0e389cb8e537745cb7fe36efabf3aa1dcb7eb8f3961",
+        "object_hash": "sha256:e2a04e72354e209e2d68a0a528e5058c4c95a901daa689ceefbb210ae03b690b",
+        "pipeline_identity": "sha256:41d697608b096b6ea75eb7febc002c9be0508559af7fc1616be02dda4382eb0f",
+        "score": {
+          "candidate_instruction_count": 7,
+          "compile_status": "success",
+          "compiler_identity": "sha256:41d697608b096b6ea75eb7febc002c9be0508559af7fc1616be02dda4382eb0f",
+          "components": {
+            "deletion": 0,
+            "insertion": 5,
+            "regalloc": 3,
+            "reordering": 1,
+            "stack": 0
+          },
+          "diagnostic_artifact": null,
+          "elapsed_ms": 0,
+          "first_divergence": {
+            "candidate_index": 0,
+            "candidate_instruction": null,
+            "target_index": 0,
+            "target_instruction": "jr\tra"
+          },
+          "mismatch_signature": "sha256:8b7172e50473303a50c01392e7eabf5e2cd0e755aece0884cdfbec602e74147d",
+          "object_hash": "sha256:7a7d20fec519209463c4a0e389cb8e537745cb7fe36efabf3aa1dcb7eb8f3961",
+          "scorer_algorithm": "difflib",
+          "target_instruction_count": 2,
+          "total": 575,
+          "weights": {
+            "deletion": 100,
+            "insertion": 100,
+            "regalloc": 5,
+            "reordering": 60,
+            "stack": 1
+          }
+        },
+        "source_hash": "sha256:ef2f7dae3f999acdf70fb307df9d96217f6554c6d12870b53826d2755eaee16b"
+      },
+      "source": "int f(int x) { volatile int local = x; return local + 1; }\n",
+      "target": "int f(int x) { return x + 1; }\n",
+      "legacy_total": 575,
+      "components": {
+        "deletion": 0,
+        "insertion": 5,
+        "regalloc": 3,
+        "reordering": 1,
+        "stack": 0
+      }
+    },
+    {
+      "kind": "deletion",
+      "name": "deletion",
+      "observation": {
+        "case_id": "fixture-deletion",
+        "disassembly_hash": "sha256:234c4c526f2c51caffaaa32077bb75fa88038ee4a6de0c82256506da32970f9f",
+        "object_hash": "sha256:9fb0f50f1a6f53abcc446143ddc4cb442762047ca6a5c0c8489fea37aee0be71",
+        "pipeline_identity": "sha256:41d697608b096b6ea75eb7febc002c9be0508559af7fc1616be02dda4382eb0f",
+        "score": {
+          "candidate_instruction_count": 2,
+          "compile_status": "success",
+          "compiler_identity": "sha256:41d697608b096b6ea75eb7febc002c9be0508559af7fc1616be02dda4382eb0f",
+          "components": {
+            "deletion": 5,
+            "insertion": 1,
+            "regalloc": 0,
+            "reordering": 0,
+            "stack": 0
+          },
+          "diagnostic_artifact": null,
+          "elapsed_ms": 0,
+          "first_divergence": {
+            "candidate_index": 0,
+            "candidate_instruction": null,
+            "target_index": 0,
+            "target_instruction": "addiu\tsp,sp,-0x8"
+          },
+          "mismatch_signature": "sha256:07641bfbc4745171bdafe04d4d41b79c16ad4857ac57ab239f9b772843bfde29",
+          "object_hash": "sha256:234c4c526f2c51caffaaa32077bb75fa88038ee4a6de0c82256506da32970f9f",
+          "scorer_algorithm": "difflib",
+          "target_instruction_count": 6,
+          "total": 600,
+          "weights": {
+            "deletion": 100,
+            "insertion": 100,
+            "regalloc": 5,
+            "reordering": 60,
+            "stack": 1
+          }
+        },
+        "source_hash": "sha256:b7651fd1d38ee8aeaa714efa6deabf411746fe6d2f8e69a67eccb91ed10c669e"
+      },
+      "source": "int f(int x) { return x + 1; }\n",
+      "target": "int f(int x) { volatile int first = x + 1; return first; }\n",
+      "legacy_total": 600,
+      "components": {
+        "deletion": 5,
+        "insertion": 1,
+        "regalloc": 0,
+        "reordering": 0,
+        "stack": 0
+      }
+    },
+    {
+      "kind": "compile-failure",
+      "name": "compile-failure",
+      "observation": {
+        "case_id": "fixture-compile-failure",
+        "disassembly_hash": null,
+        "object_hash": null,
+        "pipeline_identity": "sha256:41d697608b096b6ea75eb7febc002c9be0508559af7fc1616be02dda4382eb0f",
+        "score": {
+          "candidate_instruction_count": null,
+          "compile_status": "failed",
+          "compiler_identity": "sha256:41d697608b096b6ea75eb7febc002c9be0508559af7fc1616be02dda4382eb0f",
+          "components": {
+            "deletion": 0,
+            "insertion": 0,
+            "regalloc": 0,
+            "reordering": 0,
+            "stack": 0
+          },
+          "diagnostic_artifact": null,
+          "elapsed_ms": 0,
+          "first_divergence": null,
+          "mismatch_signature": null,
+          "object_hash": null,
+          "scorer_algorithm": "difflib",
+          "target_instruction_count": null,
+          "total": null,
+          "weights": {
+            "deletion": 100,
+            "insertion": 100,
+            "regalloc": 5,
+            "reordering": 60,
+            "stack": 1
+          }
+        },
+        "source_hash": "sha256:f86ab51bd9412180e4af571817d389a929b02e3bd97b371bb606209b9c19ff38"
+      },
+      "source": "int f(int x) { return x + ; }\n",
+      "target": null,
+      "legacy_total": null,
+      "components": {
+        "deletion": 0,
+        "insertion": 0,
+        "regalloc": 0,
+        "reordering": 0,
+        "stack": 0
+      }
+    }
+  ],
+  "fixture_version": "scorer-v1",
+  "pipeline_identity": {
+    "arguments": [
+      "stage0",
+      "mipsel-linux-gnu-cpp",
+      "-Iinclude",
+      "-Iinclude/psxsdk",
+      "-undef",
+      "-Wall",
+      "-fno-builtin",
+      "-Dmips",
+      "-D__GNUC__=2",
+      "-D__OPTIMIZE__",
+      "-D__mips__",
+      "-D__mips",
+      "-Dpsx",
+      "-D__psx__",
+      "-D__psx",
+      "-D_PSYQ",
+      "-D__EXTENSIONS__",
+      "-D_MIPSEL",
+      "-D_LANGUAGE_C",
+      "-DLANGUAGE_C",
+      "-DNO_LOGS",
+      "-DHACKS",
+      "-DUSE_INCLUDE_ASM",
+      "-D_internal_version_us",
+      "-DSOTN_STR",
+      "-lang-c",
+      "|",
+      "stage1",
+      "tools/sotn_str/target/release/sotn_str",
+      "process",
+      "|",
+      "stage2",
+      "iconv",
+      "--from-code=UTF-8",
+      "--to-code=Shift-JIS",
+      "|",
+      "stage3",
+      "bin/cc1-psx-26",
+      "-G0",
+      "-w",
+      "-O2",
+      "-funsigned-char",
+      "-fpeephole",
+      "-ffunction-cse",
+      "-fpcc-struct-return",
+      "-fcommon",
+      "-fverbose-asm",
+      "-msoft-float",
+      "-g",
+      "-quiet",
+      "-mcpu=3000",
+      "-fgnu-linker",
+      "-mgas",
+      "-gcoff",
+      "|",
+      "stage4",
+      "python3",
+      "tools/maspsx/maspsx.py",
+      "--expand-div",
+      "--aspsx-version=2.34",
+      "|",
+      "stage5",
+      "mipsel-linux-gnu-as",
+      "-Iinclude",
+      "-march=r3000",
+      "-mtune=r3000",
+      "-no-pad-sections",
+      "-O1",
+      "-G0"
+    ],
+    "environment_defines": [
+      "-Dmips",
+      "-D__GNUC__=2",
+      "-D__OPTIMIZE__",
+      "-D__mips__",
+      "-D__mips",
+      "-Dpsx",
+      "-D__psx__",
+      "-D__psx",
+      "-D_PSYQ",
+      "-D__EXTENSIONS__",
+      "-D_MIPSEL",
+      "-D_LANGUAGE_C",
+      "-DLANGUAGE_C",
+      "-DNO_LOGS",
+      "-DHACKS",
+      "-DUSE_INCLUDE_ASM",
+      "-D_internal_version_us",
+      "-DSOTN_STR"
+    ],
+    "executable": "bin/cc1-psx-26",
+    "executable_hash": "sha256:c248a5272dc1a4537b177c71e3d785f48204718e36b076d5d7940b9469a0beb8",
+    "tool_hashes": [
+      {
+        "hash": "sha256:4b82f444e74ba6084c406a179b7fde9f60834ec128ccacdb80377d5304131e13",
+        "name": "mipsel-linux-gnu-cpp"
+      },
+      {
+        "hash": "sha256:e73c2d4fa2c23a82b8c9f05a7ef7ff7fcc9a79e23f07a22dfd42add8aae7c141",
+        "name": "tools/sotn_str/target/release/sotn_str"
+      },
+      {
+        "hash": "sha256:461cecf1acc25c3d7073894dc49e41225ff6a4d96437a5f65b0c60eaa58b056f",
+        "name": "iconv"
+      },
+      {
+        "hash": "sha256:c248a5272dc1a4537b177c71e3d785f48204718e36b076d5d7940b9469a0beb8",
+        "name": "bin/cc1-psx-26"
+      },
+      {
+        "hash": "sha256:1643dacd9feaedc58f3cc581e4d22577dfe25c09b10282936186ccf0f2e61118",
+        "name": "python3"
+      },
+      {
+        "hash": "sha256:38c090123ad707fb28c40013121c71036a763ec3b787a5c6ab6b55752d1166ae",
+        "name": "tools/maspsx/maspsx.py"
+      },
+      {
+        "hash": "sha256:94d90d830672f7c176c02c20501a1a295c00c964326c1e41e72c19dea7d0744e",
+        "name": "mipsel-linux-gnu-as"
+      },
+      {
+        "hash": "sha256:4aea975104a6b837d1583185bc98199b9da17a83d41b452c95cea2a78400dab0",
+        "name": "mipsel-linux-gnu-objdump"
+      },
+      {
+        "hash": "sha256:7f3415ac559bc6f01c0200fb11ed8cabbedce989533490ba4fbf55db859f92fc",
+        "name": "tools/sotn_permuter/permuter_settings.us.toml"
+      }
+    ]
+  },
+  "pipeline_identity_hash": "sha256:41d697608b096b6ea75eb7febc002c9be0508559af7fc1616be02dda4382eb0f",
+  "weights": {
+    "deletion": 100,
+    "insertion": 100,
+    "regalloc": 5,
+    "reordering": 60,
+    "stack": 1
+  }
+}
