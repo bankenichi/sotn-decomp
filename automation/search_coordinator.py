@@ -34,6 +34,7 @@ from .search_types import (
     OracleRequest,
     ParentRun,
     RunManifest,
+    RunResume,
     RunStop,
     ScoreVector,
     SearchTask,
@@ -165,6 +166,10 @@ DURABLE_FAULT_POINTS: Tuple[str, ...] = (
     "after_run_stop_snapshot",
     "before_run_stop_event",
     "after_run_stop_event",
+    "before_run_resume",
+    "before_run_resume_event",
+    "after_run_resume_event",
+    "after_run_resume",
     # Existing low-level aliases remain named so the same matrix can cover
     # failures inside the archive, ledger and epoch wrappers.
     "before_artifact_write",
@@ -401,6 +406,7 @@ def validate_ledger_prefix(
     oracle_results: Dict[str, OracleReceipt] = {}
     receipts: Dict[Tuple[str, str], ExhaustionReceipt] = {}
     stopped: Optional[RunStop] = None
+    stop_event: Optional[LedgerEvent] = None
 
     def require_active_task(task_id: str, label: str) -> SearchTask:
         task = tasks.get(task_id)
@@ -511,7 +517,7 @@ def validate_ledger_prefix(
             if event.event_id != f"{manifest.run_id}:stopped:{event.sequence}":
                 raise CoordinatorError("run stop event id differs from its sequence")
             if stopped is not None:
-                raise CoordinatorError("run has multiple stop records")
+                raise CoordinatorError("run has an active stop already")
             pending = set(candidate_stop.pending_task_ids)
             known = set(tasks)
             incomplete = known.difference(terminal)
@@ -521,6 +527,25 @@ def validate_ledger_prefix(
                 if candidate_stop.last_committed_task_id not in terminal:
                     raise CoordinatorError("run stop names an uncompleted last task")
             stopped = candidate_stop
+            stop_event = event
+            continue
+
+        if event.event_type == "run_resumed":
+            resume = event.payload
+            assert isinstance(resume, RunResume)
+            if stopped is None or stop_event is None:
+                raise CoordinatorError("run resume has no active run stop")
+            if not stopped.resumable:
+                raise CoordinatorError("run resume follows a non-resumable stop")
+            if event.event_id != f"{manifest.run_id}:resumed:{stop_event.sequence}":
+                raise CoordinatorError("run resume event id differs from its stop boundary")
+            if (
+                resume.stop_event_id != stop_event.event_id
+                or resume.stop_event_hash != stop_event.event_hash
+            ):
+                raise CoordinatorError("run resume does not bind the active stop event")
+            stopped = None
+            stop_event = None
             continue
 
         if event.event_type == "mutation_materialized":
@@ -1031,6 +1056,10 @@ class SearchCoordinator:
                 if self._stopped is not None and self._stopped != stop:
                     raise CoordinatorError("run has multiple different stop records")
                 self._stopped = stop
+            elif event.event_type == "run_resumed":
+                resume = event.payload
+                assert isinstance(resume, RunResume)
+                self._stopped = None
             elif event.event_type == "exhaustion_recorded":
                 receipt = event.payload
                 assert isinstance(receipt, ExhaustionReceipt)
@@ -1899,7 +1928,11 @@ class SearchCoordinator:
         )
         return tuple(events)
 
-    def commit_epoch(self, results: Optional[Iterable[TaskResult]] = None) -> Tuple[LedgerEvent, ...]:
+    def commit_epoch(
+        self,
+        results: Optional[Iterable[TaskResult]] = None,
+    ) -> Tuple[LedgerEvent, ...]:
+        """Commit up to one manifest-sized epoch of ready task results."""
         if self._stopped is not None and not self._stopped.resumable:
             raise CoordinatorError("epoch commit follows a non-resumable run stop")
         if results is not None:
@@ -2153,10 +2186,39 @@ class SearchCoordinator:
         self._fault("after_checkpoint_event")
         return event
 
-    def stop(self, *, reason: str = "graceful_stop", resumable: Optional[bool] = None) -> LedgerEvent:
+    def _active_stop_event(self) -> Optional[LedgerEvent]:
+        """Derive the active stop boundary from the durable ledger prefix."""
+        active: Optional[LedgerEvent] = None
+        for event in self.events:
+            if event.event_type == "run_stopped":
+                active = event
+            elif event.event_type == "run_resumed":
+                active = None
+        return active
+
+    def _refresh_stop_state(self) -> Optional[LedgerEvent]:
+        """Refresh process indexes from the ledger after a stop transition."""
+        active = self._active_stop_event()
+        self._stopped = (
+            active.payload if active is not None and isinstance(active.payload, RunStop) else None
+        )
+        return active
+
+    @property
+    def stopped(self) -> Optional[RunStop]:
+        """Return the active stop derived from the current ledger prefix."""
+        self._refresh_stop_state()
+        return self._stopped
+
+    def stop(
+        self,
+        *,
+        reason: str = "graceful_stop",
+        resumable: Optional[bool] = None,
+    ) -> LedgerEvent:
         if resumable is None:
             resumable = reason == "graceful_stop"
-        existing_stop = next((event for event in reversed(self.events) if event.event_type == "run_stopped"), None)
+        existing_stop = self._refresh_stop_state()
         if existing_stop is not None:
             return existing_stop
         self._fault("before_run_stop")
@@ -2179,10 +2241,61 @@ class SearchCoordinator:
         event = self.ledger.append_event("run_stopped", payload, event_id=f"{self.manifest.run_id}:stopped:{len(self.events)}")
         # The stop is authoritative as soon as its ledger event is durable,
         # including when a later fault interrupts the caller.
-        self._stopped = payload
+        self._refresh_stop_state()
         self._fault("after_run_stop_event")
         self._fault("after_graceful_stop")
         self._fault("after_run_stop")
+        return event
+
+    def resume(self, *, request_id: Optional[str] = None) -> LedgerEvent:
+        """Durably clear the active resumable stop boundary.
+
+        The stop event and its hash are carried in the resume payload, so a
+        replay can prove exactly which boundary was reopened.  A retry after a
+        durable append returns the existing transition without appending a
+        second event.
+        """
+        events = self.events
+        active_stop: Optional[LedgerEvent] = None
+        for event in events:
+            if event.event_type == "run_stopped":
+                active_stop = event
+            elif event.event_type == "run_resumed":
+                active_stop = None
+
+        if active_stop is None:
+            if events and events[-1].event_type == "run_resumed":
+                existing = events[-1]
+                payload = existing.payload
+                assert isinstance(payload, RunResume)
+                if request_id is not None and payload.request_id != request_id:
+                    raise CoordinatorError("resume request identity differs from durable transition")
+                self._refresh_stop_state()
+                return existing
+            raise CoordinatorError("run has no active stop to resume")
+
+        stop = active_stop.payload
+        assert isinstance(stop, RunStop)
+        if not stop.resumable:
+            raise CoordinatorError("run stop is not resumable")
+        self._fault("before_run_resume")
+        payload = RunResume(
+            stop_event_id=active_stop.event_id,
+            stop_event_hash=active_stop.event_hash,
+            request_id=request_id,
+        )
+        event_id = f"{self.manifest.run_id}:resumed:{active_stop.sequence}"
+        self._fault("before_run_resume_event")
+        event = self._append_event_once(
+            "run_resumed",
+            payload,
+            event_id=event_id,
+        )
+        # Refresh from the durable event rather than clearing the flag as an
+        # independent process-local transition.
+        self._refresh_stop_state()
+        self._fault("after_run_resume_event")
+        self._fault("after_run_resume")
         return event
 
     def state_dict(self) -> Dict[str, Any]:

@@ -595,6 +595,10 @@ def job_start(action: str, version: str = "us", script: str = "",
                 "worker_once needs only=<queue id>, e.g. "
                 "us:ST/RDAI:func_us_801C2418 (see queue_list)")
         kw = {"only": only, "dry_run": dry_run}
+    elif action in cc.SEARCH_JOB_ACTIONS:
+        raise ValueError(
+            "instrumented search jobs require the dedicated "
+            "search_start_instrumented or search_resume_instrumented tool")
     elif action == "git_push":
         # Large evidence commits can spend longer than the MCP transport limit
         # packing and uploading. The background job keeps that process owned
@@ -714,6 +718,62 @@ def run_analysis(script: str, args: str = "", timeout: int = 1800) -> dict:
     src/, and configured providers when the selected script and flags do so.
     New callers should use run_automation."""
     return cc.run("run_analysis", timeout=timeout, script=script, args=args)
+
+
+@mcp.tool()
+def search_plan(name: str, record_ids: list[str], lanes: list[str]) -> dict:
+    """Plan one explicit named subset. Read-only.
+
+    ``record_ids`` and ``lanes`` are required typed lists. The connector
+    reuses search_cli.plan_selection through its fixed argv and never queries
+    a live queue or accepts a caller-controlled path.
+    """
+    result = cc.run(
+        "search_plan",
+        name=name,
+        record_ids=record_ids,
+        lanes=lanes,
+    )
+    result["name"] = name
+    return result
+
+
+@mcp.tool()
+def search_start_instrumented(run_id: str) -> dict:
+    """Start one canonical instrumented search run as a background job.
+
+    Mutating. The run id is resolved only below the canonical nonmatchings
+    search-runs tree; the returned job id can be polled with job_status.
+    """
+    return cc.start_job("search_start_instrumented", run_id=run_id)
+
+
+@mcp.tool()
+def search_resume_instrumented(run_id: str) -> dict:
+    """Resume one canonical stopped instrumented run as a background job.
+
+    Mutating. The supervisor owns the durable resume transition and the same
+    canonical manifest and lease are used as for start.
+    """
+    return cc.start_job("search_resume_instrumented", run_id=run_id)
+
+
+@mcp.tool()
+def search_status(run_id: str, timeout: int = 300) -> dict:
+    """Read status for one exact canonical instrumented run id. Read-only."""
+    return cc.run("search_status", timeout=timeout, run_id=run_id)
+
+
+@mcp.tool()
+def search_stop(run_id: str, timeout: int = 300) -> dict:
+    """Request an atomic stop for one exact canonical run id. Mutating."""
+    return cc.run("search_stop", timeout=timeout, run_id=run_id)
+
+
+@mcp.tool()
+def search_verify_ledger(run_id: str, timeout: int = 300) -> dict:
+    """Validate one exact canonical run manifest and ledger. Read-only."""
+    return cc.run("search_verify_ledger", timeout=timeout, run_id=run_id)
 
 
 @mcp.tool()

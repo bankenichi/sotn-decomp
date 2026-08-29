@@ -29,6 +29,7 @@ from automation.search_types import (
     TaskTerminal,
     MutationEvent,
     PatchHunk,
+    RunResume,
     ScoreDeltas,
     canonical_bytes,
     canonical_subset_identity,
@@ -523,6 +524,89 @@ class TestSearchCoordinator(unittest.TestCase):
                     SearchCoordinator(closed_directory, manifest())
                 with self.assertRaises(RecoveryError):
                     recover_run(closed_directory)
+
+    def test_resume_is_ledger_bound_idempotent_and_reopens_future_boundaries(self):
+        request_id = hash_bytes(b"resume-request")
+        with tempfile.TemporaryDirectory() as directory:
+            coordinator = SearchCoordinator(directory, manifest())
+            pending = coordinator.create_task(
+                recipient_id="record-1",
+                lane="upstream_current",
+                operation="pending-before-resume",
+                budget_ordinal=0,
+            )
+            coordinator.schedule_task(pending)
+            stopped = coordinator.stop(reason="graceful_stop", resumable=True)
+            self.assertEqual(stopped.payload.pending_task_ids, (pending.task_id,))
+
+            resumed = coordinator.resume(request_id=request_id)
+            retry = coordinator.resume(request_id=request_id)
+            self.assertEqual(retry, resumed)
+            self.assertIsNone(coordinator.stopped)
+            self.assertEqual(
+                sum(event.event_type == "run_stopped" for event in coordinator.events),
+                1,
+            )
+            self.assertEqual(
+                sum(event.event_type == "run_resumed" for event in coordinator.events),
+                1,
+            )
+
+            reopened = SearchCoordinator(directory, manifest())
+            self.assertIsNone(reopened.stopped)
+            future = reopened.create_task(
+                recipient_id="record-1",
+                lane="upstream_current",
+                operation="future-after-resume",
+                budget_ordinal=1,
+            )
+            reopened.schedule_task(future)
+            reopened.commit_epoch(
+                [TaskResult(pending.task_id), TaskResult(future.task_id)]
+            )
+            self.assertEqual(reopened.pending_task_ids(), ())
+
+            with self.assertRaises(CoordinatorError):
+                reopened.resume(request_id=request_id)
+
+    def test_resume_prefix_rejects_malformed_order_and_duplicate_transition(self):
+        from automation.search_recovery import RecoveryError, recover_run
+
+        with tempfile.TemporaryDirectory() as directory:
+            coordinator = SearchCoordinator(directory, manifest())
+            malformed = RunResume(
+                "run-schema:stopped:0",
+                hash_bytes(b"missing-stop"),
+                None,
+            )
+            coordinator.ledger.append_event(
+                "run_resumed",
+                malformed,
+                event_id="run-schema:resumed:0",
+            )
+            with self.assertRaises(CoordinatorError):
+                SearchCoordinator(directory, manifest())
+            with self.assertRaises(RecoveryError):
+                recover_run(directory)
+
+        with tempfile.TemporaryDirectory() as directory:
+            coordinator = SearchCoordinator(directory, manifest())
+            task = coordinator.create_task(
+                recipient_id="record-1",
+                lane="upstream_current",
+                operation="duplicate-resume-boundary",
+                budget_ordinal=0,
+            )
+            coordinator.schedule_task(task)
+            stop = coordinator.stop(reason="graceful_stop", resumable=True)
+            resume = coordinator.resume()
+            coordinator.ledger.append_event(
+                "run_resumed",
+                resume.payload,
+                event_id="run-schema:resumed:duplicate",
+            )
+            with self.assertRaises(CoordinatorError):
+                SearchCoordinator(directory, manifest())
 
     def test_task_binding_rejects_forged_id_or_seed_before_state(self):
         with tempfile.TemporaryDirectory() as directory:

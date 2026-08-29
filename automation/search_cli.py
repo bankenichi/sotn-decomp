@@ -498,7 +498,13 @@ def run_manifest(value: str | os.PathLike[str]) -> dict[str, Any]:
 
 
 def resume_run(value: str | os.PathLike[str]) -> dict[str, Any]:
-    """Recover and reissue only incomplete tasks with their original identity."""
+    """Recover and reissue legacy tasks with their original identity.
+
+    Instrumented runs have a lease-owned stop/resume transition and an oracle
+    landing callback.  This generic command cannot safely provide either, so
+    it refuses that mode instead of reporting a resume that leaves the durable
+    run stopped.
+    """
 
     root = _safe_run_root(value)
     _audit_run_root(root)
@@ -507,6 +513,19 @@ def resume_run(value: str | os.PathLike[str]) -> dict[str, Any]:
     except (RuntimeError, OSError, ValueError, TypeError) as exc:
         raise RunInputError("run recovery refused the run") from exc
     _require_selected_lanes(state.manifest)
+    try:
+        from .search_supervisor import INSTRUMENTED_MODE, MODE_TOOL_KEY, mode_identity
+    except ImportError:  # direct invocation from the automation directory
+        from automation.search_supervisor import (  # type: ignore
+            INSTRUMENTED_MODE,
+            MODE_TOOL_KEY,
+            mode_identity,
+        )
+    if state.manifest.tool_identities.get(MODE_TOOL_KEY) == mode_identity(INSTRUMENTED_MODE):
+        raise RunInputError(
+            "instrumented runs must be resumed through "
+            "permuter_supervisor.py --resume --mode instrumented --manifest"
+        )
     if state.stopped is not None and not state.stopped.resumable:
         raise RunInputError("run stop is not resumable")
     reissued = tuple(state.reissue_tasks())
@@ -576,6 +595,22 @@ def stop_run(value: str | os.PathLike[str]) -> dict[str, Any]:
     except (RuntimeError, OSError, ValueError, TypeError) as exc:
         raise RunInputError("run recovery refused the run") from exc
     manifest = _validate_manifest_value(state.manifest.to_dict())
+    try:
+        from .search_supervisor import (
+            INSTRUMENTED_MODE,
+            MODE_TOOL_KEY,
+            mode_identity,
+            request_instrumented_stop,
+        )
+    except ImportError:  # direct invocation from the automation directory
+        from automation.search_supervisor import (  # type: ignore
+            INSTRUMENTED_MODE,
+            MODE_TOOL_KEY,
+            mode_identity,
+            request_instrumented_stop,
+        )
+    if manifest.tool_identities.get(MODE_TOOL_KEY) == mode_identity(INSTRUMENTED_MODE):
+        return request_instrumented_stop(root / MANIFEST_FILENAME)
     try:
         coordinator = SearchCoordinator(root, manifest)
         event = coordinator.stop(reason="graceful_stop")

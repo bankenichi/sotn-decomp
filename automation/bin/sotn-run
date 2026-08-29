@@ -183,7 +183,7 @@ need_verb
 case "$CMD" in
     run-permuter)
         case "$VERB" in
-            start)  exec "$PY" automation/permuter_supervisor.py --run "$@" ;;
+            start)  exec "$PY" automation/permuter_supervisor.py --run --mode legacy "$@" ;;
             plan)   exec "$PY" automation/permuter_supervisor.py --plan "$@" ;;
             stop)   exec "$PY" automation/permuter_supervisor.py --stop ;;
             status) exec "$PY" automation/permuter_supervisor.py --status ;;

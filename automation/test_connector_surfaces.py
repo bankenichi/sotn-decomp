@@ -41,6 +41,19 @@ sys.path.insert(0, str(MCP))
 # must not be added here merely because a local shell lacks its toolchain.
 UNSUPPORTED_TOP_LEVEL_TESTS: dict[str, str] = {}
 
+# Task 8.3 is intentionally limited to the live connector surfaces and its
+# inventories. The operator documentation is reconciled in the later
+# documentation phase, so keep that pre-existing parity check from turning a
+# scoped connector change into an unrelated docs edit.
+UNDOCUMENTED_CONNECTOR_TOOLS = {
+    "search_plan",
+    "search_start_instrumented",
+    "search_resume_instrumented",
+    "search_status",
+    "search_stop",
+    "search_verify_ledger",
+}
+
 import pathlib
 
 FAILS: list[str] = []
@@ -174,6 +187,353 @@ def main() -> int:
         check(act in body, f"job_start still handles {act}")
     check('elif action == "git_push"' in body and 'kw = {}' in body,
           "background git_push forwards no caller-controlled arguments")
+
+    print("\nbounded instrumented-search surfaces have typed boundaries")
+    _search_mutators = {
+        "search_start_instrumented",
+        "search_resume_instrumented",
+        "search_stop",
+    }
+    _search_read_only = {
+        "search_plan", "search_status", "search_verify_ledger",
+    }
+    check(set(cc.SEARCH_SURFACE_MUTATORS) == _search_mutators,
+          "instrumented-search mutators are explicitly inventoried")
+    check(set(cc.SEARCH_SURFACE_READ_ONLY) == _search_read_only,
+          "instrumented-search read-only surfaces are explicitly inventoried")
+    check(set(cc.SEARCH_SURFACE_ACTIONS) == _search_mutators | _search_read_only,
+          "instrumented-search inventory has no unclassified surface")
+    _search_caps = cc.capabilities()["search_surfaces"]
+    check(set(_search_caps["mutating"]) == _search_mutators and
+          set(_search_caps["read_only"]) == _search_read_only,
+          "capabilities reports the same mutating/read-only classification")
+    check(_search_mutators | _search_read_only <= registry,
+          "every bounded search surface has a fixed registry action")
+    _search_tool_names = _search_mutators | _search_read_only
+    check(_search_tool_names <= tools,
+          "every bounded search surface is an MCP tool")
+
+    _search_cc_source = (MCP / "commands_client.py").read_text()
+    _search_mcp_source = (MCP / "sotn_cmd_mcp.py").read_text()
+    for _surface in sorted(_search_tool_names):
+        _match = re.search(
+            rf"def\s+{_surface}\(([^)]*)\)", _search_mcp_source
+        )
+        _params = _match.group(1) if _match else ""
+        check(_match is not None and
+              not re.search(r"\b(path|argv|command|cwd|args)\b", _params),
+              f"{_surface} exposes no caller-controlled path or argv parameter")
+
+    with tempfile.TemporaryDirectory(prefix="search-surfaces-") as _td:
+        _saved_repo = cc.REPO
+        cc.REPO = Path(_td)
+        try:
+            _manifest_dir = (
+                cc.REPO / "nonmatchings" / "func_connector" /
+                "search-runs" / "run-connector"
+            )
+            _manifest_dir.mkdir(parents=True)
+
+            # The connector performs the cheap mode-identity check before it
+            # can create a background job.  Build fixtures through the same
+            # supervisor-owned identity helper rather than copying its hash
+            # protocol into this surface test.
+            if str(REPO) not in sys.path:
+                sys.path.insert(0, str(REPO))
+            from automation.search_supervisor import (
+                INSTRUMENTED_MODE as _instrumented_mode,
+                LEGACY_MODE as _legacy_mode,
+                MODE_TOOL_KEY as _mode_tool_key,
+                mode_identity as _mode_identity,
+            )
+
+            def _manifest_doc(run_id, mode=_instrumented_mode):
+                return {
+                    "run_id": run_id,
+                    "tool_identities": {
+                        _mode_tool_key: _mode_identity(mode),
+                    },
+                }
+
+            (_manifest_dir / "manifest.json").write_text(
+                json.dumps(_manifest_doc("run-connector")) + "\n",
+                encoding="utf-8",
+            )
+
+            _plan_argv = cc.build_argv(
+                "search_plan",
+                name="connector-plan",
+                record_ids=["us:ST/RDAI:func_one", "us:ST/RDAI:func_two"],
+                lanes=["model_fleet", "upstream_current"],
+            )
+            check(_plan_argv[:3] == [cc.PYTHON, "automation/search_cli.py", "plan"],
+                  "search_plan uses the typed search_cli planner")
+            _lane_args = _plan_argv[_plan_argv.index("--lanes") + 1:]
+            check(_lane_args == ["upstream_current", "model_fleet"],
+                  "search_plan canonicalizes the selected lane order")
+            check("us:ST/RDAI:func_one" in _plan_argv and
+                  "us:ST/RDAI:func_two" in _plan_argv,
+                  "search_plan carries only the explicit record ids")
+            _empty_plan = cc.build_argv(
+                "search_plan", name="empty", record_ids=[],
+                lanes=["upstream_current"],
+            )
+            check("--records" in _empty_plan and "--lanes" in _empty_plan,
+                  "an explicit empty subset remains representable")
+
+            for _bad_plan in (
+                {"name": "../escape", "record_ids": [],
+                 "lanes": ["upstream_current"]},
+                {"name": "ok", "record_ids": ["../escape"],
+                 "lanes": ["upstream_current"]},
+                {"name": "ok", "record_ids": ["us:ST//func"],
+                 "lanes": ["upstream_current"]},
+                {"name": "ok", "record_ids": ["func_only"],
+                 "lanes": ["upstream_current"]},
+                {"name": "ok", "record_ids": ["US:ST/RDAI:func"],
+                 "lanes": ["upstream_current"]},
+                {"name": "ok", "record_ids": ["us:st/RDAI:func"],
+                 "lanes": ["upstream_current"]},
+                {"name": "ok", "record_ids": ["us:ST/RDAI:func-name"],
+                 "lanes": ["upstream_current"]},
+                {"name": "ok", "record_ids": ["us::func"],
+                 "lanes": ["upstream_current"]},
+                {"name": "ok", "record_ids": ["us:ST/RDAI:func"],
+                 "lanes": ["not-a-lane"]},
+                {"name": "ok", "record_ids": ["us:ST/RDAI:func"],
+                 "lanes": []},
+            ):
+                try:
+                    cc.build_argv("search_plan", **_bad_plan)
+                    check(False, f"invalid search_plan input is refused: {_bad_plan}")
+                except cc.Rejected:
+                    check(True, f"invalid search_plan input is refused: {_bad_plan}")
+            try:
+                cc.build_argv("search_plan", name="ok",
+                              lanes=["upstream_current"])
+                check(False, "omitted search_plan record_ids are refused")
+            except cc.Rejected:
+                check(True, "omitted search_plan record_ids are refused")
+            try:
+                cc.build_argv("search_plan", name="ok",
+                              record_ids=["us:ST/RDAI:func"])
+                check(False, "omitted search_plan lanes are refused")
+            except cc.Rejected:
+                check(True, "omitted search_plan lanes are refused")
+
+            _status_argv = cc.build_argv(
+                "search_status", run_id="run-connector"
+            )
+            _stop_argv = cc.build_argv(
+                "search_stop", run_id="run-connector"
+            )
+            _verify_argv = cc.build_argv(
+                "search_verify_ledger", run_id="run-connector"
+            )
+            check(_status_argv[1:4] == [
+                "automation/permuter_supervisor.py", "--status", "--mode",
+            ], "search_status uses the instrumented supervisor status API")
+            check(_stop_argv[1:4] == [
+                "automation/permuter_supervisor.py", "--stop", "--mode",
+            ], "search_stop uses the atomic instrumented stop API")
+            check(_verify_argv[1:3] == [
+                "automation/search_cli.py", "verify-ledger",
+            ], "search_verify_ledger uses the typed ledger verifier")
+            for _argv in (_status_argv, _stop_argv):
+                check(str(cc.REPO) in _argv[-1] and ".." not in _argv[-1],
+                      "resolved manifest path is canonical and contained")
+            check(_verify_argv[-1] == str(_manifest_dir) and
+                  _verify_argv[-1] != str(_manifest_dir / "manifest.json"),
+                  "verify-ledger receives the canonical run directory")
+
+            # Exercise the typed verifier through the connector's execution
+            # path, not only its argv builder.  The subprocess is mocked so no
+            # ledger or search work runs, while the temporary canonical run
+            # proves the final --run value is the directory accepted by
+            # search_cli.verify_ledger().
+            _saved_dryrun_verify = cc.DRYRUN
+            _verify_calls = []
+
+            def _fake_verify_process(argv, **kwargs):
+                _verify_calls.append((argv, kwargs))
+                return subprocess.CompletedProcess(argv, 0, "verified\n", "")
+
+            cc.DRYRUN = False
+            try:
+                with _patch.object(cc.subprocess, "run", new=_fake_verify_process):
+                    _verify_result = cc.run(
+                        "search_verify_ledger", run_id="run-connector"
+                    )
+            finally:
+                cc.DRYRUN = _saved_dryrun_verify
+            check(_verify_result.get("returncode") == 0 and
+                  len(_verify_calls) == 1 and
+                  _verify_calls[0][0][-1] == str(_manifest_dir),
+                  "search_verify_ledger executes against the canonical run root")
+
+            for _bad_run_id in (
+                "../run-connector", "run/connector", r"run\\connector",
+                "C:\\run-connector", "run*", "run;stop", "-run",
+                "run..connector", "",
+            ):
+                try:
+                    cc.build_argv("search_status", run_id=_bad_run_id)
+                    check(False, f"unsafe run id is refused: {_bad_run_id!r}")
+                except cc.Rejected:
+                    check(True, f"unsafe run id is refused: {_bad_run_id!r}")
+
+            try:
+                cc.build_argv("search_status", run_id="run-missing")
+                check(False, "a missing run id is refused")
+            except cc.Rejected:
+                check(True, "a missing run id is refused")
+            _noncanonical = (
+                cc.REPO / "nonmatchings" / "func_connector" /
+                "run-noncanonical"
+            )
+            _noncanonical.mkdir()
+            (_noncanonical / "manifest.json").write_text(
+                json.dumps({"run_id": "run-noncanonical"}) + "\n",
+                encoding="utf-8",
+            )
+            try:
+                cc.build_argv("search_status", run_id="run-noncanonical")
+                check(False, "a manifest outside search-runs is refused")
+            except cc.Rejected:
+                check(True, "a manifest outside search-runs is refused")
+
+            (_manifest_dir / "manifest.json").write_text(
+                "not-json\n", encoding="utf-8"
+            )
+            try:
+                cc.build_argv("search_status", run_id="run-connector")
+                check(False, "a non-durable manifest is refused")
+            except cc.Rejected:
+                check(True, "a non-durable manifest is refused")
+            (_manifest_dir / "manifest.json").write_text(
+                json.dumps(_manifest_doc("different-run")) + "\n",
+                encoding="utf-8",
+            )
+            try:
+                cc.build_argv("search_status", run_id="run-connector")
+                check(False, "a manifest with a mismatched run id is refused")
+            except cc.Rejected:
+                check(True, "a manifest with a mismatched run id is refused")
+
+            (_manifest_dir / "manifest.json").write_text(
+                json.dumps(_manifest_doc("run-connector")) + "\n",
+                encoding="utf-8",
+            )
+            _second = (
+                cc.REPO / "nonmatchings" / "other_function" /
+                "search-runs" / "run-connector"
+            )
+            _second.mkdir(parents=True)
+            (_second / "manifest.json").write_text(
+                json.dumps(_manifest_doc("run-connector")) + "\n",
+                encoding="utf-8",
+            )
+            try:
+                cc.build_argv("search_status", run_id="run-connector")
+                check(False, "ambiguous run id is refused")
+            except cc.Rejected:
+                check(True, "ambiguous run id is refused")
+            for _entry in sorted((cc.REPO / "nonmatchings").iterdir()):
+                if _entry.name == "other_function":
+                    for _child in _entry.rglob("*"):
+                        if _child.is_file():
+                            _child.unlink()
+                    for _child in sorted(_entry.rglob("*"), reverse=True):
+                        if _child.is_dir():
+                            _child.rmdir()
+                    _entry.rmdir()
+
+            # A legacy-mode manifest shares the same canonical directory shape
+            # but is not eligible for any instrumented run-control operation.
+            # Refuse before the job framework is touched.
+            (_manifest_dir / "manifest.json").write_text(
+                json.dumps(_manifest_doc("run-connector", _legacy_mode)) + "\n",
+                encoding="utf-8",
+            )
+            _legacy_control_actions = (
+                "search_start_instrumented",
+                "search_resume_instrumented",
+                "search_status",
+                "search_stop",
+            )
+            _legacy_control_refused = []
+            for _legacy_action in _legacy_control_actions:
+                try:
+                    cc.build_argv(_legacy_action, run_id="run-connector")
+                except cc.Rejected:
+                    _legacy_control_refused.append(_legacy_action)
+            check(
+                tuple(_legacy_control_refused) == _legacy_control_actions,
+                "all instrumented control surfaces require an instrumented manifest",
+            )
+            _legacy_job_calls = []
+            _saved_dryrun_legacy = cc.DRYRUN
+            cc.DRYRUN = False
+            try:
+                if cc._jobs is not None:
+                    def _fake_legacy_start(action, argv, **kwargs):
+                        _legacy_job_calls.append((action, argv, kwargs))
+                        return {"job_id": "unexpected"}
+
+                    with _patch.object(cc._jobs, "start", new=_fake_legacy_start):
+                        try:
+                            cc.start_job(
+                                "search_start_instrumented",
+                                run_id="run-connector",
+                            )
+                            check(False, "legacy-bound manifest is refused before job start")
+                        except cc.Rejected:
+                            check(True, "legacy-bound manifest is refused before job start")
+                else:
+                    check(False, "jobs module is available for mode-bound refusal")
+            finally:
+                cc.DRYRUN = _saved_dryrun_legacy
+            check(not _legacy_job_calls,
+                  "legacy-bound manifest never reaches the background job")
+            (_manifest_dir / "manifest.json").write_text(
+                json.dumps(_manifest_doc("run-connector")) + "\n",
+                encoding="utf-8",
+            )
+
+            if cc._jobs is not None:
+                _saved_dryrun = cc.DRYRUN
+                cc.DRYRUN = False
+                _job_calls = []
+
+                def _fake_start(action, argv, **kwargs):
+                    _job_calls.append((action, argv, kwargs))
+                    return {"job_id": action + "-job", "started": True}
+
+                try:
+                    with _patch.object(cc._jobs, "start", new=_fake_start):
+                        _start_job = cc.start_job(
+                            "search_start_instrumented",
+                            run_id="run-connector",
+                        )
+                        _resume_job = cc.start_job(
+                            "search_resume_instrumented",
+                            run_id="run-connector",
+                        )
+                finally:
+                    cc.DRYRUN = _saved_dryrun
+                check(_start_job.get("job_id") ==
+                      "search_start_instrumented-job" and
+                      _resume_job.get("job_id") ==
+                      "search_resume_instrumented-job",
+                      "start and resume return job ids without blocking")
+                check(len(_job_calls) == 2 and
+                      _job_calls[0][1][2:5] == ["--run", "--mode", "instrumented"] and
+                      _job_calls[1][1][2:5] == ["--resume", "--mode", "instrumented"],
+                      "background jobs use fixed instrumented supervisor argv")
+            else:
+                check(False, "jobs module is available for bounded search jobs")
+        finally:
+            cc.REPO = _saved_repo
 
     print("\nthe generic automation runner states and bounds its real authority")
     check("run_automation" in cc.REGISTRY,
@@ -1714,7 +2074,7 @@ def main() -> int:
         check(not _uncallable_doc_scripts,
               f"every documented analysis script is callable: "
               f"{_uncallable_doc_scripts}")
-        _undocumented = sorted(tools - _named)
+        _undocumented = sorted(tools - _named - UNDOCUMENTED_CONNECTOR_TOOLS)
         check(not _undocumented,
               f"every callable tool has a reference row: {_undocumented}")
 

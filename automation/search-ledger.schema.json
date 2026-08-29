@@ -241,6 +241,23 @@
           }
         }
       ]
+    },
+    {
+      "allOf": [
+        {
+          "$ref": "#/$defs/event_base"
+        },
+        {
+          "properties": {
+            "event_type": {
+              "const": "run_resumed"
+            },
+            "payload": {
+              "$ref": "#/$defs/run_resume"
+            }
+          }
+        }
+      ]
     }
   ],
   "$defs": {
@@ -2519,6 +2536,33 @@
         },
         "resumable": {
           "type": "boolean"
+        }
+      }
+    },
+    "run_resume": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "stop_event_id",
+        "stop_event_hash",
+        "request_id"
+      ],
+      "properties": {
+        "stop_event_id": {
+          "$ref": "#/$defs/id"
+        },
+        "stop_event_hash": {
+          "$ref": "#/$defs/hash"
+        },
+        "request_id": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/hash"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       }
     },

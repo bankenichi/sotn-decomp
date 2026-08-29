@@ -34,6 +34,7 @@ try:
         CandidateRecord,
         LANE_TOOL_KEYS,
         RunManifest,
+        SearchTask,
         SearchValidationError,
         canonical_json,
         hash_bytes,
@@ -50,6 +51,7 @@ except ImportError:  # pragma: no cover - direct script compatibility
         CandidateRecord,
         LANE_TOOL_KEYS,
         RunManifest,
+        SearchTask,
         SearchValidationError,
         canonical_json,
         hash_bytes,
@@ -473,6 +475,49 @@ class LaneReceiptProposal:
             "reason": self.reason or "lane complete",
             "tool_identities": dict(self.tool_identities),
         }
+
+    @classmethod
+    def from_dict(cls, value: Mapping[str, Any]) -> "LaneReceiptProposal":
+        """Rebuild a proposal archived by the supervisor after a restart."""
+        if not isinstance(value, Mapping):
+            raise LaneError("receipt proposal must be an object")
+        fields = {
+            "recipient_id", "lane", "tier", "tool_identities",
+            "config_identity", "input_identities", "budget", "attempts",
+            "rejection_counts", "best_candidate_ids", "completion_reason",
+            "reason", "receipt_id", "complete", "materialized",
+        }
+        missing = fields.difference(value)
+        if missing:
+            raise LaneError(
+                "receipt proposal is missing fields: "
+                + ", ".join(sorted(missing))
+            )
+        unknown = set(value).difference(fields)
+        if unknown:
+            raise LaneError("receipt proposal has unknown fields")
+        proposal = cls(
+            recipient_id=value["recipient_id"],
+            lane=value["lane"],
+            tier=value["tier"],
+            tool_identities=value["tool_identities"],
+            config_identity=value["config_identity"],
+            input_identities=tuple(value["input_identities"]),
+            budget=Budget.from_dict(value["budget"]),
+            attempts=value["attempts"],
+            rejection_counts=value["rejection_counts"],
+            best_candidate_ids=tuple(value["best_candidate_ids"]),
+            completion_reason=value["completion_reason"],
+            reason=value.get("reason", ""),
+        )
+        declared = value.get("receipt_id")
+        if declared is not None and declared != proposal.receipt_id:
+            raise LaneError("receipt proposal identity changed")
+        if value.get("complete", True) is not True:
+            raise LaneError("receipt proposal must be complete")
+        if value.get("materialized", False) is not False:
+            raise LaneError("archived proposal cannot claim coordinator materialization")
+        return proposal
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize a proposal without inventing a receipt artifact."""
@@ -3654,6 +3699,94 @@ def _parse_run_lane_args(
     return manifest, lane, recipients
 
 
+def execute_task(
+    task: SearchTask | Mapping[str, Any],
+    manifest: RunManifest | Mapping[str, Any],
+    recipients: Mapping[str, Any] | Iterable[Any] | None,
+    *,
+    adapters: Optional[LaneAdapters | Mapping[str, Any]] = None,
+    options: Optional[Mapping[str, Any]] = None,
+    repo_root: Optional[str | Path] = None,
+    read_only: bool = True,
+    **kwargs: Any,
+) -> LaneOutcome:
+    """Execute exactly one coordinator-owned task against its frozen recipient.
+
+    The caller supplies the complete manifest subset so validation cannot fall
+    back to the live queue. Only the task's named recipient is dispatched.
+    Task identity, lane, tier, configuration and state are checked before any
+    producer callback runs.
+    """
+    try:
+        typed_manifest = (
+            manifest if isinstance(manifest, RunManifest)
+            else RunManifest.from_dict(manifest)
+        )
+        typed_task = (
+            task if isinstance(task, SearchTask)
+            else SearchTask.from_dict(task)
+        )
+    except (SearchValidationError, TypeError, ValueError) as exc:
+        raise LaneError("task execution requires typed manifest and task values") from exc
+    # The coordinator derives task_id and task_seed from the immutable
+    # manifest fields.  Reuse that single binding implementation here before
+    # any producer callback runs, so a forged task cannot reach a lane merely
+    # because its recipient and lane names look plausible.
+    try:
+        from .search_coordinator import (
+            CoordinatorError,
+            validate_task_binding,
+        )
+    except ImportError:  # pragma: no cover - direct script compatibility
+        from search_coordinator import (  # type: ignore
+            CoordinatorError,
+            validate_task_binding,
+        )
+    try:
+        validate_task_binding(typed_manifest, typed_task)
+    except CoordinatorError as exc:
+        raise LaneError("task identity is not bound to the immutable manifest") from exc
+    if recipients is None:
+        raise SubsetViolation("explicit recipients are required; queue fallback is forbidden")
+    selected = validate_recipient_subset(typed_manifest, recipients)
+    if typed_task.recipient_id not in typed_manifest.queue_record_ids:
+        raise SubsetViolation("task recipient is outside the manifest subset")
+    if typed_task.lane not in typed_manifest.selected_lanes:
+        raise LaneError("task lane is not selected by the manifest")
+    if typed_task.tier != LANE_TIERS[typed_task.lane]:
+        raise LaneError("task lane and tier do not agree")
+    if typed_task.config_identity != typed_manifest.config_identity:
+        raise LaneError("task configuration differs from the manifest")
+    if typed_task.state not in {"scheduled", "started"}:
+        raise LaneError("only scheduled or started tasks may execute")
+    recipient = next(
+        item for item in selected if item.recipient_id == typed_task.recipient_id
+    )
+    _validate_manifest(typed_manifest, tuple(item.recipient_id for item in selected), typed_task.lane)
+    adapter_set = (
+        adapters
+        if isinstance(adapters, LaneAdapters)
+        else LaneAdapters.from_mapping(adapters)
+    )
+    merged_options = dict(_options_with_defaults(options))
+    merged_options.update(kwargs)
+    _check_read_only(read_only, merged_options)
+    if repo_root is not None:
+        merged_options["repo_root"] = repo_root
+    root = _repo_root(merged_options)
+    discovery = _dispatch(
+        typed_manifest,
+        typed_task.lane,
+        recipient,
+        adapters=adapter_set,
+        options=merged_options,
+        root=root,
+    )
+    return _outcome(
+        typed_manifest, recipient, typed_task.lane, discovery
+    )
+
+
 def run_lane(
     manifest: Any,
     lane: str,
@@ -3957,6 +4090,7 @@ __all__ = [
     "multi_donor",
     "cfg_dataflow_lane",
     "execute_lane",
+    "execute_task",
     "run_lanes",
     "execute_lanes",
     "run_deterministic_lanes",

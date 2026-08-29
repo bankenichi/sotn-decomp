@@ -601,6 +601,21 @@ class TestSearchLanes(unittest.TestCase):
         self.assertEqual(receipt.receipt_id, outcome.receipt.receipt_id)
         self.assertEqual(receipt.input_identities, outcome.receipt.input_identities)
 
+    def test_archived_receipt_proposal_requires_protocol_fields(self) -> None:
+        outcome = run_lane(
+            make_manifest("record-1"),
+            "upstream_current",
+            {"record-1": recipient()},
+            adapters={"upstream_current": lambda _item: ()},
+        )[0]
+        encoded = outcome.receipt.to_dict()
+        for field in ("receipt_id", "complete", "materialized"):
+            missing = dict(encoded)
+            missing.pop(field)
+            with self.subTest(field=field):
+                with self.assertRaises(LaneError):
+                    LaneReceiptProposal.from_dict(missing)
+
     def test_typed_inapplicable_receipt_is_preserved(self) -> None:
         manifest = make_manifest("record-1")
 

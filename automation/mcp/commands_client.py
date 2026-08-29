@@ -47,9 +47,266 @@ SYMBOL_RX = re.compile(r"^[A-Za-z0-9_]{1,64}$")
 OVERLAY_RX = re.compile(r"^[A-Za-z0-9_]{1,32}$")
 FMT = {"plain", "color", "json", "html"}
 
+# The instrumented search connector deliberately has a smaller path surface
+# than the underlying CLI.  A caller supplies only a run id; the connector
+# discovers the one canonical manifest below nonmatchings rather than accepting
+# a path.  Keeping the component grammar separate from search_types.ID_RE is
+# intentional: queue ids contain `/` and `:`, while a run id is a directory
+# component and must never contain either.
+_SEARCH_COMPONENT_RX = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
+_SEARCH_LANES = (
+    "upstream_current",
+    "upstream_pinned",
+    "upstream_open_pr",
+    "mipsmatch_exact",
+    "preserved_candidate",
+    "shared_header",
+    "transplant",
+    "whole_tu",
+    "dependency_closure",
+    "multi_donor",
+    "cfg_dataflow",
+    "m2c_ensemble",
+    "idiom_atlas",
+    "bounded_synthesis",
+    "permuter_random",
+    "permuter_targeted",
+    "permuter_recombine",
+    "permuter_ddmin",
+    "model_fleet",
+    "model_expensive",
+)
+SEARCH_SURFACE_MUTATORS = frozenset({
+    "search_start_instrumented",
+    "search_resume_instrumented",
+    "search_stop",
+})
+SEARCH_SURFACE_READ_ONLY = frozenset({
+    "search_plan",
+    "search_status",
+    "search_verify_ledger",
+})
+SEARCH_SURFACE_ACTIONS = (
+    SEARCH_SURFACE_MUTATORS | SEARCH_SURFACE_READ_ONLY
+)
+SEARCH_JOB_ACTIONS = frozenset({
+    "search_start_instrumented",
+    "search_resume_instrumented",
+})
+
 
 class Rejected(ValueError):
     """Raised when an argument fails validation. Never executes anything."""
+
+
+def _search_component(value: str, label: str) -> str:
+    """Validate a caller-visible search name or run-id path component."""
+
+    if not isinstance(value, str) or not _SEARCH_COMPONENT_RX.fullmatch(value):
+        raise Rejected(
+            f"{label} must match ^[A-Za-z0-9][A-Za-z0-9_-]{{0,63}}$ "
+            "and contain no separators, traversal, globs or shell text"
+        )
+    return value
+
+
+def _search_record_ids(values) -> tuple[str, ...]:
+    """Validate exact queue ids while permitting their namespace slash."""
+
+    if isinstance(values, (str, bytes)) or values is None:
+        raise Rejected("record_ids must be an explicit sequence of queue ids")
+    try:
+        raw_values = tuple(values)
+    except TypeError as exc:
+        raise Rejected("record_ids must be an explicit sequence of queue ids") from exc
+    normalized = []
+    for value in raw_values:
+        if not isinstance(value, str):
+            raise Rejected("record ids must be strings")
+        # Queue IDs have one canonical grammar.  Do not duplicate a broader
+        # connector-only regex here: accepting an arbitrary path-shaped value
+        # would let the planner represent a record the scheduler can never
+        # claim.  `_queue_id` is defined later in this module, but name lookup
+        # occurs when this function is called, after module initialization.
+        normalized.append(_queue_id(value))
+    if len(set(normalized)) != len(normalized):
+        raise Rejected("record_ids must not contain duplicates")
+    return tuple(sorted(normalized))
+
+
+def _search_lanes(values) -> tuple[str, ...]:
+    """Validate and canonicalize the explicit selected lane set."""
+
+    if isinstance(values, (str, bytes)) or values is None:
+        raise Rejected("lanes must be an explicit nonempty sequence")
+    try:
+        raw_values = tuple(values)
+    except TypeError as exc:
+        raise Rejected("lanes must be an explicit nonempty sequence") from exc
+    if not raw_values:
+        raise Rejected("lanes must be an explicit nonempty sequence")
+    if any(not isinstance(value, str) for value in raw_values):
+        raise Rejected("lanes must contain strings")
+    if len(set(raw_values)) != len(raw_values):
+        raise Rejected("lanes must not contain duplicates")
+    unknown = sorted(set(raw_values).difference(_SEARCH_LANES))
+    if unknown:
+        raise Rejected(f"unknown lane: {unknown[0]}")
+    return tuple(lane for lane in _SEARCH_LANES if lane in raw_values)
+
+
+def _search_manifest(run_id: str) -> str:
+    """Resolve one exact run id to its canonical durable manifest.
+
+    This scan is intentionally shallow.  Only
+    ``nonmatchings/<function>/search-runs/<run-id>/manifest.json`` is a valid
+    location.  A malformed, symlinked or ambiguous candidate fails closed
+    before any child process or job is started.
+    """
+
+    run_id = _search_component(run_id, "run_id")
+    repo = REPO.resolve()
+    nonmatchings = repo / "nonmatchings"
+    if nonmatchings.is_symlink():
+        raise Rejected("canonical nonmatchings root must not be a symlink")
+    if not nonmatchings.is_dir():
+        raise Rejected(f"no canonical manifest exists for run_id {run_id!r}")
+
+    matches = []
+    try:
+        function_dirs = sorted(nonmatchings.iterdir(), key=lambda p: p.name)
+    except OSError as exc:
+        raise Rejected("canonical search-run root could not be inspected") from exc
+    for function_dir in function_dirs:
+        if function_dir.is_symlink():
+            raise Rejected("canonical search-run path contains a symlink")
+        if not function_dir.is_dir():
+            continue
+        search_runs = function_dir / "search-runs"
+        if search_runs.is_symlink():
+            raise Rejected("canonical search-run path contains a symlink")
+        if not search_runs.is_dir():
+            continue
+        run_root = search_runs / run_id
+        if run_root.is_symlink():
+            raise Rejected("canonical search-run path contains a symlink")
+        manifest = run_root / "manifest.json"
+        if not manifest.exists() and not manifest.is_symlink():
+            continue
+        if manifest.is_symlink() or not manifest.is_file():
+            raise Rejected("canonical manifest must be a regular file")
+        try:
+            resolved = manifest.resolve(strict=True)
+            resolved.relative_to(repo)
+            document = json.loads(manifest.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+            raise Rejected("canonical manifest is not durable JSON") from exc
+        if not isinstance(document, dict) or document.get("run_id") != run_id:
+            raise Rejected("canonical manifest run_id does not match the request")
+        matches.append(resolved)
+
+    if not matches:
+        raise Rejected(f"no canonical manifest exists for run_id {run_id!r}")
+    if len(matches) != 1:
+        raise Rejected(f"run_id {run_id!r} is ambiguous across canonical manifests")
+    return str(matches[0])
+
+
+def _search_instrumented_manifest(run_id: str) -> str:
+    """Resolve a canonical manifest and require its supervisor mode binding.
+
+    The supervisor performs the complete typed-manifest validation in the
+    child job.  The connector still has to reject a legacy-bound manifest
+    before it creates a background job, otherwise the bounded instrumented
+    surface would report success for the wrong protocol.
+    """
+
+    manifest_path = Path(_search_manifest(run_id))
+    try:
+        document = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise Rejected("canonical manifest is not durable JSON") from exc
+    if not isinstance(document, dict):
+        raise Rejected("canonical manifest must be an object")
+    tool_identities = document.get("tool_identities")
+    if not isinstance(tool_identities, dict):
+        raise Rejected("canonical manifest does not bind supervisor mode")
+
+    # Keep the mode identity owned by the supervisor implementation.  The
+    # connector imports it lazily so importing this stdlib-only client does not
+    # pull the full search stack into every ordinary MCP command process.
+    repo_text = str(REPO.resolve())
+    added_repo = repo_text not in sys.path
+    if added_repo:
+        sys.path.insert(0, repo_text)
+    try:
+        try:
+            from automation.search_supervisor import (  # type: ignore
+                INSTRUMENTED_MODE,
+                MODE_TOOL_KEY,
+                mode_identity,
+            )
+        except ImportError:
+            from search_supervisor import (  # type: ignore
+                INSTRUMENTED_MODE,
+                MODE_TOOL_KEY,
+                mode_identity,
+            )
+    except ImportError as exc:
+        raise Rejected("instrumented supervisor mode authority is unavailable") from exc
+    finally:
+        if added_repo:
+            try:
+                sys.path.remove(repo_text)
+            except ValueError:
+                pass
+
+    if tool_identities.get(MODE_TOOL_KEY) != mode_identity(INSTRUMENTED_MODE):
+        raise Rejected("canonical manifest is not instrumented-mode bound")
+    return str(manifest_path)
+
+
+def _search_plan_argv(name: str, record_ids, lanes) -> list[str]:
+    _search_component(name, "name")
+    records = _search_record_ids(record_ids)
+    selected = _search_lanes(lanes)
+    # The name is connector metadata.  search_cli.plan_selection owns the
+    # selection identity and canonical ordering; no name/path is passed as an
+    # unrecognized CLI option.
+    return [
+        PYTHON,
+        "automation/search_cli.py",
+        "plan",
+        "--records",
+        *records,
+        "--lanes",
+        *selected,
+    ]
+
+
+def _search_supervisor_argv(run_id: str, flag: str) -> list[str]:
+    if flag not in ("--run", "--resume", "--status", "--stop"):
+        raise Rejected("unsupported instrumented supervisor operation")
+    return [
+        PYTHON,
+        "automation/permuter_supervisor.py",
+        flag,
+        "--mode",
+        "instrumented",
+        "--manifest",
+        _search_instrumented_manifest(run_id),
+    ]
+
+
+def _search_verify_argv(run_id: str) -> list[str]:
+    manifest_path = Path(_search_instrumented_manifest(run_id))
+    return [
+        PYTHON,
+        "automation/search_cli.py",
+        "verify-ledger",
+        "--run",
+        str(manifest_path.parent),
+    ]
 
 
 def _v(version: str) -> str:
@@ -590,6 +847,7 @@ AUTOMATION_SCRIPTS = {
     "test_search_schema.py",
     "test_search_subset.py",
     "test_search_patterns.py",
+    "test_search_supervisor.py",
     "test_build_attribution.py",
     "escalation_triage.py",
     "deferred_triage.py",
@@ -750,7 +1008,7 @@ def _queue_id(qid: str) -> str:
     missing, already claimed, or already matched, and it decides that inside
     the transaction where the answer is still true.
     """
-    if not QUEUE_ID_RX.match(qid or ""):
+    if not isinstance(qid, str) or not QUEUE_ID_RX.fullmatch(qid):
         raise Rejected("queue id must look like us:ST/RDAI:func_us_801C2418")
     return qid
 
@@ -1059,6 +1317,20 @@ REGISTRY = {
     # read-only variant.
     "run_analysis": lambda script, args="": (
         [PYTHON, _script(script)] + _args(args)),
+    # Bounded instrumented-search surfaces. These builders accept only a
+    # logical name, run id, or typed value set. Paths and arbitrary argv are
+    # never caller-controlled here.
+    "search_plan": lambda name, record_ids, lanes: _search_plan_argv(
+        name, record_ids, lanes),
+    "search_start_instrumented": lambda run_id: _search_supervisor_argv(
+        run_id, "--run"),
+    "search_resume_instrumented": lambda run_id: _search_supervisor_argv(
+        run_id, "--resume"),
+    "search_status": lambda run_id: _search_supervisor_argv(
+        run_id, "--status"),
+    "search_stop": lambda run_id: _search_supervisor_argv(
+        run_id, "--stop"),
+    "search_verify_ledger": lambda run_id: _search_verify_argv(run_id),
     # ONE record, named, in the foreground.
     #
     # fleet_start was the only way to run a worker, and it launches N detached
@@ -1664,7 +1936,7 @@ LONG_ACTIONS = {
     # A worker's per-function budget is minutes: m2c, then up to three
     # model calls, each followed by a full build. It is never a run() call.
     "make_function_finder", "run_automation", "run_analysis", "permuter",
-    "worker_once", "git_push",
+    "worker_once", "git_push", *SEARCH_JOB_ACTIONS,
 }
 
 
@@ -2579,4 +2851,8 @@ def fleet_stop(hold: bool = True) -> dict:
 
 def capabilities() -> dict:
     return {"commands": sorted(REGISTRY), "filesystem": FS_ACTIONS,
-            "dry_run": DRYRUN, "repo": str(REPO)}
+            "dry_run": DRYRUN, "repo": str(REPO),
+            "search_surfaces": {
+                "mutating": sorted(SEARCH_SURFACE_MUTATORS),
+                "read_only": sorted(SEARCH_SURFACE_READ_ONLY),
+            }}

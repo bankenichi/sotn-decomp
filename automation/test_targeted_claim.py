@@ -421,8 +421,10 @@ def connector_structure():
     # inside the transaction, where the answer is still true.
     vf = src[src.index("def _queue_id("):]
     vf = vf[:vf.index("\ndef ", 10)]
-    check("QUEUE_ID_RX.match" in vf, "it is a regex check")
-    check(".jsonl" not in vf and "Queue(" not in vf and "open(" not in vf,
+    check("QUEUE_ID_RX.fullmatch" in vf,
+          "it is an exact full-string regex check")
+    check(".jsonl" not in vf and "Queue(" not in vf and "open(" not in vf
+          and "exists(" not in vf,
           "and reads no queue file to answer")
 
 

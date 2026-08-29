@@ -74,6 +74,7 @@ EVENT_TYPES = (
     "checkpoint_committed",
     "exhaustion_recorded",
     "run_stopped",
+    "run_resumed",
 )
 SCORE_FIELDS = ("stack", "regalloc", "reordering", "insertion", "deletion")
 
@@ -1249,6 +1250,26 @@ class RunStop(_Record):
         return cls(**_strict_dict(value, fields, fields, "run_stop"))
 
 
+@dataclass(frozen=True)
+class RunResume(_Record):
+    """Durable transition that clears one resumable stop boundary."""
+
+    stop_event_id: str
+    stop_event_hash: str
+    request_id: Optional[str]
+
+    def __post_init__(self) -> None:
+        validate_id(self.stop_event_id, "stop_event_id")
+        validate_hash(self.stop_event_hash, "stop_event_hash")
+        if self.request_id is not None:
+            validate_hash(self.request_id, "resume request_id")
+
+    @classmethod
+    def from_dict(cls, value: Mapping[str, Any]) -> "RunResume":
+        fields = ("stop_event_id", "stop_event_hash", "request_id")
+        return cls(**_strict_dict(value, fields, fields, "run_resume"))
+
+
 PAYLOAD_TYPES: Dict[str, Type[_Record]] = {
     "run_started": RunManifest,
     "task_scheduled": SearchTask,
@@ -1264,6 +1285,7 @@ PAYLOAD_TYPES: Dict[str, Type[_Record]] = {
     "checkpoint_committed": Checkpoint,
     "exhaustion_recorded": ExhaustionReceipt,
     "run_stopped": RunStop,
+    "run_resumed": RunResume,
 }
 
 
@@ -1379,7 +1401,7 @@ __all__ = [
     "ScoreVector", "PatchHunk", "GroupedPatch", "MutationEvent", "ParentRun",
     "RunManifest", "SearchTask", "CandidateRecord", "ScoreDeltas", "EvaluationEvent",
     "ArchiveDecision", "OracleRequest", "OracleReceipt", "TaskTerminal", "Interruption",
-    "Checkpoint", "Budget", "ExhaustionReceipt", "RunStop", "LedgerEvent", "PAYLOAD_TYPES",
+    "Checkpoint", "Budget", "ExhaustionReceipt", "RunStop", "RunResume", "LedgerEvent", "PAYLOAD_TYPES",
     "event_payload",
     "canonical_json", "canonical_bytes", "hash_bytes", "hash_canonical",
     "canonical_subset_payload", "canonical_subset_identity",

@@ -42,10 +42,12 @@ CANDIDATE SELECTION
 
 Usage:
     python3 automation/permuter_supervisor.py --plan          # show, run nothing
-    python3 automation/permuter_supervisor.py --run
-    python3 automation/permuter_supervisor.py --run --slots 3 --threads 4
+    python3 automation/permuter_supervisor.py --run --mode legacy
+    python3 automation/permuter_supervisor.py --run --mode instrumented \\
+        --manifest nonmatchings/<function>/search-runs/<run>/manifest.json
+    python3 automation/permuter_supervisor.py --run --mode legacy --slots 3 --threads 4
     python3 automation/permuter_supervisor.py --status        # one JSON blob
-    python3 automation/permuter_supervisor.py --run --no-apply # find, do not land
+    python3 automation/permuter_supervisor.py --run --mode legacy --no-apply # find, do not land
     python3 automation/permuter_supervisor.py --import-seeds   # import only
     python3 automation/permuter_supervisor.py --import-one FUNCTION
     python3 automation/permuter_supervisor.py --migrate-legacy-seeds
@@ -87,8 +89,14 @@ PYTHON = os.environ.get("SOTN_PYTHON", sys.executable)
 # rather than falling back to a bare "python3" without pycparser.
 os.environ.setdefault("SOTN_PYTHON", PYTHON)
 
+sys.path.insert(0, str(REPO))
 sys.path.insert(0, str(REPO / "automation"))
 sys.path.insert(0, str(REPO / "automation" / "mcp"))
+
+try:
+    from automation import search_supervisor
+except ImportError:  # pragma: no cover - direct script compatibility
+    import search_supervisor  # type: ignore
 
 # Defaults chosen from measurement, not taste:
 #   slots 3   -- four concurrent jobs at 4 threads saturated the machine while a
@@ -1261,6 +1269,7 @@ def land_supervisor_slot(work: Path, slot: dict) -> tuple[bool, str]:
 def land_match(work: Path, fn: str, build: str = "us",
                lock=None, body: str = "", rec_id: str = "",
                on_verified=None,
+               on_terminal=None,
                support_declarations: list[str] | None = None) -> tuple[bool, str]:
     """Apply a score-0 seed to src/, BUILD it, and revert unless it is green.
 
@@ -1280,6 +1289,12 @@ def land_match(work: Path, fn: str, build: str = "us",
     original, which it journals BEFORE writing, so a crash mid-build is
     recoverable by the existing journal replay.
     """
+    def report_nonmatch(detail: str) -> tuple[bool, str]:
+        """Report a normal non-match only after cleanup and attribution."""
+        if on_terminal is not None:
+            on_terminal(False, detail)
+        return False, detail
+
     # See _assert_reverted: nothing in this function may report a revert it has
     # not proven. The word cost a real match on 2026-08-03 -- land_pending
     # printed "reverted: KeyError: 'overlay'" while func_us_801B1E5C was still
@@ -1293,10 +1308,10 @@ def land_match(work: Path, fn: str, build: str = "us",
     if not body:
         out0 = work / "output-0-1" / "source.c"
         if not out0.is_file():
-            return False, f"no output-0-1/source.c in {work.name}"
+            return report_nonmatch(f"no output-0-1/source.c in {work.name}")
         body = extract_function(out0.read_text(errors="ignore"), fn)
         if not body:
-            return False, f"could not extract {fn} from the score-0 source"
+            return report_nonmatch(f"could not extract {fn} from the score-0 source")
 
     overlay_hint = ""
     record_parts = rec_id.split(":", 2) if rec_id else []
@@ -1304,8 +1319,9 @@ def land_match(work: Path, fn: str, build: str = "us",
         overlay_hint = record_parts[1]
     found = find_stub(fn, overlay_hint)
     if not found:
-        return False, (f"no INCLUDE_ASM stub for {fn} in src/; it may already "
-                       f"be applied")
+        return report_nonmatch(
+            f"no INCLUDE_ASM stub for {fn} in src/; it may already be applied"
+        )
     path, asm_rel, _ = found
     ctx = {"src_rel": str(path.relative_to(REPO)), "asm_rel": asm_rel}
 
@@ -1381,18 +1397,20 @@ def land_match(work: Path, fn: str, build: str = "us",
                 wd.restore(ctx, original)
                 bad = _assert_reverted(path, original)
                 if bad:
-                    return False, f"{bad} (after VERIFY FAILED: {vdetail})"
+                    return report_nonmatch(f"{bad} (after VERIFY FAILED: {vdetail})")
                 # Rebuild so the tree is not left holding artefacts built from
                 # a seed that is no longer in src/. Leaving those behind is
                 # exactly the stale-artefact condition that produced the
                 # disagreement in the first place.
                 ok2, baseline_detail = wd.build_and_check(rec)
                 if not ok2:
-                    return False, ("TREE ALREADY BROKEN: the reverted singleton "
-                                   f"baseline failed for {rec['id']} after checksum "
-                                   f"verification failed ({baseline_detail[:150]}). "
-                                   "Nothing attributed.")
-                return False, f"VERIFY FAILED: {vdetail}"
+                    return report_nonmatch(
+                        "TREE ALREADY BROKEN: the reverted singleton "
+                        f"baseline failed for {rec['id']} after checksum "
+                        f"verification failed ({baseline_detail[:150]}). "
+                        "Nothing attributed."
+                    )
+                return report_nonmatch(f"VERIFY FAILED: {vdetail}")
 
             if "CHECKSUM MISMATCH" in detail:
                 detail += capture_mismatch_forensics(fn, overlay)
@@ -1405,7 +1423,7 @@ def land_match(work: Path, fn: str, build: str = "us",
             if bad:
                 # Do NOT run the attribution build: it would compile the seed
                 # that is still applied and answer a different question.
-                return False, f"{bad} (original failure: {detail[:150]})"
+                return report_nonmatch(f"{bad} (original failure: {detail[:150]})")
 
             # Then ask whether the failure was even OURS. If the reverted tree
             # is also red, something was broken before we touched it -- a
@@ -1415,9 +1433,11 @@ def land_match(work: Path, fn: str, build: str = "us",
             # has build_error_is_ours for the same reason.
             ok2, _ = wd.build_and_check(rec)
             if not ok2:
-                return False, ("TREE ALREADY BROKEN: the build fails with the "
-                               "seed REVERTED too, so this failure is not "
-                               "attributable to " + fn + ". Nothing recorded.")
+                return report_nonmatch(
+                    "TREE ALREADY BROKEN: the build fails with the "
+                    "seed REVERTED too, so this failure is not "
+                    "attributable to " + fn + ". Nothing recorded."
+                )
             verdict = classify_build_failure(detail)
 
             # COMPILES BUT DIFFERS IS A PERMUTER SEED. Save it.
@@ -1453,7 +1473,7 @@ def land_match(work: Path, fn: str, build: str = "us",
                     verdict += f" rejected={rejected}"
                 else:
                     verdict += " rejected=NONE(save failed)"
-            return False, verdict
+            return report_nonmatch(verdict)
         except Exception as e:                              # noqa: BLE001
             if original is not None:
                 try:
@@ -1939,6 +1959,13 @@ def already_busy() -> list[str]:
     return busy
 
 
+@search_supervisor.legacy_lease(
+    lambda statuses: (
+        str(record.get("id", ""))
+        for record in load_queue()
+        if record.get("status") in statuses and record.get("id")
+    )
+)
 def supervise(slots: int, threads: int, stall: int, cycles: int,
               statuses: tuple[str, ...], once: bool = False,
               max_iters: int = DEF_MAX_ITERS,
@@ -3328,14 +3355,51 @@ def reconcile_seeds(apply: bool = False) -> int:
     return 0
 
 
+def _instrumented_landing(
+        recipient_id: str,
+        source: str,
+        persist_terminal,
+        ) -> tuple[bool, str]:
+    """Route a typed score-zero handoff through the hardened landing gate."""
+    bits = recipient_id.split(":", 2)
+    function = bits[2] if len(bits) == 3 else recipient_id
+
+    def on_verified(detail: str) -> None:
+        # land_match invokes this at its existing post-verification point. The
+        # durable oracle receipt is therefore persisted before a matched call
+        # can return to the supervisor.
+        persist_terminal("matched", detail)
+
+    def on_terminal(matched: bool, detail: str) -> None:
+        # land_match invokes this only on a normal terminal return, after its
+        # restore and attribution work.  Persisting here closes the window
+        # between a non-match callback return and the durable oracle receipt.
+        if not matched:
+            persist_terminal("not_matched", detail)
+
+    return land_match(
+        Path(),
+        function,
+        body=source,
+        rec_id=recipient_id,
+        on_verified=on_verified,
+        on_terminal=on_terminal,
+    )
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--plan", action="store_true")
     ap.add_argument("--run", action="store_true")
+    ap.add_argument("--mode", choices=("legacy", "instrumented"),
+                    help="explicit execution mode for --run")
+    ap.add_argument("--manifest",
+                    help="typed manifest path for instrumented run/status/stop")
     ap.add_argument("--status", action="store_true")
     ap.add_argument("--stop", action="store_true")
+    ap.add_argument("--resume", action="store_true")
     ap.add_argument("--self-test", action="store_true")
     ap.add_argument("--reconcile-seeds", action="store_true",
                     help="find seeds whose record is not near "
@@ -3382,6 +3446,44 @@ def main() -> int:
         sys.stdout.reconfigure(line_buffering=True)
     except (AttributeError, ValueError):     # pragma: no cover
         pass
+
+    if a.mode == search_supervisor.INSTRUMENTED_MODE:
+        actions = sum(bool(value) for value in (a.run, a.status, a.stop, a.resume))
+        if actions != 1 or not a.manifest:
+            print("REFUSING: instrumented mode requires exactly one of "
+                  "--run, --status, --stop or --resume and an explicit "
+                  "--manifest",
+                  file=sys.stderr)
+            return 2
+        try:
+            if a.run:
+                result = search_supervisor.run_instrumented(
+                    a.manifest,
+                    landing=_instrumented_landing,
+                )
+            elif a.status:
+                result = search_supervisor.status_instrumented(a.manifest)
+            elif a.resume:
+                result = search_supervisor.resume_instrumented(
+                    a.manifest,
+                    landing=_instrumented_landing,
+                )
+            else:
+                result = search_supervisor.request_instrumented_stop(a.manifest)
+        except Exception as exc:  # noqa: BLE001
+            print(f"REFUSING: instrumented supervisor: "
+                  f"{type(exc).__name__}: {exc}", file=sys.stderr)
+            return 2
+        print(json.dumps(result, indent=2, sort_keys=True))
+        return 0
+    if a.manifest:
+        print("REFUSING: --manifest is valid only with --mode instrumented",
+              file=sys.stderr)
+        return 2
+    if a.run and a.mode != search_supervisor.LEGACY_MODE:
+        print("REFUSING: --run requires explicit --mode legacy or "
+              "--mode instrumented", file=sys.stderr)
+        return 2
 
     if a.reconcile_seeds:
         return reconcile_seeds(apply=a.apply_reconcile)

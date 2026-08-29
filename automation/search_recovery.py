@@ -32,6 +32,7 @@ from .search_types import (
     OracleRequest,
     ParentRun,
     RunManifest,
+    RunResume,
     RunStop,
     SearchTask,
     TaskTerminal,
@@ -419,8 +420,12 @@ def recover_run(
             candidate_stop = event.payload
             assert isinstance(candidate_stop, RunStop)
             if stopped is not None and stopped != candidate_stop:
-                raise RecoveryError("run has multiple different stop records")
+                raise RecoveryError("run has multiple active stop records")
             stopped = candidate_stop
+        elif event.event_type == "run_resumed":
+            resume = event.payload
+            assert isinstance(resume, RunResume)
+            stopped = None
 
     incomplete = [
         task

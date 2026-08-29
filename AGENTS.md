@@ -66,8 +66,12 @@ These are absolute. Each exists because breaking it cost real work.
     `*.m2c`, caches, debug objects, local agent state, and work directories.
 15. **Do not multiply validation without a state change.** Run the focused
     regression after an edit and each required consolidated suite once before
-    landing. Do not repeat full analysis or builds when the state they validate
-    has not changed, except for the mandatory fresh pre-push build and oracle.
+    landing. Do not repeat full analysis, builds or checksum-oracle calls when
+    the source or build inputs they validate have not changed. A clean,
+    just-completed post-push oracle remains the baseline for later
+    automation-only work; do not re-run it at that work's start. The sole
+    no-state-change exception is the mandatory fresh pre-push build and oracle
+    immediately before an actual push.
 16. **Interpret overrides narrowly.** A command-specific or batch-specific
     instruction changes only that operation unless the owner explicitly states
     a new general policy. Never turn an exception into a standing workflow.

@@ -23,6 +23,7 @@ from automation.search_types import (
     ParentRun,
     PatchHunk,
     RunManifest,
+    RunResume,
     RunStop,
     ScoreComponents,
     ScoreDeltas,
@@ -209,6 +210,11 @@ def all_records():
         artifact("oracle-result"),
     )
     stop = RunStop("graceful_stop", task.task_id, (task.task_id,), _hash("budget"), True)
+    resume = RunResume(
+        "run-schema:stopped:1",
+        _hash("stop-event"),
+        None,
+    )
     event_data = {
         "schema_version": "1.0.0",
         "sequence": 0,
@@ -225,7 +231,7 @@ def all_records():
         artifact(), ScoreComponents(0, 0, 0, 0, 0), score(0), PatchHunk(0, "before\n", "after\n", (), ()),
         grouped_patch(), mutation, parent, manifest(), task, candidate, ScoreDeltas(0, 0, 0, 0, 0, 0),
         evaluation, decision, oracle_request, oracle_receipt, terminal, interruption,
-        checkpoint, budget, receipt, stop, ledger_event,
+        checkpoint, budget, receipt, stop, resume, ledger_event,
     ]
 
 
@@ -418,7 +424,7 @@ class TestSearchSchema(unittest.TestCase):
                 "oracle_requested": "oracle_request", "oracle_result_recorded": "oracle_receipt",
                 "task_completed": "task_terminal", "task_interrupted": "interruption",
                 "checkpoint_committed": "checkpoint", "exhaustion_recorded": "exhaustion_receipt",
-                "run_stopped": "run_stop",
+                "run_stopped": "run_stop", "run_resumed": "run_resume",
             }[event_type]
             required = set(defs[name]["required"])
             self.assertEqual(

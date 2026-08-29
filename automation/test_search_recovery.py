@@ -175,6 +175,12 @@ class TestSearchRecovery(unittest.TestCase):
                 payload["through_event_hash"] = "<event-hash>"
                 payload["checkpoint_artifact"]["content_hash"] = "<artifact-hash>"
                 payload["checkpoint_artifact"]["path"] = "<checkpoint>"
+            elif event.event_type == "run_resumed":
+                # The resume binds the exact stop event, whose envelope also
+                # contains the wall-clock recording time. Compare transition
+                # semantics while treating that volatile chain hash as an
+                # integrity field.
+                payload["stop_event_hash"] = "<event-hash>"
             logical_events.append((event.event_type, payload))
         events = tuple(logical_events)
         graph = tuple(
@@ -820,7 +826,12 @@ class TestSearchRecovery(unittest.TestCase):
             self._complete_scenario(reference_directory)
             reference = self._logical_state(reference_directory)
             for point in DURABLE_FAULT_POINTS:
-                if point in ORACLE_FAULT_POINTS:
+                if point in ORACLE_FAULT_POINTS or point in {
+                    "before_run_resume",
+                    "before_run_resume_event",
+                    "after_run_resume_event",
+                    "after_run_resume",
+                }:
                     continue
                 with self.subTest(point=point), tempfile.TemporaryDirectory() as directory:
                     injector = self._complete_scenario(directory, point)
@@ -829,6 +840,46 @@ class TestSearchRecovery(unittest.TestCase):
                     for key in reference:
                         self.assertEqual(actual[key], reference[key], msg=f"{point}: {key}")
                     self.assertTrue(actual["checkpoint_valid"], point)
+
+    @classmethod
+    def _resume_scenario(cls, directory, fault_point=None):
+        request_id = hash_bytes(b"resume-fault-request")
+        injector = FaultInjector(fault_point) if fault_point is not None else None
+        coordinator = SearchCoordinator(
+            directory,
+            manifest(),
+            fault_hook=injector,
+        )
+        task = coordinator.create_task(
+            recipient_id="record-1",
+            lane="upstream_current",
+            operation="resume-fault-matrix",
+        )
+        coordinator.schedule_task(task)
+        coordinator.stop(reason="graceful_stop", resumable=True)
+        try:
+            coordinator.resume(request_id=request_id)
+        except InjectedFault:
+            coordinator = SearchCoordinator(directory, manifest())
+            coordinator.resume(request_id=request_id)
+        return injector
+
+    def test_every_resume_fault_point_replays_the_same_transition(self):
+        resume_points = {
+            "before_run_resume",
+            "before_run_resume_event",
+            "after_run_resume_event",
+            "after_run_resume",
+        }
+        with tempfile.TemporaryDirectory() as reference_directory:
+            self._resume_scenario(reference_directory)
+            reference = self._logical_state(reference_directory)
+            for point in sorted(resume_points):
+                with self.subTest(point=point), tempfile.TemporaryDirectory() as directory:
+                    injector = self._resume_scenario(directory, point)
+                    self.assertIn(point, injector.seen)
+                    actual = self._logical_state(directory)
+                    self.assertEqual(actual, reference, point)
 
 
 if __name__ == "__main__":
