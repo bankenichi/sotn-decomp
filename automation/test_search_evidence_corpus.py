@@ -31,6 +31,7 @@ from automation.search_evidence_corpus import (
     promote_draft_landed,
     scorer_taxonomy_identity_payload,
     verify_lesson_citation,
+    _make_corpus_evidence,
 )
 from automation.search_patterns import (
     CompletedLineageContext,
@@ -342,8 +343,28 @@ class CanonicalGateConsumerTests(unittest.TestCase):
                 archive=archive,
             )
             third = build_corpus_generation(
-                ({"evidence_id": digest("entry-1"), "kind": "lesson"},
-                 {"evidence_id": digest("entry-2"), "kind": "refusal"}),
+                (
+                    {
+                        "evidence_id": digest("entry-1"),
+                        "kind": "first_divergence",
+                        "outcome": "refused",
+                        "first_divergence": {
+                            "target_index": 1,
+                            "candidate_index": 2,
+                        },
+                        "reason_code": "missing_evaluator_identity",
+                    },
+                    {
+                        "evidence_id": digest("entry-2"),
+                        "kind": "first_divergence",
+                        "outcome": "refused",
+                        "first_divergence": {
+                            "target_index": 3,
+                            "candidate_index": 4,
+                        },
+                        "reason_code": "missing_evaluator_identity",
+                    },
+                ),
                 integration_gate=gate,
                 schema_identity=digest("schema"),
                 archive=archive,
@@ -1032,6 +1053,294 @@ class PromotionAndRecurrenceTests(unittest.TestCase):
         self.assertEqual(
             entries[0].evaluator_identity, digest("search-evaluator")
         )
+
+
+class GenerationPublicationTests(unittest.TestCase):
+    """Task 4: one immutable generation from every corpus evidence kind."""
+
+    def full_entry_set(self, archive: ContentAddressedArchive):
+        gate = fixture_gate(archive)
+        lesson_bytes = _LESSON_PATH.read_bytes()
+        citation = make_lesson_citation(
+            lesson_source(lesson_bytes),
+            lesson_bytes,
+            section="§2",
+            line_start=146,
+            line_end=178,
+            rule_id="argument-width.absent-andi",
+            absence_masking=AbsenceMaskingClaim(
+                opcode="andi", masks=("0xff", "0xffff"), scope="argument-use"
+            ),
+        )
+        lesson_entry = _make_corpus_evidence(
+            kind="lesson",
+            outcome="accepted",
+            citations=(citation,),
+            support_identities=(citation.span_identity,),
+        )
+        compiler = digest("compiler")
+        taxonomy = make_scorer_taxonomy(
+            fixture_score(total=12, compiler_identity=compiler),
+            fixture_score(total=4, compiler_identity=compiler),
+            evaluator_identity=digest("search-evaluator"),
+            target_identity=digest("target"),
+        )
+        scorer_entry = _make_corpus_evidence(
+            kind="scorer",
+            outcome="accepted",
+            compiler_identity=compiler,
+            evaluator_identity=digest("search-evaluator"),
+            target_identity=digest("target"),
+            scorer=taxonomy,
+            support_identities=(taxonomy.taxonomy_id,),
+        )
+        pair = fixture_pair()
+        accepted = promote_draft_landed(
+            pair,
+            fixture_score(total=14, compiler_identity=pair.compiler_identity),
+            fixture_score(total=7, compiler_identity=pair.compiler_identity),
+            evaluator_identity=digest("search-evaluator"),
+            target_identity=digest("target"),
+            target_object_hash=digest("target-object"),
+        )
+        assert isinstance(accepted, PromotionAccepted)
+        refused = promote_draft_landed(
+            pair,
+            fixture_score(total=7, compiler_identity=pair.compiler_identity),
+            fixture_score(total=14, compiler_identity=pair.compiler_identity),
+            evaluator_identity=digest("search-evaluator"),
+            target_identity=digest("target"),
+        )
+        assert isinstance(refused, PromotionRefused)
+        divergence = FirstDivergence(2, 3, "lw", "sw")
+        report = fixture_pattern_report(
+            {
+                "first_divergence": divergence.to_dict(),
+                "lineage_ids": ["run-a:task-a", "run-b:task-b"],
+                "source_ledgers": [digest("ledger-a"), digest("ledger-b")],
+                "scorer_algorithm": "difflib",
+                "compiler_identity": digest("compiler"),
+                "config_identity": digest("config"),
+                "schema_identity": digest("schema"),
+                "lane_tool_identity": digest("tool:cfg_dataflow"),
+                "recipient_id": "us:ST:fn",
+                "target_identity": digest("target:us:ST:fn"),
+                "evaluator_identity": digest("search-evaluator"),
+            }
+        )
+        contexts = (
+            CompletedLineageContext(
+                ledger_identity=digest("ledger-a"),
+                run_id="run-a",
+                compiler_identity=digest("compiler"),
+                config_identity=digest("config"),
+                schema_identity=digest("schema"),
+                scorer_algorithms=("difflib",),
+                lane_tool_identities=(
+                    ("cfg_dataflow", digest("tool:cfg_dataflow")),
+                ),
+                recipient_target_identities=(
+                    ("us:ST:fn", digest("target:us:ST:fn")),
+                ),
+                evaluator_identity=digest("search-evaluator"),
+            ),
+            CompletedLineageContext(
+                ledger_identity=digest("ledger-b"),
+                run_id="run-b",
+                compiler_identity=digest("compiler"),
+                config_identity=digest("config"),
+                schema_identity=digest("schema"),
+                scorer_algorithms=("difflib",),
+                lane_tool_identities=(
+                    ("cfg_dataflow", digest("tool:cfg_dataflow")),
+                ),
+                recipient_target_identities=(
+                    ("us:ST:fn", digest("target:us:ST:fn")),
+                ),
+                evaluator_identity=digest("search-evaluator"),
+            ),
+        )
+        recurring = collect_recurring_first_divergence(report, contexts)
+        assert len(recurring) == 1
+        diagnostic_report = fixture_pattern_report(
+            {
+                "first_divergence": divergence.to_dict(),
+                "lineage_ids": ["run-a:task-a", "run-b:task-b"],
+                "source_ledgers": [digest("ledger-a"), digest("ledger-b")],
+                "scorer_algorithm": "difflib",
+                "compiler_identity": digest("compiler"),
+                "config_identity": digest("config"),
+                "schema_identity": digest("schema"),
+                "lane_tool_identity": digest("tool:cfg_dataflow"),
+                "recipient_id": "us:ST:fn",
+                "target_identity": digest("target:us:ST:fn"),
+                "evaluator_identity": digest("search-evaluator"),
+            }
+        )
+        diagnostic = CompletedLineageDiagnostic(
+            ledger_identity=digest("ledger-a"),
+            run_id="run-a",
+            reason_code="missing_evaluator_identity",
+            observed_identities=tuple(
+                sorted(
+                    (
+                        digest("compiler"),
+                        digest("config"),
+                        digest("schema"),
+                        digest("tool:cfg_dataflow"),
+                        digest("target:us:ST:fn"),
+                    )
+                )
+            ),
+        )
+        compatible = CompletedLineageContext(
+            ledger_identity=digest("ledger-b"),
+            run_id="run-b",
+            compiler_identity=digest("compiler"),
+            config_identity=digest("config"),
+            schema_identity=digest("schema"),
+            scorer_algorithms=("difflib",),
+            lane_tool_identities=(("cfg_dataflow", digest("tool:cfg_dataflow")),),
+            recipient_target_identities=(("us:ST:fn", digest("target:us:ST:fn")),),
+            evaluator_identity=digest("search-evaluator"),
+        )
+        refused_recurrence = collect_recurring_first_divergence(
+            diagnostic_report, (diagnostic, compatible)
+        )
+        assert len(refused_recurrence) == 1
+        entries = (
+            lesson_entry,
+            scorer_entry,
+            accepted.evidence,
+            refused.evidence,
+            recurring[0],
+            refused_recurrence[0],
+        )
+        return gate, entries, report, (lesson_entry, scorer_entry)
+
+    def test_generation_publishes_every_kind_and_derives_sources(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            archive = ContentAddressedArchive(Path(directory) / "archive")
+            gate, entries, _report, _inputs = self.full_entry_set(archive)
+            generation = build_corpus_generation(
+                entries,
+                integration_gate=gate,
+                schema_identity=digest("schema"),
+                archive=archive,
+            )
+            self.assertEqual(len(generation.entries), 6)
+            expected_sources = sorted(
+                {
+                    identity
+                    for entry in generation.entries
+                    for identity in entry["support_identities"]
+                    if identity.startswith("sha256:")
+                }
+            )
+            self.assertEqual(
+                generation.source_identities, tuple(expected_sources)
+            )
+            payload = json.loads(
+                archive.verify(generation.artifact).decode("utf-8")
+            )
+            self.assertEqual(
+                payload["source_identities"], list(expected_sources)
+            )
+            self.assertEqual(
+                payload["integration_gate_id"], gate.gate_id
+            )
+
+    def test_generation_is_deterministic_under_entry_reversal(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            archive = ContentAddressedArchive(Path(directory) / "archive")
+            gate, entries, _report, _inputs = self.full_entry_set(archive)
+            first = build_corpus_generation(
+                entries,
+                integration_gate=gate,
+                schema_identity=digest("schema"),
+                archive=archive,
+            )
+            second = build_corpus_generation(
+                tuple(reversed(entries)),
+                integration_gate=gate,
+                schema_identity=digest("schema"),
+                archive=archive,
+            )
+            self.assertEqual(first.generation_id, second.generation_id)
+            self.assertEqual(first.artifact.content_hash, second.artifact.content_hash)
+            self.assertEqual(first.artifact, second.artifact)
+
+    def test_generation_build_is_read_only_over_its_inputs(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            archive = ContentAddressedArchive(Path(directory) / "archive")
+            gate, entries, report, inputs = self.full_entry_set(archive)
+            before_gate = gate.to_dict()
+            before_entries = [entry.to_dict() for entry in entries]
+            before_report = report.to_dict()
+            before_inputs = [entry.to_dict() for entry in inputs]
+            build_corpus_generation(
+                entries,
+                integration_gate=gate,
+                schema_identity=digest("schema"),
+                archive=archive,
+            )
+            self.assertEqual(gate.to_dict(), before_gate)
+            self.assertEqual(
+                [entry.to_dict() for entry in entries], before_entries
+            )
+            self.assertEqual(report.to_dict(), before_report)
+            self.assertEqual(
+                [entry.to_dict() for entry in inputs], before_inputs
+            )
+
+    def test_entry_shape_contradictions_are_refused(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            archive = ContentAddressedArchive(Path(directory) / "archive")
+            gate = fixture_gate(archive)
+            with self.assertRaises(EvidenceIdentityMismatch):
+                build_corpus_generation(
+                    (_make_corpus_evidence(
+                        kind="draft_landed",
+                        outcome="accepted",
+                        recipient_id="us:ST:fn",
+                    ),),
+                    integration_gate=gate,
+                    schema_identity=digest("schema"),
+                    archive=archive,
+                )
+            with self.assertRaises(EvidenceIdentityMismatch):
+                build_corpus_generation(
+                    (_make_corpus_evidence(
+                        kind="unknown-kind",
+                        outcome="accepted",
+                    ),),
+                    integration_gate=gate,
+                    schema_identity=digest("schema"),
+                    archive=archive,
+                )
+
+    def test_duplicate_evidence_ids_are_refused(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            archive = ContentAddressedArchive(Path(directory) / "archive")
+            gate = fixture_gate(archive)
+            entry = _make_corpus_evidence(
+                kind="scorer",
+                outcome="accepted",
+                scorer=make_scorer_taxonomy(
+                    fixture_score(total=12, compiler_identity=digest("compiler")),
+                    fixture_score(total=4, compiler_identity=digest("compiler")),
+                    evaluator_identity=digest("search-evaluator"),
+                    target_identity=digest("target"),
+                ),
+                support_identities=(digest("taxonomy"),),
+            )
+            with self.assertRaises(EvidenceIdentityMismatch):
+                build_corpus_generation(
+                    (entry, entry),
+                    integration_gate=gate,
+                    schema_identity=digest("schema"),
+                    archive=archive,
+                )
 
 
 if __name__ == "__main__":

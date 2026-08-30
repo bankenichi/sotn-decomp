@@ -932,7 +932,7 @@ Expected result: the focused suite passes, one incompatible or single-lineage re
 - Consumes: validated `CorpusEvidence` entries, the canonical `IntegrationGateReceipt`, `ContentAddressedArchive.put_json`, and a content-addressed schema identity.
 - Produces: `CorpusGeneration` and `build_corpus_generation(entries, *, integration_gate, schema_identity, archive)`.
 
-- [ ] **Step 1: Write deterministic-generation and read-only tests.** Include scorer, §2 citation, accepted draft-landed idiom, recurring `FirstDivergence`, negative, and refusal entries. Reversing entry order must not change the generation or artifact bytes.
+- [x] **Step 1: Write deterministic-generation and read-only tests.** Include scorer, §2 citation, accepted draft-landed idiom, recurring `FirstDivergence`, negative, and refusal entries. Reversing entry order must not change the generation or artifact bytes.
 
 ```python
 def test_generation_is_content_addressed_and_order_independent(tmp_path):
@@ -964,7 +964,7 @@ def test_corpus_builder_does_not_mutate_input_files(tmp_path):
     assert tuple(sorted(item.name for item in tmp_path.iterdir() if item.name != "corpus")) == listing_before
 ```
 
-- [ ] **Step 2: Run the generation failure.**
+- [x] **Step 2: Run the generation failure.**
 
 ```text
 sotn-cmd run_automation run_selftests.py --only test_search_evidence_corpus.py --jobs 1
@@ -972,7 +972,7 @@ sotn-cmd run_automation run_selftests.py --only test_search_evidence_corpus.py -
 
 Expected result before implementation: the suite fails because `build_corpus_generation` and `CorpusGeneration` are absent.
 
-- [ ] **Step 3: Implement canonical generation publication.** Reject a missing or invalid canonical integration receipt, duplicate evidence IDs with different payloads, invalid source identities, and entries whose discriminated fields do not match their `kind` and `outcome`. Verify the receipt's archived artifact before consuming entries. Sort entries by `evidence_id`, derive `source_identities` from citation, scorer, pair, report, refusal, and idiom support identities, build a canonical payload containing the complete receipt payload plus `integration_gate_id`, `manifest_artifact_identity`, `subset_identity`, `queue_evidence_identity`, `selected_lanes`, `coordinator_identity`, and `connector_identity`, and publish it through `ContentAddressedArchive.put_json(category="evidence_corpus", suffix=".json")`. Existing different bytes at the same content identity must raise the archive collision error.
+- [x] **Step 3: Implement canonical generation publication.** Reject a missing or invalid canonical integration receipt, duplicate evidence IDs with different payloads, invalid source identities, and entries whose discriminated fields do not match their `kind` and `outcome`. Verify the receipt's archived artifact before consuming entries. Sort entries by `evidence_id`, derive `source_identities` from citation, scorer, pair, report, refusal, and idiom support identities, build a canonical payload containing the complete receipt payload plus `integration_gate_id`, `manifest_artifact_identity`, `subset_identity`, `queue_evidence_identity`, `selected_lanes`, `coordinator_identity`, and `connector_identity`, and publish it through `ContentAddressedArchive.put_json(category="evidence_corpus", suffix=".json")`. Existing different bytes at the same content identity must raise the archive collision error.
 
 ```python
 ordered = tuple(sorted(unique_entries, key=lambda item: item.evidence_id))
@@ -996,7 +996,7 @@ if artifact.content_hash != generation_id:
     raise EvidenceIdentityMismatch("corpus artifact identity differs from payload")
 ```
 
-- [ ] **Step 4: Run the corpus-generation tests.**
+- [x] **Step 4: Run the corpus-generation tests.**
 
 ```text
 sotn-cmd run_automation run_selftests.py --only test_search_evidence_corpus.py --jobs 1
@@ -1004,7 +1004,7 @@ sotn-cmd run_automation run_selftests.py --only test_search_evidence_corpus.py -
 
 Expected result: the focused suite passes with identical replay IDs, preserved negative/refusal entries, and no writes outside the caller-owned archive root.
 
-- [ ] **Step 5: Stop for the root-only commit boundary.** Root may commit only `automation/search_evidence_corpus.py` and `automation/test_search_evidence_corpus.py` with message `feat: publish immutable evidence corpus`. The worker does not commit or publish a queue or source artifact.
+- [x] **Step 5: Stop for the root-only commit boundary.** Root may commit only `automation/search_evidence_corpus.py` and `automation/test_search_evidence_corpus.py` with message `feat: publish immutable evidence corpus`. The worker does not commit or publish a queue or source artifact.
 
 ### Task 5: Define and publish the four-version immutable donor generation
 

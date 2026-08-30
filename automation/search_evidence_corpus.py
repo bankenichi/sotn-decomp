@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, replace
-from typing import Any, Sequence, Tuple
+from typing import Any, Sequence, Set, Tuple
 
 try:  # package imports
     from .compiler_idioms import (
@@ -775,6 +775,60 @@ def _corpus_generation_payload(
     }
 
 
+_ENTRY_OUTCOMES = {
+    "draft_landed": ("accepted", "negative"),
+    "first_divergence": ("positive", "refused"),
+    "lesson": ("accepted",),
+    "scorer": ("accepted",),
+    "negative": ("negative",),
+}
+
+
+def _validate_corpus_entry_shape(entry: Mapping[str, Any]) -> None:
+    """Reject entries whose discriminated fields contradict kind and outcome."""
+
+    kind = entry.get("kind")
+    outcome = entry.get("outcome")
+    if kind not in _ENTRY_OUTCOMES:
+        raise EvidenceIdentityMismatch(
+            f"corpus entry kind is unknown: {kind!r}"
+        )
+    if outcome not in _ENTRY_OUTCOMES[kind]:
+        raise EvidenceIdentityMismatch(
+            f"corpus entry outcome {outcome!r} is not valid for kind {kind!r}"
+        )
+    has_idiom = entry.get("idiom") is not None
+    has_divergence = entry.get("first_divergence") is not None
+    has_scorer = entry.get("scorer") is not None
+    has_citations = bool(entry.get("citations"))
+    has_pairs = bool(entry.get("draft_landed"))
+    reason_code = entry.get("reason_code")
+    if kind == "draft_landed":
+        if outcome == "accepted" and not (has_idiom and has_pairs and has_scorer):
+            raise EvidenceIdentityMismatch(
+                "an accepted draft-landed entry must carry its idiom, pair, "
+                "and measurement taxonomy"
+            )
+        if outcome == "negative" and (has_idiom or not reason_code):
+            raise EvidenceIdentityMismatch(
+                "a negative draft-landed entry must refuse without an idiom "
+                "and name its reason"
+            )
+    if kind == "first_divergence":
+        if not has_divergence:
+            raise EvidenceIdentityMismatch(
+                "a first-divergence entry must carry its divergence"
+            )
+        if outcome == "refused" and not reason_code:
+            raise EvidenceIdentityMismatch(
+                "a refused first-divergence entry must name its reason"
+            )
+    if kind == "lesson" and not has_citations:
+        raise EvidenceIdentityMismatch("a lesson entry must cite the lesson")
+    if kind == "scorer" and not has_scorer:
+        raise EvidenceIdentityMismatch("a scorer entry must carry its taxonomy")
+
+
 def build_corpus_generation(
     entries: Iterable[Any],
     *,
@@ -809,12 +863,19 @@ def build_corpus_generation(
     try:
         entry_payloads = tuple(_entry_payload(entry) for entry in entry_values)
         entry_ids = []
+        derived_sources: Set[str] = set()
         for entry in entry_payloads:
             if not isinstance(entry, Mapping):
                 raise EvidenceIdentityMismatch("corpus entries must be objects")
             evidence_id = entry.get("evidence_id")
             validate_hash(evidence_id, "evidence_id")
+            _validate_corpus_entry_shape(entry)
             entry_ids.append(evidence_id)
+            for identity in entry.get("support_identities", ()) or ():
+                # Hash identities feed the generation's source set; lineage
+                # labels stay provenance on their own entries.
+                if isinstance(identity, str) and identity.startswith("sha256:"):
+                    derived_sources.add(identity)
         if len(set(entry_ids)) != len(entry_ids):
             raise EvidenceIdentityMismatch("corpus evidence IDs must be unique")
         ordered_entries = tuple(
@@ -827,7 +888,7 @@ def build_corpus_generation(
         raise
     except (AttributeError, SearchValidationError, TypeError, ValueError) as exc:
         raise EvidenceIdentityMismatch("corpus entry identity is invalid") from exc
-    source_identities: tuple[str, ...] = ()
+    source_identities: tuple[str, ...] = tuple(sorted(derived_sources))
     payload = _corpus_generation_payload(
         schema_identity=schema_identity,
         integration_gate=integration_gate,
