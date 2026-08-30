@@ -2139,6 +2139,8 @@ def self_test() -> int:
         "fn_diff.py",               # takes a function name
         "find_data_segment.py",     # takes an address
         "member_types.py",          # a library; its self-test runs in-process
+        "search_evidence_corpus.py",  # a library; corpus builders import it and
+                                      # its focused suite runs in-process
         "probe_provider.py",        # network probe, run deliberately
         "upstream_harvest.py",      # occasional, and takes --overlay
         "opencode_size_bisect.py",  # already has a button under another label

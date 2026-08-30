@@ -26,6 +26,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from unittest.mock import patch as _patch
@@ -683,7 +684,17 @@ def main() -> int:
 
         with _patch.object(cc.os, "replace", side_effect=flaky_replace):
             written = cc.fs_write(rel, "durable payload")
-        check(target.read_text() == "durable payload",
+        # The rename is durable once replace returns; on the Windows-backed
+        # tree a fresh directory's entries can lag briefly, so poll the
+        # read-back instead of asserting against the visibility race.
+        payload = None
+        for _attempt in range(100):
+            try:
+                payload = target.read_text()
+                break
+            except FileNotFoundError:
+                time.sleep(0.01)
+        check(payload == "durable payload",
               "a transient EINVAL preserves and eventually writes the payload")
         check(written.get("write_attempts") == 2,
               "the successful response reports the bounded retry")

@@ -876,6 +876,11 @@ AUTOMATION_SCRIPTS = {
     "test_search_run_factory.py",
     "test_search_patterns.py",
     "test_search_supervisor.py",
+    # The evidence corpus consumer and its focused suite, corpus plan Task 0.
+    # Keep this comment free of parentheses: the doc drift check parses this
+    # set literal with a non-greedy match that stops at the first one.
+    "search_evidence_corpus.py",
+    "test_search_evidence_corpus.py",
     "test_build_attribution.py",
     "escalation_triage.py",
     "deferred_triage.py",
