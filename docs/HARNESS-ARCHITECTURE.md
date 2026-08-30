@@ -508,6 +508,32 @@ function before returning. A crash after that persistence point reuses the
 receipt on replay; a callback that returns without durable terminal evidence is
 an error rather than an unverifiable success.
 
+Integration evidence is carried by the canonical gate receipt. After a run
+completes and its archive verifies, `archive_integration_gate` archives the
+receipt under the run's own evidence store and returns the typed
+`IntegrationGateReceipt` from `automation/search_supervisor.py`. The receipt
+binds the run without trusting any local value: `gate_id` is the canonical
+hash of the identity payload, and the archived artifact must equal that
+payload byte for byte. The payload binds the manifest artifact identity (the
+canonical manifest hash), the frozen subset and queue evidence identities,
+the selected lanes, the execution mode and multi-record flag, and two module
+identities measured at creation: the factory-bound coordinator module hash
+from the manifest's tool identities, and the content hash of
+`automation/mcp/commands_client.py`.
+
+The validator is `validate_integration_gate(receipt, archive=...)`, and
+`load_integration_gate` decodes and validates in one step; both refuse
+missing, changed or corrupt receipts with `IntegrationGateError`. The corpus,
+donor-index, m2c-matrix and weight-tuner plans import the type and refusal
+under the descriptive names `IntegrationGateReceipt` and
+`IntegrationGateError`, call the validator exactly once before reading any
+evidence, and retain the complete receipt payload in every generation they
+build. `EVALUATOR_TOOL_KEY` (`search_evaluator`) is the reserved manifest tool
+key for evaluator and scorer provenance and is deliberately distinct from the
+`full_oracle` landing authority, which cannot satisfy evaluator provenance.
+Focused coverage lives in `automation/test_search_supervisor.py`
+(`IntegrationGateReceiptTests`).
+
 ---
 
 ## 8. Paths
