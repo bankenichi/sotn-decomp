@@ -12,7 +12,7 @@ import functools
 import json
 import os
 import time
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping, Optional, Sequence, Tuple
 
@@ -42,9 +42,12 @@ try:
         OracleRequest,
         RunResume,
         RunManifest,
+        SearchValidationError,
         canonical_bytes,
         hash_bytes,
         hash_canonical,
+        validate_hash,
+        validate_run_id,
     )
 except ImportError:  # pragma: no cover - direct script compatibility
     from search_archive import ContentAddressedArchive  # type: ignore
@@ -72,9 +75,12 @@ except ImportError:  # pragma: no cover - direct script compatibility
         OracleRequest,
         RunResume,
         RunManifest,
+        SearchValidationError,
         canonical_bytes,
         hash_bytes,
         hash_canonical,
+        validate_hash,
+        validate_run_id,
     )
 
 
@@ -89,6 +95,12 @@ STOP_REQUEST_FILENAME = "stop-request.json"
 STOP_REQUEST_REASON = "graceful_stop"
 STOP_REQUEST_PENDING = "pending"
 STOP_REQUEST_ACKNOWLEDGED = "acknowledged"
+GATE_RECEIPT_PROTOCOL = "search-supervisor-integration-gate-v1"
+# Reserved manifest tool key for evaluator/scorer provenance.  Deliberately
+# distinct from the ``full_oracle`` landing authority: a completed run may
+# carry full oracle evidence and still lack evaluator provenance for its
+# score vectors, which is a diagnostic, not a promotion-eligible context.
+EVALUATOR_TOOL_KEY = "search_evaluator"
 # Factory-created manifests are globally bounded, including their child-task
 # allowance.  Keep the supervisor defensive when handed a forged manifest.
 # The cap itself is shared with factory admission through search_types.
@@ -122,6 +134,10 @@ class DurableOracleError(SupervisorIntegrationError):
     """The durable landing oracle store is missing, stale or corrupt."""
 
 
+class IntegrationGateError(SupervisorIntegrationError):
+    """The canonical integration receipt is missing, changed or unverifiable."""
+
+
 def mode_identity(mode: str) -> str:
     if mode not in {LEGACY_MODE, INSTRUMENTED_MODE}:
         raise SupervisorModeError("unknown supervisor mode")
@@ -137,6 +153,293 @@ def require_instrumented_manifest(manifest: RunManifest) -> None:
         raise SupervisorModeError(
             "instrumented manifest does not bind the instrumented supervisor mode"
         )
+
+
+def integration_gate_identity_payload(
+    *,
+    run_id: str,
+    manifest_artifact_identity: str,
+    subset_identity: str,
+    queue_evidence_identity: str,
+    selected_lanes: Sequence[str],
+    coordinator_identity: str,
+    connector_identity: str,
+    execution_mode: str,
+    multi_record: bool,
+) -> dict[str, Any]:
+    """Return the exact identity payload archived as an integration receipt.
+
+    ``gate_id`` is the canonical hash of this payload.  The archived artifact
+    carries these bytes verbatim, so consumers verify a receipt by comparing
+    its artifact against this payload instead of trusting local fields.
+    """
+
+    return {
+        "protocol": GATE_RECEIPT_PROTOCOL,
+        "run_id": run_id,
+        "manifest_artifact_identity": manifest_artifact_identity,
+        "subset_identity": subset_identity,
+        "queue_evidence_identity": queue_evidence_identity,
+        "selected_lanes": list(selected_lanes),
+        "coordinator_identity": coordinator_identity,
+        "connector_identity": connector_identity,
+        "execution_mode": execution_mode,
+        "multi_record": multi_record,
+    }
+
+
+def _integration_gate_payload(
+    receipt: "IntegrationGateReceipt",
+) -> dict[str, Any]:
+    return integration_gate_identity_payload(
+        run_id=receipt.run_id,
+        manifest_artifact_identity=receipt.manifest_artifact_identity,
+        subset_identity=receipt.subset_identity,
+        queue_evidence_identity=receipt.queue_evidence_identity,
+        selected_lanes=receipt.selected_lanes,
+        coordinator_identity=receipt.coordinator_identity,
+        connector_identity=receipt.connector_identity,
+        execution_mode=receipt.execution_mode,
+        multi_record=receipt.multi_record,
+    )
+
+
+@dataclass(frozen=True)
+class IntegrationGateReceipt:
+    """Canonical receipt binding one completed run as integration evidence.
+
+    This is the type the corpus and tuner plans import under the descriptive
+    name ``IntegrationGateReceipt``.  It carries the complete gate binding:
+    the archived receipt artifact, the manifest artifact identity, the frozen
+    subset and queue evidence identities, the selected lanes, and the
+    coordinator and connector module identities that produced the run.
+    """
+
+    gate_id: str
+    run_id: str
+    receipt_artifact: ArtifactRef
+    manifest_artifact_identity: str
+    subset_identity: str
+    queue_evidence_identity: str
+    selected_lanes: Tuple[str, ...]
+    coordinator_identity: str
+    connector_identity: str
+    execution_mode: str
+    multi_record: bool
+
+    def __post_init__(self) -> None:
+        validate_hash(self.gate_id, "gate_id")
+        validate_run_id(self.run_id, "run_id")
+        if not isinstance(self.receipt_artifact, ArtifactRef):
+            object.__setattr__(
+                self,
+                "receipt_artifact",
+                ArtifactRef.from_dict(self.receipt_artifact),  # type: ignore[arg-type]
+            )
+        for name in (
+            "manifest_artifact_identity",
+            "subset_identity",
+            "queue_evidence_identity",
+            "coordinator_identity",
+            "connector_identity",
+        ):
+            validate_hash(getattr(self, name), name)
+        lanes = tuple(self.selected_lanes)
+        if len(set(lanes)) != len(lanes):
+            raise SearchValidationError(
+                "integration gate receipt repeats a selected lane"
+            )
+        canonical_lanes = tuple(lane for lane in LANES if lane in lanes)
+        if lanes != canonical_lanes:
+            raise SearchValidationError(
+                "integration gate receipt lanes must use canonical LANES order"
+            )
+        object.__setattr__(self, "selected_lanes", lanes)
+        if self.execution_mode not in {LEGACY_MODE, INSTRUMENTED_MODE}:
+            raise SearchValidationError(
+                "integration gate receipt binds an unknown execution mode"
+            )
+        if not isinstance(self.multi_record, bool):
+            raise SearchValidationError(
+                "integration gate receipt multi_record must be a boolean"
+            )
+        if self.gate_id != hash_canonical(_integration_gate_payload(self)):
+            raise SearchValidationError(
+                "gate_id does not match the integration gate identity payload"
+            )
+
+    @classmethod
+    def from_dict(cls, value: Mapping[str, Any]) -> "IntegrationGateReceipt":
+        fields = (
+            "gate_id",
+            "run_id",
+            "receipt_artifact",
+            "manifest_artifact_identity",
+            "subset_identity",
+            "queue_evidence_identity",
+            "selected_lanes",
+            "coordinator_identity",
+            "connector_identity",
+            "execution_mode",
+            "multi_record",
+        )
+        if not isinstance(value, Mapping) or set(value) != set(fields):
+            raise SearchValidationError(
+                "integration gate receipt fields do not match its protocol"
+            )
+        return cls(**{key: value[key] for key in fields})
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "gate_id": self.gate_id,
+            "run_id": self.run_id,
+            "receipt_artifact": self.receipt_artifact.to_dict(),
+            "manifest_artifact_identity": self.manifest_artifact_identity,
+            "subset_identity": self.subset_identity,
+            "queue_evidence_identity": self.queue_evidence_identity,
+            "selected_lanes": list(self.selected_lanes),
+            "coordinator_identity": self.coordinator_identity,
+            "connector_identity": self.connector_identity,
+            "execution_mode": self.execution_mode,
+            "multi_record": self.multi_record,
+        }
+
+
+def _connector_module_identity() -> str:
+    """Bind the connector surface that created and observed the run."""
+
+    path = Path(__file__).resolve().parent / "mcp" / "commands_client.py"
+    try:
+        data = path.read_bytes()
+    except OSError as exc:
+        raise IntegrationGateError(
+            "integration gate cannot read the connector surface module"
+        ) from exc
+    return hash_bytes(data)
+
+
+def archive_integration_gate(
+    manifest: RunManifest,
+    *,
+    archive: ContentAddressedArchive,
+) -> IntegrationGateReceipt:
+    """Create and archive the canonical integration receipt for a run.
+
+    Every binding comes from the manifest's own immutable evidence: the
+    coordinator identity is the factory-bound coordinator module hash, the
+    connector identity is the content hash of the connector surface module,
+    and the manifest artifact identity is the canonical manifest hash.  Call
+    this only for a completed, artifact-verified run.  Receipt consistency is
+    owned here; run completion itself stays owned by the recovery and factory
+    verification paths.
+    """
+
+    if not isinstance(manifest, RunManifest):
+        raise IntegrationGateError("integration gate needs a typed run manifest")
+    coordinator_identity = manifest.tool_identities.get("search_coordinator")
+    if coordinator_identity is None:
+        raise IntegrationGateError(
+            "integration gate requires the factory-bound coordinator module identity"
+        )
+    mode_binding = manifest.tool_identities.get(MODE_TOOL_KEY)
+    if mode_binding == mode_identity(INSTRUMENTED_MODE):
+        execution_mode = INSTRUMENTED_MODE
+    elif mode_binding == mode_identity(LEGACY_MODE):
+        execution_mode = LEGACY_MODE
+    else:
+        raise IntegrationGateError(
+            "integration gate manifest binds no explicit supervisor mode"
+        )
+    payload = integration_gate_identity_payload(
+        run_id=manifest.run_id,
+        manifest_artifact_identity=hash_canonical(manifest.to_dict()),
+        subset_identity=manifest.subset_identity,
+        queue_evidence_identity=manifest.queue_evidence_identity,
+        selected_lanes=manifest.selected_lanes,
+        coordinator_identity=coordinator_identity,
+        connector_identity=_connector_module_identity(),
+        execution_mode=execution_mode,
+        multi_record=len(manifest.queue_record_ids) > 1,
+    )
+    artifact = archive.put_receipt(payload)
+    return IntegrationGateReceipt(
+        gate_id=hash_canonical(payload),
+        run_id=manifest.run_id,
+        receipt_artifact=artifact,
+        manifest_artifact_identity=payload["manifest_artifact_identity"],
+        subset_identity=payload["subset_identity"],
+        queue_evidence_identity=payload["queue_evidence_identity"],
+        selected_lanes=tuple(payload["selected_lanes"]),
+        coordinator_identity=payload["coordinator_identity"],
+        connector_identity=payload["connector_identity"],
+        execution_mode=payload["execution_mode"],
+        multi_record=payload["multi_record"],
+    )
+
+
+def validate_integration_gate(
+    receipt: Any,
+    *,
+    archive: ContentAddressedArchive,
+) -> None:
+    """Canonical validator for one archived integration receipt.
+
+    Refuses anything that is not a typed receipt whose archived artifact
+    matches its identity payload byte for byte.  Consumers call this exactly
+    once before reading any corpus or donor evidence.
+    """
+
+    if not isinstance(receipt, IntegrationGateReceipt):
+        raise IntegrationGateError(
+            "integration gate receipt is missing or not typed"
+        )
+    try:
+        raw = archive.verify(receipt.receipt_artifact)
+    except (RuntimeError, OSError) as exc:
+        raise IntegrationGateError(
+            "integration gate receipt artifact does not verify"
+        ) from exc
+    payload = _integration_gate_payload(receipt)
+    if raw != canonical_bytes(payload):
+        raise IntegrationGateError(
+            "integration gate receipt artifact differs from its identity payload"
+        )
+    if receipt.gate_id != hash_canonical(payload):
+        raise IntegrationGateError(
+            "integration gate receipt identity does not match its archived payload"
+        )
+
+
+def load_integration_gate(
+    source: Any,
+    *,
+    archive: ContentAddressedArchive,
+) -> IntegrationGateReceipt:
+    """Load, decode and canonically validate one integration receipt."""
+
+    try:
+        if isinstance(source, (str, os.PathLike)):
+            document = json.loads(Path(source).read_text(encoding="utf-8"))
+        elif isinstance(source, (bytes, bytearray)):
+            document = json.loads(bytes(source).decode("utf-8"))
+        elif isinstance(source, Mapping):
+            document = dict(source)
+        else:
+            raise TypeError(
+                "integration gate source must be a path, bytes or mapping"
+            )
+    except IntegrationGateError:
+        raise
+    except (OSError, TypeError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise IntegrationGateError(
+            "integration gate receipt is unreadable"
+        ) from exc
+    try:
+        receipt = IntegrationGateReceipt.from_dict(document)
+    except (KeyError, SearchValidationError, TypeError, ValueError) as exc:
+        raise IntegrationGateError("integration gate receipt is invalid") from exc
+    validate_integration_gate(receipt, archive=archive)
+    return receipt
 
 
 def _stop_request_path(run_root: Path) -> Path:
@@ -1758,8 +2061,12 @@ def status_instrumented(
 __all__ = [
     "DEFAULT_LEASE_PATH",
     "DurableOracleError",
+    "EVALUATOR_TOOL_KEY",
+    "GATE_RECEIPT_PROTOCOL",
     "INSTRUMENTED_MODE",
     "InstrumentedLandingOracle",
+    "IntegrationGateError",
+    "IntegrationGateReceipt",
     "LEGACY_MODE",
     "LandingCallback",
     "MODE_TOOL_KEY",
@@ -1767,11 +2074,15 @@ __all__ = [
     "SupervisorIntegrationError",
     "SupervisorLease",
     "SupervisorModeError",
+    "archive_integration_gate",
+    "integration_gate_identity_payload",
     "legacy_lease",
+    "load_integration_gate",
     "mode_identity",
     "require_instrumented_manifest",
     "request_instrumented_stop",
     "resume_instrumented",
     "run_instrumented",
     "status_instrumented",
+    "validate_integration_gate",
 ]

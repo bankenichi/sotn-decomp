@@ -15,27 +15,35 @@ import automation.permuter_supervisor as _permuter_supervisor
 sys.modules.setdefault("search_supervisor", _search_supervisor)
 
 from automation.search_coordinator import SearchCoordinator
+from automation.search_archive import ContentAddressedArchive
 from automation.search_lanes import LaneCandidate, LaneError, execute_task
 from automation.search_recovery import recover_run
 from automation.search_cli import RunInputError, resume_run, stop_run
 from automation.search_supervisor import (
+    EVALUATOR_TOOL_KEY,
     InstrumentedLandingOracle,
+    IntegrationGateError,
     INSTRUMENTED_MODE,
     MODE_TOOL_KEY,
     SupervisorConflict,
     SupervisorLease,
     SupervisorIntegrationError,
+    archive_integration_gate,
+    load_integration_gate,
     resume_instrumented,
     run_instrumented,
     mode_identity,
+    validate_integration_gate,
 )
 from automation.permuter_supervisor import _instrumented_landing
 from automation.search_types import (
     Budget,
     CandidateRecord,
     SearchTask,
+    SearchValidationError,
     canonical_bytes,
     hash_bytes,
+    hash_canonical,
 )
 from automation.test_search_schema import artifact, candidate_record, manifest, score
 
@@ -1269,6 +1277,79 @@ class SearchSupervisorIntegrationTests(unittest.TestCase):
                 adapters={"upstream_current": adapter},
             )
         self.assertEqual(called, [])
+
+
+class IntegrationGateReceiptTests(unittest.TestCase):
+    """Canonical Task 8.2 integration receipt: production, load and refusal."""
+
+    def gate_manifest(self, *, with_coordinator=True):
+        base = manifest()
+        tools = dict(base.tool_identities)
+        tools[MODE_TOOL_KEY] = mode_identity(INSTRUMENTED_MODE)
+        if with_coordinator:
+            tools["search_coordinator"] = hash_bytes(b"coordinator")
+        return replace(
+            base,
+            selected_lanes=("upstream_current",),
+            tool_identities=tools,
+            lane_budgets={"upstream_current": base.lane_budgets["upstream_current"]},
+        )
+
+    def test_archived_receipt_round_trips_through_the_canonical_validator(self):
+        value = self.gate_manifest()
+        with tempfile.TemporaryDirectory() as directory:
+            archive = ContentAddressedArchive(Path(directory) / "archive")
+            receipt = archive_integration_gate(value, archive=archive)
+            self.assertTrue(receipt.multi_record is False)
+            self.assertEqual(receipt.execution_mode, INSTRUMENTED_MODE)
+            self.assertEqual(
+                receipt.manifest_artifact_identity,
+                hash_canonical(value.to_dict()),
+            )
+            reloaded = load_integration_gate(receipt.to_dict(), archive=archive)
+            self.assertEqual(reloaded, receipt)
+            self.assertEqual(reloaded.to_dict(), receipt.to_dict())
+            # The validator is idempotent for a verified receipt.
+            validate_integration_gate(receipt, archive=archive)
+
+    def test_changed_identity_is_refused_by_the_receipt_type(self):
+        value = self.gate_manifest()
+        with tempfile.TemporaryDirectory() as directory:
+            archive = ContentAddressedArchive(Path(directory) / "archive")
+            receipt = archive_integration_gate(value, archive=archive)
+            altered = dict(receipt.to_dict())
+            altered["queue_evidence_identity"] = hash_bytes(b"changed")
+            with self.assertRaises(IntegrationGateError):
+                load_integration_gate(altered, archive=archive)
+
+    def test_corrupt_receipt_artifact_is_refused(self):
+        value = self.gate_manifest()
+        with tempfile.TemporaryDirectory() as directory:
+            archive = ContentAddressedArchive(Path(directory) / "archive")
+            receipt = archive_integration_gate(value, archive=archive)
+            path = archive.resolve(receipt.receipt_artifact)
+            path.write_bytes(b"x" * receipt.receipt_artifact.byte_size)
+            with self.assertRaisesRegex(IntegrationGateError, "receipt artifact"):
+                validate_integration_gate(receipt, archive=archive)
+
+    def test_manifest_without_coordinator_binding_is_refused(self):
+        value = self.gate_manifest(with_coordinator=False)
+        with tempfile.TemporaryDirectory() as directory:
+            archive = ContentAddressedArchive(Path(directory) / "archive")
+            with self.assertRaises(IntegrationGateError):
+                archive_integration_gate(value, archive=archive)
+
+    def test_evaluator_tool_key_is_a_distinct_valid_manifest_binding(self):
+        base = self.gate_manifest()
+        tools = dict(base.tool_identities)
+        tools[EVALUATOR_TOOL_KEY] = hash_bytes(b"search-evaluator")
+        tools["full_oracle"] = hash_bytes(b"full-oracle")
+        bound = replace(base, tool_identities=tools)
+        self.assertEqual(EVALUATOR_TOOL_KEY, "search_evaluator")
+        self.assertNotEqual(
+            bound.tool_identities[EVALUATOR_TOOL_KEY],
+            bound.tool_identities["full_oracle"],
+        )
 
 
 if __name__ == "__main__":
