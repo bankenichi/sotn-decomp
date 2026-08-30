@@ -93,6 +93,21 @@ DEFAULT_SUMMARY_LIMIT = 4096
 MAX_SUMMARY_LIMIT = 16384
 
 
+def _evaluator_tool_key() -> str:
+    """Return the reserved evaluator key from its single owning module.
+
+    Function-level import: search_coordinator imports this module and the
+    supervisor imports search_coordinator, so a module-level import would
+    close an initialization cycle for a constant that has exactly one owner.
+    """
+
+    try:
+        from .search_supervisor import EVALUATOR_TOOL_KEY
+    except ImportError:  # pragma: no cover - direct invocation from automation/
+        from automation.search_supervisor import EVALUATOR_TOOL_KEY  # type: ignore
+    return EVALUATOR_TOOL_KEY
+
+
 def _plain(value: Any) -> Any:
     if isinstance(value, Mapping):
         return {str(key): _plain(item) for key, item in value.items()}
@@ -390,7 +405,7 @@ def _load_completed_ledger(value: Any) -> _CompletedLedger:
         raise PatternIdentityMismatch("manifest and run_started disagree")
     stop_events = [event for event in events if event.event_type == "run_stopped"]
     if len(stop_events) != 1 or events[-1] != stop_events[0]:
-        raise PatternActiveRun("source ledger is not a single completed prefix")
+        raise PatternActiveRun("source ledger is active or resumable: no single completed prefix")
     stop = stop_events[0].payload
     assert isinstance(stop, RunStop)
     if stop.reason != "completed" or stop.resumable or stop.pending_task_ids:
@@ -405,6 +420,159 @@ def _load_completed_ledger(value: Any) -> _CompletedLedger:
     if source.expected_identity is not None and identity != source.expected_identity:
         raise PatternIdentityMismatch("ledger identity differs from supplied identity")
     return _CompletedLedger(root, ledger_path, manifest, tuple(events), identity)
+
+
+@dataclass(frozen=True)
+class CompletedLineageContext:
+    """One completed, artifact-verified ledger bound to its exact identities.
+
+    A context is promotion eligible: its manifest carries the reserved
+    evaluator tool binding, so its score evidence can be attributed to the
+    evaluator that produced it rather than to the landing oracle.
+    """
+
+    ledger_identity: str
+    run_id: str
+    compiler_identity: str
+    config_identity: str
+    schema_identity: str
+    scorer_algorithms: Tuple[str, ...]
+    lane_tool_identities: Tuple[Tuple[str, str], ...]
+    recipient_target_identities: Tuple[Tuple[str, str], ...]
+    evaluator_identity: str
+
+
+@dataclass(frozen=True)
+class CompletedLineageDiagnostic:
+    """A completed ledger that cannot become a promotion-eligible context.
+
+    Historical ledgers lost their evaluator binding before the reserved key
+    existed. They stay diagnostic evidence with the identities that were
+    present, instead of being silently promoted with unknown provenance.
+    """
+
+    ledger_identity: str
+    run_id: str
+    reason_code: str
+    observed_identities: Tuple[str, ...]
+
+
+def _normalize_ledger_inputs(
+    ledgers: Optional[Union[Any, Sequence[Any]]],
+    ledger_paths: Optional[Sequence[Any]],
+    expected_ledger_identities: Optional[Mapping[Union[str, int], str]],
+) -> List[Any]:
+    """Normalize the shared ledger input forms without loading anything."""
+
+    if ledgers is None:
+        if ledger_paths is None:
+            raise PatternInputError("at least one ledger is required")
+        ledgers = ledger_paths
+    elif ledger_paths is not None:
+        raise PatternInputError("provide ledgers or ledger_paths, not both")
+    if isinstance(ledgers, (str, os.PathLike, Mapping)):
+        values: Sequence[Any] = (ledgers,)
+    else:
+        try:
+            values = tuple(ledgers)
+        except TypeError as exc:
+            raise PatternInputError("ledgers must be a path or sequence of paths") from exc
+    if not values:
+        raise PatternInputError("at least one ledger is required")
+    if expected_ledger_identities is None:
+        return list(values)
+    normalized: List[Any] = []
+    for index, value in enumerate(values):
+        expected = expected_ledger_identities.get(index)
+        if expected is None:
+            expected = expected_ledger_identities.get(str(index))
+        if expected is not None:
+            if isinstance(value, Mapping):
+                value = dict(value)
+                value.setdefault("ledger_hash", expected)
+            else:
+                value = (value, expected)
+        normalized.append(value)
+    return normalized
+
+
+def load_completed_lineage_contexts(
+    ledgers: Optional[Union[Any, Sequence[Any]]] = None,
+    *,
+    ledger_paths: Optional[Sequence[Any]] = None,
+    expected_ledger_identities: Optional[Mapping[Union[str, int], str]] = None,
+) -> Tuple[Union[CompletedLineageContext, CompletedLineageDiagnostic], ...]:
+    """Load terminal, artifact-verified ledgers as typed lineage contexts.
+
+    Accepts exactly the input forms of ``mine_completed_lineages`` and runs
+    the same ``_load_completed_ledger`` validation. A ledger whose manifest
+    carries the reserved evaluator binding becomes a
+    ``CompletedLineageContext``; one that lost that binding historically
+    becomes a ``CompletedLineageDiagnostic`` instead of a context with
+    unknown provenance.
+    """
+
+    # Function-level import: search_coordinator imports this module, and the
+    # supervisor imports search_coordinator, so a module-level import would
+    # close an initialization cycle for the evaluator key's single owner.
+    evaluator_key = _evaluator_tool_key()
+    normalized = _normalize_ledger_inputs(
+        ledgers, ledger_paths, expected_ledger_identities
+    )
+    contexts: List[Union[CompletedLineageContext, CompletedLineageDiagnostic]] = []
+    seen: Set[str] = set()
+    for value in normalized:
+        run = _load_completed_ledger(value)
+        if run.identity in seen:
+            raise PatternAmbiguousLineage(
+                "the same source ledger identity was supplied twice"
+            )
+        seen.add(run.identity)
+        evaluator = run.manifest.tool_identities.get(evaluator_key)
+        if evaluator is None:
+            contexts.append(
+                CompletedLineageDiagnostic(
+                    ledger_identity=run.identity,
+                    run_id=run.manifest.run_id,
+                    reason_code="missing_evaluator_identity",
+                    observed_identities=(
+                        run.manifest.compiler_identity,
+                        run.manifest.config_identity,
+                        run.manifest.schema_identity,
+                        run.manifest.tool_identities.get("full_oracle", ""),
+                    ),
+                )
+            )
+            continue
+        contexts.append(
+            CompletedLineageContext(
+                ledger_identity=run.identity,
+                run_id=run.manifest.run_id,
+                compiler_identity=run.manifest.compiler_identity,
+                config_identity=run.manifest.config_identity,
+                schema_identity=run.manifest.schema_identity,
+                scorer_algorithms=tuple(
+                    sorted(
+                        {
+                            event.payload.after.scorer_algorithm
+                            for event in run.events
+                            if event.event_type == "evaluation_completed"
+                        }
+                    )
+                ),
+                lane_tool_identities=tuple(
+                    sorted(
+                        (lane, run.manifest.tool_identities[lane])
+                        for lane in run.manifest.selected_lanes
+                    )
+                ),
+                recipient_target_identities=tuple(
+                    sorted(run.manifest.target_identities.items())
+                ),
+                evaluator_identity=evaluator,
+            )
+        )
+    return tuple(contexts)
 
 
 def _overlay(recipient_id: str) -> str:
@@ -465,7 +633,19 @@ def _lineage_key(
     overlay: str,
     archetype: str,
     first_divergence: Optional[Mapping[str, Any]],
+    compiler_identity: str,
+    config_identity: str,
+    schema_identity: str,
+    scorer_algorithm: str,
+    lane_tool_identity: str,
+    recipient_id: str,
+    target_identity: str,
+    evaluator_identity: str,
 ) -> Tuple[Any, ...]:
+    # Every identity the corpus binds a hypothesis with is part of the group
+    # key, so recommendations from incompatible compilers, configurations,
+    # scorers, evaluator bindings or targets can never merge into one
+    # pattern.
     return (
         pass_kind or "",
         patch_id or "",
@@ -473,6 +653,14 @@ def _lineage_key(
         overlay,
         archetype,
         canonical_json(first_divergence) if first_divergence is not None else "",
+        compiler_identity,
+        config_identity,
+        schema_identity,
+        scorer_algorithm,
+        lane_tool_identity,
+        recipient_id,
+        target_identity,
+        evaluator_identity,
     )
 
 
@@ -497,7 +685,13 @@ def _recommendations(
     max_recommendations: int,
 ) -> Tuple[Mapping[str, object], ...]:
     groups: Dict[Tuple[Any, ...], Dict[str, Any]] = {}
+    evaluator_key = _evaluator_tool_key()
     for run in runs:
+        manifest = run.manifest
+        run_compiler = manifest.compiler_identity
+        run_config = manifest.config_identity
+        run_schema = manifest.schema_identity
+        run_evaluator = manifest.tool_identities.get(evaluator_key, "")
         tasks: Dict[str, SearchTask] = {}
         candidates: Dict[str, CandidateRecord] = {}
         mutations: Dict[str, MutationEvent] = {}
@@ -583,6 +777,12 @@ def _recommendations(
             overlay = _overlay(task.recipient_id)
             archetype = _function_archetype(task.recipient_id)
             divergence = _first_divergence(evaluation.after.first_divergence) if evaluation is not None else None
+            scorer_algorithm = (
+                evaluation.after.scorer_algorithm if evaluation is not None else ""
+            )
+            recipient_id = task.recipient_id
+            target_identity = manifest.target_identities.get(recipient_id, "")
+            lane_tool_identity = manifest.tool_identities.get(lane, "")
             key = _lineage_key(
                 pass_kind=pass_kind,
                 patch_id=patch_id,
@@ -590,6 +790,14 @@ def _recommendations(
                 overlay=overlay,
                 archetype=archetype,
                 first_divergence=divergence,
+                compiler_identity=run_compiler,
+                config_identity=run_config,
+                schema_identity=run_schema,
+                scorer_algorithm=scorer_algorithm,
+                lane_tool_identity=lane_tool_identity,
+                recipient_id=recipient_id,
+                target_identity=target_identity,
+                evaluator_identity=run_evaluator,
             )
             group = groups.setdefault(
                 key,
@@ -600,6 +808,14 @@ def _recommendations(
                     "overlay": overlay,
                     "function_archetype": archetype,
                     "first_divergence": divergence,
+                    "compiler_identity": run_compiler,
+                    "config_identity": run_config,
+                    "schema_identity": run_schema,
+                    "scorer_algorithm": scorer_algorithm,
+                    "lane_tool_identity": lane_tool_identity,
+                    "recipient_id": recipient_id,
+                    "target_identity": target_identity,
+                    "evaluator_identity": run_evaluator,
                     "sample_count": 0,
                     "successes": 0,
                     "failures": 0,
@@ -628,6 +844,14 @@ def _recommendations(
             "overlay": group["overlay"],
             "function_archetype": group["function_archetype"],
             "first_divergence": group["first_divergence"],
+            "compiler_identity": group["compiler_identity"],
+            "config_identity": group["config_identity"],
+            "schema_identity": group["schema_identity"],
+            "scorer_algorithm": group["scorer_algorithm"],
+            "lane_tool_identity": group["lane_tool_identity"],
+            "recipient_id": group["recipient_id"],
+            "target_identity": group["target_identity"],
+            "evaluator_identity": group["evaluator_identity"],
             "sample_count": sample_count,
             "successes": group["successes"],
             "failures": group["failures"],
@@ -665,21 +889,7 @@ def mine_completed_lineages(
     is written under ``output_root`` (a sibling archive is selected when it is
     omitted).  The output root may not be one of the source run roots.
     """
-    if ledgers is None:
-        if ledger_paths is None:
-            raise PatternInputError("at least one ledger is required")
-        ledgers = ledger_paths
-    elif ledger_paths is not None:
-        raise PatternInputError("provide ledgers or ledger_paths, not both")
-    if isinstance(ledgers, (str, os.PathLike, Mapping)):
-        values: Sequence[Any] = (ledgers,)
-    else:
-        try:
-            values = tuple(ledgers)
-        except TypeError as exc:
-            raise PatternInputError("ledgers must be a path or sequence of paths") from exc
-    if not values:
-        raise PatternInputError("at least one ledger is required")
+    values = _normalize_ledger_inputs(ledgers, ledger_paths, expected_ledger_identities)
     if isinstance(min_samples, bool) or not isinstance(min_samples, int) or min_samples < 2:
         raise PatternInputError("min_samples must be at least two")
     if isinstance(min_successes, bool) or not isinstance(min_successes, int) or min_successes < 1:
@@ -689,20 +899,7 @@ def mine_completed_lineages(
     if isinstance(max_recommendations, bool) or not isinstance(max_recommendations, int) or max_recommendations < 1:
         raise PatternInputError("max_recommendations must be positive")
 
-    normalized: List[Any] = []
-    for index, value in enumerate(values):
-        if expected_ledger_identities is not None:
-            expected = expected_ledger_identities.get(index)
-            if expected is None:
-                expected = expected_ledger_identities.get(str(index))
-            if expected is not None:
-                if isinstance(value, Mapping):
-                    value = dict(value)
-                    value.setdefault("ledger_hash", expected)
-                else:
-                    value = (value, expected)
-        normalized.append(value)
-    runs = tuple(_load_completed_ledger(value) for value in normalized)
+    runs = tuple(_load_completed_ledger(value) for value in values)
     identities = [run.identity for run in runs]
     if len(set(identities)) != len(identities):
         raise PatternAmbiguousLineage("the same source ledger identity was supplied twice")

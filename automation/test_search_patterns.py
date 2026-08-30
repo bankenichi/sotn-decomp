@@ -14,15 +14,19 @@ from automation.search_coordinator import (
     TaskResult,
 )
 from automation.search_patterns import (
+    CompletedLineageContext,
+    CompletedLineageDiagnostic,
     PatternActiveRun,
     PatternArtifactError,
     PatternIdentityMismatch,
     PatternPartialLedger,
     SearchPatternReport,
+    load_completed_lineage_contexts,
     load_report_artifact,
     mine_completed_lineages,
     render_derivation_summary,
 )
+from automation.search_supervisor import EVALUATOR_TOOL_KEY
 from automation.search_types import (
     ArtifactRef,
     CandidateRecord,
@@ -353,6 +357,356 @@ class TestSearchPatterns(unittest.TestCase):
             summary = render_derivation_summary(report, max_chars=80)
             self.assertLessEqual(len(summary), 80)
             self.assertTrue(summary.endswith("..."))
+
+
+def _lineage_digest(label: str) -> str:
+    return hash_bytes(label.encode("utf-8"))
+
+
+def _lineage_manifest(
+    run_id: str,
+    *,
+    lane: str,
+    recipient: str,
+    compiler_identity: str,
+    config_identity: str,
+    schema_identity: str,
+    include_evaluator: bool,
+    target_identity: str,
+):
+    base = manifest()
+    tools = {
+        lane: _lineage_digest("tool:" + lane),
+        "full_oracle": _lineage_digest("full-oracle"),
+    }
+    if include_evaluator:
+        tools[EVALUATOR_TOOL_KEY] = _lineage_digest("search-evaluator")
+    return replace(
+        base,
+        run_id=run_id,
+        queue_record_ids=(recipient,),
+        function_ids=(recipient,),
+        subset_identity=canonical_subset_identity((recipient,)),
+        target_identities={recipient: target_identity},
+        compiler_identity=compiler_identity,
+        config_identity=config_identity,
+        schema_identity=schema_identity,
+        selected_lanes=(lane,),
+        tool_identities=tools,
+        lane_budgets={lane: base.lane_budgets[lane]},
+    )
+
+
+def _completed_lineage_run(
+    root: Path,
+    run_id: str,
+    *,
+    lane: str = "cfg_dataflow",
+    recipient: str = "us:ST:fn",
+    compiler_identity: str | None = None,
+    config_identity: str | None = None,
+    schema_identity: str | None = None,
+    include_evaluator: bool = True,
+    target_identity: str | None = None,
+    divergence: FirstDivergence | None = None,
+) -> Path:
+    """Write one completed, artifact-verified ledger with requested bindings.
+
+    One observation per run, deliberately: the frontier refuses a repeated
+    candidate id under conflicting metadata, so sample aggregation is
+    designed to happen across runs whose manifests share the bindings under
+    test.
+    """
+
+    compiler = compiler_identity or _lineage_digest("compiler")
+    config = config_identity or _lineage_digest("config")
+    schema = schema_identity or _lineage_digest("schema")
+    target = target_identity or _lineage_digest("target:" + recipient)
+    coordinator = SearchCoordinator(
+        root,
+        _lineage_manifest(
+            run_id,
+            lane=lane,
+            recipient=recipient,
+            compiler_identity=compiler,
+            config_identity=config,
+            schema_identity=schema,
+            include_evaluator=include_evaluator,
+            target_identity=target,
+        ),
+    )
+    base_source = "int candidate(void) { return 0; }\n"
+    base_hash = hash_bytes(base_source.encode())
+    base_artifact = ArtifactRef(
+        base_hash,
+        "artifacts/sources/" + base_hash[7:] + ".c",
+        "text/x-c",
+        len(base_source.encode()),
+    )
+    parent_task = coordinator.create_task(
+        recipient_id=recipient,
+        lane=lane,
+        operation="lineage-parent-fixture",
+        budget_ordinal=0,
+    )
+    coordinator.schedule_task(parent_task)
+    parent_candidate = CandidateRecord(
+        base_hash, recipient, base_artifact, (), None, lane, 0, None, "materialized",
+    )
+    coordinator.commit_epoch(
+        [TaskResult(parent_task.task_id, candidate=parent_candidate, source=base_source)]
+    )
+    task = coordinator.create_task(
+        recipient_id=recipient,
+        lane=lane,
+        operation="lineage-fixture",
+        parent_candidate_ids=(base_hash,),
+        budget_ordinal=1,
+    )
+    coordinator.schedule_task(task)
+    # Identical candidate content across runs on purpose: the group key
+    # includes the patch id, so varied content would split the samples into
+    # singleton groups that never meet min_samples.
+    source = "int candidate(void) { return 1; }\n"
+    source_hash = hash_bytes(source.encode())
+    source_artifact = ArtifactRef(
+        source_hash,
+        "artifacts/sources/" + source_hash[7:] + ".c",
+        "text/x-c",
+        len(source.encode()),
+    )
+    hunk = PatchHunk(0, "return 0;\n", "return 1;\n", (), ())
+    patch_payload = {
+        "format": "line_context",
+        "base_source_hash": base_hash,
+        "atomic": True,
+        "hunks": [hunk],
+    }
+    patch_id = hash_canonical(patch_payload)
+    grouped_patch = GroupedPatch(
+        patch_id,
+        "line_context",
+        patch_payload["base_source_hash"],
+        True,
+        (hunk,),
+    )
+    mutation = MutationEvent(
+        hash_bytes(f"lineage-{run_id}".encode()),
+        base_hash,
+        recipient,
+        lane,
+        "declaration_shape",
+        task.task_seed,
+        grouped_patch,
+        (),
+        "applied",
+        source_hash,
+    )
+    candidate = CandidateRecord(
+        source_hash,
+        recipient,
+        source_artifact,
+        (base_hash,),
+        mutation.mutation_id,
+        lane,
+        1,
+        None,
+        "materialized",
+    )
+    after = replace(
+        score(1, signature=f"lineage-{run_id}"),
+        compiler_identity=compiler,
+        first_divergence=divergence,
+    )
+    evaluation = EvaluationEvent(
+        task.task_id,
+        recipient,
+        source_hash,
+        None,
+        None,
+        after,
+        ScoreDeltas(-1, 0, 0, 0, 0, -1),
+        coordinator.frontier.cache.key_for(recipient, source_hash, after.compiler_identity),
+        "scalar_elite",
+    )
+    coordinator.commit_epoch(
+        [TaskResult(task.task_id, mutation=mutation, candidate=candidate, source=source, evaluation=evaluation)]
+    )
+    coordinator.stop(reason="completed", resumable=False)
+    return root
+
+
+class CompletedLineageContextTests(unittest.TestCase):
+    def fixture_completed_ledger(
+        self,
+        root: Path,
+        *,
+        include_evaluator: bool = True,
+        compiler_identity: str | None = None,
+        config_identity: str | None = None,
+        schema_identity: str | None = None,
+        lane: str = "cfg_dataflow",
+        recipient_id: str = "us:ST:fn",
+        target_identity: str | None = None,
+        divergence: FirstDivergence | None = None,
+    ) -> Path:
+        return _completed_lineage_run(
+            root,
+            "lineage-" + root.name,
+            lane=lane,
+            recipient=recipient_id,
+            compiler_identity=compiler_identity,
+            config_identity=config_identity,
+            schema_identity=schema_identity,
+            include_evaluator=include_evaluator,
+            target_identity=target_identity,
+            divergence=divergence,
+        )
+
+    def test_active_ledger_never_becomes_lineage_context(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            active = Path(directory) / "running"
+            SearchCoordinator(
+                active,
+                _lineage_manifest(
+                    "lineage-running",
+                    lane="cfg_dataflow",
+                    recipient="us:ST:fn",
+                    compiler_identity=_lineage_digest("compiler"),
+                    config_identity=_lineage_digest("config"),
+                    schema_identity=_lineage_digest("schema"),
+                    include_evaluator=True,
+                    target_identity=_lineage_digest("target:us:ST:fn"),
+                ),
+            )
+            with self.assertRaisesRegex(PatternActiveRun, "active or resumable"):
+                load_completed_lineage_contexts([active])
+
+    def test_completed_context_binds_lane_target_and_evaluator(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.fixture_completed_ledger(Path(directory) / "run")
+            context = load_completed_lineage_contexts([root])[0]
+            self.assertIsInstance(context, CompletedLineageContext)
+            self.assertEqual(context.compiler_identity, _lineage_digest("compiler"))
+            self.assertEqual(context.config_identity, _lineage_digest("config"))
+            self.assertEqual(context.schema_identity, _lineage_digest("schema"))
+            self.assertEqual(context.scorer_algorithms, ("difflib",))
+            self.assertEqual(
+                context.lane_tool_identities,
+                (("cfg_dataflow", _lineage_digest("tool:cfg_dataflow")),),
+            )
+            self.assertEqual(
+                context.recipient_target_identities,
+                (("us:ST:fn", _lineage_digest("target:us:ST:fn")),),
+            )
+            self.assertEqual(
+                context.evaluator_identity, _lineage_digest("search-evaluator")
+            )
+
+    def test_missing_historical_evaluator_is_diagnostic(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.fixture_completed_ledger(
+                Path(directory) / "run", include_evaluator=False
+            )
+            context = load_completed_lineage_contexts([root])[0]
+            self.assertIsInstance(context, CompletedLineageDiagnostic)
+            self.assertEqual(context.reason_code, "missing_evaluator_identity")
+            self.assertEqual(
+                context.observed_identities,
+                (
+                    _lineage_digest("compiler"),
+                    _lineage_digest("config"),
+                    _lineage_digest("schema"),
+                    _lineage_digest("full-oracle"),
+                ),
+            )
+
+    def test_recommendations_carry_lineage_identities(self) -> None:
+        divergence = FirstDivergence(4, 5, "lw v0, 0(a0)", "lw v0, 4(a0)")
+        with tempfile.TemporaryDirectory() as directory:
+            # Two runs with identical bindings: aggregation is designed to
+            # happen across runs, since one run contributes one observation.
+            first = self.fixture_completed_ledger(
+                Path(directory) / "run-a",
+                divergence=divergence,
+            )
+            second = self.fixture_completed_ledger(
+                Path(directory) / "run-b",
+                divergence=divergence,
+            )
+            report = mine_completed_lineages(
+                [first, second], output_root=Path(directory) / "reports"
+            )
+            self.assertEqual(len(report.recommendations), 1)
+            recommendation = report.recommendations[0]
+            self.assertEqual(recommendation["scorer_algorithm"], "difflib")
+            self.assertEqual(
+                recommendation["compiler_identity"], _lineage_digest("compiler")
+            )
+            self.assertEqual(
+                recommendation["config_identity"], _lineage_digest("config")
+            )
+            self.assertEqual(
+                recommendation["schema_identity"], _lineage_digest("schema")
+            )
+            self.assertEqual(
+                recommendation["lane_tool_identity"],
+                _lineage_digest("tool:cfg_dataflow"),
+            )
+            self.assertEqual(recommendation["recipient_id"], "us:ST:fn")
+            self.assertEqual(
+                recommendation["target_identity"],
+                _lineage_digest("target:us:ST:fn"),
+            )
+            self.assertEqual(
+                recommendation["evaluator_identity"],
+                _lineage_digest("search-evaluator"),
+            )
+            self.assertEqual(
+                recommendation["first_divergence"]["target_instruction"],
+                "lw v0, 0(a0)",
+            )
+
+    def test_incompatible_compilers_stay_separate_lineages(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            first = self.fixture_completed_ledger(
+                Path(directory) / "run-a",
+                compiler_identity=_lineage_digest("compiler-a"),
+            )
+            second = self.fixture_completed_ledger(
+                Path(directory) / "run-b",
+                compiler_identity=_lineage_digest("compiler-a"),
+            )
+            third = self.fixture_completed_ledger(
+                Path(directory) / "run-c",
+                compiler_identity=_lineage_digest("compiler-b"),
+            )
+            fourth = self.fixture_completed_ledger(
+                Path(directory) / "run-d",
+                compiler_identity=_lineage_digest("compiler-b"),
+            )
+            report = mine_completed_lineages(
+                [first, second, third, fourth],
+                output_root=Path(directory) / "reports",
+            )
+            self.assertEqual(len(report.recommendations), 2)
+            self.assertEqual(
+                {item["compiler_identity"] for item in report.recommendations},
+                {_lineage_digest("compiler-a"), _lineage_digest("compiler-b")},
+            )
+
+    def test_reversed_ledger_order_produces_identical_recommendations(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            first = self.fixture_completed_ledger(Path(directory) / "run-a")
+            second = self.fixture_completed_ledger(Path(directory) / "run-b")
+            one = mine_completed_lineages(
+                [first, second], output_root=Path(directory) / "reports-one"
+            )
+            two = mine_completed_lineages(
+                [second, first], output_root=Path(directory) / "reports-two"
+            )
+            self.assertEqual(one.report_id, two.report_id)
+            self.assertEqual(one.recommendations, two.recommendations)
 
 
 if __name__ == "__main__":
