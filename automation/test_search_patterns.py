@@ -385,13 +385,16 @@ def _lineage_manifest(
     target_identity: str,
     evaluator_identity: str | None = None,
     include_full_oracle: bool = True,
+    full_oracle_identity: str | None = None,
 ):
     base = manifest()
     tools = {
         lane: _lineage_digest("tool:" + lane),
     }
     if include_full_oracle:
-        tools["full_oracle"] = _lineage_digest("full-oracle")
+        tools["full_oracle"] = (
+            full_oracle_identity or _lineage_digest("full-oracle")
+        )
     if include_evaluator:
         tools[EVALUATOR_TOOL_KEY] = (
             evaluator_identity or _lineage_digest("search-evaluator")
@@ -425,6 +428,7 @@ def _completed_lineage_run(
     target_identity: str | None = None,
     evaluator_identity: str | None = None,
     include_full_oracle: bool = True,
+    full_oracle_identity: str | None = None,
     scorer_algorithm: str = "difflib",
     divergence: FirstDivergence | None = None,
 ) -> Path:
@@ -453,6 +457,7 @@ def _completed_lineage_run(
             target_identity=target,
             evaluator_identity=evaluator_identity,
             include_full_oracle=include_full_oracle,
+            full_oracle_identity=full_oracle_identity,
         ),
     )
     base_source = "int candidate(void) { return 0; }\n"
@@ -571,6 +576,7 @@ class CompletedLineageContextTests(unittest.TestCase):
         target_identity: str | None = None,
         evaluator_identity: str | None = None,
         include_full_oracle: bool = True,
+        full_oracle_identity: str | None = None,
         scorer_algorithm: str = "difflib",
         divergence: FirstDivergence | None = None,
     ) -> Path:
@@ -586,6 +592,7 @@ class CompletedLineageContextTests(unittest.TestCase):
             target_identity=target_identity,
             evaluator_identity=evaluator_identity,
             include_full_oracle=include_full_oracle,
+            full_oracle_identity=full_oracle_identity,
             scorer_algorithm=scorer_algorithm,
             divergence=divergence,
         )
@@ -676,6 +683,33 @@ class CompletedLineageContextTests(unittest.TestCase):
                 ),
             )
 
+    def test_duplicate_role_identities_collapse_into_one_diagnostic(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            # A manifest whose full-oracle binding equals its compiler
+            # identity contributes one evidence role twice. The projection
+            # must deduplicate before canonicalizing, so the ledger loads as
+            # one valid diagnostic instead of failing its own record checks.
+            root = self.fixture_completed_ledger(
+                Path(directory) / "run",
+                include_evaluator=False,
+                full_oracle_identity=_lineage_digest("compiler"),
+            )
+            context = load_completed_lineage_contexts([root])[0]
+            self.assertIsInstance(context, CompletedLineageDiagnostic)
+            self.assertEqual(
+                context.observed_identities,
+                tuple(
+                    sorted(
+                        {
+                            _lineage_digest("compiler"),
+                            _lineage_digest("config"),
+                            _lineage_digest("schema"),
+                        }
+                    )
+                ),
+            )
+            self.assertEqual(len(context.observed_identities), 3)
+
     def test_diagnostic_records_reject_forged_shapes(self) -> None:
         def diagnostic(**overrides):
             values = dict(
@@ -699,6 +733,8 @@ class CompletedLineageContextTests(unittest.TestCase):
             diagnostic(observed_identities=(first_hash, ""))
         with self.assertRaises(PatternInputError):
             diagnostic(observed_identities=None)
+        with self.assertRaises(PatternInputError):
+            diagnostic(observed_identities=())
         self.assertIsInstance(
             diagnostic(observed_identities=(low, high)),
             CompletedLineageDiagnostic,

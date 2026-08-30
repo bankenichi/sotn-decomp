@@ -572,6 +572,13 @@ class CompletedLineageDiagnostic:
                     "observed identities must be a sequence of hashes"
                 )
             observed = tuple(self.observed_identities)
+            if not observed:
+                # The only supported diagnostic always retains at least the
+                # manifest's compiler, configuration, and schema identities;
+                # an empty set would describe nothing reviewable.
+                raise SearchValidationError(
+                    "a diagnostic must retain at least one observed identity"
+                )
             for item in observed:
                 if not isinstance(item, str):
                     raise SearchValidationError(
@@ -648,14 +655,16 @@ def _lineage_projection(
         # empty identity.
         observed = tuple(
             sorted(
-                identity
-                for identity in (
-                    run.manifest.compiler_identity,
-                    run.manifest.config_identity,
-                    run.manifest.schema_identity,
-                    run.manifest.tool_identities.get("full_oracle", ""),
-                )
-                if identity
+                {
+                    identity
+                    for identity in (
+                        run.manifest.compiler_identity,
+                        run.manifest.config_identity,
+                        run.manifest.schema_identity,
+                        run.manifest.tool_identities.get("full_oracle", ""),
+                    )
+                    if identity
+                }
             )
         )
         return CompletedLineageDiagnostic(
