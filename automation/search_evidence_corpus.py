@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
-from typing import Any, Tuple
+from typing import Any, Sequence, Tuple
 
 try:  # package imports
     from .search_archive import ArtifactRef, ContentAddressedArchive
@@ -28,11 +28,13 @@ try:  # package imports
     from .search_types import (
         ScoreVector,
         SearchValidationError,
+        canonical_bytes,
         canonical_json,
         hash_bytes,
         hash_canonical,
         validate_hash,
         validate_id,
+        validate_relative_path,
     )
 except ImportError:  # direct invocation from the automation directory
     from automation.search_archive import (  # type: ignore
@@ -47,11 +49,13 @@ except ImportError:  # direct invocation from the automation directory
     from automation.search_types import (  # type: ignore
         ScoreVector,
         SearchValidationError,
+        canonical_bytes,
         canonical_json,
         hash_bytes,
         hash_canonical,
         validate_hash,
         validate_id,
+        validate_relative_path,
     )
 
 
@@ -105,6 +109,10 @@ _EXPECTED_ABSENCE_CLAIM = AbsenceMaskingClaim(
     masks=("0xff", "0xffff"),
     scope="argument-use",
 )
+_ABSENCE_RULE_ID = "argument-width.absent-andi"
+_ABSENCE_SECTION = "§2"
+_ABSENCE_LINE_START = 146
+_ABSENCE_LINE_END = 178
 
 
 @dataclass(frozen=True)
@@ -154,6 +162,97 @@ def _lesson_span_bytes(source_bytes: bytes, line_start: int, line_end: int) -> b
     return b"".join(lines[line_start - 1:line_end])
 
 
+def _validate_lesson_inputs(
+    source: ArtifactRef,
+    source_bytes: bytes,
+    *,
+    section: str,
+    line_start: int,
+    line_end: int,
+    rule_id: str,
+    absence_masking: AbsenceMaskingClaim | None,
+) -> bytes:
+    """Reapply every citation constructor invariant.
+
+    Keeping this as one helper is important: verification must not become a
+    weaker path than construction when a caller assembles a dataclass or
+    JSON mapping directly.
+    """
+
+    if not isinstance(source, ArtifactRef):
+        raise LessonCitationError("lesson citation needs a typed source artifact")
+    if not isinstance(source_bytes, (bytes, bytearray)):
+        raise LessonCitationError("lesson citation needs the complete source bytes")
+    source_bytes = bytes(source_bytes)
+    try:
+        source_bytes.decode("utf-8", errors="strict")
+    except UnicodeDecodeError as exc:
+        raise LessonCitationError("lesson source must be strict UTF-8") from exc
+    try:
+        validate_hash(source.content_hash, "lesson source content_hash")
+        validate_relative_path(source.path, "lesson source path")
+    except SearchValidationError as exc:
+        raise LessonCitationError("lesson source artifact identity is invalid") from exc
+    if source.content_hash != hash_bytes(source_bytes):
+        raise LessonCitationError(
+            "lesson source content hash differs from the supplied bytes"
+        )
+    if not source.path.endswith(_LESSON_SUFFIX):
+        raise LessonCitationError(
+            "lesson citations must point at " + _LESSON_SUFFIX
+        )
+    if not isinstance(source.media_type, str) or source.media_type != "text/markdown":
+        raise LessonCitationError("lesson source media type must be text/markdown")
+    if (
+        isinstance(source.byte_size, bool)
+        or not isinstance(source.byte_size, int)
+        or source.byte_size != len(source_bytes)
+    ):
+        raise LessonCitationError("lesson source byte size differs from its bytes")
+    if not isinstance(section, str) or not section.strip():
+        raise LessonCitationError("lesson section must be a nonempty string")
+    if isinstance(line_start, bool) or not isinstance(line_start, int) or line_start < 1:
+        raise LessonCitationError("line_start must be a positive one-based integer")
+    if isinstance(line_end, bool) or not isinstance(line_end, int) or line_end < line_start:
+        raise LessonCitationError("line_end must be an integer at least line_start")
+    try:
+        validate_id(rule_id, "rule_id")
+    except SearchValidationError as exc:
+        raise LessonCitationError(f"lesson rule_id is invalid: {exc}") from exc
+    if absence_masking is not None and not isinstance(
+        absence_masking, AbsenceMaskingClaim
+    ):
+        raise LessonCitationError(
+            "absence masking must be the typed AbsenceMaskingClaim"
+        )
+
+    try:
+        span = _lesson_span_bytes(source_bytes, line_start, line_end)
+    except LessonCitationError:
+        raise
+    except (TypeError, ValueError) as exc:
+        raise LessonCitationError("lesson review span is invalid") from exc
+
+    # Section 2 is not a generic span API.  This exact source anchor and
+    # absence claim are the reviewed fact that the corpus is allowed to carry.
+    if section == _ABSENCE_SECTION:
+        if (
+            rule_id != _ABSENCE_RULE_ID
+            or line_start != _ABSENCE_LINE_START
+            or line_end != _ABSENCE_LINE_END
+            or absence_masking != _EXPECTED_ABSENCE_CLAIM
+        ):
+            raise LessonCitationError(
+                "section §2 requires the exact argument-width.absent-andi "
+                "anchor and absence claim"
+            )
+    elif rule_id == _ABSENCE_RULE_ID or absence_masking is not None:
+        raise LessonCitationError(
+            "the argument-width absence claim is only defined for section §2"
+        )
+    return span
+
+
 def _citation_identity_payload(
     source: ArtifactRef,
     section: str,
@@ -195,46 +294,16 @@ def make_lesson_citation(
     must be the exact reviewed section 2 shape.
     """
 
-    if not isinstance(source, ArtifactRef):
-        raise LessonCitationError("lesson citation needs a typed source artifact")
-    if not isinstance(source_bytes, (bytes, bytearray)):
-        raise LessonCitationError("lesson citation needs the complete source bytes")
-    source_bytes = bytes(source_bytes)
-    if source.content_hash != hash_bytes(source_bytes):
-        raise LessonCitationError(
-            "lesson source content hash differs from the supplied bytes"
-        )
-    if not source.path.endswith(_LESSON_SUFFIX):
-        raise LessonCitationError(
-            "lesson citations must point at " + _LESSON_SUFFIX
-        )
-    if not isinstance(section, str) or not section.strip():
-        raise LessonCitationError("lesson section must be a nonempty string")
-    if isinstance(line_start, bool) or not isinstance(line_start, int) or line_start < 1:
-        raise LessonCitationError("line_start must be a positive one-based integer")
-    if isinstance(line_end, bool) or not isinstance(line_end, int) or line_end < line_start:
-        raise LessonCitationError(
-            "line_end must be an integer at least line_start"
-        )
-    try:
-        validate_id(rule_id, "rule_id")
-    except SearchValidationError as exc:
-        raise LessonCitationError(f"lesson rule_id is invalid: {exc}") from exc
-    if absence_masking is not None:
-        if not isinstance(absence_masking, AbsenceMaskingClaim):
-            raise LessonCitationError(
-                "absence masking must be the typed AbsenceMaskingClaim"
-            )
-        if absence_masking != _EXPECTED_ABSENCE_CLAIM:
-            raise LessonCitationError(
-                "the only reviewed absence claim is andi 0xff/0xffff at "
-                "argument use in lesson section 2"
-            )
-        if section != "§2":
-            raise LessonCitationError(
-                "an absence claim is only defined for lesson section §2"
-            )
-    span = _lesson_span_bytes(source_bytes, line_start, line_end)
+    source_bytes = bytes(source_bytes) if isinstance(source_bytes, (bytes, bytearray)) else source_bytes
+    span = _validate_lesson_inputs(
+        source,
+        source_bytes,
+        section=section,
+        line_start=line_start,
+        line_end=line_end,
+        rule_id=rule_id,
+        absence_masking=absence_masking,
+    )
     span_identity = hash_bytes(span)
     payload = _citation_identity_payload(
         source,
@@ -265,16 +334,26 @@ def verify_lesson_citation(
 
     if not isinstance(citation, LessonCitation):
         raise LessonCitationError("lesson citation is missing or not typed")
-    if not isinstance(source_bytes, (bytes, bytearray)):
-        raise LessonCitationError("lesson verification needs the source bytes")
-    source_bytes = bytes(source_bytes)
-    if citation.source.content_hash != hash_bytes(source_bytes):
-        raise LessonCitationError(
-            "lesson source content hash differs from the supplied bytes"
+    source_bytes = bytes(source_bytes) if isinstance(source_bytes, (bytes, bytearray)) else source_bytes
+    try:
+        span = _validate_lesson_inputs(
+            citation.source,
+            source_bytes,
+            section=citation.section,
+            line_start=citation.line_start,
+            line_end=citation.line_end,
+            rule_id=citation.rule_id,
+            absence_masking=citation.absence_masking,
         )
-    span = _lesson_span_bytes(
-        source_bytes, citation.line_start, citation.line_end
-    )
+    except LessonCitationError:
+        raise
+    except (AttributeError, TypeError, ValueError, SearchValidationError) as exc:
+        raise LessonCitationError("lesson citation constructor invariants are invalid") from exc
+    try:
+        validate_hash(citation.citation_id, "citation_id")
+        validate_hash(citation.span_identity, "span_identity")
+    except SearchValidationError as exc:
+        raise LessonCitationError("lesson citation identity is invalid") from exc
     if hash_bytes(span) != citation.span_identity:
         raise LessonCitationError(
             "the cited lesson span no longer matches its content hash"
@@ -321,13 +400,26 @@ class ScorerTaxonomy:
     target_identity: str
 
     def __post_init__(self) -> None:
-        if not isinstance(self.before, ScoreVector):
-            object.__setattr__(
-                self, "before", ScoreVector.from_dict(self.before)  # type: ignore[arg-type]
-            )
-        if not isinstance(self.after, ScoreVector):
-            object.__setattr__(
-                self, "after", ScoreVector.from_dict(self.after)  # type: ignore[arg-type]
+        try:
+            if not isinstance(self.before, ScoreVector):
+                before = ScoreVector.from_dict(self.before)  # type: ignore[arg-type]
+            else:
+                before = ScoreVector.from_dict(self.before.to_dict())
+            if not isinstance(self.after, ScoreVector):
+                after = ScoreVector.from_dict(self.after)  # type: ignore[arg-type]
+            else:
+                after = ScoreVector.from_dict(self.after.to_dict())
+            object.__setattr__(self, "before", before)
+            object.__setattr__(self, "after", after)
+        except (AttributeError, SearchValidationError, TypeError, ValueError) as exc:
+            raise EvidenceIdentityMismatch(
+                "scorer taxonomy contains an invalid score vector"
+            ) from exc
+        if not isinstance(self.before, ScoreVector) or not isinstance(
+            self.after, ScoreVector
+        ):
+            raise EvidenceIdentityMismatch(
+                "scorer taxonomy needs typed before and after score vectors"
             )
         if self.before.compiler_identity != self.after.compiler_identity:
             raise EvidenceIdentityMismatch(
@@ -339,14 +431,51 @@ class ScorerTaxonomy:
                 "scorer taxonomy before and after vectors use different "
                 "scorer algorithms"
             )
-        validate_hash(self.evaluator_identity, "evaluator_identity")
-        validate_hash(self.target_identity, "target_identity")
-        if self.taxonomy_id != hash_canonical(
-            scorer_taxonomy_identity_payload(self)
-        ):
+        try:
+            validate_hash(self.taxonomy_id, "taxonomy_id")
+            validate_hash(self.evaluator_identity, "evaluator_identity")
+            validate_hash(self.target_identity, "target_identity")
+        except SearchValidationError as exc:
+            raise EvidenceIdentityMismatch(
+                "scorer taxonomy identity is not a content hash"
+            ) from exc
+        if self.taxonomy_id != hash_canonical(scorer_taxonomy_identity_payload(self)):
             raise EvidenceIdentityMismatch(
                 "taxonomy_id does not match the scorer taxonomy payload"
             )
+
+    @classmethod
+    def from_dict(cls, value: Mapping[str, Any]) -> "ScorerTaxonomy":
+        fields = {
+            "taxonomy_id",
+            "before",
+            "after",
+            "evaluator_identity",
+            "target_identity",
+        }
+        if not isinstance(value, Mapping) or set(value) != fields:
+            raise EvidenceIdentityMismatch(
+                "scorer taxonomy fields do not match its complete identity payload"
+            )
+        try:
+            before = ScoreVector.from_dict(value["before"])
+            after = ScoreVector.from_dict(value["after"])
+        except (AttributeError, SearchValidationError, TypeError, ValueError) as exc:
+            raise EvidenceIdentityMismatch(
+                "scorer taxonomy contains an invalid score vector"
+            ) from exc
+        try:
+            return cls(
+                taxonomy_id=value["taxonomy_id"],
+                before=before,
+                after=after,
+                evaluator_identity=value["evaluator_identity"],
+                target_identity=value["target_identity"],
+            )
+        except EvidenceIdentityMismatch:
+            raise
+        except (AttributeError, SearchValidationError, TypeError, ValueError) as exc:
+            raise EvidenceIdentityMismatch("scorer taxonomy is invalid") from exc
 
     def identity_payload(self) -> dict[str, Any]:
         return scorer_taxonomy_identity_payload(self)
@@ -412,25 +541,137 @@ class CorpusGeneration:
     artifact: ArtifactRef
 
     def __post_init__(self) -> None:
-        validate_hash(self.generation_id, "generation_id")
-        validate_hash(self.schema_identity, "schema_identity")
+        try:
+            validate_hash(self.generation_id, "generation_id")
+            validate_hash(self.schema_identity, "schema_identity")
+        except SearchValidationError as exc:
+            raise EvidenceIdentityMismatch("corpus generation identity is invalid") from exc
         if not isinstance(self.integration_gate, IntegrationGateReceipt):
-            raise SearchValidationError(
+            raise EvidenceIdentityMismatch(
                 "corpus generation needs a typed integration gate receipt"
             )
+        try:
+            canonical_gate = IntegrationGateReceipt.from_dict(
+                self.integration_gate.to_dict()
+            )
+        except (AttributeError, SearchValidationError, TypeError, ValueError) as exc:
+            raise EvidenceIdentityMismatch(
+                "corpus generation integration gate invariants are invalid"
+            ) from exc
+        if canonical_gate != self.integration_gate:
+            raise EvidenceIdentityMismatch(
+                "corpus generation integration gate invariants are invalid"
+            )
+        object.__setattr__(self, "integration_gate", canonical_gate)
         if self.integration_gate_id != self.integration_gate.gate_id:
-            raise SearchValidationError(
+            raise EvidenceIdentityMismatch(
                 "corpus generation gate id differs from its integration receipt"
             )
-        if not isinstance(self.artifact, ArtifactRef):
-            object.__setattr__(
-                self,
-                "artifact",
-                ArtifactRef.from_dict(self.artifact),  # type: ignore[arg-type]
+        copied = (
+            ("manifest_artifact_identity", self.manifest_artifact_identity),
+            ("subset_identity", self.subset_identity),
+            ("queue_evidence_identity", self.queue_evidence_identity),
+            ("coordinator_identity", self.coordinator_identity),
+            ("connector_identity", self.connector_identity),
+        )
+        try:
+            for name, value in copied:
+                validate_hash(value, name)
+        except SearchValidationError as exc:
+            raise EvidenceIdentityMismatch("corpus gate provenance is invalid") from exc
+        for name, value in copied:
+            if value != getattr(self.integration_gate, name):
+                raise EvidenceIdentityMismatch(
+                    f"corpus generation {name} differs from its integration receipt"
+                )
+        try:
+            lanes = tuple(self.selected_lanes)
+        except (TypeError, ValueError) as exc:
+            raise EvidenceIdentityMismatch("corpus generation selected lanes are invalid") from exc
+        if lanes != self.integration_gate.selected_lanes:
+            raise EvidenceIdentityMismatch(
+                "corpus generation selected lanes differ from its integration receipt"
             )
-        object.__setattr__(self, "selected_lanes", tuple(self.selected_lanes))
-        object.__setattr__(self, "source_identities", tuple(self.source_identities))
-        object.__setattr__(self, "entries", tuple(self.entries))
+        if not lanes or lanes != tuple(dict.fromkeys(lanes)):
+            raise EvidenceIdentityMismatch("corpus generation selected lanes are invalid")
+        object.__setattr__(self, "selected_lanes", lanes)
+        original_artifact = self.artifact
+        try:
+            artifact = (
+                ArtifactRef.from_dict(self.artifact.to_dict())
+                if isinstance(self.artifact, ArtifactRef)
+                else ArtifactRef.from_dict(self.artifact)  # type: ignore[arg-type]
+            )
+        except (AttributeError, SearchValidationError, TypeError, ValueError) as exc:
+            raise EvidenceIdentityMismatch("corpus artifact reference is invalid") from exc
+        if isinstance(original_artifact, ArtifactRef) and artifact != original_artifact:
+            raise EvidenceIdentityMismatch("corpus artifact reference is invalid")
+        object.__setattr__(self, "artifact", artifact)
+        try:
+            source_identities = tuple(self.source_identities)
+        except (TypeError, ValueError) as exc:
+            raise EvidenceIdentityMismatch("corpus source identities are invalid") from exc
+        if source_identities != tuple(sorted(set(source_identities))):
+            raise EvidenceIdentityMismatch(
+                "corpus source identities must be sorted and unique"
+            )
+        try:
+            for identity in source_identities:
+                validate_hash(identity, "source identity")
+        except SearchValidationError as exc:
+            raise EvidenceIdentityMismatch("corpus source identity is invalid") from exc
+        object.__setattr__(self, "source_identities", source_identities)
+
+        try:
+            raw_entries = tuple(_entry_payload(entry) for entry in self.entries)
+            entry_ids = []
+            for entry in raw_entries:
+                if not isinstance(entry, Mapping):
+                    raise EvidenceIdentityMismatch("corpus entries must be objects")
+                evidence_id = entry.get("evidence_id")
+                validate_hash(evidence_id, "evidence_id")
+                entry_ids.append(evidence_id)
+            if len(set(entry_ids)) != len(entry_ids):
+                raise EvidenceIdentityMismatch("corpus evidence IDs must be unique")
+            ordered_entries = tuple(
+                entry
+                for _identity, entry in sorted(
+                    zip(entry_ids, raw_entries), key=lambda item: item[0]
+                )
+            )
+        except EvidenceIdentityMismatch:
+            raise
+        except (AttributeError, SearchValidationError, TypeError, ValueError) as exc:
+            raise EvidenceIdentityMismatch("corpus entry identity is invalid") from exc
+        object.__setattr__(self, "entries", ordered_entries)
+
+        payload = _corpus_generation_payload(
+            schema_identity=self.schema_identity,
+            integration_gate=self.integration_gate,
+            source_identities=source_identities,
+            entries=ordered_entries,
+        )
+        expected_bytes = canonical_bytes(payload)
+        try:
+            validate_hash(self.artifact.content_hash, "corpus artifact content_hash")
+        except SearchValidationError as exc:
+            raise EvidenceIdentityMismatch("corpus artifact identity is invalid") from exc
+        expected_hash = hash_bytes(expected_bytes)
+        expected_generation = hash_canonical(payload)
+        if self.generation_id != expected_generation:
+            raise EvidenceIdentityMismatch(
+                "generation_id does not match the exact corpus generation payload"
+            )
+        if (
+            self.artifact.content_hash != expected_hash
+            or self.artifact.media_type != "application/json"
+            or self.artifact.byte_size != len(expected_bytes)
+            or self.artifact.path
+            != f"artifacts/evidence_corpus/{expected_hash.removeprefix('sha256:')}.json"
+        ):
+            raise EvidenceIdentityMismatch(
+                "corpus artifact identity or metadata differs from canonical payload bytes"
+            )
 
     @classmethod
     def from_dict(cls, value: Mapping) -> "CorpusGeneration":
@@ -450,14 +691,20 @@ class CorpusGeneration:
             "artifact",
         )
         if not isinstance(value, Mapping) or set(value) != set(fields):
-            raise SearchValidationError(
+            raise EvidenceIdentityMismatch(
                 "corpus generation fields do not match its protocol"
             )
         data = {key: value[key] for key in fields}
-        data["integration_gate"] = IntegrationGateReceipt.from_dict(
-            data["integration_gate"]
-        )
-        return cls(**data)
+        try:
+            data["integration_gate"] = IntegrationGateReceipt.from_dict(
+                data["integration_gate"]
+            )
+            data["artifact"] = ArtifactRef.from_dict(data["artifact"])
+            return cls(**data)
+        except EvidenceIdentityMismatch:
+            raise
+        except (SearchValidationError, TypeError, ValueError) as exc:
+            raise EvidenceIdentityMismatch("corpus generation payload is invalid") from exc
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -475,6 +722,31 @@ class CorpusGeneration:
             "entries": [_entry_payload(entry) for entry in self.entries],
             "artifact": self.artifact.to_dict(),
         }
+
+
+def _corpus_generation_payload(
+    *,
+    schema_identity: str,
+    integration_gate: IntegrationGateReceipt,
+    source_identities: Sequence[str],
+    entries: Sequence[Any],
+) -> dict[str, Any]:
+    """Return the one canonical payload used by build and direct validation."""
+
+    return {
+        "protocol": CORPUS_GENERATION_PROTOCOL,
+        "schema_identity": schema_identity,
+        "integration_gate": integration_gate.to_dict(),
+        "integration_gate_id": integration_gate.gate_id,
+        "manifest_artifact_identity": integration_gate.manifest_artifact_identity,
+        "subset_identity": integration_gate.subset_identity,
+        "queue_evidence_identity": integration_gate.queue_evidence_identity,
+        "selected_lanes": list(integration_gate.selected_lanes),
+        "coordinator_identity": integration_gate.coordinator_identity,
+        "connector_identity": integration_gate.connector_identity,
+        "source_identities": list(source_identities),
+        "entries": [_entry_payload(entry) for entry in entries],
+    }
 
 
 def build_corpus_generation(
@@ -501,18 +773,50 @@ def build_corpus_generation(
         raise IntegrationGateError(
             "integration gate receipt is not the canonical typed receipt"
         )
-    validate_hash(schema_identity, "schema_identity")
+    try:
+        validate_hash(schema_identity, "schema_identity")
+    except SearchValidationError as exc:
+        raise EvidenceIdentityMismatch("schema identity is invalid") from exc
     # The one canonical validator call for this generation boundary.
     validate_integration_gate(integration_gate, archive=archive)
     entry_values = tuple(entries)
-    payload = {
-        "protocol": CORPUS_GENERATION_PROTOCOL,
-        "schema_identity": schema_identity,
-        "integration_gate": integration_gate.to_dict(),
-        "source_identities": [],
-        "entries": [_entry_payload(entry) for entry in entry_values],
-    }
-    artifact = archive.put_json(payload)
+    try:
+        entry_payloads = tuple(_entry_payload(entry) for entry in entry_values)
+        entry_ids = []
+        for entry in entry_payloads:
+            if not isinstance(entry, Mapping):
+                raise EvidenceIdentityMismatch("corpus entries must be objects")
+            evidence_id = entry.get("evidence_id")
+            validate_hash(evidence_id, "evidence_id")
+            entry_ids.append(evidence_id)
+        if len(set(entry_ids)) != len(entry_ids):
+            raise EvidenceIdentityMismatch("corpus evidence IDs must be unique")
+        ordered_entries = tuple(
+            entry
+            for _identity, entry in sorted(
+                zip(entry_ids, entry_payloads), key=lambda item: item[0]
+            )
+        )
+    except EvidenceIdentityMismatch:
+        raise
+    except (AttributeError, SearchValidationError, TypeError, ValueError) as exc:
+        raise EvidenceIdentityMismatch("corpus entry identity is invalid") from exc
+    source_identities: tuple[str, ...] = ()
+    payload = _corpus_generation_payload(
+        schema_identity=schema_identity,
+        integration_gate=integration_gate,
+        source_identities=source_identities,
+        entries=ordered_entries,
+    )
+    artifact = archive.put_json(
+        payload,
+        category="evidence_corpus",
+        suffix=".json",
+    )
+    if artifact.content_hash != hash_bytes(canonical_bytes(payload)):
+        raise EvidenceIdentityMismatch(
+            "corpus artifact identity differs from canonical payload bytes"
+        )
     return CorpusGeneration(
         generation_id=hash_canonical(payload),
         schema_identity=schema_identity,
@@ -524,8 +828,8 @@ def build_corpus_generation(
         selected_lanes=tuple(integration_gate.selected_lanes),
         coordinator_identity=integration_gate.coordinator_identity,
         connector_identity=integration_gate.connector_identity,
-        source_identities=(),
-        entries=entry_values,
+        source_identities=source_identities,
+        entries=ordered_entries,
         artifact=artifact,
     )
 

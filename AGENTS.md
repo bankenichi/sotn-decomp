@@ -94,6 +94,12 @@ These are absolute. Each exists because breaking it cost real work.
     updates, planning, orchestration, coordination, or lead review to subagents.
     Subagents are reserved for substantive implementation work that the owner
     explicitly authorizes for delegation.
+21. **Generated commit evidence never consumes unrelated dirty state.** The
+    commit-time living-document sync runs only when the worktree holds no
+    unrelated unstaged tracked or nonignored untracked paths; otherwise it
+    defers and stages nothing, and generated output from a raced generator
+    pass is never swept into a caller's commit. The lead owns living-document
+    edits, including any deferred generator output.
 
 ## 3. Where everything is
 

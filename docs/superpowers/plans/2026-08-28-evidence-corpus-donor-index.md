@@ -425,7 +425,7 @@ calls `make_donor_query`, so no example hand-writes a partial query identity.
 - Consumes: the canonical Task 8.2 `IntegrationGateReceipt` and its archived receipt artifact, validated by the Task 8.2 canonical validator. The receipt must carry its canonical receipt identity, `subset_identity`, `queue_evidence_identity`, `selected_lanes`, manifest artifact identity, coordinator identity, and connector identity.
 - Produces: no local gate type, validator, fixture, or recovery wrapper. Corpus and donor builders accept the imported receipt, call the canonical validator before reading evidence, and retain the complete receipt payload in their returned generation or binding.
 
-- [ ] **Step 1: Write the failing canonical-gate consumer tests.** Define the compact test helpers once in `automation/test_search_evidence_corpus.py` and reuse them in later corpus tests. `fixture_gate(...)` loads the archived one-record or bounded multi-record receipt produced by Task 8.2 and invokes that runtime's canonical validator; it never constructs a local dataclass. The manifest helper still constructs a real `RunManifest`, including an explicit empty subset when `record_ids=()`, and uses canonical subset identity rather than a hand-written hash.
+- [x] **Step 1: Write the failing canonical-gate consumer tests.** Define the compact test helpers once in `automation/test_search_evidence_corpus.py` and reuse them in later corpus tests. `fixture_gate(...)` loads the archived one-record or bounded multi-record receipt produced by Task 8.2 and invokes that runtime's canonical validator; it never constructs a local dataclass. The manifest helper still constructs a real `RunManifest`, including an explicit empty subset when `record_ids=()`, and uses canonical subset identity rather than a hand-written hash.
 
 ```python
 def digest(label: str) -> str:
@@ -511,7 +511,7 @@ def test_generation_retains_complete_canonical_gate_provenance(tmp_path):
     assert payload["integration_gate"]["connector_identity"] == gate.connector_identity
 ```
 
-- [ ] **Step 2: Run the focused failure through the repository connector.**
+- [x] **Step 2: Run the focused failure through the repository connector.**
 
 ```text
 sotn-cmd run_automation run_selftests.py --only test_search_evidence_corpus.py --jobs 1
@@ -519,9 +519,9 @@ sotn-cmd run_automation run_selftests.py --only test_search_evidence_corpus.py -
 
 Expected result before implementation: the focused module fails during import because `automation.search_evidence_corpus` and its canonical-gate consumer are absent.
 
-- [ ] **Step 3: Implement canonical-gate consumption.** Import the Task 8.2 receipt and refusal under the descriptive aliases `IntegrationGateReceipt` and `IntegrationGateError`, call the canonical validator exactly once before consuming any corpus or donor input, and preserve the complete validated receipt object and validator-verified archived receipt reference in every returned generation or binding. The canonical validator decides whether the receipt is the permitted one-record smoke or bounded multi-record run, and whether it is missing, changed, or otherwise invalid. Do not call `recover_run`, inspect queue state, reconstruct ledger identity, or derive a second gate identity here. The concrete Task 8.2 import path, validator name, and archived-artifact accessor remain owned by that runtime; this plan consumes them and does not wrap or redefine them.
+- [x] **Step 3: Implement canonical-gate consumption.** Import the Task 8.2 receipt and refusal under the descriptive aliases `IntegrationGateReceipt` and `IntegrationGateError`, call the canonical validator exactly once before consuming any corpus or donor input, and preserve the complete validated receipt object and validator-verified archived receipt reference in every returned generation or binding. The canonical validator decides whether the receipt is the permitted one-record smoke or bounded multi-record run, and whether it is missing, changed, or otherwise invalid. Do not call `recover_run`, inspect queue state, reconstruct ledger identity, or derive a second gate identity here. The concrete Task 8.2 import path, validator name, and archived-artifact accessor remain owned by that runtime; this plan consumes them and does not wrap or redefine them.
 
-- [ ] **Step 4: Run the canonical-gate consumer tests and verify positive provenance.**
+- [x] **Step 4: Run the canonical-gate consumer tests and verify positive provenance.**
 
 ```text
 sotn-cmd run_automation run_selftests.py --only test_search_evidence_corpus.py --jobs 1
@@ -529,7 +529,7 @@ sotn-cmd run_automation run_selftests.py --only test_search_evidence_corpus.py -
 
 Expected result: the focused suite passes, including a validated canonical receipt whose complete serialized payload and archived receipt artifact are retained byte-for-byte in corpus and donor products. Assertions explicitly cover receipt identity, `subset_identity`, `queue_evidence_identity`, selected lanes, manifest artifact identity, coordinator identity, and connector identity.
 
-- [ ] **Step 5: Stop for the root-only commit boundary.** Root may commit only `automation/search_evidence_corpus.py` and `automation/test_search_evidence_corpus.py` with message `feat: consume canonical integration evidence`. The worker does not commit, build, inspect live queue state, or edit source.
+- [x] **Step 5: Stop for the root-only commit boundary.** Root may commit only `automation/search_evidence_corpus.py` and `automation/test_search_evidence_corpus.py` with message `feat: consume canonical integration evidence`. The worker does not commit, build, inspect live queue state, or edit source.
 
 ### Task 1: Add stable lesson citations and exact scorer taxonomy
 
@@ -543,7 +543,7 @@ Expected result: the focused suite passes, including a validated canonical recei
 - Consumes: existing `ArtifactRef`, `ScoreVector`, `FirstDivergence`, `hash_bytes`, `hash_canonical`, and `canonical_bytes`.
 - Produces: `AbsenceMaskingClaim`, `LessonCitation`, `make_lesson_citation`, `verify_lesson_citation`, `ScorerTaxonomy`, and `make_scorer_taxonomy`.
 
-- [ ] **Step 1: Write the failing §2 and scorer identity tests.** The source artifact must bind the complete `MATCHING-LESSONS.md` bytes. The citation stores no copied prose and explicitly records the absent narrowing-mask claim.
+- [x] **Step 1: Write the failing §2 and scorer identity tests.** The source artifact must bind the complete `MATCHING-LESSONS.md` bytes. The citation stores no copied prose and explicitly records the absent narrowing-mask claim.
 
 ```python
 def test_section_two_absent_masking_is_span_bound():
@@ -593,7 +593,7 @@ def test_scorer_taxonomy_retains_components_weights_and_divergence():
     assert taxonomy.to_dict()["after"] == after.to_dict()
 ```
 
-- [ ] **Step 2: Run the focused failure.**
+- [x] **Step 2: Run the focused failure.**
 
 ```text
 sotn-cmd run_automation run_selftests.py --only test_search_evidence_corpus.py --jobs 1
@@ -601,7 +601,7 @@ sotn-cmd run_automation run_selftests.py --only test_search_evidence_corpus.py -
 
 Expected result before implementation: the suite fails at import or reports that `make_lesson_citation` and `make_scorer_taxonomy` are missing.
 
-- [ ] **Step 3: Implement citation and taxonomy validation.** Decode no source excerpt into the record. Require `source.content_hash == hash_bytes(source_bytes)`, a relative path ending in `MATCHING-LESSONS.md`, positive one-based line bounds, and a span identity over exact UTF-8 lines including line endings. Require the §2 rule ID to carry `opcode == "andi"`, masks exactly `("0xff", "0xffff")`, and scope `"argument-use"`. Require taxonomy before and after vectors to have the same compiler and scorer algorithm, and validate evaluator and target hashes. Compute `taxonomy_id` from one canonical payload containing the complete `before.to_dict()`, complete `after.to_dict()`, `evaluator_identity`, and `target_identity`; `taxonomy_id` is a field name in the serialized envelope, not a second or circular identity property. `scorer_taxonomy_identity_payload` returns that payload and every mutation of any score, weight, compiler, scorer, evaluator, or target field changes the identity.
+- [x] **Step 3: Implement citation and taxonomy validation.** Decode no source excerpt into the record. Require `source.content_hash == hash_bytes(source_bytes)`, a relative path ending in `MATCHING-LESSONS.md`, positive one-based line bounds, and a span identity over exact UTF-8 lines including line endings. Require the §2 rule ID to carry `opcode == "andi"`, masks exactly `("0xff", "0xffff")`, and scope `"argument-use"`. Require taxonomy before and after vectors to have the same compiler and scorer algorithm, and validate evaluator and target hashes. Compute `taxonomy_id` from one canonical payload containing the complete `before.to_dict()`, complete `after.to_dict()`, `evaluator_identity`, and `target_identity`; `taxonomy_id` is a field name in the serialized envelope, not a second or circular identity property. `scorer_taxonomy_identity_payload` returns that payload and every mutation of any score, weight, compiler, scorer, evaluator, or target field changes the identity.
 
 ```python
 span = b"".join(source_bytes.splitlines(keepends=True)[line_start - 1:line_end])
@@ -617,7 +617,7 @@ payload = {
 citation_id = hash_canonical(payload)
 ```
 
-- [ ] **Step 4: Run the citation and taxonomy tests.**
+- [x] **Step 4: Run the citation and taxonomy tests.**
 
 ```text
 sotn-cmd run_automation run_selftests.py --only test_search_evidence_corpus.py --jobs 1
@@ -625,7 +625,7 @@ sotn-cmd run_automation run_selftests.py --only test_search_evidence_corpus.py -
 
 Expected result: the focused suite passes and changing one byte, one line bound, one scorer weight, one compiler identity, or one `FirstDivergence` changes or refuses the immutable identity.
 
-- [ ] **Step 5: Stop for the root-only commit boundary.** Root may commit only `automation/search_evidence_corpus.py` and `automation/test_search_evidence_corpus.py` with message `feat: bind evidence citations and scorer taxonomy`. The worker does not commit or modify `MATCHING-LESSONS.md`.
+- [x] **Step 5: Stop for the root-only commit boundary.** Root may commit only `automation/search_evidence_corpus.py` and `automation/test_search_evidence_corpus.py` with message `feat: bind evidence citations and scorer taxonomy`. The worker does not commit or modify `MATCHING-LESSONS.md`.
 
 ### Task 2: Expose completed-lineage scorer identity through the existing pattern miner
 
@@ -639,7 +639,7 @@ Expected result: the focused suite passes and changing one byte, one line bound,
 - Consumes: the existing `_load_completed_ledger`, `SearchPatternReport`, `EvaluationEvent.after.scorer_algorithm`, `RunManifest`, its exact selected-lane tool bindings and recipient target identities, the manifest-bound reserved evaluator/scorer tool identity (`search_evaluator` in examples), the separate `full_oracle` landing-authority identity, and strict ledger/artifact validation.
 - Produces: `CompletedLineageContext`, `CompletedLineageDiagnostic`, and `load_completed_lineage_contexts(...)`. Existing `mine_completed_lineages(...)` recommendations gain compiler, config, schema, scorer algorithm, exact lane-tool, recipient, target, and evaluator fields and include every one in their grouping identity.
 
-- [ ] **Step 1: Write the failing completed-context and scorer-separation tests.**
+- [x] **Step 1: Write the failing completed-context and scorer-separation tests.**
 
 ```python
 def test_active_ledger_never_becomes_lineage_context(tmp_path):
@@ -691,7 +691,7 @@ def test_missing_historical_evaluator_is_diagnostic(tmp_path):
     assert contexts[0].reason_code == "missing_evaluator_identity"
 ```
 
-- [ ] **Step 2: Run the pattern-miner failure.**
+- [x] **Step 2: Run the pattern-miner failure.**
 
 ```text
 sotn-cmd run_automation run_selftests.py --only test_search_patterns.py --jobs 1
@@ -699,7 +699,7 @@ sotn-cmd run_automation run_selftests.py --only test_search_patterns.py --jobs 1
 
 Expected result before implementation: the focused suite fails because `load_completed_lineage_contexts` is not exported and generated recommendations have no `scorer_algorithm` field.
 
-- [ ] **Step 3: Implement the public projection without a second ledger parser.** Normalize the same accepted ledger input forms as `mine_completed_lineages`, call `_load_completed_ledger` once per input, reject duplicate identities, collect sorted unique `EvaluationEvent.after.scorer_algorithm` values, and expose manifest compiler, config, and schema identities. Derive `lane_tool_identities` from exactly `(lane, manifest.tool_identities[lane])` for each selected lane, `recipient_target_identities` from the exact manifest target map, and evaluator identity from required `manifest.tool_identities["search_evaluator"]` or the exact reserved evaluator key imported from the Task 8.2 contract. The separate `manifest.tool_identities["full_oracle"]` is retained as landing authority only and must never fill this field. If the evaluator binding is absent, return `CompletedLineageDiagnostic(reason_code="missing_evaluator_identity", observed_identities=(manifest.compiler_identity, manifest.config_identity, manifest.schema_identity, manifest.tool_identities.get("full_oracle", "")))` and never expose a promotion-eligible context. Add compiler, config, schema, scorer algorithm, lane-tool, recipient, target, and evaluator fields to `_lineage_key`, the grouped record, and each recommendation payload. Incompatible identity tuples remain separate before aggregation. Do not alter report source identity or write behavior.
+- [x] **Step 3: Implement the public projection without a second ledger parser.** Normalize the same accepted ledger input forms as `mine_completed_lineages`, call `_load_completed_ledger` once per input, reject duplicate identities, collect sorted unique `EvaluationEvent.after.scorer_algorithm` values, and expose manifest compiler, config, and schema identities. Derive `lane_tool_identities` from exactly `(lane, manifest.tool_identities[lane])` for each selected lane, `recipient_target_identities` from the exact manifest target map, and evaluator identity from required `manifest.tool_identities["search_evaluator"]` or the exact reserved evaluator key imported from the Task 8.2 contract. The separate `manifest.tool_identities["full_oracle"]` is retained as landing authority only and must never fill this field. If the evaluator binding is absent, return `CompletedLineageDiagnostic(reason_code="missing_evaluator_identity", observed_identities=(manifest.compiler_identity, manifest.config_identity, manifest.schema_identity, manifest.tool_identities.get("full_oracle", "")))` and never expose a promotion-eligible context. Add compiler, config, schema, scorer algorithm, lane-tool, recipient, target, and evaluator fields to `_lineage_key`, the grouped record, and each recommendation payload. Incompatible identity tuples remain separate before aggregation. Do not alter report source identity or write behavior.
 
 ```python
 completed = tuple(_load_completed_ledger(value) for value in normalized)
@@ -735,7 +735,7 @@ for run in sorted(completed, key=lambda item: item.identity):
 return tuple(contexts)
 ```
 
-- [ ] **Step 4: Run the pattern tests.**
+- [x] **Step 4: Run the pattern tests.**
 
 ```text
 sotn-cmd run_automation run_selftests.py --only test_search_patterns.py --jobs 1
@@ -743,7 +743,7 @@ sotn-cmd run_automation run_selftests.py --only test_search_patterns.py --jobs 1
 
 Expected result: the focused pattern suite passes, active and partial sources fail with their existing typed errors, and reversing ledger input order produces identical recommendation IDs and JSON bytes.
 
-- [ ] **Step 5: Stop for the root-only commit boundary.** Root may commit only `automation/search_patterns.py` and `automation/test_search_patterns.py` with message `feat: expose completed scorer lineage context`. The worker does not commit or modify a ledger.
+- [x] **Step 5: Stop for the root-only commit boundary.** Root may commit only `automation/search_patterns.py` and `automation/test_search_patterns.py` with message `feat: expose completed scorer lineage context`. The worker does not commit or modify a ledger.
 
 ### Task 3: Gate idiom promotion and recurring `FirstDivergence` evidence
 

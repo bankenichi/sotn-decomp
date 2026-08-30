@@ -18,6 +18,7 @@ from automation.search_coordinator import SearchCoordinator
 from automation.search_archive import ContentAddressedArchive
 from automation.search_lanes import LaneCandidate, LaneError, execute_task
 from automation.search_recovery import recover_run
+from automation.search_patterns import _load_completed_ledger
 from automation.search_cli import RunInputError, resume_run, stop_run
 from automation.search_supervisor import (
     EVALUATOR_TOOL_KEY,
@@ -40,12 +41,15 @@ from automation.search_types import (
     Budget,
     CandidateRecord,
     SearchTask,
+    RunManifest,
+    RunStop,
     SearchValidationError,
     canonical_bytes,
     hash_bytes,
     hash_canonical,
 )
 from automation.test_search_schema import artifact, candidate_record, manifest, score
+from automation.test_search_evidence_corpus import _factory_gate
 
 
 class SearchSupervisorIntegrationTests(unittest.TestCase):
@@ -169,7 +173,7 @@ class SearchSupervisorIntegrationTests(unittest.TestCase):
                 lane_executor=unexpected_executor,
             )
             self.assertEqual(replay["executed_task_ids"], [])
-            self.assertEqual(replay["recovered_task_ids"], result["recovered_task_ids"])
+            self.assertEqual(replay["recovered_task_ids"], [])
             after_replay = recover_run(root)
             self.assertEqual(len(after_replay.events), len(before_replay.events))
             self.assertEqual(after_replay.last_event_hash, before_replay.last_event_hash)
@@ -1088,10 +1092,12 @@ class SearchSupervisorIntegrationTests(unittest.TestCase):
             )
             after = recover_run(root)
             self.assertEqual(resumed["command"], "instrumented-resume")
-            self.assertIsNone(after.stopped)
+            self.assertIsNotNone(after.stopped)
+            self.assertEqual(after.stopped.reason, "completed")
+            self.assertFalse(after.stopped.resumable)
             self.assertEqual(
                 sum(event.event_type == "run_stopped" for event in after.events),
-                1,
+                2,
             )
             self.assertEqual(
                 sum(event.event_type == "run_resumed" for event in after.events),
@@ -1296,15 +1302,20 @@ class IntegrationGateReceiptTests(unittest.TestCase):
         )
 
     def test_archived_receipt_round_trips_through_the_canonical_validator(self):
-        value = self.gate_manifest()
         with tempfile.TemporaryDirectory() as directory:
             archive = ContentAddressedArchive(Path(directory) / "archive")
-            receipt = archive_integration_gate(value, archive=archive)
-            self.assertTrue(receipt.multi_record is False)
+            receipt = _factory_gate(archive)
+            self.assertEqual(receipt.gate_kind, "smoke")
+            self.assertEqual(receipt.record_count, 1)
+            self.assertIsNotNone(receipt.last_sequence)
             self.assertEqual(receipt.execution_mode, INSTRUMENTED_MODE)
             self.assertEqual(
                 receipt.manifest_artifact_identity,
-                hash_canonical(value.to_dict()),
+                hash_canonical(
+                    RunManifest.from_dict(
+                        json.loads((archive.run_root / "manifest.json").read_text())
+                    ).to_dict()
+                ),
             )
             reloaded = load_integration_gate(receipt.to_dict(), archive=archive)
             self.assertEqual(reloaded, receipt)
@@ -1312,25 +1323,150 @@ class IntegrationGateReceiptTests(unittest.TestCase):
             # The validator is idempotent for a verified receipt.
             validate_integration_gate(receipt, archive=archive)
 
-    def test_changed_identity_is_refused_by_the_receipt_type(self):
-        value = self.gate_manifest()
+    def test_factory_multi_record_completion_is_consumable_as_completed_ledger(self):
         with tempfile.TemporaryDirectory() as directory:
             archive = ContentAddressedArchive(Path(directory) / "archive")
-            receipt = archive_integration_gate(value, archive=archive)
+            receipt = _factory_gate(archive, multi_record=True)
+            self.assertEqual(receipt.gate_kind, "multi_record")
+            self.assertEqual(receipt.record_count, 2)
+            completed = _load_completed_ledger(archive.run_root)
+            self.assertEqual(completed.manifest.run_id, receipt.run_id)
+            self.assertEqual(completed.events[-1].event_type, "run_stopped")
+            self.assertEqual(completed.events[-1].payload.reason, "completed")
+            self.assertFalse(completed.events[-1].payload.resumable)
+
+    def test_one_record_zero_event_factory_plan_is_a_smoke_gate(self):
+        with tempfile.TemporaryDirectory() as directory:
+            archive = ContentAddressedArchive(Path(directory) / "archive")
+            _factory_gate(archive)
+            (archive.run_root / "ledger.jsonl").unlink()
+            receipt = archive_integration_gate(archive.run_root, archive=archive)
+            self.assertEqual(receipt.gate_kind, "smoke")
+            self.assertEqual(receipt.record_count, 1)
+            self.assertIsNone(receipt.last_sequence)
+            self.assertIsNone(receipt.last_event_hash)
+            self.assertEqual(receipt.completed_task_ids, ())
+            self.assertIsNone(receipt.base_task_coverage_identity)
+            validate_integration_gate(receipt, archive=archive)
+
+    def test_gate_issuance_is_deterministic_on_replay(self):
+        with tempfile.TemporaryDirectory() as directory:
+            archive = ContentAddressedArchive(Path(directory) / "archive")
+            first = _factory_gate(archive, multi_record=True)
+            ledger_before = (archive.run_root / "ledger.jsonl").read_bytes()
+            second = archive_integration_gate(archive.run_root, archive=archive)
+            self.assertEqual(second, first)
+            self.assertEqual(
+                (archive.run_root / "ledger.jsonl").read_bytes(),
+                ledger_before,
+            )
+
+    def test_changed_identity_is_refused_by_the_receipt_type(self):
+        with tempfile.TemporaryDirectory() as directory:
+            archive = ContentAddressedArchive(Path(directory) / "archive")
+            receipt = _factory_gate(archive)
             altered = dict(receipt.to_dict())
             altered["queue_evidence_identity"] = hash_bytes(b"changed")
             with self.assertRaises(IntegrationGateError):
                 load_integration_gate(altered, archive=archive)
 
     def test_corrupt_receipt_artifact_is_refused(self):
-        value = self.gate_manifest()
         with tempfile.TemporaryDirectory() as directory:
             archive = ContentAddressedArchive(Path(directory) / "archive")
-            receipt = archive_integration_gate(value, archive=archive)
+            receipt = _factory_gate(archive)
             path = archive.resolve(receipt.receipt_artifact)
             path.write_bytes(b"x" * receipt.receipt_artifact.byte_size)
             with self.assertRaisesRegex(IntegrationGateError, "receipt artifact"):
                 validate_integration_gate(receipt, archive=archive)
+
+    def test_receipt_archive_root_mismatch_is_refused(self):
+        with tempfile.TemporaryDirectory() as directory:
+            archive = ContentAddressedArchive(Path(directory) / "archive")
+            other = ContentAddressedArchive(Path(directory) / "other")
+            receipt = _factory_gate(archive)
+            with self.assertRaises(IntegrationGateError):
+                validate_integration_gate(receipt, archive=other)
+            with self.assertRaises(IntegrationGateError):
+                archive_integration_gate(archive.run_root, archive=other)
+
+    def test_legacy_and_synthetic_manifests_cannot_issue_a_gate(self):
+        legacy = self.gate_manifest()
+        tools = dict(legacy.tool_identities)
+        tools.pop(MODE_TOOL_KEY)
+        legacy = replace(legacy, tool_identities=tools)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "legacy"
+            root.mkdir(parents=True)
+            (root / "manifest.json").write_bytes(
+                canonical_bytes(legacy.to_dict()) + b"\n"
+            )
+            with self.assertRaises(IntegrationGateError):
+                archive_integration_gate(root)
+
+        with self.assertRaises(IntegrationGateError):
+            archive_integration_gate(self.gate_manifest())
+
+    def test_multi_record_gate_refuses_an_incomplete_or_stopped_runtime(self):
+        with tempfile.TemporaryDirectory() as directory:
+            archive = ContentAddressedArchive(Path(directory) / "archive")
+            receipt = _factory_gate(archive, multi_record=True)
+            state = recover_run(archive.run_root)
+            with patch.object(
+                _search_supervisor,
+                "recover_run",
+                return_value=replace(state, tasks={}),
+            ):
+                with self.assertRaisesRegex(IntegrationGateError, "coverage"):
+                    archive_integration_gate(archive.run_root, archive=archive)
+
+            stopped = RunStop(
+                "graceful_stop",
+                None,
+                (),
+                hash_bytes(b"stopped-budget"),
+                True,
+            )
+            with patch.object(
+                _search_supervisor,
+                "recover_run",
+                return_value=replace(state, stopped=stopped),
+            ):
+                with self.assertRaisesRegex(
+                    IntegrationGateError,
+                    "terminal completion|actively stopped",
+                ):
+                    archive_integration_gate(archive.run_root, archive=archive)
+
+    def test_multi_record_gate_refuses_duplicate_base_coverage(self):
+        with tempfile.TemporaryDirectory() as directory:
+            archive = ContentAddressedArchive(Path(directory) / "archive")
+            _factory_gate(archive, multi_record=True)
+            state = recover_run(archive.run_root)
+            base_task = next(
+                task for task in state.tasks.values() if task.operation == "execute_lane"
+            )
+            forged_tasks = dict(state.tasks)
+            forged_tasks["duplicate-base-task-key"] = base_task
+            with patch.object(
+                _search_supervisor,
+                "recover_run",
+                return_value=replace(state, tasks=forged_tasks),
+            ):
+                with self.assertRaisesRegex(IntegrationGateError, "duplicate"):
+                    archive_integration_gate(archive.run_root, archive=archive)
+
+    def test_forged_terminal_proof_is_refused_by_the_canonical_validator(self):
+        with tempfile.TemporaryDirectory() as directory:
+            archive = ContentAddressedArchive(Path(directory) / "archive")
+            receipt = _factory_gate(archive, multi_record=True)
+            original = receipt.last_sequence
+            assert original is not None
+            object.__setattr__(receipt, "last_sequence", original + 1)
+            try:
+                with self.assertRaises(IntegrationGateError):
+                    validate_integration_gate(receipt, archive=archive)
+            finally:
+                object.__setattr__(receipt, "last_sequence", original)
 
     def test_manifest_without_coordinator_binding_is_refused(self):
         value = self.gate_manifest(with_coordinator=False)

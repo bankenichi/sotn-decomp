@@ -40,6 +40,7 @@ try:
         SearchTask,
         TIER_ORDER,
         OracleRequest,
+        RunStop,
         RunResume,
         RunManifest,
         SearchValidationError,
@@ -47,6 +48,7 @@ try:
         hash_bytes,
         hash_canonical,
         validate_hash,
+        validate_id,
         validate_run_id,
     )
 except ImportError:  # pragma: no cover - direct script compatibility
@@ -73,6 +75,7 @@ except ImportError:  # pragma: no cover - direct script compatibility
         SearchTask,
         TIER_ORDER,
         OracleRequest,
+        RunStop,
         RunResume,
         RunManifest,
         SearchValidationError,
@@ -80,6 +83,7 @@ except ImportError:  # pragma: no cover - direct script compatibility
         hash_bytes,
         hash_canonical,
         validate_hash,
+        validate_id,
         validate_run_id,
     )
 
@@ -96,6 +100,17 @@ STOP_REQUEST_REASON = "graceful_stop"
 STOP_REQUEST_PENDING = "pending"
 STOP_REQUEST_ACKNOWLEDGED = "acknowledged"
 GATE_RECEIPT_PROTOCOL = "search-supervisor-integration-gate-v1"
+# Gate kinds are deliberately closed.  A receipt is either the one-record
+# smoke proof or the bounded multi-record completed-run proof; a boolean such
+# as the old ``multi_record`` flag was too easy to forge or misread.
+GATE_KIND_SMOKE = "smoke"
+GATE_KIND_MULTI_RECORD = "multi_record"
+_GATE_KINDS = frozenset((GATE_KIND_SMOKE, GATE_KIND_MULTI_RECORD))
+# The factory keeps these bindings in the manifest tool map.  They are kept as
+# literals here so gate issuance cannot accidentally trust a caller-provided
+# marker or define a parallel factory protocol.
+_FACTORY_TOOL_KEY = "search_run_factory"
+_FACTORY_MARKER_KEY = "search_run_factory_marker"
 # Reserved manifest tool key for evaluator/scorer provenance.  Deliberately
 # distinct from the ``full_oracle`` landing authority: a completed run may
 # carry full oracle evidence and still lack evaluator provenance for its
@@ -165,7 +180,12 @@ def integration_gate_identity_payload(
     coordinator_identity: str,
     connector_identity: str,
     execution_mode: str,
-    multi_record: bool,
+    gate_kind: str,
+    record_count: int,
+    last_sequence: Optional[int],
+    last_event_hash: Optional[str],
+    completed_task_ids: Sequence[str],
+    base_task_coverage_identity: Optional[str],
 ) -> dict[str, Any]:
     """Return the exact identity payload archived as an integration receipt.
 
@@ -184,7 +204,12 @@ def integration_gate_identity_payload(
         "coordinator_identity": coordinator_identity,
         "connector_identity": connector_identity,
         "execution_mode": execution_mode,
-        "multi_record": multi_record,
+        "gate_kind": gate_kind,
+        "record_count": record_count,
+        "last_sequence": last_sequence,
+        "last_event_hash": last_event_hash,
+        "completed_task_ids": list(completed_task_ids),
+        "base_task_coverage_identity": base_task_coverage_identity,
     }
 
 
@@ -200,7 +225,12 @@ def _integration_gate_payload(
         coordinator_identity=receipt.coordinator_identity,
         connector_identity=receipt.connector_identity,
         execution_mode=receipt.execution_mode,
-        multi_record=receipt.multi_record,
+        gate_kind=receipt.gate_kind,
+        record_count=receipt.record_count,
+        last_sequence=receipt.last_sequence,
+        last_event_hash=receipt.last_event_hash,
+        completed_task_ids=receipt.completed_task_ids,
+        base_task_coverage_identity=receipt.base_task_coverage_identity,
     )
 
 
@@ -212,7 +242,7 @@ class IntegrationGateReceipt:
     name ``IntegrationGateReceipt``.  It carries the complete gate binding:
     the archived receipt artifact, the manifest artifact identity, the frozen
     subset and queue evidence identities, the selected lanes, and the
-    coordinator and connector module identities that produced the run.
+    coordinator identity plus connector surface measured at gate issuance.
     """
 
     gate_id: str
@@ -225,17 +255,35 @@ class IntegrationGateReceipt:
     coordinator_identity: str
     connector_identity: str
     execution_mode: str
-    multi_record: bool
+    gate_kind: str
+    record_count: int
+    last_sequence: Optional[int]
+    last_event_hash: Optional[str]
+    completed_task_ids: Tuple[str, ...]
+    base_task_coverage_identity: Optional[str]
 
     def __post_init__(self) -> None:
         validate_hash(self.gate_id, "gate_id")
         validate_run_id(self.run_id, "run_id")
-        if not isinstance(self.receipt_artifact, ArtifactRef):
-            object.__setattr__(
-                self,
-                "receipt_artifact",
-                ArtifactRef.from_dict(self.receipt_artifact),  # type: ignore[arg-type]
+        original_receipt_artifact = self.receipt_artifact
+        try:
+            receipt_artifact = (
+                ArtifactRef.from_dict(self.receipt_artifact.to_dict())
+                if isinstance(self.receipt_artifact, ArtifactRef)
+                else ArtifactRef.from_dict(self.receipt_artifact)  # type: ignore[arg-type]
             )
+        except (AttributeError, SearchValidationError, TypeError, ValueError) as exc:
+            raise SearchValidationError(
+                "integration gate receipt artifact is invalid"
+            ) from exc
+        if (
+            isinstance(original_receipt_artifact, ArtifactRef)
+            and receipt_artifact != original_receipt_artifact
+        ):
+            raise SearchValidationError(
+                "integration gate receipt artifact is invalid"
+            )
+        object.__setattr__(self, "receipt_artifact", receipt_artifact)
         for name in (
             "manifest_artifact_identity",
             "subset_identity",
@@ -244,29 +292,132 @@ class IntegrationGateReceipt:
             "connector_identity",
         ):
             validate_hash(getattr(self, name), name)
-        lanes = tuple(self.selected_lanes)
-        if len(set(lanes)) != len(lanes):
+        if isinstance(self.selected_lanes, (str, bytes, bytearray)):
+            raise SearchValidationError(
+                "integration gate receipt selected_lanes must be a sequence"
+            )
+        try:
+            lanes = tuple(self.selected_lanes)
+            repeated_lanes = len(set(lanes)) != len(lanes)
+        except (TypeError, ValueError) as exc:
+            raise SearchValidationError(
+                "integration gate receipt selected_lanes are invalid"
+            ) from exc
+        if repeated_lanes:
             raise SearchValidationError(
                 "integration gate receipt repeats a selected lane"
             )
         canonical_lanes = tuple(lane for lane in LANES if lane in lanes)
+        if not lanes:
+            raise SearchValidationError(
+                "integration gate receipt selected_lanes must be nonempty"
+            )
         if lanes != canonical_lanes:
             raise SearchValidationError(
                 "integration gate receipt lanes must use canonical LANES order"
             )
         object.__setattr__(self, "selected_lanes", lanes)
-        if self.execution_mode not in {LEGACY_MODE, INSTRUMENTED_MODE}:
+        if self.execution_mode != INSTRUMENTED_MODE:
             raise SearchValidationError(
-                "integration gate receipt binds an unknown execution mode"
+                "integration gate receipt must bind instrumented execution"
             )
-        if not isinstance(self.multi_record, bool):
+        if not isinstance(self.gate_kind, str) or self.gate_kind not in _GATE_KINDS:
             raise SearchValidationError(
-                "integration gate receipt multi_record must be a boolean"
+                "integration gate receipt binds an unknown gate kind"
+            )
+        if (
+            isinstance(self.record_count, bool)
+            or not isinstance(self.record_count, int)
+            or self.record_count < 1
+        ):
+            raise SearchValidationError(
+                "integration gate receipt record_count must be positive"
+            )
+        if self.gate_kind == GATE_KIND_SMOKE and self.record_count != 1:
+            raise SearchValidationError(
+                "smoke integration gate must bind exactly one record"
+            )
+        if self.gate_kind == GATE_KIND_MULTI_RECORD and self.record_count < 2:
+            raise SearchValidationError(
+                "multi-record integration gate must bind at least two records"
+            )
+
+        if isinstance(self.completed_task_ids, (str, bytes, bytearray)):
+            raise SearchValidationError(
+                "integration gate completed task IDs must be a sequence"
+            )
+        try:
+            completed = tuple(self.completed_task_ids)
+            ordered_completed = tuple(sorted(set(completed)))
+        except (TypeError, ValueError) as exc:
+            raise SearchValidationError(
+                "integration gate completed task IDs are invalid"
+            ) from exc
+        if completed != ordered_completed:
+            raise SearchValidationError(
+                "integration gate completed task IDs must be sorted and unique"
+            )
+        for task_id in completed:
+            validate_id(task_id, "completed_task_id")
+        object.__setattr__(self, "completed_task_ids", completed)
+
+        proof_values = (
+            self.last_sequence,
+            self.last_event_hash,
+            self.base_task_coverage_identity,
+        )
+        proof_present = any(value is not None for value in proof_values) or bool(completed)
+        if not proof_present:
+            if self.gate_kind == GATE_KIND_MULTI_RECORD:
+                raise SearchValidationError(
+                    "multi-record integration gate requires terminal proof"
+                )
+            if completed:
+                raise SearchValidationError(
+                    "integration gate terminal proof fields are inconsistent"
+                )
+        else:
+            if (
+                isinstance(self.last_sequence, bool)
+                or not isinstance(self.last_sequence, int)
+                or self.last_sequence < 0
+                or self.last_event_hash is None
+                or self.base_task_coverage_identity is None
+            ):
+                raise SearchValidationError(
+                    "integration gate terminal proof fields are inconsistent"
+                )
+            validate_hash(self.last_event_hash, "last_event_hash")
+            validate_hash(
+                self.base_task_coverage_identity,
+                "base_task_coverage_identity",
             )
         if self.gate_id != hash_canonical(_integration_gate_payload(self)):
             raise SearchValidationError(
                 "gate_id does not match the integration gate identity payload"
             )
+        expected_artifact = _integration_gate_payload(self)
+        expected_bytes = canonical_bytes(expected_artifact)
+        expected_path = (
+            "artifacts/receipts/"
+            + self.gate_id.removeprefix("sha256:")
+            + ".json"
+        )
+        if (
+            self.receipt_artifact.content_hash != self.gate_id
+            or self.receipt_artifact.path != expected_path
+            or self.receipt_artifact.media_type != "application/json"
+            or self.receipt_artifact.byte_size != len(expected_bytes)
+        ):
+            raise SearchValidationError(
+                "integration gate receipt artifact does not match its identity"
+            )
+
+    @property
+    def multi_record(self) -> bool:
+        """Compatibility view of the closed ``gate_kind`` field."""
+
+        return self.gate_kind == GATE_KIND_MULTI_RECORD
 
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]) -> "IntegrationGateReceipt":
@@ -281,7 +432,12 @@ class IntegrationGateReceipt:
             "coordinator_identity",
             "connector_identity",
             "execution_mode",
-            "multi_record",
+            "gate_kind",
+            "record_count",
+            "last_sequence",
+            "last_event_hash",
+            "completed_task_ids",
+            "base_task_coverage_identity",
         )
         if not isinstance(value, Mapping) or set(value) != set(fields):
             raise SearchValidationError(
@@ -301,12 +457,21 @@ class IntegrationGateReceipt:
             "coordinator_identity": self.coordinator_identity,
             "connector_identity": self.connector_identity,
             "execution_mode": self.execution_mode,
-            "multi_record": self.multi_record,
+            "gate_kind": self.gate_kind,
+            "record_count": self.record_count,
+            "last_sequence": self.last_sequence,
+            "last_event_hash": self.last_event_hash,
+            "completed_task_ids": list(self.completed_task_ids),
+            "base_task_coverage_identity": self.base_task_coverage_identity,
         }
 
 
 def _connector_module_identity() -> str:
-    """Bind the connector surface that created and observed the run."""
+    """Hash the connector surface measured while this gate is issued.
+
+    This is a certificate of the connector code visible at issuance time.  It
+    is not a claim that the connector produced the earlier durable run.
+    """
 
     path = Path(__file__).resolve().parent / "mcp" / "commands_client.py"
     try:
@@ -318,48 +483,359 @@ def _connector_module_identity() -> str:
     return hash_bytes(data)
 
 
-def archive_integration_gate(
+def _gate_run_root(source: Any) -> tuple[Path, Path, RunManifest]:
+    """Resolve a real run root and load its manifest from disk.
+
+    A manifest object is intentionally not accepted here.  The gate is an
+    integration proof about durable run evidence, so all of its inputs must
+    come from the same on-disk run root.
+    """
+
+    if isinstance(source, RunManifest):
+        raise IntegrationGateError(
+            "integration gate issuance requires a run root or manifest path"
+        )
+    if not isinstance(source, (str, os.PathLike)):
+        raise IntegrationGateError(
+            "integration gate source must be a run root or manifest path"
+        )
+    candidate = Path(source)
+    try:
+        if candidate.is_dir():
+            root = _safe_run_root(candidate)
+            manifest_path = root / "manifest.json"
+        else:
+            manifest_path, _loaded = _load_manifest_file(candidate)
+            root = _safe_run_root(manifest_path.parent)
+        manifest_path, manifest = _load_manifest_file(root / "manifest.json")
+    except Exception as exc:  # noqa: BLE001
+        if isinstance(exc, IntegrationGateError):
+            raise
+        raise IntegrationGateError(
+            "integration gate cannot load the exact run manifest"
+        ) from exc
+    try:
+        resolved_root = root.resolve(strict=True)
+        resolved_manifest = manifest_path.resolve(strict=True)
+    except OSError as exc:
+        raise IntegrationGateError("integration gate run root is unreadable") from exc
+    if resolved_manifest != resolved_root / "manifest.json":
+        raise IntegrationGateError(
+            "integration gate manifest is not rooted in the requested run"
+        )
+    return resolved_root, resolved_manifest, manifest
+
+
+def _require_gate_archive(
+    archive: Optional[ContentAddressedArchive],
+    root: Path,
+) -> ContentAddressedArchive:
+    if archive is None:
+        return ContentAddressedArchive(root)
+    if not isinstance(archive, ContentAddressedArchive):
+        raise IntegrationGateError("integration gate archive is not canonical")
+    try:
+        archive_root = archive.run_root.resolve(strict=False)
+    except OSError as exc:
+        raise IntegrationGateError("integration gate archive root is unreadable") from exc
+    if archive_root != root:
+        raise IntegrationGateError(
+            "integration gate archive must use the exact run root"
+        )
+    return archive
+
+
+def _factory_gate_manifest(manifest: RunManifest) -> None:
+    """Require both durable factory bindings before an integration proof."""
+
+    if manifest.tool_identities.get(MODE_TOOL_KEY) != mode_identity(INSTRUMENTED_MODE):
+        raise IntegrationGateError(
+            "integration gate refuses legacy or non-instrumented execution"
+        )
+    marker = manifest.tool_identities.get(_FACTORY_MARKER_KEY)
+    factory_identity = manifest.tool_identities.get(_FACTORY_TOOL_KEY)
+    if not isinstance(marker, str) or not isinstance(factory_identity, str):
+        raise IntegrationGateError(
+            "integration gate requires factory-created archive evidence"
+        )
+
+
+def _base_task_coverage_payload(tasks: Iterable[SearchTask]) -> list[dict[str, Any]]:
+    """Return stable identities for the exact base-task set."""
+
+    values = []
+    for task in tasks:
+        # Task state is a lifecycle value and is not part of task identity.
+        value = task.to_dict()
+        value["state"] = "scheduled"
+        values.append(value)
+    return sorted(
+        values,
+        key=lambda item: (
+            item["recipient_id"],
+            item["lane"],
+            item["task_id"],
+        ),
+    )
+
+
+def _terminal_gate_proof(
+    root: Path,
+    manifest: RunManifest,
+    state: Any,
+    *,
+    ledger_had_events: bool,
+) -> tuple[Optional[int], Optional[str], tuple[str, ...], Optional[str]]:
+    """Validate recovered completion and return its immutable terminal proof."""
+
+    if not ledger_had_events:
+        # ``recover_run`` rejects an empty ledger by design.  A factory-created
+        # one-record shadow may still be a valid zero-event plan, represented
+        # by an absent terminal proof.  Multi-record gates reject this later.
+        return None, None, (), None
+    if state is None:
+        raise IntegrationGateError("integration gate has no recoverable run state")
+    if state.incomplete_tasks:
+        raise IntegrationGateError(
+            "integration gate refuses a run with incomplete tasks"
+        )
+    active_stop = state.stopped
+    if active_stop is not None and not (
+        active_stop.reason == "completed"
+        and active_stop.resumable is False
+        and not active_stop.pending_task_ids
+    ):
+        raise IntegrationGateError("integration gate refuses an actively stopped run")
+    if active_stop is not None:
+        stop_events = [
+            event for event in state.events if event.event_type == "run_stopped"
+        ]
+        if (
+            not stop_events
+            or state.events[-1] != stop_events[-1]
+            or stop_events[-1].payload != active_stop
+        ):
+            raise IntegrationGateError(
+                "integration gate completion stop is not the terminal ledger event"
+            )
+    completed = tuple(sorted(state.completed_task_ids))
+    base_tasks = [
+        task for task in state.tasks.values() if task.operation == "execute_lane"
+    ]
+    coverage_identity = hash_canonical(_base_task_coverage_payload(base_tasks))
+    return (
+        state.last_sequence,
+        state.last_event_hash,
+        completed,
+        coverage_identity,
+    )
+
+
+def _validate_gate_tasks(
+    manifest: RunManifest,
+    state: Any,
+    *,
+    gate_kind: str,
+) -> None:
+    if state is None:
+        return
+    expected_pairs = {
+        (record_id, lane)
+        for record_id in manifest.queue_record_ids
+        for lane in manifest.selected_lanes
+    }
+    base_pairs: dict[tuple[str, str], SearchTask] = {}
+    for task in state.tasks.values():
+        if task.operation == "execute_lane":
+            pair = (task.recipient_id, task.lane)
+            if pair not in expected_pairs:
+                raise IntegrationGateError(
+                    "integration gate found an unexpected base task pair"
+                )
+            if pair in base_pairs:
+                raise IntegrationGateError(
+                    "integration gate found duplicate base task coverage"
+                )
+            base_pairs[pair] = task
+        elif task.operation.startswith("materialize_candidate:"):
+            # Candidate children are permitted, but recover_run's incomplete
+            # task check below still requires every child to be terminal.
+            continue
+        else:
+            raise IntegrationGateError(
+                "integration gate found an unexpected task operation"
+            )
+    if gate_kind == GATE_KIND_MULTI_RECORD and set(base_pairs) != expected_pairs:
+        missing = expected_pairs.difference(base_pairs)
+        unexpected = set(base_pairs).difference(expected_pairs)
+        detail = []
+        if missing:
+            detail.append("missing base task pair")
+        if unexpected:
+            detail.append("unexpected base task pair")
+        raise IntegrationGateError(
+            "integration gate base-task coverage is incomplete (" + ", ".join(detail) + ")"
+        )
+    for task in base_pairs.values():
+        if task.task_id not in state.terminal_tasks:
+            raise IntegrationGateError(
+                "integration gate base task is not terminal"
+            )
+
+
+def _inspect_gate_runtime(
+    root: Path,
     manifest: RunManifest,
     *,
     archive: ContentAddressedArchive,
-) -> IntegrationGateReceipt:
-    """Create and archive the canonical integration receipt for a run.
+    require_completed_stop: bool = False,
+) -> tuple[str, int, Optional[int], Optional[str], tuple[str, ...], Optional[str]]:
+    """Verify factory evidence and recover the durable run once."""
 
-    Every binding comes from the manifest's own immutable evidence: the
-    coordinator identity is the factory-bound coordinator module hash, the
-    connector identity is the content hash of the connector surface module,
-    and the manifest artifact identity is the canonical manifest hash.  Call
-    this only for a completed, artifact-verified run.  Receipt consistency is
-    owned here; run completion itself stays owned by the recovery and factory
-    verification paths.
-    """
-
-    if not isinstance(manifest, RunManifest):
-        raise IntegrationGateError("integration gate needs a typed run manifest")
+    _factory_gate_manifest(manifest)
+    if not manifest.selected_lanes:
+        raise IntegrationGateError("integration gate selected lanes must be nonempty")
     coordinator_identity = manifest.tool_identities.get("search_coordinator")
     if coordinator_identity is None:
         raise IntegrationGateError(
-            "integration gate requires the factory-bound coordinator module identity"
+            "integration gate requires the factory-bound coordinator identity"
         )
-    mode_binding = manifest.tool_identities.get(MODE_TOOL_KEY)
-    if mode_binding == mode_identity(INSTRUMENTED_MODE):
-        execution_mode = INSTRUMENTED_MODE
-    elif mode_binding == mode_identity(LEGACY_MODE):
-        execution_mode = LEGACY_MODE
-    else:
+    if manifest.coordinator_budget.limit > MAX_COORDINATOR_TASKS:
         raise IntegrationGateError(
-            "integration gate manifest binds no explicit supervisor mode"
+            "integration gate manifest exceeds the global coordinator bound"
         )
+    task_count = len(manifest.queue_record_ids) * len(manifest.selected_lanes)
+    if task_count > manifest.coordinator_budget.limit:
+        raise IntegrationGateError(
+            "integration gate manifest cannot cover its selected task subset"
+        )
+    if task_count * (1 + MAX_CHILD_TASKS_PER_BASE) > MAX_COORDINATOR_TASKS:
+        raise IntegrationGateError(
+            "integration gate manifest exceeds the global coordinator bound"
+        )
+
+    try:
+        try:
+            from .search_run_factory import verify_factory_archive
+        except ImportError:  # pragma: no cover - direct script compatibility
+            from search_run_factory import verify_factory_archive  # type: ignore
+        verified_manifest = verify_factory_archive(root, manifest)
+    except IntegrationGateError:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        raise IntegrationGateError(
+            "integration gate factory archive verification failed"
+        ) from exc
+    if verified_manifest != manifest:
+        raise IntegrationGateError(
+            "integration gate factory archive returned a different manifest"
+        )
+
+    ledger_path = root / "ledger.jsonl"
+    try:
+        ledger_bytes = ledger_path.read_bytes() if ledger_path.exists() else b""
+    except OSError as exc:
+        raise IntegrationGateError("integration gate ledger cannot be read") from exc
+    ledger_had_events = bool(ledger_bytes)
+    state = None
+    try:
+        state = recover_run(root)
+    except Exception as exc:  # noqa: BLE001
+        if ledger_had_events:
+            raise IntegrationGateError(
+                "integration gate ledger cannot be recovered"
+            ) from exc
+        # An absent/empty ledger is permitted only for the smoke gate.  The
+        # caller still invoked recover_run, so a nonempty malformed prefix is
+        # never treated as a shadow plan.
+    if state is not None and state.manifest != manifest:
+        raise IntegrationGateError(
+            "integration gate recovered manifest differs from the exact manifest"
+        )
+    if state is not None:
+        try:
+            gate_kind = (
+                GATE_KIND_SMOKE
+                if len(manifest.queue_record_ids) == 1
+                else GATE_KIND_MULTI_RECORD
+            )
+            _validate_gate_tasks(manifest, state, gate_kind=gate_kind)
+        except IntegrationGateError:
+            raise
+    gate_kind = (
+        GATE_KIND_SMOKE
+        if len(manifest.queue_record_ids) == 1
+        else GATE_KIND_MULTI_RECORD
+    )
+    record_count = len(manifest.queue_record_ids)
+    if gate_kind == GATE_KIND_MULTI_RECORD:
+        if not ledger_had_events or state is None:
+            raise IntegrationGateError(
+                "multi-record integration gate requires a recovered ledger"
+            )
+        if not state.events:
+            raise IntegrationGateError(
+                "multi-record integration gate requires a nonempty ledger"
+            )
+        if require_completed_stop and not (
+            state.stopped is not None
+            and state.stopped.reason == "completed"
+            and state.stopped.resumable is False
+        ):
+            raise IntegrationGateError(
+                "multi-record integration gate requires terminal completion"
+            )
+    proof = _terminal_gate_proof(
+        root,
+        manifest,
+        state,
+        ledger_had_events=ledger_had_events,
+    )
+    if gate_kind == GATE_KIND_MULTI_RECORD and any(value is None for value in proof[:2]):
+        raise IntegrationGateError("multi-record terminal proof is incomplete")
+    return gate_kind, record_count, *proof
+
+
+def archive_integration_gate(
+    source: Any,
+    *,
+    archive: Optional[ContentAddressedArchive] = None,
+    gate_kind: Optional[str] = None,
+) -> IntegrationGateReceipt:
+    """Create an immutable integration receipt from one real run root.
+
+    Factory archive evidence and the recovered ledger are the authority.  A
+    caller cannot supply a synthetic manifest, an unrelated archive, or a
+    later connector claim in place of the durable run proof.
+    """
+
+    root, _manifest_path, manifest = _gate_run_root(source)
+    archive = _require_gate_archive(archive, root)
+    inferred_kind, record_count, last_sequence, last_event_hash, completed, coverage = _inspect_gate_runtime(
+        root,
+        manifest,
+        archive=archive,
+        require_completed_stop=True,
+    )
+    if gate_kind is None:
+        gate_kind = inferred_kind
+    if gate_kind != inferred_kind or gate_kind not in _GATE_KINDS:
+        raise IntegrationGateError("integration gate kind is not permitted for this subset")
     payload = integration_gate_identity_payload(
         run_id=manifest.run_id,
         manifest_artifact_identity=hash_canonical(manifest.to_dict()),
         subset_identity=manifest.subset_identity,
         queue_evidence_identity=manifest.queue_evidence_identity,
         selected_lanes=manifest.selected_lanes,
-        coordinator_identity=coordinator_identity,
+        coordinator_identity=manifest.tool_identities["search_coordinator"],
         connector_identity=_connector_module_identity(),
-        execution_mode=execution_mode,
-        multi_record=len(manifest.queue_record_ids) > 1,
+        execution_mode=INSTRUMENTED_MODE,
+        gate_kind=gate_kind,
+        record_count=record_count,
+        last_sequence=last_sequence,
+        last_event_hash=last_event_hash,
+        completed_task_ids=completed,
+        base_task_coverage_identity=coverage,
     )
     artifact = archive.put_receipt(payload)
     return IntegrationGateReceipt(
@@ -373,7 +849,12 @@ def archive_integration_gate(
         coordinator_identity=payload["coordinator_identity"],
         connector_identity=payload["connector_identity"],
         execution_mode=payload["execution_mode"],
-        multi_record=payload["multi_record"],
+        gate_kind=payload["gate_kind"],
+        record_count=payload["record_count"],
+        last_sequence=payload["last_sequence"],
+        last_event_hash=payload["last_event_hash"],
+        completed_task_ids=tuple(payload["completed_task_ids"]),
+        base_task_coverage_identity=payload["base_task_coverage_identity"],
     )
 
 
@@ -390,12 +871,26 @@ def validate_integration_gate(
     """
 
     if not isinstance(receipt, IntegrationGateReceipt):
-        raise IntegrationGateError(
-            "integration gate receipt is missing or not typed"
-        )
+        raise IntegrationGateError("integration gate receipt is missing or not typed")
+    try:
+        canonical_receipt = IntegrationGateReceipt.from_dict(receipt.to_dict())
+    except (AttributeError, SearchValidationError, TypeError, ValueError) as exc:
+        raise IntegrationGateError("integration gate receipt invariants are invalid") from exc
+    if canonical_receipt != receipt:
+        raise IntegrationGateError("integration gate receipt invariants are invalid")
+    root = getattr(archive, "run_root", None)
+    if root is None:
+        raise IntegrationGateError("integration gate archive is not canonical")
+    try:
+        root = Path(root).resolve(strict=True)
+    except OSError as exc:
+        raise IntegrationGateError("integration gate archive root is unreadable") from exc
+    _require_gate_archive(archive, root)
+    if not receipt.receipt_artifact.path.startswith("artifacts/receipts/"):
+        raise IntegrationGateError("integration gate receipt artifact path is invalid")
     try:
         raw = archive.verify(receipt.receipt_artifact)
-    except (RuntimeError, OSError) as exc:
+    except Exception as exc:  # noqa: BLE001
         raise IntegrationGateError(
             "integration gate receipt artifact does not verify"
         ) from exc
@@ -404,9 +899,53 @@ def validate_integration_gate(
         raise IntegrationGateError(
             "integration gate receipt artifact differs from its identity payload"
         )
+    expected_receipt_path = (
+        "artifacts/receipts/"
+        + receipt.gate_id.removeprefix("sha256:")
+        + ".json"
+    )
+    if (
+        receipt.receipt_artifact.path != expected_receipt_path
+        or receipt.receipt_artifact.media_type != "application/json"
+        or receipt.receipt_artifact.byte_size != len(raw)
+        or receipt.receipt_artifact.content_hash != hash_bytes(raw)
+    ):
+        raise IntegrationGateError(
+            "integration gate receipt artifact identity or metadata is invalid"
+        )
     if receipt.gate_id != hash_canonical(payload):
         raise IntegrationGateError(
             "integration gate receipt identity does not match its archived payload"
+        )
+    try:
+        _manifest_path, manifest = _load_manifest_file(root / "manifest.json")
+    except Exception as exc:  # noqa: BLE001
+        raise IntegrationGateError(
+            "integration gate manifest is missing or invalid"
+        ) from exc
+    if receipt.run_id != manifest.run_id:
+        raise IntegrationGateError("integration gate run identity differs from manifest")
+    if receipt.manifest_artifact_identity != hash_canonical(manifest.to_dict()):
+        raise IntegrationGateError("integration gate manifest identity is stale")
+    try:
+        expected = _inspect_gate_runtime(
+            root,
+            manifest,
+            archive=archive,
+            require_completed_stop=(receipt.gate_kind == GATE_KIND_MULTI_RECORD),
+        )
+    except IntegrationGateError:
+        raise
+    if expected != (
+        receipt.gate_kind,
+        receipt.record_count,
+        receipt.last_sequence,
+        receipt.last_event_hash,
+        receipt.completed_task_ids,
+        receipt.base_task_coverage_identity,
+    ):
+        raise IntegrationGateError(
+            "integration gate terminal proof differs from recovered run"
         )
 
 
@@ -580,6 +1119,13 @@ def _active_stop_event(events: Sequence[LedgerEvent]) -> Optional[LedgerEvent]:
         elif event.event_type == "run_resumed":
             active = None
     return active
+
+
+def _is_completed_stop_event(event: Optional[LedgerEvent]) -> bool:
+    if event is None or event.event_type != "run_stopped":
+        return False
+    payload = event.payload
+    return isinstance(payload, RunStop) and payload.reason == "completed" and payload.resumable is False
 
 
 def _resume_event_for_request(
@@ -1724,6 +2270,42 @@ def _resume_stop_request(
     return resume_event
 
 
+def _factory_bound_manifest(manifest: RunManifest) -> bool:
+    """Return whether the run carries the production factory bindings."""
+
+    return (
+        manifest.tool_identities.get(_FACTORY_TOOL_KEY) is not None
+        and manifest.tool_identities.get(_FACTORY_MARKER_KEY) is not None
+    )
+
+
+def _completed_run_result(
+    *,
+    root: Path,
+    manifest: RunManifest,
+    coordinator: SearchCoordinator,
+    executed: Sequence[str] = (),
+    resumed: Sequence[str] = (),
+) -> dict[str, Any]:
+    """Return a completed result and, for factory runs, its canonical gate."""
+
+    state = coordinator.state_dict()
+    result: dict[str, Any] = {
+        "command": "instrumented-run",
+        "ok": True,
+        "run_id": manifest.run_id,
+        "run_root": str(root),
+        "mode": INSTRUMENTED_MODE,
+        "executed_task_ids": list(executed),
+        "recovered_task_ids": list(resumed),
+        "state": state,
+    }
+    if _factory_bound_manifest(manifest):
+        receipt = archive_integration_gate(root, archive=coordinator.archive)
+        result["integration_gate"] = receipt.to_dict()
+    return result
+
+
 def _run_instrumented_locked(
     *,
     root: Path,
@@ -1746,9 +2328,28 @@ def _run_instrumented_locked(
 
     def observe_stop() -> Optional[LedgerEvent]:
         requested = _consume_stop_request(coordinator, root, manifest)
-        return requested or _active_stop_event(coordinator.events)
+        active = requested or _active_stop_event(coordinator.events)
+        # A non-resumable completion stop is the durable success marker, not
+        # an operator stop.  It is handled by the replay fast path below.
+        return None if _is_completed_stop_event(active) else active
 
     stop_event = observe_stop()
+    latest_transition = next(
+        (
+            event
+            for event in reversed(coordinator.events)
+            if event.event_type in {"run_stopped", "run_resumed"}
+        ),
+        None,
+    )
+    if stop_event is None and _is_completed_stop_event(latest_transition):
+        return _completed_run_result(
+            root=root,
+            manifest=manifest,
+            coordinator=coordinator,
+            executed=(),
+            resumed=(),
+        )
     if stop_event is not None:
         state = coordinator.state_dict()
         return {
@@ -1885,17 +2486,23 @@ def _run_instrumented_locked(
     durable_state_changed |= final_signature != baseline_signature
     if durable_state_changed:
         coordinator.write_checkpoint()
-    state = coordinator.state_dict()
-    return {
-        "command": "instrumented-run",
-        "ok": True,
-        "run_id": manifest.run_id,
-        "run_root": str(root),
-        "mode": INSTRUMENTED_MODE,
-        "executed_task_ids": executed,
-        "recovered_task_ids": resumed,
-        "state": state,
-    }
+    # Keep the successful terminal marker after the checkpoint.  The
+    # coordinator refuses mutations while stopped, so this ordering leaves
+    # the completion stop as the final ledger event required by completed-run
+    # consumers.  _append_event_once inside stop makes replay deterministic.
+    if not any(
+        _is_completed_stop_event(event)
+        for event in coordinator.events
+        if event.event_type == "run_stopped"
+    ):
+        coordinator.stop(reason="completed", resumable=False)
+    return _completed_run_result(
+        root=root,
+        manifest=manifest,
+        coordinator=coordinator,
+        executed=executed,
+        resumed=resumed,
+    )
 
 
 def _run_instrumented_entry(
@@ -1960,6 +2567,20 @@ def _run_instrumented_entry(
             ) from exc
         coordinator = SearchCoordinator(root, manifest, oracle=oracle)
         if resume:
+            latest_transition = next(
+                (
+                    event
+                    for event in reversed(coordinator.events)
+                    if event.event_type in {"run_stopped", "run_resumed"}
+                ),
+                None,
+            )
+            if _is_completed_stop_event(latest_transition):
+                return _completed_run_result(
+                    root=root,
+                    manifest=manifest,
+                    coordinator=coordinator,
+                )
             _resume_stop_request(coordinator, root, manifest)
         return _run_instrumented_locked(
             root=root,
@@ -2063,6 +2684,8 @@ __all__ = [
     "DurableOracleError",
     "EVALUATOR_TOOL_KEY",
     "GATE_RECEIPT_PROTOCOL",
+    "GATE_KIND_SMOKE",
+    "GATE_KIND_MULTI_RECORD",
     "INSTRUMENTED_MODE",
     "InstrumentedLandingOracle",
     "IntegrationGateError",
