@@ -876,10 +876,9 @@ AUTOMATION_SCRIPTS = {
     "test_search_run_factory.py",
     "test_search_patterns.py",
     "test_search_supervisor.py",
-    # The evidence corpus consumer and its focused suite, corpus plan Task 0.
+    # The focused evidence corpus suite, corpus plan Task 0.
     # Keep this comment free of parentheses: the doc drift check parses this
     # set literal with a non-greedy match that stops at the first one.
-    "search_evidence_corpus.py",
     "test_search_evidence_corpus.py",
     "test_build_attribution.py",
     "escalation_triage.py",
@@ -1769,30 +1768,140 @@ def _managed_doc_paths() -> tuple[list[str], str]:
     return checked, ""
 
 
+_DOC_SYNC_PATH_LIMIT = 32
+
+
+def _worktree_changes() -> tuple[list[str], list[str], str]:
+    """Return unstaged tracked and nonignored untracked worktree paths."""
+    try:
+        status = subprocess.run(
+            ["git", "status", "--porcelain=v1",
+             "--untracked-files=normal", "--"],
+            cwd=str(REPO), capture_output=True, text=True, timeout=120)
+    except (OSError, subprocess.SubprocessError) as exc:
+        return [], [], f"could not inspect worktree changes: {exc}"
+    if status.returncode != 0:
+        return [], [], (status.stderr or status.stdout or
+                        "git status failed").strip()
+
+    unstaged_tracked = []
+    untracked = []
+    for line in status.stdout.splitlines():
+        if len(line) < 3:
+            continue
+        state = line[:2]
+        path = line[3:]
+        if not path:
+            continue
+        if state == "??":
+            untracked.append(path)
+        elif state[1] != " " and state[0] != "!":
+            unstaged_tracked.append(path)
+    return sorted(set(unstaged_tracked)), sorted(set(untracked)), ""
+
+
+def _bounded_doc_sync_paths(paths: list[str]) -> tuple[list[str], int]:
+    """Keep deferred documentation metadata bounded and deterministic."""
+    unique = sorted(set(paths))
+    return unique[:_DOC_SYNC_PATH_LIMIT], len(unique)
+
+
+def _deferred_doc_sync(
+        paths: list[str], unstaged_tracked: list[str],
+        untracked: list[str], phase: str) -> dict:
+    """Describe a bounded synchronization deferral and its causes."""
+    tracked, tracked_count = _bounded_doc_sync_paths(unstaged_tracked)
+    loose, loose_count = _bounded_doc_sync_paths(untracked)
+    reasons = []
+    if tracked_count:
+        reasons.append("unstaged tracked paths")
+    if loose_count:
+        reasons.append("nonignored untracked paths")
+    return {
+        "ok": True,
+        "deferred": True,
+        "phase": phase,
+        "managed_documents": paths,
+        "deferred_reasons": reasons,
+        "unstaged_tracked_paths": tracked,
+        "untracked_paths": loose,
+        "path_counts": {
+            "unstaged_tracked": tracked_count,
+            "untracked": loose_count,
+        },
+        "reason": (
+            f"managed-document sync deferred {phase}: "
+            f"{tracked_count} unrelated unstaged tracked path(s) and "
+            f"{loose_count} unrelated nonignored untracked path(s); "
+            "skipped the generator and managed-document staging"
+        ),
+    }
+
+
 def _sync_managed_docs_for_commit() -> dict:
-    """Refresh and explicitly stage generated docs without sweeping prose."""
+    """Sync managed docs only when the generator has a stable worktree input."""
     paths, error = _managed_doc_paths()
     if error:
         return {"ok": False, "error": error}
-    unstaged = subprocess.run(
-        ["git", "diff", "--name-only", "--", *paths], cwd=str(REPO),
-        capture_output=True, text=True, timeout=120)
-    if unstaged.returncode != 0:
-        return {"ok": False, "error": (unstaged.stderr or unstaged.stdout).strip()}
-    dirty = [line for line in unstaged.stdout.splitlines() if line.strip()]
-    if dirty:
+
+    # readme_status.py reads the live worktree. A read-only status snapshot
+    # prevents unrelated edits from becoming generated commit content. Defer
+    # rather than refusing the caller's explicit staged commit.
+    unstaged_tracked, untracked, error = _worktree_changes()
+    if error:
+        return {"ok": False, "error": error}
+    managed = set(paths)
+    dirty_managed = sorted(
+        set(unstaged_tracked).intersection(managed)
+        | set(untracked).intersection(managed)
+    )
+    if dirty_managed:
         return {
             "ok": False,
             "error": ("managed documents have unstaged edits; stage each intended "
                       "path explicitly before commit so generated status cannot "
                       "sweep unrelated prose into history"),
-            "unstaged_managed_documents": dirty,
+            "unstaged_managed_documents": dirty_managed,
         }
+    unrelated_tracked = [
+        path for path in unstaged_tracked if path not in managed
+    ]
+    unrelated_untracked = [
+        path for path in untracked if path not in managed
+    ]
+    if unrelated_tracked or unrelated_untracked:
+        return _deferred_doc_sync(
+            paths, unrelated_tracked, unrelated_untracked,
+            "before generator",
+        )
+
     sync = subprocess.run(
         [PYTHON, "automation/readme_status.py", "--write"], cwd=str(REPO),
         capture_output=True, text=True, timeout=600)
     if sync.returncode != 0:
         return {"ok": False, "error": (sync.stderr or sync.stdout).strip()}
+
+    # A worker can write an unrelated input after the preflight. Check again
+    # before staging so that generated docs from a moving worktree are never
+    # added to the caller's index.
+    post_tracked, post_untracked, error = _worktree_changes()
+    if error:
+        return {"ok": False, "error": error}
+    # Managed documents are expected to be dirty here when the generator
+    # refreshed their content. Only unrelated inputs can invalidate the
+    # generator result at this point.
+    post_unrelated_tracked = [
+        path for path in post_tracked if path not in managed
+    ]
+    post_unrelated_untracked = [
+        path for path in post_untracked if path not in managed
+    ]
+    if post_unrelated_tracked or post_unrelated_untracked:
+        return _deferred_doc_sync(
+            paths, post_unrelated_tracked, post_unrelated_untracked,
+            "after generator",
+        )
+
     staged = []
     for path in paths:
         add = subprocess.run(
@@ -2043,6 +2152,49 @@ FS_MAX_READ = int(os.environ.get("SOTN_FS_MAXREAD", "400000"))     # bytes retur
 FS_MAX_WRITE = int(os.environ.get("SOTN_FS_MAXWRITE", "2000000"))  # bytes accepted
 FS_ACTIONS = ["read_file", "write_file", "list_dir", "search_repo"]
 
+# A directory fsync is useful on filesystems that expose directory handles, but
+# it is not available through every host filesystem. Only errors that identify
+# that unsupported operation are ignored. Other errors remain loud.
+_DIRECTORY_SYNC_UNSUPPORTED = frozenset(
+    value for value in (
+        errno.EINVAL,
+        getattr(errno, "ENOSYS", None),
+        getattr(errno, "ENOTSUP", None),
+        getattr(errno, "EOPNOTSUPP", None),
+    ) if value is not None
+)
+_TRANSIENT_HOST_ERRNOS = frozenset(
+    {errno.EACCES, errno.EBUSY, errno.EINVAL, errno.EPERM}
+)
+
+
+def _sync_parent_directory(directory: Path) -> None:
+    """Best-effort sync of directory metadata after an atomic replacement.
+
+    POSIX filesystems may support opening and fsyncing a directory. Windows
+    host filesystems generally do not expose that operation through Python, so
+    this step is skipped there. Known unsupported errors are tolerated on
+    platforms that expose the calls. This is best effort only and does not
+    claim crash durability when directory synchronization is unavailable.
+    """
+    if os.name == "nt":
+        return
+    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+    try:
+        fd = os.open(str(directory), flags)
+    except OSError as exc:
+        if exc.errno in _DIRECTORY_SYNC_UNSUPPORTED:
+            return
+        raise
+    try:
+        try:
+            os.fsync(fd)
+        except OSError as exc:
+            if exc.errno not in _DIRECTORY_SYNC_UNSUPPORTED:
+                raise
+    finally:
+        os.close(fd)
+
 
 def _resolve(path: str, must_exist: bool, want_dir: bool | None) -> Path:
     rp = (REPO / path).resolve()
@@ -2088,11 +2240,12 @@ def fs_write(path: str, content: str) -> dict:
         mode = rp.stat().st_mode & 0o777
     except FileNotFoundError:
         pass
-    transient = {errno.EACCES, errno.EBUSY, errno.EINVAL, errno.EPERM}
+    transient = _TRANSIENT_HOST_ERRNOS
     last_error = None
     for attempt in range(4):
         tmp = rp.with_name(
             f".{rp.name}.sotn-write-{os.getpid()}-{time.time_ns()}")
+        replaced = False
         try:
             with tmp.open("wb") as f:
                 f.write(enc)
@@ -2100,6 +2253,14 @@ def fs_write(path: str, content: str) -> dict:
                 os.fsync(f.fileno())
             os.chmod(tmp, mode)
             os.replace(tmp, rp)
+            replaced = True
+            _sync_parent_directory(rp.parent)
+            actual = rp.read_bytes()
+            if actual != enc:
+                raise OSError(
+                    errno.EIO,
+                    f"post-replace verification mismatch for {rp}",
+                )
             return {
                 "path": path,
                 "dry_run": False,
@@ -2109,12 +2270,18 @@ def fs_write(path: str, content: str) -> dict:
         except OSError as exc:
             last_error = exc
             try:
+                # os.replace consumes the temporary path. Keeping cleanup
+                # unconditional makes retries safe for both failure points.
                 tmp.unlink()
             except FileNotFoundError:
                 pass
             except OSError:
                 pass
-            if exc.errno not in transient or attempt == 3:
+            post_replace_visibility = (
+                replaced and isinstance(exc, FileNotFoundError)
+            )
+            if (exc.errno not in transient and not post_replace_visibility) \
+                    or attempt == 3:
                 raise
             time.sleep(0.02 * (2 ** attempt))
     raise last_error  # pragma: no cover

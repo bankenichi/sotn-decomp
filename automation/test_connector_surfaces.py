@@ -26,7 +26,6 @@ import re
 import subprocess
 import sys
 import tempfile
-import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from unittest.mock import patch as _patch
@@ -592,6 +591,30 @@ def main() -> int:
           "every known privileged automation writer is inventoried")
     check(set(cc.AUTOMATION_MUTATORS) <= set(cc.AUTOMATION_SCRIPTS),
           "every privileged writer is also explicitly allowlisted")
+
+    print("\nautomation scripts have real command-line entry points")
+    _no_entrypoint = []
+    for _script_name in sorted(cc.AUTOMATION_SCRIPTS):
+        _script_path = REPO / "automation" / _script_name
+        if not _script_path.is_file():
+            _no_entrypoint.append(_script_name)
+            continue
+        _script_text = _script_path.read_text(encoding="utf-8")
+        if not re.search(
+                r"(?m)^\s*if\s+__name__\s*==\s*[\"']__main__[\"']\s*:",
+                _script_text):
+            _no_entrypoint.append(_script_name)
+    check(not _no_entrypoint,
+          "allowlisted automation scripts have executable entry points "
+          f"(missing: {_no_entrypoint})")
+    try:
+        cc.REGISTRY["run_automation"](script="search_evidence_corpus.py")
+    except cc.Rejected:
+        check(True,
+              "pure library modules cannot become no-op automation actions")
+    else:
+        check(False,
+              "pure library modules cannot become no-op automation actions")
     try:
         cc.REGISTRY["run_automation"](
             script="quality_audit.py",
@@ -684,22 +707,60 @@ def main() -> int:
 
         with _patch.object(cc.os, "replace", side_effect=flaky_replace):
             written = cc.fs_write(rel, "durable payload")
-        # The rename is durable once replace returns; on the Windows-backed
-        # tree a fresh directory's entries can lag briefly, so poll the
-        # read-back instead of asserting against the visibility race.
-        payload = None
-        for _attempt in range(100):
-            try:
-                payload = target.read_text()
-                break
-            except FileNotFoundError:
-                time.sleep(0.01)
-        check(payload == "durable payload",
-              "a transient EINVAL preserves and eventually writes the payload")
+        # fs_write verifies the canonical target before returning, so an
+        # immediate read-back proves the connector itself observed the payload.
+        check(target.read_bytes() == b"durable payload",
+              "a transient EINVAL preserves and immediately verifies the payload")
         check(written.get("write_attempts") == 2,
               "the successful response reports the bounded retry")
         check(not list(target.parent.glob(".*.sotn-write-*")),
               "failed temporary write files are cleaned up")
+
+    print("\nconnector writes fail closed on post-replace visibility failure")
+    with tempfile.TemporaryDirectory(
+            prefix="connector-write-visibility-", dir=REPO / "automation") as td:
+        target = Path(td) / "probe.txt"
+        rel = target.relative_to(REPO).as_posix()
+        _visibility_error = None
+        with _patch.object(
+                cc.Path, "read_bytes",
+                side_effect=FileNotFoundError(
+                    errno.ENOENT,
+                    "simulated post-replace visibility failure")) as _read:
+            try:
+                cc.fs_write(rel, "visibility payload")
+            except FileNotFoundError as exc:
+                _visibility_error = exc
+        check(_visibility_error is not None,
+              "post-replace visibility failure does not return success")
+        check(_read.call_count == 4,
+              "post-replace visibility failure exhausts bounded retries")
+        check(target.read_bytes() == b"visibility payload",
+              "the last replacement remains present after verification refuses")
+        check(not list(target.parent.glob(".*.sotn-write-*")),
+              "visibility-failure retries leave no temporary files")
+
+    print("\nconnector writes fail closed on persistent byte mismatch")
+    with tempfile.TemporaryDirectory(
+            prefix="connector-write-mismatch-", dir=REPO / "automation") as td:
+        target = Path(td) / "probe.txt"
+        rel = target.relative_to(REPO).as_posix()
+        _mismatch_error = None
+        with _patch.object(
+                cc.Path, "read_bytes", return_value=b"wrong payload") as _read:
+            try:
+                cc.fs_write(rel, "requested payload")
+            except OSError as exc:
+                _mismatch_error = exc
+        check(_mismatch_error is not None
+              and _mismatch_error.errno == errno.EIO,
+              "persistent byte mismatch fails closed with a non-transient error")
+        check(_read.call_count == 1,
+              "byte mismatch is not retried as a transient filesystem error")
+        check(target.read_bytes() == b"requested payload",
+              "the mismatched verification leaves the requested bytes on disk")
+        check(not list(target.parent.glob(".*.sotn-write-*")),
+              "byte-mismatch failure leaves no temporary files")
 
     print("\ncommit synchronizes living documents without sweeping prose")
     _cp = subprocess.CompletedProcess
@@ -707,7 +768,7 @@ def main() -> int:
             cc, "_managed_doc_paths",
             return_value=(["README.md", "ROADMAP.md"], "")), \
             _patch.object(cc.subprocess, "run") as _run:
-        _run.return_value = _cp([], 0, "ROADMAP.md\n", "")
+        _run.return_value = _cp([], 0, " M ROADMAP.md\n", "")
         _dirty = cc._sync_managed_docs_for_commit()
         check(not _dirty["ok"] and _run.call_count == 1,
               "unstaged managed prose refuses before generation or staging")
@@ -720,13 +781,74 @@ def main() -> int:
             _cp([], 0, "updated 2 managed living documents\n", ""),
             _cp([], 0, "", ""),
             _cp([], 0, "", ""),
+            _cp([], 0, "", ""),
         ]
         _clean = cc._sync_managed_docs_for_commit()
-        _add_argv = [call.args[0] for call in _run.call_args_list[2:]]
+        _add_argv = [call.args[0] for call in _run.call_args_list[3:]]
         check(_clean["ok"] and _add_argv == [
             ["git", "add", "--", "README.md"],
             ["git", "add", "--", "ROADMAP.md"],
         ], "generated documents are staged one explicit path at a time")
+
+    print("\nexplicit commits defer docs around unrelated worktree edits")
+    # The fake commit represents the caller's already staged intended paths.
+    # The only worktree inputs are an unrelated tracked edit and untracked file.
+    with _patch.object(
+            cc, "_managed_doc_paths",
+            return_value=(["README.md", "ROADMAP.md"], "")), \
+            _patch.object(cc.subprocess, "run") as _run:
+        _run.side_effect = [
+            _cp([], 0,
+                "M  automation/mcp/jobs.py\n"
+                "M  automation/mcp/verified_push.py\n"
+                " M automation/mcp/commands_client.py\n"
+                "?? automation/new-input.c\n",
+                ""),
+            _cp(["git", "commit", "-m", "partial"], 0,
+                "[branch partial]\n", ""),
+        ]
+        _partial = cc.run("git_commit", message="partial")
+        _calls = [call.args[0] for call in _run.call_args_list]
+        _doc_sync = _partial.get("documentation_sync", {})
+        check(_partial.get("returncode") == 0
+              and _doc_sync.get("deferred")
+              and _doc_sync.get("unstaged_tracked_paths")
+                  == ["automation/mcp/commands_client.py"]
+              and _doc_sync.get("untracked_paths")
+                  == ["automation/new-input.c"],
+              "an explicit commit proceeds with documented deferred sync")
+        check(_calls[0] == [
+                  "git", "status", "--porcelain=v1",
+                  "--untracked-files=normal", "--",
+              ] and _calls[1][:2] == ["git", "commit"],
+              "preflight checks the whole worktree before the commit")
+        check(not any(argv[:2] == [cc.PYTHON, "automation/readme_status.py"]
+                       and "--write" in argv
+                       for argv in _calls),
+              "preflight deferral skips the living-document generator")
+        check(not any(argv[:3] == ["git", "add", "--"]
+                       for argv in _calls),
+              "deferred sync never stages managed documents")
+
+    print("\nmanaged docs are not staged when an unrelated edit appears mid-sync")
+    with _patch.object(
+            cc, "_managed_doc_paths",
+            return_value=(["README.md", "ROADMAP.md"], "")), \
+            _patch.object(cc.subprocess, "run") as _run:
+        _run.side_effect = [
+            _cp([], 0, "", ""),
+            _cp([], 0, "updated 2 managed living documents\n", ""),
+            _cp([], 0, " M automation/mcp/commands_client.py\n", ""),
+        ]
+        _raced = cc._sync_managed_docs_for_commit()
+        _calls = [call.args[0] for call in _run.call_args_list]
+        check(_raced.get("ok") and _raced.get("deferred"),
+              "a concurrent unrelated edit defers after generation")
+        check(len(_calls) == 3
+              and not any(argv[:3] == ["git", "add", "--"]
+                          for argv in _calls),
+              "the race check prevents managed-document staging")
+
     print("\nevery git_* capability is on BOTH surfaces")
     # REGISTRY and @mcp.tool() are separate lists. A name in one but not the
     # other is uncallable, and it fails at call time rather than at load time,
