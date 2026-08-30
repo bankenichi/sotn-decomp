@@ -1152,7 +1152,7 @@ def _validate_child_terminals(
     *,
     child_base: int,
     coordinator_limit: int,
-) -> None:
+) -> int:
     if outcome.lane != lane_task.lane or outcome.recipient_id != lane_task.recipient_id:
         raise SupervisorIntegrationError(
             "lane outcome identity differs from its scheduled task"
@@ -1175,6 +1175,7 @@ def _validate_child_terminals(
             raise SupervisorIntegrationError(
                 "lane task is terminal before every candidate child is terminal"
             )
+    return len(children)
 
 
 def _preflight_candidate_children(
@@ -1186,20 +1187,12 @@ def _preflight_candidate_children(
     child_base: int,
     coordinator_limit: int,
 ) -> Tuple[Tuple[LaneCandidate, SearchTask, TaskResult], ...]:
-    """Validate an entire lane outcome before publishing its first child."""
-    if len(candidates) > MAX_CHILD_TASKS_PER_BASE:
-        raise SupervisorIntegrationError(
-            "lane outcome exceeds the per-base child-task allowance"
-        )
+    """Validate the complete outcome before selecting bounded child tasks."""
     if isinstance(child_base, bool) or not isinstance(child_base, int) or child_base < 0:
         raise SupervisorIntegrationError("candidate child base ordinal is invalid")
-    if child_base + len(candidates) > coordinator_limit:
-        raise SupervisorIntegrationError(
-            "coordinator budget cannot materialize the complete lane outcome"
-        )
     seen = set()
-    children = []
-    for index, lane_candidate in enumerate(candidates):
+    validated = []
+    for lane_candidate in candidates:
         if lane_candidate.candidate_id in seen:
             raise SupervisorIntegrationError(
                 "lane outcome contains duplicate candidate identities"
@@ -1237,6 +1230,22 @@ def _preflight_candidate_children(
             raise SupervisorIntegrationError(
                 "candidate source differs from its archived source artifact"
             )
+        validated.append(lane_candidate)
+
+    # Candidate IDs are already the canonical order used by the lane receipt.
+    # Keep validating the complete outcome above, but spend coordinator budget
+    # only on the bounded best prefix.
+    selected = tuple(
+        sorted(validated, key=lambda item: item.candidate_id)
+        [:MAX_CHILD_TASKS_PER_BASE]
+    )
+    if child_base + len(selected) > coordinator_limit:
+        raise SupervisorIntegrationError(
+            "coordinator budget cannot materialize the selected lane candidates"
+        )
+
+    children = []
+    for index, lane_candidate in enumerate(selected):
         try:
             child = _child_task(
                 coordinator,
@@ -1268,8 +1277,8 @@ def _fan_out_candidates(
     *,
     child_base: int,
     coordinator_limit: int,
-) -> None:
-    """Materialize every candidate through deterministic single-result tasks."""
+) -> int:
+    """Materialize bounded candidates through deterministic single-result tasks."""
     candidates = tuple(outcome.candidates)
     if outcome.lane != lane_task.lane or outcome.recipient_id != lane_task.recipient_id:
         raise SupervisorIntegrationError(
@@ -1293,6 +1302,7 @@ def _fan_out_candidates(
         if _task_is_terminal(coordinator, child.task_id):
             continue
         coordinator.commit_epoch((child_result,))
+    return len(children)
 
 
 def _terminal_proposal(
@@ -1475,7 +1485,7 @@ def _run_instrumented_locked(
                         "terminal lane task has no recoverable typed outcome"
                     )
                 outcome, reference = loaded
-                _validate_child_terminals(
+                child_count = _validate_child_terminals(
                     coordinator,
                     task,
                     outcome,
@@ -1505,7 +1515,7 @@ def _run_instrumented_locked(
                     outcome, reference = loaded
                     coordinator.start_task(task.task_id)
                     resumed.append(task.task_id)
-                _fan_out_candidates(
+                child_count = _fan_out_candidates(
                     coordinator,
                     task,
                     outcome,
@@ -1522,7 +1532,7 @@ def _run_instrumented_locked(
                         "lane task did not reach a terminal state after fan-out"
                     )
                 proposal = outcome.receipt
-            child_offset += len(outcome.candidates)
+            child_offset += child_count
             before_receipt = coordinator.events
             coordinator.record_exhaustion(
                 **proposal.to_coordinator_kwargs()

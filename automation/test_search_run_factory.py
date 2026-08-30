@@ -497,7 +497,7 @@ class FactoryFixture(unittest.TestCase):
             {task.task_id for task in terminals},
         )
 
-    def test_three_candidate_fan_out_is_refused_before_child_scheduling(self) -> None:
+    def test_three_candidate_fan_out_caps_children_and_preserves_outcome(self) -> None:
         result = self.create("fanout-cap", ids=[IDS[0]], lanes=[LANES[0]])
         manifest = RunManifest.from_dict(result["manifest"])
         manifest_path = Path(result["run_root"]) / "manifest.json"
@@ -522,12 +522,11 @@ class FactoryFixture(unittest.TestCase):
                 {"identity": manifest.compiler_identity},
             ),
         ):
-            with self.assertRaises(SupervisorIntegrationError):
-                run_instrumented(
-                    manifest_path,
-                    adapters=adapters,
-                    lease_path=self.repo / "fanout-lease.json",
-                )
+            run_result = run_instrumented(
+                manifest_path,
+                adapters=adapters,
+                lease_path=self.repo / "fanout-lease.json",
+            )
 
         state = recover_run(Path(result["run_root"]))
         scheduled = [
@@ -535,10 +534,41 @@ class FactoryFixture(unittest.TestCase):
             for event in state.events
             if event.event_type == "task_scheduled"
         ]
-        self.assertEqual([task.budget_ordinal for task in scheduled], [0])
-        self.assertFalse(
-            any(task.operation.startswith("materialize_candidate:") for task in scheduled)
+        terminals = [
+            event.payload
+            for event in state.events
+            if event.event_type == "task_completed"
+        ]
+        child_tasks = [
+            task
+            for task in scheduled
+            if task.operation.startswith("materialize_candidate:")
+        ]
+        self.assertEqual(len(child_tasks), MAX_CHILD_TASKS_PER_BASE)
+        self.assertEqual(len(terminals), 1 + MAX_CHILD_TASKS_PER_BASE)
+        self.assertEqual(
+            [task.budget_ordinal for task in scheduled],
+            [0, 1, 2],
         )
+        self.assertEqual(
+            RunManifest.from_dict(result["manifest"]).coordinator_budget.limit,
+            3,
+        )
+        self.assertEqual(
+            set(run_result["state"]["completed_task_ids"]),
+            {task.task_id for task in terminals},
+        )
+        lane_terminal = next(
+            terminal
+            for terminal in terminals
+            if terminal.task_id not in {task.task_id for task in child_tasks}
+        )
+        outcome_document = json.loads(
+            (Path(result["run_root"]) / lane_terminal.result_artifacts[0].path).read_text(
+                encoding="utf-8"
+            )
+        )
+        self.assertEqual(len(outcome_document["outcome"]["candidates"]), 3)
 
     def test_coordinator_budget_includes_children_and_stays_globally_capped(self) -> None:
         self.assertEqual(MAX_COORDINATOR_TASKS, 4096)
@@ -733,6 +763,69 @@ class FactoryFixture(unittest.TestCase):
         self.records[0]["asm"] = "src/source.c"
         with self.assertRaises(EvidenceRefusal):
             self.create("bad-target", ids=[IDS[0]])
+
+    def test_case_alias_target_files_are_deduplicated_by_filesystem_identity(self) -> None:
+        actual_asm = (
+            self.repo
+            / "asm"
+            / "us"
+            / "st"
+            / "rno0"
+            / "nonmatchings"
+            / "unit_a"
+            / "func_a.s"
+        )
+        alias_asm = (
+            self.repo
+            / "asm"
+            / "us"
+            / "ST"
+            / "RNO0"
+            / "nonmatchings"
+            / "unit_a"
+            / "func_a.s"
+        )
+        actual_object = (
+            self.repo / "build" / "us" / "src" / "st" / "rno0" / "unit_a.c.o"
+        )
+        alias_object = (
+            self.repo / "build" / "us" / "src" / "ST" / "RNO0" / "unit_a.c.o"
+        )
+        try:
+            alias_asm.parent.mkdir(parents=True, exist_ok=True)
+            alias_object.parent.mkdir(parents=True, exist_ok=True)
+            if not alias_asm.exists():
+                os.link(actual_asm, alias_asm)
+            if not alias_object.exists():
+                os.link(actual_object, alias_object)
+        except (OSError, NotImplementedError) as exc:
+            self.skipTest(f"filesystem aliases unavailable: {exc}")
+        self.assertTrue(alias_asm.samefile(actual_asm))
+        self.assertTrue(alias_object.samefile(actual_object))
+
+        assembly, target_object = _factory._find_target_files(
+            self.repo, self.records[0], IDS[0]
+        )
+        self.assertTrue(assembly.samefile(actual_asm))
+        self.assertTrue(target_object.samefile(actual_object))
+        self.create("case-alias-target", ids=[IDS[0]])
+
+    def test_distinct_target_ambiguity_leaves_no_partial_run_root(self) -> None:
+        duplicate = (
+            self.repo / "asm" / "us" / "st" / "rno0" / "nonmatchings" / "unit_other"
+        )
+        duplicate.mkdir(parents=True)
+        (duplicate / "func_a.s").write_text("func_a:\n\tnop\n", encoding="utf-8")
+        run_root = (
+            self.repo
+            / "nonmatchings"
+            / "func_a"
+            / "search-runs"
+            / "distinct-ambiguous"
+        )
+        with self.assertRaises(EvidenceRefusal):
+            self.create("distinct-ambiguous", ids=[IDS[0]])
+        self.assertFalse(run_root.exists())
 
     def test_ambiguous_target_candidates_are_refused(self) -> None:
         duplicate = (

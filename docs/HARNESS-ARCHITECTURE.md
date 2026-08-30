@@ -484,12 +484,16 @@ archived queue record is eligibility evidence from creation, not a mutable
 runtime dependency.
 
 Each base task and candidate child has a deterministic identity and spends from
-the manifest's bounded coordinator and lane budgets. Events append to one
-hash-chain; recovery reconstructs completed and incomplete tasks, frontier,
-budget use, stop generations, oracle requests and oracle results. The stop tool
-only publishes an atomic request. The process holding the supervisor lease is
-the sole writer that records `run_stopped`, and resume records the matching
-acknowledgement before continuing.
+the manifest's bounded coordinator and lane budgets. The complete validated lane
+outcome remains archived even when a lane discovers more candidates than the
+child allowance. At most two candidates per base task, selected in canonical
+candidate-ID order, become child tasks; the rest remain durable evidence rather
+than aborting the run or disappearing. Events append to one hash-chain; recovery
+reconstructs completed and incomplete tasks, frontier, budget use, stop
+generations, oracle requests and oracle results. The stop tool only publishes an
+atomic request. The process holding the supervisor lease is the sole writer that
+records `run_stopped`, and resume records the matching acknowledgement before
+continuing.
 
 Run creation has its own crash boundary. The complete manifest intent is stored
 content-addressed before the evidence index, and the index is durable before

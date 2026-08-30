@@ -363,6 +363,395 @@ class SearchSupervisorIntegrationTests(unittest.TestCase):
                 2,
             )
 
+    def test_three_candidates_materialize_only_allowance_and_archive_full_outcome(self):
+        first = self.candidate("candidate-source-1")
+        second = self.candidate("candidate-source-2")
+        third = self.candidate("candidate-source-3")
+        adapters = {
+            "upstream_current": lambda _recipient: {
+                "candidates": [
+                    LaneCandidate(first, "candidate-source-1"),
+                    LaneCandidate(second, "candidate-source-2"),
+                    LaneCandidate(third, "candidate-source-3"),
+                ]
+            }
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "run"
+            value = self.instrumented_manifest(coordinator_limit=3)
+            self.write_manifest(root, value)
+            result = run_instrumented(
+                root / "manifest.json",
+                adapters=adapters,
+                lease_path=Path(directory) / "lease.json",
+            )
+
+            state = recover_run(root)
+            scheduled = [
+                event.payload
+                for event in state.events
+                if event.event_type == "task_scheduled"
+            ]
+            child_tasks = [
+                task
+                for task in scheduled
+                if task.operation.startswith("materialize_candidate:")
+            ]
+            selected_ids = {
+                candidate.candidate_id
+                for candidate in sorted(
+                    (first, second, third),
+                    key=lambda item: item.candidate_id,
+                )[:2]
+            }
+            self.assertEqual(len(child_tasks), 2)
+            self.assertEqual(
+                {task.budget_ordinal for task in child_tasks},
+                {1, 2},
+            )
+            self.assertEqual(
+                {task.operation for task in child_tasks},
+                {"materialize_candidate:" + item for item in selected_ids},
+            )
+            self.assertEqual(
+                {
+                    candidate["candidate_id"]
+                    for candidate in result["state"]["frontier_candidates"]
+                },
+                selected_ids,
+            )
+            terminals = [
+                event.payload
+                for event in state.events
+                if event.event_type == "task_completed"
+            ]
+            self.assertEqual(len(terminals), 3)
+            lane_terminal = next(
+                terminal
+                for terminal in terminals
+                if terminal.task_id not in {task.task_id for task in child_tasks}
+            )
+            self.assertEqual(len(lane_terminal.result_artifacts), 1)
+            outcome_document = json.loads(
+                (root / lane_terminal.result_artifacts[0].path).read_text(
+                    encoding="utf-8"
+                )
+            )
+            self.assertEqual(len(outcome_document["outcome"]["candidates"]), 3)
+            self.assertEqual(
+                len(outcome_document["outcome"]["receipt_proposal"]["best_candidate_ids"]),
+                3,
+            )
+
+    def test_child_offset_counts_only_selected_candidates(self):
+        current = [
+            self.candidate("offset-current-one", lane="upstream_current"),
+            self.candidate("offset-current-two", lane="upstream_current"),
+            self.candidate("offset-current-three", lane="upstream_current"),
+        ]
+        pinned = self.candidate("offset-pinned-one", lane="upstream_pinned")
+        adapters = {
+            "upstream_current": lambda _recipient: {
+                "candidates": [
+                    LaneCandidate(item, "offset-current-" + label)
+                    for item, label in zip(
+                        current,
+                        ("one", "two", "three"),
+                    )
+                ]
+            },
+            "upstream_pinned": lambda _recipient: LaneCandidate(
+                pinned, "offset-pinned-one"
+            ),
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "run"
+            value = self.multi_lane_manifest(coordinator_limit=5)
+            self.write_manifest(root, value)
+            run_instrumented(
+                root / "manifest.json",
+                adapters=adapters,
+                lease_path=Path(directory) / "lease.json",
+            )
+
+            state = recover_run(root)
+            scheduled = [
+                event.payload
+                for event in state.events
+                if event.event_type == "task_scheduled"
+            ]
+            child_tasks = [
+                task
+                for task in scheduled
+                if task.operation.startswith("materialize_candidate:")
+            ]
+            self.assertEqual(
+                [task.budget_ordinal for task in child_tasks],
+                [2, 3, 4],
+            )
+            self.assertEqual(len(state.terminal_tasks), 5)
+            lane_terminals = [
+                event.payload
+                for event in state.events
+                if event.event_type == "task_completed"
+                and event.payload.task_id
+                in {
+                    task.task_id
+                    for task in scheduled
+                    if task.operation == "execute_lane"
+                }
+            ]
+            self.assertEqual(len(lane_terminals), 2)
+            archived_candidate_counts = sorted(
+                len(
+                    json.loads(
+                        (root / terminal.result_artifacts[0].path).read_text(
+                            encoding="utf-8"
+                        )
+                    )["outcome"]["candidates"]
+                )
+                for terminal in lane_terminals
+            )
+            self.assertEqual(archived_candidate_counts, [1, 3])
+
+    def test_malformed_third_candidate_is_rejected_before_any_child(self):
+        first = self.candidate("candidate-source-1")
+        second = self.candidate("candidate-source-2")
+        malformed = self.candidate("candidate-source-3")
+        adapters = {
+            "upstream_current": lambda _recipient: {
+                "candidates": [
+                    LaneCandidate(first, "candidate-source-1"),
+                    LaneCandidate(second, "candidate-source-2"),
+                    LaneCandidate(malformed, ""),
+                ]
+            }
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "run"
+            value = self.instrumented_manifest(coordinator_limit=3)
+            self.write_manifest(root, value)
+            with self.assertRaises(SupervisorIntegrationError):
+                run_instrumented(
+                    root / "manifest.json",
+                    adapters=adapters,
+                    lease_path=Path(directory) / "lease.json",
+                )
+            state = recover_run(root)
+            scheduled = [
+                event.payload
+                for event in state.events
+                if event.event_type == "task_scheduled"
+            ]
+            self.assertEqual(
+                [task.operation for task in scheduled],
+                ["execute_lane"],
+            )
+            self.assertEqual(
+                sum(
+                    event.event_type == "candidate_materialized"
+                    for event in state.events
+                ),
+                0,
+            )
+
+    def test_foreign_third_candidate_is_rejected_before_any_child(self):
+        first = self.candidate("candidate-source-1")
+        second = self.candidate("candidate-source-2")
+        foreign = self.candidate(
+            "candidate-source-3",
+            lane="upstream_pinned",
+        )
+        adapters = {
+            "upstream_current": lambda _recipient: {
+                "candidates": [
+                    LaneCandidate(first, "candidate-source-1"),
+                    LaneCandidate(second, "candidate-source-2"),
+                    LaneCandidate(foreign, "candidate-source-3"),
+                ]
+            }
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "run"
+            value = self.instrumented_manifest(coordinator_limit=3)
+            self.write_manifest(root, value)
+            with self.assertRaises(SupervisorIntegrationError):
+                run_instrumented(
+                    root / "manifest.json",
+                    adapters=adapters,
+                    lease_path=Path(directory) / "lease.json",
+                )
+            state = recover_run(root)
+            scheduled = [
+                event.payload
+                for event in state.events
+                if event.event_type == "task_scheduled"
+            ]
+            self.assertEqual(
+                [task.operation for task in scheduled],
+                ["execute_lane"],
+            )
+            self.assertEqual(
+                sum(
+                    event.event_type == "candidate_materialized"
+                    for event in state.events
+                ),
+                0,
+            )
+
+    def test_duplicate_third_candidate_is_rejected_before_any_child(self):
+        first = self.candidate("candidate-source-1")
+        second = self.candidate("candidate-source-2")
+        adapters = self.two_candidate_adapters(first, second)
+
+        def duplicate_executor(task, run_manifest, recipients, **kwargs):
+            outcome = execute_task(
+                task,
+                run_manifest,
+                recipients,
+                **kwargs,
+            )
+            return replace(
+                outcome,
+                candidates=outcome.candidates + (outcome.candidates[0],),
+            )
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "run"
+            value = self.instrumented_manifest(coordinator_limit=3)
+            self.write_manifest(root, value)
+            with self.assertRaises(SupervisorIntegrationError):
+                run_instrumented(
+                    root / "manifest.json",
+                    adapters=adapters,
+                    lease_path=Path(directory) / "lease.json",
+                    lane_executor=duplicate_executor,
+                )
+            state = recover_run(root)
+            scheduled = [
+                event.payload
+                for event in state.events
+                if event.event_type == "task_scheduled"
+            ]
+            self.assertEqual(
+                [task.operation for task in scheduled],
+                ["execute_lane"],
+            )
+            self.assertEqual(
+                sum(
+                    event.event_type == "candidate_materialized"
+                    for event in state.events
+                ),
+                0,
+            )
+
+    def test_started_archived_oversized_outcome_replays_without_lane_execution(self):
+        first = self.candidate("candidate-source-1")
+        second = self.candidate("candidate-source-2")
+        third = self.candidate("candidate-source-3")
+        adapters = {
+            "upstream_current": lambda _recipient: {
+                "candidates": [
+                    LaneCandidate(first, "candidate-source-1"),
+                    LaneCandidate(second, "candidate-source-2"),
+                    LaneCandidate(third, "candidate-source-3"),
+                ]
+            }
+        }
+        calls = []
+
+        def executor(task, run_manifest, recipients, **kwargs):
+            calls.append(task.task_id)
+            return execute_task(
+                task,
+                run_manifest,
+                recipients,
+                **kwargs,
+            )
+
+        original_fan_out = _search_supervisor._fan_out_candidates
+        faulted = [False]
+
+        def crash_after_archiving(*args, **kwargs):
+            if not faulted[0]:
+                faulted[0] = True
+                raise KeyboardInterrupt("simulated loss after lane outcome archive")
+            return original_fan_out(*args, **kwargs)
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "run"
+            value = self.instrumented_manifest(coordinator_limit=3)
+            self.write_manifest(root, value)
+            with patch.object(
+                _search_supervisor,
+                "_fan_out_candidates",
+                new=crash_after_archiving,
+            ):
+                with self.assertRaises(KeyboardInterrupt):
+                    run_instrumented(
+                        root / "manifest.json",
+                        adapters=adapters,
+                        lease_path=Path(directory) / "lease.json",
+                        lane_executor=executor,
+                    )
+
+            state_after_crash = recover_run(root)
+            self.assertEqual(len(calls), 1)
+            self.assertEqual(
+                sum(event.event_type == "task_scheduled" for event in state_after_crash.events),
+                1,
+            )
+            self.assertEqual(
+                len(list((root / "artifacts" / "lane_results").glob("*.json"))),
+                1,
+            )
+
+            def unexpected_executor(*_args, **_kwargs):
+                raise AssertionError("archived oversized lane result must be replayed")
+
+            result = run_instrumented(
+                root / "manifest.json",
+                adapters=adapters,
+                lease_path=Path(directory) / "lease.json",
+                lane_executor=unexpected_executor,
+            )
+            state = recover_run(root)
+            self.assertEqual(result["executed_task_ids"], [])
+            self.assertEqual(len(calls), 1)
+            child_tasks = [
+                event.payload
+                for event in state.events
+                if event.event_type == "task_scheduled"
+                and event.payload.operation.startswith("materialize_candidate:")
+            ]
+            self.assertEqual(len(child_tasks), 2)
+            self.assertEqual(len(state.terminal_tasks), 3)
+            self.assertEqual(
+                sum(event.event_type == "candidate_materialized" for event in state.events),
+                2,
+            )
+            before_replay = len(state.events)
+            replay = run_instrumented(
+                root / "manifest.json",
+                adapters=adapters,
+                lease_path=Path(directory) / "lease.json",
+                lane_executor=unexpected_executor,
+            )
+            after_replay = recover_run(root)
+            self.assertEqual(replay["executed_task_ids"], [])
+            self.assertEqual(len(after_replay.events), before_replay)
+            self.assertEqual(
+                len(
+                    [
+                        event
+                        for event in after_replay.events
+                        if event.event_type == "task_scheduled"
+                        and event.payload.operation.startswith("materialize_candidate:")
+                    ]
+                ),
+                2,
+            )
+
     def test_fan_out_replay_recovers_archived_outcome_without_rerunning_lane(self):
         first = self.candidate("candidate-source-1")
         second = self.candidate("candidate-source-2")

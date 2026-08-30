@@ -355,6 +355,52 @@ def _read_evidence_bytes(path: Path, label: str) -> bytes:
         raise EvidenceRefusal(f"{label} could not be read") from exc
 
 
+def _dedupe_candidate_paths(
+    paths: Iterable[Path], repo: Path, label: str
+) -> list[Path]:
+    """Collapse repeated filesystem spellings without hiding distinct files."""
+    ordered = sorted(paths, key=lambda path: _relative(repo, path))
+    unique: list[Path] = []
+    seen_relative: set[str] = set()
+    seen_stat: set[tuple[int, int]] = set()
+    for path in ordered:
+        try:
+            canonical = path.resolve(strict=True)
+            relative = _relative(repo, canonical)
+            normalized_relative = os.path.normcase(relative)
+            stat = canonical.stat()
+        except (OSError, RuntimeError, ValueError) as exc:
+            raise EvidenceRefusal(
+                f"{label} could not be canonically identified"
+            ) from exc
+        stat_key = (
+            (int(stat.st_dev), int(stat.st_ino))
+            if int(stat.st_ino) != 0
+            else None
+        )
+        duplicate = (
+            normalized_relative in seen_relative
+            or (stat_key is not None and stat_key in seen_stat)
+        )
+        if not duplicate:
+            for prior in unique:
+                try:
+                    if canonical.samefile(prior):
+                        duplicate = True
+                        break
+                except OSError:
+                    # The path was already vetted.  If samefile is unavailable,
+                    # retain the candidate and let normal ambiguity checks apply.
+                    continue
+        if duplicate:
+            continue
+        seen_relative.add(normalized_relative)
+        if stat_key is not None:
+            seen_stat.add(stat_key)
+        unique.append(canonical)
+    return unique
+
+
 def _canonical_mapping(value: Mapping[str, Any], label: str) -> dict[str, Any]:
     if any(not isinstance(key, str) for key in value):
         raise EvidenceRefusal(f"{label} keys must be strings")
@@ -592,7 +638,9 @@ def _find_target_files(
         for candidate in _walk_regular_files(root, repo, "target assembly tree"):
             if candidate.name == function + ".s":
                 assembly_candidates.append(candidate)
-    unique_assembly = sorted(set(assembly_candidates), key=lambda path: _relative(repo, path))
+    unique_assembly = _dedupe_candidate_paths(
+        assembly_candidates, repo, "target assembly"
+    )
     if len(unique_assembly) != 1:
         if not unique_assembly:
             raise EvidenceRefusal(f"target assembly is missing for {record_id}")
@@ -620,7 +668,9 @@ def _find_target_files(
         for candidate in _walk_regular_files(root, repo, "target object tree"):
             if candidate.name in object_names:
                 object_candidates.append(candidate)
-    unique_object = sorted(set(object_candidates), key=lambda path: _relative(repo, path))
+    unique_object = _dedupe_candidate_paths(
+        object_candidates, repo, "target object"
+    )
     if len(unique_object) != 1:
         if not unique_object:
             raise EvidenceRefusal(f"target object is missing for {record_id}")
@@ -1085,6 +1135,20 @@ def _safe_canonical_root(repo: Path, anchor: str, run_id: str) -> tuple[Path, bo
         raise SearchRunFactoryError("canonical run root could not be created") from exc
     _assert_no_symlink_components(run_root, root=repo)
     return run_root, existed
+
+
+def _remove_empty_unpublished_root(root: Path) -> None:
+    """Remove only a newly allocated, still-empty run root after failure."""
+    try:
+        if root.is_symlink() or not root.is_dir():
+            return
+        if any(root.iterdir()):
+            return
+        root.rmdir()
+    except OSError:
+        # Cleanup is best effort.  Any remaining entry is audited and refused
+        # or recovered by the next creation attempt.
+        return
 
 
 def _audit_root(root: Path) -> None:
@@ -2173,18 +2237,29 @@ def create_instrumented_run(
     if len(normalized_ids) * len(selected_lanes) > _MAX_TASKS:
         raise InputRefusal("requested subset exceeds the bounded task budget")
     root_repo = _repo_root(repo)
+    expected_root = (
+        root_repo / "nonmatchings" / canonical_anchor_function(
+            record_id.split(":", 2)[2] for record_id in normalized_ids
+        ) / "search-runs" / run_id
+    )
     with _creation_lock(root_repo):
-        return _create_instrumented_run_locked(
-            name,
-            record_ids,
-            lanes,
-            repo=root_repo,
-            queue_reader=queue_reader,
-            compiler_identity_resolver=compiler_identity_resolver,
-            config_path=config_path,
-            now=now,
-            fault_hook=fault_hook,
-        )
+        root_was_present = expected_root.exists()
+        try:
+            return _create_instrumented_run_locked(
+                name,
+                record_ids,
+                lanes,
+                repo=root_repo,
+                queue_reader=queue_reader,
+                compiler_identity_resolver=compiler_identity_resolver,
+                config_path=config_path,
+                now=now,
+                fault_hook=fault_hook,
+            )
+        except BaseException:
+            if not root_was_present:
+                _remove_empty_unpublished_root(expected_root)
+            raise
 
 
 create_run = create_instrumented_run
