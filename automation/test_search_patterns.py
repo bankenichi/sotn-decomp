@@ -19,6 +19,8 @@ from automation.search_patterns import (
     PatternActiveRun,
     PatternArtifactError,
     PatternIdentityMismatch,
+    PatternInputError,
+    PatternLedgerCorrupt,
     PatternPartialLedger,
     SearchPatternReport,
     load_completed_lineage_contexts,
@@ -49,6 +51,10 @@ from automation.test_search_schema import manifest, score
 
 def _manifest_for(run_id: str, recipient: str = "us:ST/RDAI:func_us_801B001C"):
     base = manifest()
+    tools = dict(base.tool_identities)
+    # The reserved evaluator binding makes these runs promotable evidence
+    # under the corpus contract; without it they are diagnostics only.
+    tools[EVALUATOR_TOOL_KEY] = hash_bytes(b"search-evaluator")
     return replace(
         base,
         run_id=run_id,
@@ -56,6 +62,7 @@ def _manifest_for(run_id: str, recipient: str = "us:ST/RDAI:func_us_801B001C"):
         function_ids=(recipient,),
         subset_identity=canonical_subset_identity((recipient,)),
         target_identities={recipient: hash_bytes(("target-" + recipient).encode())},
+        tool_identities=tools,
     )
 
 
@@ -313,7 +320,10 @@ class TestSearchPatterns(unittest.TestCase):
                     row["payload"]["candidate_id"] = hash_bytes(b"missing-candidate")
 
             _rewrite_ledger(root / "ledger.jsonl", tamper_evaluation)
-            with self.assertRaises(PatternIdentityMismatch):
+            # The canonical coordinator semantic pass now refuses the forged
+            # cross-record binding before the miner ever groups a sample; the
+            # typed pattern errors remain for the cases their own checks own.
+            with self.assertRaises(PatternLedgerCorrupt):
                 mine_completed_lineages(root, output_root=Path(directory) / "reports")
 
     def test_identity_and_replay_are_deterministic_and_source_run_is_unchanged(self) -> None:
@@ -373,6 +383,7 @@ def _lineage_manifest(
     schema_identity: str,
     include_evaluator: bool,
     target_identity: str,
+    evaluator_identity: str | None = None,
 ):
     base = manifest()
     tools = {
@@ -380,7 +391,9 @@ def _lineage_manifest(
         "full_oracle": _lineage_digest("full-oracle"),
     }
     if include_evaluator:
-        tools[EVALUATOR_TOOL_KEY] = _lineage_digest("search-evaluator")
+        tools[EVALUATOR_TOOL_KEY] = (
+            evaluator_identity or _lineage_digest("search-evaluator")
+        )
     return replace(
         base,
         run_id=run_id,
@@ -408,6 +421,8 @@ def _completed_lineage_run(
     schema_identity: str | None = None,
     include_evaluator: bool = True,
     target_identity: str | None = None,
+    evaluator_identity: str | None = None,
+    scorer_algorithm: str = "difflib",
     divergence: FirstDivergence | None = None,
 ) -> Path:
     """Write one completed, artifact-verified ledger with requested bindings.
@@ -433,6 +448,7 @@ def _completed_lineage_run(
             schema_identity=schema,
             include_evaluator=include_evaluator,
             target_identity=target,
+            evaluator_identity=evaluator_identity,
         ),
     )
     base_source = "int candidate(void) { return 0; }\n"
@@ -516,6 +532,7 @@ def _completed_lineage_run(
     after = replace(
         score(1, signature=f"lineage-{run_id}"),
         compiler_identity=compiler,
+        scorer_algorithm=scorer_algorithm,
         first_divergence=divergence,
     )
     evaluation = EvaluationEvent(
@@ -548,6 +565,8 @@ class CompletedLineageContextTests(unittest.TestCase):
         lane: str = "cfg_dataflow",
         recipient_id: str = "us:ST:fn",
         target_identity: str | None = None,
+        evaluator_identity: str | None = None,
+        scorer_algorithm: str = "difflib",
         divergence: FirstDivergence | None = None,
     ) -> Path:
         return _completed_lineage_run(
@@ -560,6 +579,8 @@ class CompletedLineageContextTests(unittest.TestCase):
             schema_identity=schema_identity,
             include_evaluator=include_evaluator,
             target_identity=target_identity,
+            evaluator_identity=evaluator_identity,
+            scorer_algorithm=scorer_algorithm,
             divergence=divergence,
         )
 
@@ -707,6 +728,156 @@ class CompletedLineageContextTests(unittest.TestCase):
             )
             self.assertEqual(one.report_id, two.report_id)
             self.assertEqual(one.recommendations, two.recommendations)
+
+    def test_missing_evaluator_ledgers_are_excluded_from_recommendations(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            # Two otherwise promotable runs whose manifests lost the reserved
+            # evaluator binding: diagnostics only, never recommendation input.
+            first = self.fixture_completed_ledger(
+                Path(directory) / "run-a", include_evaluator=False
+            )
+            second = self.fixture_completed_ledger(
+                Path(directory) / "run-b", include_evaluator=False
+            )
+            report = mine_completed_lineages(
+                [first, second], output_root=Path(directory) / "reports"
+            )
+            self.assertEqual(report.recommendations, ())
+            contexts = load_completed_lineage_contexts([first, second])
+            self.assertEqual(len(contexts), 2)
+            for context in contexts:
+                self.assertIsInstance(context, CompletedLineageDiagnostic)
+                self.assertEqual(context.reason_code, "missing_evaluator_identity")
+
+    def test_context_projection_is_order_independent(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            first = self.fixture_completed_ledger(Path(directory) / "run-a")
+            second = self.fixture_completed_ledger(
+                Path(directory) / "run-b", include_evaluator=False
+            )
+            forward = load_completed_lineage_contexts([first, second])
+            backward = load_completed_lineage_contexts([second, first])
+            self.assertEqual(list(forward), list(backward))
+            self.assertEqual(
+                [item.ledger_identity for item in forward],
+                sorted(item.ledger_identity for item in forward),
+            )
+
+    def test_forged_score_provenance_is_refused(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "forged"
+            _run_with_observation(root, "pattern-forged-provenance")
+            forged_compiler = _lineage_digest("other-compiler")
+
+            def tamper_evaluation(row):
+                if row["event_type"] == "evaluation_completed":
+                    payload = row["payload"]
+                    payload["after"]["compiler_identity"] = forged_compiler
+                    payload["cache_key"] = hash_canonical(
+                        {
+                            "recipient_id": payload["recipient_id"],
+                            "candidate_or_mutation_id": payload["candidate_id"],
+                            "evaluator_identity": forged_compiler,
+                        }
+                    )
+
+            _rewrite_ledger(root / "ledger.jsonl", tamper_evaluation)
+            with self.assertRaisesRegex(PatternLedgerCorrupt, "differs from manifest"):
+                mine_completed_lineages(
+                    root, output_root=Path(directory) / "reports"
+                )
+
+    def test_context_records_reject_forged_shapes(self) -> None:
+        def context(**overrides):
+            values = dict(
+                ledger_identity=_lineage_digest("ledger"),
+                run_id="lineage-run",
+                compiler_identity=_lineage_digest("compiler"),
+                config_identity=_lineage_digest("config"),
+                schema_identity=_lineage_digest("schema"),
+                scorer_algorithms=("difflib",),
+                lane_tool_identities=(
+                    ("cfg_dataflow", _lineage_digest("tool:cfg_dataflow")),
+                ),
+                recipient_target_identities=(
+                    ("us:ST:fn", _lineage_digest("target:us:ST:fn")),
+                ),
+                evaluator_identity=_lineage_digest("search-evaluator"),
+            )
+            values.update(overrides)
+            return CompletedLineageContext(**values)
+
+        with self.assertRaises(PatternInputError):
+            context(ledger_identity="not-a-hash")
+        with self.assertRaises(PatternInputError):
+            context(scorer_algorithms=("levenshtein", "difflib"))
+        with self.assertRaises(PatternInputError):
+            context(
+                lane_tool_identities=(
+                    ("cfg_dataflow", _lineage_digest("tool-one")),
+                    ("cfg_dataflow", _lineage_digest("tool-two")),
+                )
+            )
+        with self.assertRaises(PatternInputError):
+            CompletedLineageDiagnostic(
+                ledger_identity=_lineage_digest("ledger"),
+                run_id="lineage-run",
+                reason_code="made_up_reason",
+                observed_identities=(_lineage_digest("compiler"),),
+            )
+        self.assertIsInstance(context(), CompletedLineageContext)
+
+    def test_scorer_algorithm_separates_lineages(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            first = self.fixture_completed_ledger(
+                Path(directory) / "dif-a", scorer_algorithm="difflib"
+            )
+            second = self.fixture_completed_ledger(
+                Path(directory) / "dif-b", scorer_algorithm="difflib"
+            )
+            third = self.fixture_completed_ledger(
+                Path(directory) / "lev-a", scorer_algorithm="levenshtein"
+            )
+            fourth = self.fixture_completed_ledger(
+                Path(directory) / "lev-b", scorer_algorithm="levenshtein"
+            )
+            report = mine_completed_lineages(
+                [first, second, third, fourth],
+                output_root=Path(directory) / "reports",
+            )
+            self.assertEqual(len(report.recommendations), 2)
+            self.assertEqual(
+                {item["scorer_algorithm"] for item in report.recommendations},
+                {"difflib", "levenshtein"},
+            )
+
+    def test_evaluator_identity_separates_lineages(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            first = self.fixture_completed_ledger(
+                Path(directory) / "ev-a",
+                evaluator_identity=_lineage_digest("evaluator-a"),
+            )
+            second = self.fixture_completed_ledger(
+                Path(directory) / "ev-b",
+                evaluator_identity=_lineage_digest("evaluator-a"),
+            )
+            third = self.fixture_completed_ledger(
+                Path(directory) / "ev-c",
+                evaluator_identity=_lineage_digest("evaluator-b"),
+            )
+            fourth = self.fixture_completed_ledger(
+                Path(directory) / "ev-d",
+                evaluator_identity=_lineage_digest("evaluator-b"),
+            )
+            report = mine_completed_lineages(
+                [first, second, third, fourth],
+                output_root=Path(directory) / "reports",
+            )
+            self.assertEqual(len(report.recommendations), 2)
+            self.assertEqual(
+                {item["evaluator_identity"] for item in report.recommendations},
+                {_lineage_digest("evaluator-a"), _lineage_digest("evaluator-b")},
+            )
 
 
 if __name__ == "__main__":

@@ -24,6 +24,7 @@ from .search_types import (
     ArtifactRef,
     CandidateRecord,
     EvaluationEvent,
+    LANES,
     LedgerEvent,
     MutationEvent,
     RunManifest,
@@ -37,6 +38,8 @@ from .search_types import (
     hash_canonical,
     iter_artifact_refs,
     validate_hash,
+    validate_id,
+    validate_run_id,
 )
 
 
@@ -411,6 +414,26 @@ def _load_completed_ledger(value: Any) -> _CompletedLedger:
     if stop.reason != "completed" or stop.resumable or stop.pending_task_ids:
         raise PatternActiveRun("source run is active or resumable")
     _validate_task_prefix(events)
+    # The canonical semantic pass: replay ordering and cross-record bindings
+    # exactly as the coordinator enforces them for recovery, including score
+    # provenance against the manifest. Function-level import because
+    # search_coordinator imports this module. Artifact bytes are verified by
+    # _validate_artifacts below, which also owns the run-stop snapshot check.
+    try:
+        from .search_coordinator import CoordinatorError, validate_ledger_prefix
+    except ImportError:  # pragma: no cover - direct invocation from automation/
+        from automation.search_coordinator import (  # type: ignore
+            CoordinatorError,
+            validate_ledger_prefix,
+        )
+    try:
+        validate_ledger_prefix(
+            manifest, events, archive=archive, verify_artifacts=False
+        )
+    except CoordinatorError as exc:
+        raise PatternLedgerCorrupt(
+            "ledger fails coordinator semantic validation: " + str(exc)
+        ) from exc
     _validate_artifacts(events, archive)
     try:
         raw = ledger_path.read_bytes()
@@ -441,6 +464,75 @@ class CompletedLineageContext:
     recipient_target_identities: Tuple[Tuple[str, str], ...]
     evaluator_identity: str
 
+    def __post_init__(self) -> None:
+        try:
+            validate_hash(self.ledger_identity, "ledger_identity")
+            validate_run_id(self.run_id, "run_id")
+            for name in (
+                "compiler_identity",
+                "config_identity",
+                "schema_identity",
+                "evaluator_identity",
+            ):
+                validate_hash(getattr(self, name), name)
+            algorithms = tuple(self.scorer_algorithms)
+            if any(not isinstance(item, str) or not item for item in algorithms):
+                raise SearchValidationError(
+                    "scorer algorithms must be nonempty strings"
+                )
+            if algorithms != tuple(sorted(set(algorithms))):
+                raise SearchValidationError(
+                    "scorer algorithms must be sorted and unique"
+                )
+            object.__setattr__(self, "scorer_algorithms", algorithms)
+
+            def _pairs(values: Any, label: str, keyed_by_lane: bool) -> Tuple[Tuple[str, str], ...]:
+                pairs = tuple(tuple(item) for item in values)
+                names: Set[str] = set()
+                for pair in pairs:
+                    if len(pair) != 2 or any(
+                        not isinstance(part, str) for part in pair
+                    ):
+                        raise SearchValidationError(
+                            f"{label} entries must be (name, identity) strings"
+                        )
+                    name, identity = pair
+                    if name in names:
+                        raise SearchValidationError(
+                            f"{label} names {name!r} more than once"
+                        )
+                    names.add(name)
+                    if keyed_by_lane:
+                        if name not in LANES:
+                            raise SearchValidationError(
+                                f"{label} names the unknown lane {name!r}"
+                            )
+                    else:
+                        validate_id(name, label)
+                    validate_hash(identity, label)
+                if pairs != tuple(sorted(set(pairs))):
+                    raise SearchValidationError(
+                        f"{label} must be sorted and unique"
+                    )
+                return pairs
+
+            object.__setattr__(
+                self,
+                "lane_tool_identities",
+                _pairs(self.lane_tool_identities, "lane tool identity", True),
+            )
+            object.__setattr__(
+                self,
+                "recipient_target_identities",
+                _pairs(
+                    self.recipient_target_identities,
+                    "recipient target identity",
+                    False,
+                ),
+            )
+        except SearchValidationError as exc:
+            raise PatternInputError(str(exc)) from exc
+
 
 @dataclass(frozen=True)
 class CompletedLineageDiagnostic:
@@ -455,6 +547,30 @@ class CompletedLineageDiagnostic:
     run_id: str
     reason_code: str
     observed_identities: Tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        try:
+            validate_hash(self.ledger_identity, "ledger_identity")
+            validate_run_id(self.run_id, "run_id")
+            if self.reason_code != "missing_evaluator_identity":
+                raise SearchValidationError(
+                    "unsupported diagnostic reason: " + str(self.reason_code)
+                )
+            observed = tuple(self.observed_identities)
+            for item in observed:
+                if not isinstance(item, str):
+                    raise SearchValidationError(
+                        "observed identities must be strings"
+                    )
+                if item:
+                    validate_hash(item, "observed identity")
+            if len(set(observed)) != len(observed):
+                raise SearchValidationError(
+                    "observed identities must not repeat"
+                )
+            object.__setattr__(self, "observed_identities", observed)
+        except SearchValidationError as exc:
+            raise PatternInputError(str(exc)) from exc
 
 
 def _normalize_ledger_inputs(
@@ -496,6 +612,58 @@ def _normalize_ledger_inputs(
     return normalized
 
 
+def _lineage_projection(
+    run: _CompletedLedger,
+) -> Union[CompletedLineageContext, CompletedLineageDiagnostic]:
+    """Project one loaded ledger as a context or a diagnostic, once.
+
+    Both the public loader and the miner share this single projection so a
+    ledger missing its evaluator binding can never be a promotion-eligible
+    context in one path and a recommendation sample in another.
+    """
+
+    evaluator_key = _evaluator_tool_key()
+    evaluator = run.manifest.tool_identities.get(evaluator_key)
+    if evaluator is None:
+        return CompletedLineageDiagnostic(
+            ledger_identity=run.identity,
+            run_id=run.manifest.run_id,
+            reason_code="missing_evaluator_identity",
+            observed_identities=(
+                run.manifest.compiler_identity,
+                run.manifest.config_identity,
+                run.manifest.schema_identity,
+                run.manifest.tool_identities.get("full_oracle", ""),
+            ),
+        )
+    return CompletedLineageContext(
+        ledger_identity=run.identity,
+        run_id=run.manifest.run_id,
+        compiler_identity=run.manifest.compiler_identity,
+        config_identity=run.manifest.config_identity,
+        schema_identity=run.manifest.schema_identity,
+        scorer_algorithms=tuple(
+            sorted(
+                {
+                    event.payload.after.scorer_algorithm
+                    for event in run.events
+                    if event.event_type == "evaluation_completed"
+                }
+            )
+        ),
+        lane_tool_identities=tuple(
+            sorted(
+                (lane, run.manifest.tool_identities[lane])
+                for lane in run.manifest.selected_lanes
+            )
+        ),
+        recipient_target_identities=tuple(
+            sorted(run.manifest.target_identities.items())
+        ),
+        evaluator_identity=evaluator,
+    )
+
+
 def load_completed_lineage_contexts(
     ledgers: Optional[Union[Any, Sequence[Any]]] = None,
     *,
@@ -505,74 +673,24 @@ def load_completed_lineage_contexts(
     """Load terminal, artifact-verified ledgers as typed lineage contexts.
 
     Accepts exactly the input forms of ``mine_completed_lineages`` and runs
-    the same ``_load_completed_ledger`` validation. A ledger whose manifest
-    carries the reserved evaluator binding becomes a
-    ``CompletedLineageContext``; one that lost that binding historically
-    becomes a ``CompletedLineageDiagnostic`` instead of a context with
-    unknown provenance.
+    the same ``_load_completed_ledger`` validation. Ledgers are projected in
+    ascending immutable ledger identity order regardless of input order, so
+    the output is a deterministic function of the ledger set.
     """
 
-    # Function-level import: search_coordinator imports this module, and the
-    # supervisor imports search_coordinator, so a module-level import would
-    # close an initialization cycle for the evaluator key's single owner.
-    evaluator_key = _evaluator_tool_key()
     normalized = _normalize_ledger_inputs(
         ledgers, ledger_paths, expected_ledger_identities
     )
-    contexts: List[Union[CompletedLineageContext, CompletedLineageDiagnostic]] = []
+    runs = [_load_completed_ledger(value) for value in normalized]
     seen: Set[str] = set()
-    for value in normalized:
-        run = _load_completed_ledger(value)
+    for run in runs:
         if run.identity in seen:
             raise PatternAmbiguousLineage(
                 "the same source ledger identity was supplied twice"
             )
         seen.add(run.identity)
-        evaluator = run.manifest.tool_identities.get(evaluator_key)
-        if evaluator is None:
-            contexts.append(
-                CompletedLineageDiagnostic(
-                    ledger_identity=run.identity,
-                    run_id=run.manifest.run_id,
-                    reason_code="missing_evaluator_identity",
-                    observed_identities=(
-                        run.manifest.compiler_identity,
-                        run.manifest.config_identity,
-                        run.manifest.schema_identity,
-                        run.manifest.tool_identities.get("full_oracle", ""),
-                    ),
-                )
-            )
-            continue
-        contexts.append(
-            CompletedLineageContext(
-                ledger_identity=run.identity,
-                run_id=run.manifest.run_id,
-                compiler_identity=run.manifest.compiler_identity,
-                config_identity=run.manifest.config_identity,
-                schema_identity=run.manifest.schema_identity,
-                scorer_algorithms=tuple(
-                    sorted(
-                        {
-                            event.payload.after.scorer_algorithm
-                            for event in run.events
-                            if event.event_type == "evaluation_completed"
-                        }
-                    )
-                ),
-                lane_tool_identities=tuple(
-                    sorted(
-                        (lane, run.manifest.tool_identities[lane])
-                        for lane in run.manifest.selected_lanes
-                    )
-                ),
-                recipient_target_identities=tuple(
-                    sorted(run.manifest.target_identities.items())
-                ),
-                evaluator_identity=evaluator,
-            )
-        )
-    return tuple(contexts)
+    runs.sort(key=lambda run: run.identity)
+    return tuple(_lineage_projection(run) for run in runs)
 
 
 def _overlay(recipient_id: str) -> str:
@@ -915,6 +1033,16 @@ def mine_completed_lineages(
     for root in roots:
         if output_resolved == root or root in output_resolved.parents:
             raise PatternIdentityMismatch("report output must not mutate a source run")
+    # One shared projection with the public loader, applied after the source
+    # guard so a diagnostic-only run set still refuses a hostile output root.
+    # A ledger without its evaluator binding is diagnostic evidence and is
+    # excluded from recommendation aggregation entirely; it is never
+    # re-parsed here.
+    runs = tuple(
+        run
+        for run in runs
+        if isinstance(_lineage_projection(run), CompletedLineageContext)
+    )
     source_ledgers = tuple(sorted(identities))
     recommendations = _recommendations(
         runs,
