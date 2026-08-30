@@ -71,3 +71,8 @@ ORCHESTRATOR.local.md
 # historical scratch paths may still exist locally and are not evidence.
 /debug_source.c
 /debug_compiled_object.o
+
+# ZCode client per-workspace state (session config the AI client writes into
+# the repo root). Local agent scratch, never evidence; the push audit rejects
+# exactly this class of path.
+.zcode/
