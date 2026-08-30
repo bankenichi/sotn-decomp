@@ -384,12 +384,14 @@ def _lineage_manifest(
     include_evaluator: bool,
     target_identity: str,
     evaluator_identity: str | None = None,
+    include_full_oracle: bool = True,
 ):
     base = manifest()
     tools = {
         lane: _lineage_digest("tool:" + lane),
-        "full_oracle": _lineage_digest("full-oracle"),
     }
+    if include_full_oracle:
+        tools["full_oracle"] = _lineage_digest("full-oracle")
     if include_evaluator:
         tools[EVALUATOR_TOOL_KEY] = (
             evaluator_identity or _lineage_digest("search-evaluator")
@@ -422,6 +424,7 @@ def _completed_lineage_run(
     include_evaluator: bool = True,
     target_identity: str | None = None,
     evaluator_identity: str | None = None,
+    include_full_oracle: bool = True,
     scorer_algorithm: str = "difflib",
     divergence: FirstDivergence | None = None,
 ) -> Path:
@@ -449,6 +452,7 @@ def _completed_lineage_run(
             include_evaluator=include_evaluator,
             target_identity=target,
             evaluator_identity=evaluator_identity,
+            include_full_oracle=include_full_oracle,
         ),
     )
     base_source = "int candidate(void) { return 0; }\n"
@@ -566,6 +570,7 @@ class CompletedLineageContextTests(unittest.TestCase):
         recipient_id: str = "us:ST:fn",
         target_identity: str | None = None,
         evaluator_identity: str | None = None,
+        include_full_oracle: bool = True,
         scorer_algorithm: str = "difflib",
         divergence: FirstDivergence | None = None,
     ) -> Path:
@@ -580,6 +585,7 @@ class CompletedLineageContextTests(unittest.TestCase):
             include_evaluator=include_evaluator,
             target_identity=target_identity,
             evaluator_identity=evaluator_identity,
+            include_full_oracle=include_full_oracle,
             scorer_algorithm=scorer_algorithm,
             divergence=divergence,
         )
@@ -634,13 +640,69 @@ class CompletedLineageContextTests(unittest.TestCase):
             self.assertEqual(context.reason_code, "missing_evaluator_identity")
             self.assertEqual(
                 context.observed_identities,
-                (
-                    _lineage_digest("compiler"),
-                    _lineage_digest("config"),
-                    _lineage_digest("schema"),
-                    _lineage_digest("full-oracle"),
+                tuple(
+                    sorted(
+                        (
+                            _lineage_digest("compiler"),
+                            _lineage_digest("config"),
+                            _lineage_digest("schema"),
+                            _lineage_digest("full-oracle"),
+                        )
+                    )
                 ),
             )
+
+    def test_diagnostic_without_full_oracle_has_no_placeholder(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.fixture_completed_ledger(
+                Path(directory) / "run",
+                include_evaluator=False,
+                include_full_oracle=False,
+            )
+            context = load_completed_lineage_contexts([root])[0]
+            self.assertIsInstance(context, CompletedLineageDiagnostic)
+            # Only identities that actually exist are retained: no empty
+            # placeholder stands in for the absent full-oracle binding.
+            self.assertEqual(
+                context.observed_identities,
+                tuple(
+                    sorted(
+                        (
+                            _lineage_digest("compiler"),
+                            _lineage_digest("config"),
+                            _lineage_digest("schema"),
+                        )
+                    )
+                ),
+            )
+
+    def test_diagnostic_records_reject_forged_shapes(self) -> None:
+        def diagnostic(**overrides):
+            values = dict(
+                ledger_identity=_lineage_digest("ledger"),
+                run_id="lineage-run",
+                reason_code="missing_evaluator_identity",
+                observed_identities=(
+                    _lineage_digest("compiler"),
+                    _lineage_digest("config"),
+                ),
+            )
+            values.update(overrides)
+            return CompletedLineageDiagnostic(**values)
+
+        first_hash = _lineage_digest("compiler")
+        second_hash = _lineage_digest("config")
+        low, high = sorted((first_hash, second_hash))
+        with self.assertRaises(PatternInputError):
+            diagnostic(observed_identities=(high, low))
+        with self.assertRaises(PatternInputError):
+            diagnostic(observed_identities=(first_hash, ""))
+        with self.assertRaises(PatternInputError):
+            diagnostic(observed_identities=None)
+        self.assertIsInstance(
+            diagnostic(observed_identities=(low, high)),
+            CompletedLineageDiagnostic,
+        )
 
     def test_recommendations_carry_lineage_identities(self) -> None:
         divergence = FirstDivergence(4, 5, "lw v0, 0(a0)", "lw v0, 4(a0)")
@@ -818,12 +880,31 @@ class CompletedLineageContextTests(unittest.TestCase):
                     ("cfg_dataflow", _lineage_digest("tool-two")),
                 )
             )
+        # Malformed shapes fail as typed domain errors, never as raw
+        # Python type errors.
+        with self.assertRaises(PatternInputError):
+            context(scorer_algorithms=None)
+        with self.assertRaises(PatternInputError):
+            context(lane_tool_identities=None)
+        with self.assertRaises(PatternInputError):
+            context(recipient_target_identities=None)
+        with self.assertRaises(PatternInputError):
+            context(lane_tool_identities=(("cfg_dataflow", 5),))
+        with self.assertRaises(PatternInputError):
+            context(lane_tool_identities=(42,))
         with self.assertRaises(PatternInputError):
             CompletedLineageDiagnostic(
                 ledger_identity=_lineage_digest("ledger"),
                 run_id="lineage-run",
                 reason_code="made_up_reason",
                 observed_identities=(_lineage_digest("compiler"),),
+            )
+        with self.assertRaises(PatternInputError):
+            CompletedLineageDiagnostic(
+                ledger_identity=_lineage_digest("ledger"),
+                run_id="lineage-run",
+                reason_code="missing_evaluator_identity",
+                observed_identities=None,
             )
         self.assertIsInstance(context(), CompletedLineageContext)
 

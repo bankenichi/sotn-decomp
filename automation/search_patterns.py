@@ -475,6 +475,10 @@ class CompletedLineageContext:
                 "evaluator_identity",
             ):
                 validate_hash(getattr(self, name), name)
+            if not isinstance(self.scorer_algorithms, (tuple, list)):
+                raise SearchValidationError(
+                    "scorer algorithms must be a sequence of strings"
+                )
             algorithms = tuple(self.scorer_algorithms)
             if any(not isinstance(item, str) or not item for item in algorithms):
                 raise SearchValidationError(
@@ -487,16 +491,22 @@ class CompletedLineageContext:
             object.__setattr__(self, "scorer_algorithms", algorithms)
 
             def _pairs(values: Any, label: str, keyed_by_lane: bool) -> Tuple[Tuple[str, str], ...]:
-                pairs = tuple(tuple(item) for item in values)
+                if not isinstance(values, (tuple, list)):
+                    raise SearchValidationError(
+                        f"{label} must be a sequence of (name, identity) pairs"
+                    )
+                pairs: List[Tuple[str, str]] = []
                 names: Set[str] = set()
-                for pair in pairs:
-                    if len(pair) != 2 or any(
-                        not isinstance(part, str) for part in pair
-                    ):
+                for item in values:
+                    if not isinstance(item, (tuple, list)) or len(item) != 2:
+                        raise SearchValidationError(
+                            f"{label} entries must be (name, identity) pairs"
+                        )
+                    name, identity = item
+                    if not isinstance(name, str) or not isinstance(identity, str):
                         raise SearchValidationError(
                             f"{label} entries must be (name, identity) strings"
                         )
-                    name, identity = pair
                     if name in names:
                         raise SearchValidationError(
                             f"{label} names {name!r} more than once"
@@ -510,11 +520,12 @@ class CompletedLineageContext:
                     else:
                         validate_id(name, label)
                     validate_hash(identity, label)
-                if pairs != tuple(sorted(set(pairs))):
+                    pairs.append((name, identity))
+                if tuple(pairs) != tuple(sorted(set(pairs))):
                     raise SearchValidationError(
                         f"{label} must be sorted and unique"
                     )
-                return pairs
+                return tuple(pairs)
 
             object.__setattr__(
                 self,
@@ -556,17 +567,23 @@ class CompletedLineageDiagnostic:
                 raise SearchValidationError(
                     "unsupported diagnostic reason: " + str(self.reason_code)
                 )
+            if not isinstance(self.observed_identities, (tuple, list)):
+                raise SearchValidationError(
+                    "observed identities must be a sequence of hashes"
+                )
             observed = tuple(self.observed_identities)
             for item in observed:
                 if not isinstance(item, str):
                     raise SearchValidationError(
                         "observed identities must be strings"
                     )
-                if item:
-                    validate_hash(item, "observed identity")
-            if len(set(observed)) != len(observed):
+                # Every retained observed identity must actually exist; the
+                # projection drops absent bindings instead of recording an
+                # empty placeholder.
+                validate_hash(item, "observed identity")
+            if observed != tuple(sorted(set(observed))):
                 raise SearchValidationError(
-                    "observed identities must not repeat"
+                    "observed identities must be sorted and unique"
                 )
             object.__setattr__(self, "observed_identities", observed)
         except SearchValidationError as exc:
@@ -625,16 +642,27 @@ def _lineage_projection(
     evaluator_key = _evaluator_tool_key()
     evaluator = run.manifest.tool_identities.get(evaluator_key)
     if evaluator is None:
+        # Only identities that actually exist are recorded. A manifest with
+        # no full-oracle binding contributes no placeholder to the
+        # diagnostic; an absent binding is the absence of evidence, not an
+        # empty identity.
+        observed = tuple(
+            sorted(
+                identity
+                for identity in (
+                    run.manifest.compiler_identity,
+                    run.manifest.config_identity,
+                    run.manifest.schema_identity,
+                    run.manifest.tool_identities.get("full_oracle", ""),
+                )
+                if identity
+            )
+        )
         return CompletedLineageDiagnostic(
             ledger_identity=run.identity,
             run_id=run.manifest.run_id,
             reason_code="missing_evaluator_identity",
-            observed_identities=(
-                run.manifest.compiler_identity,
-                run.manifest.config_identity,
-                run.manifest.schema_identity,
-                run.manifest.tool_identities.get("full_oracle", ""),
-            ),
+            observed_identities=observed,
         )
     return CompletedLineageContext(
         ledger_identity=run.identity,
