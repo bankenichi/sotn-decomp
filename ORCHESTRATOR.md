@@ -18,7 +18,7 @@ evidence, not active instructions.
 | Decompiled | **94.1%**, 8180/8730 functions; 550 US `INCLUDE_ASM` stubs remain |
 | Queue | 983 records: 433 matched, 380 todo, 123 escalated, 41 deferred, 6 near |
 | Provenance | upstream-harvest 55, shim-segment 9, shim-header 55, transplant 135, twin-port 31, permuter 18, claude-manual 6, model-fleet 58, unknown 66 |
-| Automation | 116 modules, 45 suites plus 36 module self-tests, 96 tools, 85 diagnostics |
+| Automation | 118 modules, 46 suites plus 36 module self-tests, 97 tools, 86 diagnostics |
 
 This block is regenerated from the same queue, checksum manifest, linker maps, provenance classifier, and connector inventory as `README.md`.
 <!-- LIVE-STATUS:END -->
@@ -43,18 +43,23 @@ when its method and proof remain recoverable.
 
 ## 2. Root-only operations
 
-The root agent alone performs stateful work:
+The root agent alone performs authority-bearing and integration work:
 
 - builds, extraction, permuter execution, and verification
 - every Git operation
 - queue claims, reports, snapshots, and restores
-- source and documentation edits
+- planning, orchestration, coordination and documentation edits
+- lead review and final disposition of every delegated change
 - roadmap and lesson updates
 - commits and pushes to `origin`
 
-Subagents never build, run Git, edit files, mutate the queue, or operate the
-fleet. Builds take the exclusive BuildLock and cannot safely belong to a
-subagent session.
+Subagents may implement a concrete, bounded code change and its focused tests
+when the owner has authorized delegation and the root has assigned exact paths
+and acceptance criteria. They never build, run Git, edit documentation or
+planning records, mutate the queue, operate the fleet, invoke the oracle, or
+run a live search. Builds take the exclusive BuildLock and cannot safely belong
+to a subagent session. The root independently reviews every changed hunk before
+consolidated validation.
 
 All Git and build operations go through `sotn-cmd`. Stage one explicit path per
 `git_add` call. Never use `git_add_all`.
@@ -72,11 +77,15 @@ Start every working session with:
 1. `list_allowed`
 2. `git_state`
 3. `job_list` and `fleet_status` when generated output is present
-4. `job_start(action="make_build", version="us")`
-5. poll `job_status`
-6. `verify_build(version="us")`
+4. `verify_build(version="us")`
 
 Stop if the oracle does not verify every expected artifact. A green compiler is not a match.
+
+Do not rebuild merely because a new agent turn started. A clean, just-completed
+post-push oracle is the baseline for later automation-only work. Focused tests
+follow edits, consolidated selftests run once when the implementation stabilizes,
+and the mandatory fresh `make_build` followed by `verify_build` runs immediately
+before an actual push.
 
 Before a deliberate backup or recovery checkpoint, once for the whole work
 batch (see `automation/queue/snapshots/README.md`):
@@ -163,16 +172,22 @@ Sol is intentionally not part of this worker comparison. Its capability is
 already demonstrated by the root work, while its cost rules it out as a regular
 fleet worker.
 
-Luna result: the effort sweep is recorded in
-`docs/benchmarks/luna/2026-08-18-effort-benchmark.md`. No setting passed every
-case. `xhigh` is approved only for bounded read-only investigation and candidate
-drafting; autonomous fleet replacement is not approved.
+The historical Luna effort sweep is recorded in
+`docs/benchmarks/luna/2026-08-18-effort-benchmark.md`; it remains evidence about
+that model revision rather than a timeless capability claim. Current owner
+policy permits Luna at `max` effort for bounded substantive implementation and
+focused tests when the root supplies the design and acceptance criteria. It is
+not entrusted with planning, documentation, orchestration, Git, builds, oracle
+work, queue mutation, live runs or lead review.
 
 ## 6. Dispatch rules
 
-Delegate only a concrete, bounded, read-only question. Give the subagent the
-exact files, function, overlay, or evidence set it owns. State that other work
-may exist in the tree and that it must not propose destructive cleanup.
+Delegate only a concrete, bounded investigation or substantive implementation
+task. Give the subagent the exact files, function, overlay or evidence set it
+owns, plus acceptance tests and forbidden operations. State that other work may
+exist in the tree and that it must preserve shared edits and avoid destructive
+cleanup. Do not delegate planning, documentation, orchestration, coordination
+or lead review.
 
 A delegated task is not closed when its answer arrives. The root must disposition
 every reported finding before reusing that subagent or landing dependent work:
@@ -202,13 +217,18 @@ Good delegated questions include:
 - find all structural twins of one named function
 - compare one saved candidate with one source body and target assembly
 - identify which declared struct member covers a fixed set of offsets
-- audit one document section against the live connector surface
 - explain the first divergence already captured by the root agent
+- implement one specified automation boundary in exact named files and add its
+  focused regressions
+- harden one typed adapter or recovery transition against an already diagnosed
+  failure
 
 Keep locally:
 
 - builds and asm-differ execution
-- edits and candidate application
+- planning, documentation and orchestration
+- lead review and cross-component design decisions
+- live candidate application and oracle execution
 - branch and queue decisions
 - final match attribution
 - any operation whose failure can alter shared state

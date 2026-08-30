@@ -77,6 +77,7 @@ _SEARCH_LANES = (
     "model_expensive",
 )
 SEARCH_SURFACE_MUTATORS = frozenset({
+    "search_create_instrumented",
     "search_start_instrumented",
     "search_resume_instrumented",
     "search_stop",
@@ -277,6 +278,32 @@ def _search_plan_argv(name: str, record_ids, lanes) -> list[str]:
         PYTHON,
         "automation/search_cli.py",
         "plan",
+        "--records",
+        *records,
+        "--lanes",
+        *selected,
+    ]
+
+
+def _search_create_argv(name: str, record_ids, lanes) -> list[str]:
+    """Build the bounded production run-creation argv.
+
+    Creation is deliberately a foreground operation.  It receives only the
+    logical name and typed values, while the CLI factory resolves queue,
+    target and tool evidence from the repository itself.
+    """
+
+    _search_component(name, "name")
+    records = _search_record_ids(record_ids)
+    if not records:
+        raise Rejected("record_ids must be a nonempty sequence for run creation")
+    selected = _search_lanes(lanes)
+    return [
+        PYTHON,
+        "automation/search_cli.py",
+        "create",
+        "--name",
+        name,
         "--records",
         *records,
         "--lanes",
@@ -846,6 +873,7 @@ AUTOMATION_SCRIPTS = {
     "test_search_recovery.py",
     "test_search_schema.py",
     "test_search_subset.py",
+    "test_search_run_factory.py",
     "test_search_patterns.py",
     "test_search_supervisor.py",
     "test_build_attribution.py",
@@ -996,7 +1024,13 @@ def _status(status: str) -> str:
 
 
 # `us:ST/RDAI:func_us_801C2418` -- version, overlay path, symbol.
-QUEUE_ID_RX = re.compile(r"^[a-z0-9]{1,8}:[A-Z0-9/_]{1,32}:[A-Za-z0-9_]{1,64}$")
+# The overlay is a slash-separated path, not an arbitrary run of separators.
+# Empty components would be accepted by the old character-class-only form and
+# then collapse differently when a target path is derived.  Keep the total
+# overlay bound while requiring every component to be a real canonical name.
+QUEUE_ID_RX = re.compile(
+    r"^[a-z0-9]{1,8}:[A-Z0-9_]+(?:/[A-Z0-9_]+)*:[A-Za-z0-9_]{1,64}$"
+)
 
 
 def _queue_id(qid: str) -> str:
@@ -1010,6 +1044,12 @@ def _queue_id(qid: str) -> str:
     """
     if not isinstance(qid, str) or not QUEUE_ID_RX.fullmatch(qid):
         raise Rejected("queue id must look like us:ST/RDAI:func_us_801C2418")
+    # The regular expression keeps separators non-empty, while this explicit
+    # check preserves the documented 32-character overlay bound without
+    # making the expression's grouping harder to audit.
+    _build, overlay, _function = qid.split(":", 2)
+    if len(overlay) > 32:
+        raise Rejected("queue id overlay must be at most 32 characters")
     return qid
 
 
@@ -1321,6 +1361,8 @@ REGISTRY = {
     # logical name, run id, or typed value set. Paths and arbitrary argv are
     # never caller-controlled here.
     "search_plan": lambda name, record_ids, lanes: _search_plan_argv(
+        name, record_ids, lanes),
+    "search_create_instrumented": lambda name, record_ids, lanes: _search_create_argv(
         name, record_ids, lanes),
     "search_start_instrumented": lambda run_id: _search_supervisor_argv(
         run_id, "--run"),

@@ -739,6 +739,26 @@ def search_plan(name: str, record_ids: list[str], lanes: list[str]) -> dict:
 
 
 @mcp.tool()
+def search_create_instrumented(
+    name: str, record_ids: list[str], lanes: list[str]
+) -> dict:
+    """Create one immutable canonical instrumented search run.
+
+    Mutating.  The factory resolves exact live todo records and repository
+    evidence from these typed values.  It does not accept a path or arbitrary
+    argv and never mutates the live queue.
+    """
+    result = cc.run(
+        "search_create_instrumented",
+        name=name,
+        record_ids=record_ids,
+        lanes=lanes,
+    )
+    result["name"] = name
+    return result
+
+
+@mcp.tool()
 def search_start_instrumented(run_id: str) -> dict:
     """Start one canonical instrumented search run as a background job.
 

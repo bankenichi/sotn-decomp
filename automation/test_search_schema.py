@@ -398,6 +398,57 @@ class TestSearchSchema(unittest.TestCase):
         self.assertEqual(LedgerEvent.from_json(event.to_json()), event)
         self.assertEqual(canonical_json({"b": 1, "a": 2}), '{"a":2,"b":1}')
 
+    def test_run_id_contract_is_safe_across_manifest_parent_and_event(self) -> None:
+        unsafe = "run/schema"
+        with self.assertRaises(SearchValidationError):
+            ParentRun(unsafe, 0, _hash("parent-event"))
+
+        manifest_data = manifest().to_dict()
+        manifest_data["run_id"] = unsafe
+        with self.assertRaises(SearchValidationError):
+            RunManifest.from_dict(manifest_data)
+
+        event_data = {
+            "schema_version": "1.0.0",
+            "sequence": 0,
+            "event_id": "event/with:generic",
+            "previous_event_hash": None,
+            "recorded_at": "2026-08-26T00:00:00Z",
+            "run_id": unsafe,
+            "event_type": "run_started",
+            "payload": manifest().to_dict(),
+        }
+        event_data["event_hash"] = hash_canonical(event_data)
+        with self.assertRaises(SearchValidationError):
+            LedgerEvent.from_dict(event_data)
+
+        event_data["run_id"] = manifest().run_id
+        event_data["event_hash"] = hash_canonical(
+            {key: value for key, value in event_data.items() if key != "event_hash"}
+        )
+        event = LedgerEvent.from_dict(event_data)
+        self.assertEqual(event.event_id, "event/with:generic")
+
+        schema = json.loads(
+            (Path(__file__).resolve().parent / "search-ledger.schema.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        self.assertEqual(
+            schema["$defs"]["run_manifest"]["properties"]["parent_run"]["oneOf"][1][
+                "properties"
+            ]["run_id"]["$ref"],
+            "#/$defs/run_id",
+        )
+        self.assertEqual(
+            schema["$defs"]["event_base"]["properties"]["run_id"]["$ref"],
+            "#/$defs/run_id",
+        )
+        self.assertEqual(
+            schema["$defs"]["event_base"]["properties"]["event_id"]["$ref"],
+            "#/$defs/id",
+        )
+
     def test_every_record_round_trips(self) -> None:
         for record in all_records():
             restored = type(record).from_dict(record.to_dict())

@@ -70,6 +70,20 @@ All the commands are symlinks to `automation/bin/sotn-run`, which dispatches on
 `$0`. Adding one means adding it to `COMMANDS` and adding a `case` arm, not
 another copy of the argument handling.
 
+### Instrumented search uses the connector, not `sotn-run`
+
+The receipt-producing search supervisor added in 2026-08 is a separate control
+plane from `run-permuter` and `runfleet`. It intentionally has no general shell
+wrapper. Use the typed `search_plan`, `search_create_instrumented`,
+`search_start_instrumented`, `search_stop`, `search_resume_instrumented`,
+`search_status` and `search_verify_ledger` connector tools so record IDs, lanes
+and run IDs cross a validated boundary and manifest paths never do.
+
+Its workers cannot claim from the ordinary queue. Creation freezes only the
+explicit live `todo` subset; start and resume execute only that manifest under
+one lease. See `docs/TOOLING.md` for the operator lifecycle and
+`docs/HARNESS-ARCHITECTURE.md` for the identity and recovery design.
+
 ---
 
 ## 3. The permuter supervisor

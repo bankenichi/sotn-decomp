@@ -271,6 +271,12 @@
       "maxLength": 256,
       "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/+-]*$"
     },
+    "run_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]*$"
+    },
     "lane": {
       "type": "string",
       "enum": [
@@ -773,7 +779,7 @@
       ],
       "properties": {
         "run_id": {
-          "$ref": "#/$defs/id"
+          "$ref": "#/$defs/run_id"
         },
         "created_at": {
           "type": "string",
@@ -794,7 +800,7 @@
               ],
               "properties": {
                 "run_id": {
-                  "$ref": "#/$defs/id"
+                  "$ref": "#/$defs/run_id"
                 },
                 "last_valid_sequence": {
                   "type": "integer",
@@ -2609,7 +2615,7 @@
           "format": "date-time"
         },
         "run_id": {
-          "$ref": "#/$defs/id"
+          "$ref": "#/$defs/run_id"
         },
         "event_type": {
           "type": "string"

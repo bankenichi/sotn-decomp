@@ -16,7 +16,7 @@ For the mechanisms that land matches, read `automation/README.md`.
 | Decompiled | **94.1%**, 8180/8730 functions; 550 US `INCLUDE_ASM` stubs remain |
 | Queue | 983 records: 433 matched, 380 todo, 123 escalated, 41 deferred, 6 near |
 | Provenance | upstream-harvest 55, shim-segment 9, shim-header 55, transplant 135, twin-port 31, permuter 18, claude-manual 6, model-fleet 58, unknown 66 |
-| Automation | 116 modules, 45 suites plus 36 module self-tests, 96 tools, 85 diagnostics |
+| Automation | 118 modules, 46 suites plus 36 module self-tests, 97 tools, 86 diagnostics |
 
 This block is regenerated from the same queue, checksum manifest, linker maps, provenance classifier, and connector inventory as `README.md`.
 <!-- LIVE-STATUS:END -->
@@ -412,6 +412,63 @@ has measured 82s and 271s. It is not a runtime.
 `permuter_supervisor.py`'s long modes must go through `job_start`. Run through
 `run_automation` its timeout kills it mid-lock, leaving a seed applied and a stale
 build lock behind.
+
+## 5a. Instrumented search runs
+
+Use the instrumented search surfaces when a fixed subset must produce durable,
+replayable lane receipts without letting workers pull from the rest of the
+queue. The normal lifecycle is:
+
+```
+search_plan(name, record_ids, lanes)                # read-only preview
+search_create_instrumented(name, record_ids, lanes) # freeze one todo subset
+search_start_instrumented(run_id)                   # returns a background job
+job_status(job_id)                                  # bounded polling
+search_status(run_id)                               # durable recovered state
+search_verify_ledger(run_id)                        # archive + hash-chain check
+```
+
+`search_plan` canonicalizes only the supplied IDs and lanes. It does not query
+the queue and cannot make a startable manifest. `search_create_instrumented` is
+the separate mutating boundary: every requested record must exist in live
+`todo`, and there is no fallback to another ID or status. It captures the full
+queue records plus source, target assembly and object, compiler, configuration,
+schema, search-tool and dynamic lane-input identities. It never reports to or
+claims from the queue.
+
+An exact same-name retry is archive-idempotent. It validates and returns the
+already frozen manifest before reading the current queue, so later notes,
+claims or status changes do not turn the run into a new identity. A different
+subset or lane set under the same name is a collision and is refused.
+
+Start and resume run through the supervisor lease. Factory-created runs are
+remeasured immediately before coordinator construction, before an adapter call
+or `task_started` event. Source, target, compiler, configuration, schema, tool
+or bound lane-input drift refuses execution; queue drift does not. Status, stop
+and ledger verification remain available from durable archived evidence even
+when current execution inputs have changed.
+
+The canonical run lives at:
+
+```
+nonmatchings/<lexicographically-first-function>/search-runs/<run-id>/
+  manifest.json
+  artifacts/
+  ledger.jsonl
+```
+
+The manifest freezes the exact subset, lanes, identities, seed and bounded
+budgets. Content-addressed manifest intent plus the run evidence index makes a
+crash after the durable index but before `manifest.json` publication
+recoverable by an exact retry. Incomplete, conflicting, corrupt or symlinked
+partial state is refused rather than guessed or repaired.
+
+`search_stop` does not construct a second coordinator. It publishes an atomic,
+manifest-bound request that the lease owner acknowledges at a task boundary.
+Resume continues the same ledger and deterministic task IDs. Oracle execution
+uses a durable request/result handoff: a landing callback must persist its
+terminal receipt before returning, and replay reuses that receipt instead of
+calling the oracle again.
 
 ## 6. Allowlisted automation: `run_automation`
 

@@ -18,7 +18,7 @@ in each case so you can tell a deliberate choice from an accident.
 | Decompiled | **94.1%**, 8180/8730 functions; 550 US `INCLUDE_ASM` stubs remain |
 | Queue | 983 records: 433 matched, 380 todo, 123 escalated, 41 deferred, 6 near |
 | Provenance | upstream-harvest 55, shim-segment 9, shim-header 55, transplant 135, twin-port 31, permuter 18, claude-manual 6, model-fleet 58, unknown 66 |
-| Automation | 116 modules, 45 suites plus 36 module self-tests, 96 tools, 85 diagnostics |
+| Automation | 118 modules, 46 suites plus 36 module self-tests, 97 tools, 86 diagnostics |
 
 This block is regenerated from the same queue, checksum manifest, linker maps, provenance classifier, and connector inventory as `README.md`.
 <!-- LIVE-STATUS:END -->
@@ -444,6 +444,66 @@ Background jobs are impossible *inside* the sandbox: it runs under
 `bwrap --die-with-parent --unshare-pid`, a fresh PID namespace per call. This
 was tested, not assumed. That is why `jobs.py` runs on the WSL side.
 
+### The instrumented search control plane
+
+The original fleet and permuter paths are live-work executors. The instrumented
+search system adds a frozen, receipt-producing control plane around the same
+project evidence:
+
+```
+explicit IDs + lanes
+        |
+        v
+ read-only plan
+        |
+        v
+ canonical run factory --> content-addressed evidence + immutable manifest
+        |
+        v
+ supervisor lease --> deterministic tasks --> lane results/candidates
+        |                                      |
+        |                                      v
+        +------------------------------> durable oracle handoff
+                                               |
+                                               v
+                                  hash-chained ledger + receipts
+```
+
+The factory accepts no queue fallback and no caller path. New creation reads
+the requested live `todo` records under the scheduler's shared lock, archives
+their complete JSON, and binds exact source, assembly, object, compiler,
+configuration, schema, tool and lane-input identities. A multi-record run is
+stored beneath the lexicographically first function ID, but its manifest and
+subset hash cover every record.
+
+The supervisor owns all execution. Before constructing the coordinator it
+verifies the archived run and remeasures every mutable execution input. That
+ordering matters: a refused drift cannot call an adapter, consume budget or
+append `task_started`. Queue state is deliberately not remeasured because the
+archived queue record is eligibility evidence from creation, not a mutable
+runtime dependency.
+
+Each base task and candidate child has a deterministic identity and spends from
+the manifest's bounded coordinator and lane budgets. Events append to one
+hash-chain; recovery reconstructs completed and incomplete tasks, frontier,
+budget use, stop generations, oracle requests and oracle results. The stop tool
+only publishes an atomic request. The process holding the supervisor lease is
+the sole writer that records `run_stopped`, and resume records the matching
+acknowledgement before continuing.
+
+Run creation has its own crash boundary. The complete manifest intent is stored
+content-addressed before the evidence index, and the index is durable before
+`manifest.json` is published. An exact retry can therefore publish the intended
+manifest after a crash in that final gap without rereading a changed queue or
+clock. Earlier incomplete state, ambiguous indexes, corrupt bytes and symlinks
+fail closed.
+
+Oracle callbacks use a lookup/execute protocol keyed by the durable request ID.
+The callback must publish its terminal result through the supplied persistence
+function before returning. A crash after that persistence point reuses the
+receipt on replay; a callback that returns without durable terminal evidence is
+an error rather than an unverifiable success.
+
 ---
 
 ## 8. Paths
@@ -480,6 +540,14 @@ fleet_stop()                       # ALWAYS; a killed worker strands its claim
 # non-writing modes shown here; check provider and fleet constraints in help
 run_automation(script="asm_twin_finder.py", args="--audit-matched")
 run_automation(script="opencode_size_bisect.py", args="--top 3 --big")
+
+# exact receipt-producing subset, no queue fallback
+search_plan(name="shadow", record_ids=[...], lanes=[...])
+search_create_instrumented(name="shadow", record_ids=[...], lanes=[...])
+search_start_instrumented(run_id="shadow")
+job_status(job_id)
+search_status(run_id="shadow")
+search_verify_ledger(run_id="shadow")
 
 # self-tests
 run_automation(script="test_review_gate.py")

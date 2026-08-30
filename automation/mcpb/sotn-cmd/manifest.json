@@ -42,6 +42,7 @@
     { "name": "run_automation", "description": "Run one allowlisted repository automation script; script-specific modes may write" },
     { "name": "run_analysis", "description": "Compatibility alias for run_automation; not a read-only boundary" },
     { "name": "search_plan", "description": "Plan one explicit named subset by exact record ids and selected lanes. Read-only." },
+    { "name": "search_create_instrumented", "description": "Create one immutable canonical instrumented run from exact todo records. Mutating; does not write the live queue." },
     { "name": "search_start_instrumented", "description": "Start one canonical instrumented search run as a background job. Mutating." },
     { "name": "search_resume_instrumented", "description": "Resume one canonical stopped instrumented run as a background job. Mutating." },
     { "name": "search_status", "description": "Read status for one exact canonical instrumented run id. Read-only." },

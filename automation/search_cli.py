@@ -364,6 +364,23 @@ def plan_selection(
     return SubsetSelection(records, lanes, identity, input_kind)
 
 
+def create_instrumented_run(
+    name: str,
+    record_ids: Sequence[str],
+    lanes: Sequence[str],
+) -> dict[str, Any]:
+    """Create one bounded canonical instrumented run from exact todo IDs."""
+
+    try:
+        from .search_run_factory import create_instrumented_run as create_run
+    except ImportError:  # direct invocation from the automation directory
+        from automation.search_run_factory import create_instrumented_run as create_run  # type: ignore
+    try:
+        return create_run(name, record_ids, lanes)
+    except RuntimeError as exc:
+        raise RunInputError(str(exc) or "run creation refused") from exc
+
+
 def _manifest_field_names() -> set[str]:
     try:
         return {field.name for field in dataclasses.fields(RunManifest)}
@@ -551,6 +568,7 @@ def status_run(value: str | os.PathLike[str]) -> dict[str, Any]:
         state = recover_run(root)
     except (RuntimeError, OSError, ValueError, TypeError) as exc:
         raise RunInputError("run recovery refused the run") from exc
+    _verify_factory_archive_only(root, state.manifest)
     _require_selected_lanes(state.manifest)
     stopped = state.stopped.to_dict() if state.stopped is not None else None
     return {
@@ -567,6 +585,18 @@ def status_run(value: str | os.PathLike[str]) -> dict[str, Any]:
     }
 
 
+def _verify_factory_archive_only(root: Path, manifest: RunManifest) -> None:
+    """Validate factory evidence without measuring mutable execution inputs."""
+    try:
+        from .search_run_factory import verify_factory_archive
+    except ImportError:  # direct invocation from the automation directory
+        from automation.search_run_factory import verify_factory_archive  # type: ignore
+    try:
+        verify_factory_archive(root, manifest)
+    except (RuntimeError, OSError, ValueError, TypeError) as exc:
+        raise RunInputError("factory archive verification failed") from exc
+
+
 def verify_ledger(value: str | os.PathLike[str]) -> dict[str, Any]:
     root = _safe_run_root(value)
     _audit_run_root(root)
@@ -574,6 +604,7 @@ def verify_ledger(value: str | os.PathLike[str]) -> dict[str, Any]:
         state = recover_run(root)
     except (RuntimeError, OSError, ValueError, TypeError) as exc:
         raise RunInputError("ledger verification failed") from exc
+    _verify_factory_archive_only(root, state.manifest)
     _require_selected_lanes(state.manifest)
     return {
         "command": "verify-ledger",
@@ -594,6 +625,7 @@ def stop_run(value: str | os.PathLike[str]) -> dict[str, Any]:
         state = recover_run(root)
     except (RuntimeError, OSError, ValueError, TypeError) as exc:
         raise RunInputError("run recovery refused the run") from exc
+    _verify_factory_archive_only(root, state.manifest)
     manifest = _validate_manifest_value(state.manifest.to_dict())
     try:
         from .search_supervisor import (
@@ -721,6 +753,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="explicit lane names, optionally comma-separated",
     )
 
+    create = commands.add_parser("create", help="create one canonical instrumented run")
+    create.add_argument("--name", required=True)
+    create.add_argument("--records", action="append", nargs="+", required=True)
+    create.add_argument("--lanes", action="append", nargs="+", required=True)
+
     run = commands.add_parser("run", help="initialize a manifest-owned run")
     run.add_argument("--manifest", required=True)
 
@@ -747,6 +784,15 @@ def _dispatch(args: argparse.Namespace) -> dict[str, Any]:
             subset_hash=args.subset_hash,
             lane_groups=args.lanes,
         ).to_dict()
+    if args.command == "create":
+        records = _flatten_option_groups(
+            args.records, label="record IDs", allow_explicit_empty=False
+        )
+        lanes = _flatten_option_groups(
+            args.lanes, label="lanes", allow_explicit_empty=False
+        )
+        assert records is not None and lanes is not None
+        return create_instrumented_run(args.name, records, lanes)
     if args.command == "run":
         return run_manifest(args.manifest)
     if args.command == "resume":
@@ -800,6 +846,7 @@ __all__ = [
     "subset_artifact",
     "subset_artifact_text",
     "plan_selection",
+    "create_instrumented_run",
     "run_manifest",
     "resume_run",
     "status_run",

@@ -72,7 +72,7 @@ every one of them already had a generator that nobody was running.
 | Code decompiled | **94.1%** (8180 / 8730 functions) across 62 built binaries |
 | Queue | 983 records: **433 matched**, 380 todo, 123 escalated, 41 deferred, 6 near |
 | `INCLUDE_ASM` stubs left in `src/` | 550 (287 `boss`, 261 `st`, 2 `main`) |
-| Automation | 116 Python modules, 45 test suites plus 36 modules with their own `--self-test`, 96 connector tools, 85 diagnostics |
+| Automation | 118 Python modules, 46 test suites plus 36 modules with their own `--self-test`, 97 connector tools, 86 diagnostics |
 
 The `matched` count is *our* work, across 18 overlays. The stub count is `us` only: it excludes `saturn` and the `_psp` trees, which the queue and the oracle also exclude. Counting every `.c` under `src/` instead gives 3021, most of it a Saturn port by an external team.
 <!-- STATUS:END -->
@@ -211,6 +211,13 @@ were quoting turned out to be an artefact:
   operation on this repo goes through it; running git from a sandbox is
   forbidden after a 45-second cap killed a rebase mid-flight and corrupted the
   tree.
+- **Instrumented search:** a typed, receipt-producing control plane for exact
+  named queue subsets. A canonical factory freezes full queue evidence,
+  source, targets, compiler, configuration, schema, tools and lane inputs into
+  an immutable run. One lease-owning supervisor executes deterministic tasks,
+  records candidates, score vectors, provenance, oracle handoffs and stop/resume
+  transitions in a recoverable hash-chained ledger. It cannot pull an unlisted
+  record or fall through to another queue status.
 - **Crash safety** — a `BuildLock` serialises apply/build/verify, and a
   journal in `automation/logs/pending/` survives SIGKILL. `fleet_stop` replays
   it after reaping, because a handler inside a dying worker can lose the race
@@ -362,6 +369,7 @@ second hand-maintained overlay list.
 | `automation/README.md` | operating the harness day to day |
 | `docs/HARNESS-ARCHITECTURE.md` | how the pieces fit and why |
 | `docs/harness-control.md` | supervisor, connector, dashboard |
+| `docs/superpowers/specs/2026-08-26-instrumented-search-system-design.md` | frozen-run, ledger, provenance and recovery specification |
 | `docs/fleet-dead-time.md` | where fleet time actually goes |
 | `MATCHING-LESSONS.md` | evidence-backed matching notes, with retractions |
 | `docs/NAMING.md`, `docs/STYLE.md` | conventions |

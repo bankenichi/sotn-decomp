@@ -23,6 +23,13 @@ SUBSET_ARTIFACT_TYPE = "sotn-search-subset"
 SUBSET_SCHEMA_VERSION = "1.0.0"
 HASH_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/+-]*$")
+RUN_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
+
+# These limits are shared by factory admission and supervisor execution.
+# Keeping the pair beside the typed records prevents budget math from drifting
+# between those boundaries.
+MAX_COORDINATOR_TASKS = 4096
+MAX_CHILD_TASKS_PER_BASE = 2
 
 LANES = (
     "upstream_current",
@@ -128,6 +135,16 @@ def validate_id(value: Any, label: str = "id") -> str:
         raise SearchValidationError(f"{label} must be a nonempty identifier")
     if not ID_RE.fullmatch(value):
         raise SearchValidationError(f"{label} contains invalid characters")
+    return value
+
+
+def validate_run_id(value: Any, label: str = "run_id") -> str:
+    """Validate the path-safe run identifier used by the canonical resolver."""
+
+    if not isinstance(value, str) or RUN_ID_RE.fullmatch(value) is None:
+        raise SearchValidationError(
+            f"{label} must be a safe canonical run component of at most 64 characters"
+        )
     return value
 
 
@@ -684,7 +701,7 @@ class ParentRun(_Record):
     last_valid_event_hash: str
 
     def __post_init__(self) -> None:
-        validate_id(self.run_id, "parent_run.run_id")
+        validate_run_id(self.run_id, "parent_run.run_id")
         _integer(self.last_valid_sequence, "last_valid_sequence", 0)
         validate_hash(self.last_valid_event_hash, "last_valid_event_hash")
 
@@ -721,7 +738,7 @@ class RunManifest(_Record):
     tier_order: Tuple[str, ...]
 
     def __post_init__(self) -> None:
-        validate_id(self.run_id, "run_id")
+        validate_run_id(self.run_id, "run_id")
         if not isinstance(self.created_at, str):
             raise SearchValidationError("created_at must be a string")
         try:
@@ -1315,7 +1332,7 @@ class LedgerEvent(_Record):
             datetime.fromisoformat(self.recorded_at.replace("Z", "+00:00"))
         except ValueError as exc:
             raise SearchValidationError("recorded_at must be an ISO date-time") from exc
-        validate_id(self.run_id, "run_id")
+        validate_run_id(self.run_id, "run_id")
         if self.event_type not in EVENT_TYPES:
             raise SearchValidationError("unknown event type")
         payload_type = PAYLOAD_TYPES[self.event_type]
@@ -1406,6 +1423,6 @@ __all__ = [
     "canonical_json", "canonical_bytes", "hash_bytes", "hash_canonical",
     "canonical_subset_payload", "canonical_subset_identity",
     "oracle_request_identity", "oracle_receipt_identity", "validate_hash",
-    "validate_id", "validate_lane", "validate_tier", "validate_relative_path",
+    "validate_id", "validate_run_id", "validate_lane", "validate_tier", "validate_relative_path",
     "iter_artifact_refs",
 ]

@@ -47,6 +47,7 @@ UNSUPPORTED_TOP_LEVEL_TESTS: dict[str, str] = {}
 # scoped connector change into an unrelated docs edit.
 UNDOCUMENTED_CONNECTOR_TOOLS = {
     "search_plan",
+    "search_create_instrumented",
     "search_start_instrumented",
     "search_resume_instrumented",
     "search_status",
@@ -190,6 +191,7 @@ def main() -> int:
 
     print("\nbounded instrumented-search surfaces have typed boundaries")
     _search_mutators = {
+        "search_create_instrumented",
         "search_start_instrumented",
         "search_resume_instrumented",
         "search_stop",
@@ -274,6 +276,39 @@ def main() -> int:
             check("us:ST/RDAI:func_one" in _plan_argv and
                   "us:ST/RDAI:func_two" in _plan_argv,
                   "search_plan carries only the explicit record ids")
+            _create_argv = cc.build_argv(
+                "search_create_instrumented",
+                name="connector-create",
+                record_ids=["us:ST/RDAI:func_one", "us:ST/RDAI:func_two"],
+                lanes=["model_fleet", "upstream_current"],
+            )
+            check(_create_argv[:4] == [
+                cc.PYTHON, "automation/search_cli.py", "create", "--name",
+            ], "search_create_instrumented uses the bounded search CLI creator")
+            check(_create_argv[_create_argv.index("--name") + 1] == "connector-create" and
+                   _create_argv[_create_argv.index("--lanes") + 1:] == [
+                       "upstream_current", "model_fleet",
+                   ], "search_create_instrumented carries canonical logical inputs")
+            try:
+                cc.build_argv(
+                    "search_create_instrumented",
+                    name="connector-create",
+                    record_ids=[],
+                    lanes=["upstream_current"],
+                )
+                check(False, "search_create_instrumented refuses an empty subset")
+            except cc.Rejected:
+                check(True, "search_create_instrumented refuses an empty subset")
+            try:
+                cc.start_job(
+                    "search_create_instrumented",
+                    name="connector-create",
+                    record_ids=["us:ST/RDAI:func_one"],
+                    lanes=["upstream_current"],
+                )
+                check(False, "generic job_start refuses synchronous run creation")
+            except cc.Rejected:
+                check(True, "generic job_start refuses synchronous run creation")
             _empty_plan = cc.build_argv(
                 "search_plan", name="empty", record_ids=[],
                 lanes=["upstream_current"],
@@ -374,7 +409,7 @@ def main() -> int:
             for _bad_run_id in (
                 "../run-connector", "run/connector", r"run\\connector",
                 "C:\\run-connector", "run*", "run;stop", "-run",
-                "run..connector", "",
+                "run..connector", "r" * 65, "",
             ):
                 try:
                     cc.build_argv("search_status", run_id=_bad_run_id)

@@ -21,7 +21,7 @@ Coordination is files and git only, no app puppeting.
 | Decompiled | **94.1%**, 8180/8730 functions; 550 US `INCLUDE_ASM` stubs remain |
 | Queue | 983 records: 433 matched, 380 todo, 123 escalated, 41 deferred, 6 near |
 | Provenance | upstream-harvest 55, shim-segment 9, shim-header 55, transplant 135, twin-port 31, permuter 18, claude-manual 6, model-fleet 58, unknown 66 |
-| Automation | 116 modules, 45 suites plus 36 module self-tests, 96 tools, 85 diagnostics |
+| Automation | 118 modules, 46 suites plus 36 module self-tests, 97 tools, 86 diagnostics |
 
 This block is regenerated from the same queue, checksum manifest, linker maps, provenance classifier, and connector inventory as `README.md`.
 <!-- LIVE-STATUS:END -->
@@ -102,6 +102,45 @@ python3 automation/dashboard.py --self-test
 python3 automation/empty_response_audit.py --self-test
 ```
 
+### Instrumented subset search
+
+The new instrumented path runs exact named subsets through deterministic lanes
+and records typed, replayable receipts. It is separate from the ordinary fleet:
+workers in an instrumented run can receive only the frozen records and lanes in
+that manifest, and the factory never claims or reports a queue record.
+
+Use the connector lifecycle rather than hand-writing manifests:
+
+```
+search_plan(name, record_ids, lanes)
+search_create_instrumented(name, record_ids, lanes)
+search_start_instrumented(run_id)
+job_status(job_id)
+search_status(run_id)
+search_verify_ledger(run_id)
+```
+
+Planning is read-only and does not inspect the queue. Creation is the explicit
+write boundary and accepts only exact live `todo` IDs. It freezes the full queue
+records and all execution identities into a content-addressed archive beneath
+`nonmatchings/<anchor>/search-runs/<run-id>/`. Exact retries return that archive
+without rereading later queue state; a different logical selection under the
+same name is refused.
+
+Start and resume are background jobs. The supervisor revalidates source,
+targets, compiler, configuration, schema, tools and bound lane inputs before
+any task event or adapter call. `search_stop` requests a durable task-boundary
+stop without creating another coordinator, and `search_resume_instrumented`
+continues the same manifest, task identities and ledger. Status and ledger
+verification use archived evidence and remain available even when live inputs
+have drifted.
+
+Do not substitute `run_automation(search_cli.py ...)` for this lifecycle. The
+dedicated connector surface is the authority boundary: typed lists in, no
+caller-supplied paths or arbitrary argv, canonical run resolution out. See
+`docs/TOOLING.md` for the operator contract and
+`docs/HARNESS-ARCHITECTURE.md` for recovery and identity details.
+
 ---
 
 ## Layout
@@ -128,6 +167,16 @@ python3 automation/empty_response_audit.py --self-test
       scheduler.py                      single writer to ~/sotn-work/queue.jsonl
       win/worker_direct.py              THE worker: prompt, gates, build, verify, journal
       run_selftests.py                  runs every test_*.py, one table
+      search_types.py                   typed manifest, task, candidate and receipt records
+      search-ledger.schema.json         canonical JSON Schema for search records and events
+      search_archive.py                 immutable content-addressed artifact store
+      search_ledger.py                  append-only hash-chained event writer
+      search_coordinator.py             budgets, frontier, oracle handoff and task ownership
+      search_recovery.py                replay validation and recovered run state
+      search_lanes.py                   deterministic lane adapters and provenance
+      search_supervisor.py              lease, start/stop/resume and live task execution
+      search_run_factory.py             frozen todo-subset and evidence-manifest creator
+      search_cli.py                     local CLI used behind the typed connector surfaces
       progress_table.py                 per-overlay completion from the linker maps
       mcpb/*/manifest.json              LAUNCHERS ONLY. Each cd's into the repo and
                                         runs automation/mcp/, so the live source is

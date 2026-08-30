@@ -35,6 +35,8 @@ try:
         CandidateRecord,
         LANES,
         LedgerEvent,
+        MAX_CHILD_TASKS_PER_BASE,
+        MAX_COORDINATOR_TASKS,
         SearchTask,
         TIER_ORDER,
         OracleRequest,
@@ -63,6 +65,8 @@ except ImportError:  # pragma: no cover - direct script compatibility
         CandidateRecord,
         LANES,
         LedgerEvent,
+        MAX_CHILD_TASKS_PER_BASE,
+        MAX_COORDINATOR_TASKS,
         SearchTask,
         TIER_ORDER,
         OracleRequest,
@@ -85,6 +89,10 @@ STOP_REQUEST_FILENAME = "stop-request.json"
 STOP_REQUEST_REASON = "graceful_stop"
 STOP_REQUEST_PENDING = "pending"
 STOP_REQUEST_ACKNOWLEDGED = "acknowledged"
+# Factory-created manifests are globally bounded, including their child-task
+# allowance.  Keep the supervisor defensive when handed a forged manifest.
+# The cap itself is shared with factory admission through search_types.
+_MAX_COORDINATOR_TASKS = MAX_COORDINATOR_TASKS
 DEFAULT_LEASE_PATH = Path(
     os.environ.get(
         "SOTN_SEARCH_SUPERVISOR_LEASE",
@@ -1179,6 +1187,10 @@ def _preflight_candidate_children(
     coordinator_limit: int,
 ) -> Tuple[Tuple[LaneCandidate, SearchTask, TaskResult], ...]:
     """Validate an entire lane outcome before publishing its first child."""
+    if len(candidates) > MAX_CHILD_TASKS_PER_BASE:
+        raise SupervisorIntegrationError(
+            "lane outcome exceeds the per-base child-task allowance"
+        )
     if isinstance(child_base, bool) or not isinstance(child_base, int) or child_base < 0:
         raise SupervisorIntegrationError("candidate child base ordinal is invalid")
     if child_base + len(candidates) > coordinator_limit:
@@ -1589,6 +1601,10 @@ def _run_instrumented_entry(
     recipients = _recipients(manifest)
     lanes = _ordered_lanes(manifest)
     task_count = len(recipients) * len(lanes)
+    if manifest.coordinator_budget.limit > MAX_COORDINATOR_TASKS:
+        raise SupervisorIntegrationError(
+            "manifest coordinator budget exceeds the global task cap"
+        )
     if task_count > manifest.coordinator_budget.limit:
         raise SupervisorIntegrationError(
             "manifest coordinator budget cannot schedule its selected lane subset"
@@ -1613,6 +1629,22 @@ def _run_instrumented_entry(
         record_ids=manifest.queue_record_ids,
         path=lease_path,
     ):
+        # Factory-created runs carry a durable archive marker.  Verify their
+        # current source, target, compiler, configuration, schema and lane
+        # inputs while this process owns the run, before a coordinator can
+        # append task_started or an adapter can observe a task.
+        try:
+            try:
+                from .search_run_factory import verify_factory_runtime
+            except ImportError:  # pragma: no cover - direct script compatibility
+                from search_run_factory import verify_factory_runtime  # type: ignore
+            verify_factory_runtime(root, manifest)
+        except SupervisorIntegrationError:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            raise SupervisorIntegrationError(
+                "factory runtime evidence differs from the immutable run"
+            ) from exc
         coordinator = SearchCoordinator(root, manifest, oracle=oracle)
         if resume:
             _resume_stop_request(coordinator, root, manifest)
@@ -1678,6 +1710,18 @@ def status_instrumented(
 ) -> dict[str, Any]:
     path, manifest = _load_manifest_file(manifest_path)
     require_instrumented_manifest(manifest)
+    try:
+        try:
+            from .search_run_factory import verify_factory_archive
+        except ImportError:  # pragma: no cover - direct script compatibility
+            from search_run_factory import verify_factory_archive  # type: ignore
+        verify_factory_archive(path.parent, manifest)
+    except SupervisorIntegrationError:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        raise SupervisorIntegrationError(
+            "factory archive integrity validation failed"
+        ) from exc
     state = recover_run(_safe_run_root(path.parent))
     if state.manifest != manifest:
         raise SupervisorIntegrationError(

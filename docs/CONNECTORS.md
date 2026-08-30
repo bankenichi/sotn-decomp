@@ -26,7 +26,7 @@ under any MCP client.
 | Decompiled | **94.1%**, 8180/8730 functions; 550 US `INCLUDE_ASM` stubs remain |
 | Queue | 983 records: 433 matched, 380 todo, 123 escalated, 41 deferred, 6 near |
 | Provenance | upstream-harvest 55, shim-segment 9, shim-header 55, transplant 135, twin-port 31, permuter 18, claude-manual 6, model-fleet 58, unknown 66 |
-| Automation | 116 modules, 45 suites plus 36 module self-tests, 96 tools, 85 diagnostics |
+| Automation | 118 modules, 46 suites plus 36 module self-tests, 97 tools, 86 diagnostics |
 
 This block is regenerated from the same queue, checksum manifest, linker maps, provenance classifier, and connector inventory as `README.md`.
 <!-- LIVE-STATUS:END -->
@@ -185,6 +185,35 @@ a runtime check because a runtime check tells you after you have already paid.
 **When you add a capability, you touch three places:** the REGISTRY lambda, the
 `@mcp.tool()` wrapper, and the manifest's `tools` array. Miss one and the test
 names it.
+
+### Instrumented search is split by authority
+
+The instrumented search lifecycle deliberately is not one general-purpose
+command. Its seven connector tools expose only typed logical values and keep
+caller-controlled paths and arbitrary argv out of the boundary:
+
+| tool | authority |
+|---|---|
+| `search_plan` | Read-only. Canonicalizes an explicit record-ID subset and lane list. It neither reads the live queue nor creates a run. |
+| `search_create_instrumented` | Mutating. Resolves exact live `todo` records and repository-owned evidence, then publishes one immutable canonical run. It does not change the queue. |
+| `search_start_instrumented` | Mutating background job. Starts the exact frozen manifest selected by a safe run ID. |
+| `search_resume_instrumented` | Mutating background job. Resumes the same stopped manifest and durable ledger. |
+| `search_status` | Read-only. Recovers status from the archived manifest and ledger without consulting current queue eligibility. |
+| `search_stop` | Mutating. Publishes an atomic stop request; the lease-owning coordinator records the stop at a task boundary. |
+| `search_verify_ledger` | Read-only. Validates the exact manifest, archive and hash-chained ledger. |
+
+Run IDs are single path-safe components. The connector resolves them only
+below `nonmatchings/<function>/search-runs/`; it never accepts a manifest path.
+The factory chooses the lexicographically first function in a multi-record
+subset as the storage anchor, while the manifest and subset identity still bind
+every exact queue record.
+
+Creation and execution are separate on purpose. `search_plan` remains a cheap
+read-only preview. Creation is the explicit write boundary that freezes queue,
+source, target, compiler, configuration, schema, tool and lane-input evidence.
+Start and resume remeasure executable inputs before any adapter observes a task
+or `task_started` can be appended. Live queue drift after creation is not an
+execution input and cannot rewrite the frozen run.
 
 ## 5. Long actions: `job_start`, not a bigger timeout
 
