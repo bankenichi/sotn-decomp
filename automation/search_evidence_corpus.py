@@ -15,17 +15,30 @@ recurring-lineage hypotheses on top of this boundary.
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Sequence, Tuple
 
 try:  # package imports
+    from .compiler_idioms import (
+        CompilerIdiomObservation,
+        DraftLandedObservation,
+        MeasurementError,
+        make_idiom_observation,
+        measure_improvement,
+    )
     from .search_archive import ArtifactRef, ContentAddressedArchive
+    from .search_patterns import (
+        CompletedLineageContext,
+        CompletedLineageDiagnostic,
+        SearchPatternReport,
+    )
     from .search_supervisor import (
         IntegrationGateError,
         IntegrationGateReceipt,
         validate_integration_gate,
     )
     from .search_types import (
+        FirstDivergence,
         ScoreVector,
         SearchValidationError,
         canonical_bytes,
@@ -37,9 +50,21 @@ try:  # package imports
         validate_relative_path,
     )
 except ImportError:  # direct invocation from the automation directory
+    from automation.compiler_idioms import (  # type: ignore
+        CompilerIdiomObservation,
+        DraftLandedObservation,
+        MeasurementError,
+        make_idiom_observation,
+        measure_improvement,
+    )
     from automation.search_archive import (  # type: ignore
         ArtifactRef,
         ContentAddressedArchive,
+    )
+    from automation.search_patterns import (  # type: ignore
+        CompletedLineageContext,
+        CompletedLineageDiagnostic,
+        SearchPatternReport,
     )
     from automation.search_supervisor import (  # type: ignore
         IntegrationGateError,
@@ -47,6 +72,7 @@ except ImportError:  # direct invocation from the automation directory
         validate_integration_gate,
     )
     from automation.search_types import (  # type: ignore
+        FirstDivergence,
         ScoreVector,
         SearchValidationError,
         canonical_bytes,
@@ -836,19 +862,524 @@ def build_corpus_generation(
 
 # canonical_json is re-exported for callers assembling entry payloads; the
 # corpus identity rules require canonical serialization everywhere.
+
+
+@dataclass(frozen=True)
+class EvidenceRefusalReceipt:
+    """Typed refusal for one evidence-gating operation.
+
+    The receipt records what was refused and why without discarding the
+    observations that caused the refusal; the paired ``CorpusEvidence`` keeps
+    those observations as negative evidence.
+    """
+
+    receipt_id: str
+    operation: str
+    reason_code: str
+    input_identities: Tuple[str, ...]
+    observed_identities: Tuple[str, ...]
+    new_generation_required: bool
+
+    def __post_init__(self) -> None:
+        try:
+            validate_hash(self.receipt_id, "receipt_id")
+        except SearchValidationError as exc:
+            raise EvidenceIdentityMismatch(str(exc)) from exc
+        if not isinstance(self.operation, str) or not self.operation:
+            raise EvidenceIdentityMismatch("refusal operation must be named")
+        if not isinstance(self.reason_code, str) or not self.reason_code:
+            raise EvidenceIdentityMismatch("refusal reason must be named")
+        inputs = tuple(self.input_identities)
+        observed = tuple(self.observed_identities)
+        for name, values in (("input", inputs), ("observed", observed)):
+            for value in values:
+                if not isinstance(value, str) or not value:
+                    raise EvidenceIdentityMismatch(
+                        f"refusal {name} identities must be nonempty strings"
+                    )
+        if isinstance(self.new_generation_required, bool) is False:
+            raise EvidenceIdentityMismatch(
+                "new_generation_required must be a boolean"
+            )
+        object.__setattr__(self, "input_identities", inputs)
+        object.__setattr__(self, "observed_identities", observed)
+        payload = {
+            "protocol": "sotn-evidence-refusal-v1",
+            "operation": self.operation,
+            "reason_code": self.reason_code,
+            "input_identities": list(inputs),
+            "observed_identities": list(observed),
+            "new_generation_required": self.new_generation_required,
+        }
+        if self.receipt_id != hash_canonical(payload):
+            raise EvidenceIdentityMismatch(
+                "receipt_id does not match the refusal receipt payload"
+            )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "receipt_id": self.receipt_id,
+            "operation": self.operation,
+            "reason_code": self.reason_code,
+            "input_identities": list(self.input_identities),
+            "observed_identities": list(self.observed_identities),
+            "new_generation_required": self.new_generation_required,
+        }
+
+
+@dataclass(frozen=True)
+class CorpusEvidence:
+    """One corpus record: a promotion, a recurrence, or negative evidence."""
+
+    evidence_id: str
+    kind: str
+    outcome: str
+    recipient_id: str | None
+    compiler_identity: str | None
+    tool_identity: str | None
+    target_identity: str | None
+    evaluator_identity: str | None
+    config_identity: str | None
+    scorer: ScorerTaxonomy | None
+    citations: Tuple[LessonCitation, ...]
+    draft_landed: Tuple[DraftLandedObservation, ...]
+    idiom: CompilerIdiomObservation | None
+    first_divergence: FirstDivergence | None
+    support_identities: Tuple[str, ...]
+    reason_code: str | None
+
+    def identity_payload(self) -> dict[str, Any]:
+        return {
+            "kind": self.kind,
+            "outcome": self.outcome,
+            "recipient_id": self.recipient_id,
+            "compiler_identity": self.compiler_identity,
+            "tool_identity": self.tool_identity,
+            "target_identity": self.target_identity,
+            "evaluator_identity": self.evaluator_identity,
+            "config_identity": self.config_identity,
+            "scorer": self.scorer.to_dict() if self.scorer else None,
+            "citations": [item.to_dict() for item in self.citations],
+            "draft_landed": [item.to_dict() for item in self.draft_landed],
+            "idiom": self.idiom.to_dict() if self.idiom else None,
+            "first_divergence": (
+                self.first_divergence.to_dict()
+                if self.first_divergence is not None
+                else None
+            ),
+            "support_identities": list(self.support_identities),
+            "reason_code": self.reason_code,
+        }
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"evidence_id": self.evidence_id, **self.identity_payload()}
+
+
+def _make_corpus_evidence(
+    *,
+    kind: str,
+    outcome: str,
+    recipient_id: str | None = None,
+    compiler_identity: str | None = None,
+    tool_identity: str | None = None,
+    target_identity: str | None = None,
+    evaluator_identity: str | None = None,
+    config_identity: str | None = None,
+    scorer: ScorerTaxonomy | None = None,
+    citations: Tuple[LessonCitation, ...] = (),
+    draft_landed: Tuple[DraftLandedObservation, ...] = (),
+    idiom: CompilerIdiomObservation | None = None,
+    first_divergence: FirstDivergence | None = None,
+    support_identities: Tuple[str, ...] = (),
+    reason_code: str | None = None,
+) -> CorpusEvidence:
+    """Build one corpus record with its content-addressed evidence id."""
+
+    evidence = CorpusEvidence(
+        evidence_id="",
+        kind=kind,
+        outcome=outcome,
+        recipient_id=recipient_id,
+        compiler_identity=compiler_identity,
+        tool_identity=tool_identity,
+        target_identity=target_identity,
+        evaluator_identity=evaluator_identity,
+        config_identity=config_identity,
+        scorer=scorer,
+        citations=tuple(citations),
+        draft_landed=tuple(draft_landed),
+        idiom=idiom,
+        first_divergence=first_divergence,
+        support_identities=tuple(support_identities),
+        reason_code=reason_code,
+    )
+    object.__setattr__(
+        evidence, "evidence_id", hash_canonical(evidence.identity_payload())
+    )
+    return evidence
+
+
+@dataclass(frozen=True)
+class PromotionAccepted:
+    """A proven compiler-bound improvement over one draft-landed pair."""
+
+    observation: CompilerIdiomObservation
+    evidence: CorpusEvidence
+
+
+@dataclass(frozen=True)
+class PromotionRefused:
+    """A refused promotion retained as typed negative evidence."""
+
+    receipt: EvidenceRefusalReceipt
+    evidence: CorpusEvidence
+
+
+def _score_vector(value: Any, label: str) -> ScoreVector:
+    if isinstance(value, ScoreVector):
+        return value
+    try:
+        return ScoreVector.from_dict(value)
+    except (AttributeError, SearchValidationError, TypeError, ValueError) as exc:
+        raise EvidenceIdentityMismatch(
+            f"{label} is not a typed score vector"
+        ) from exc
+
+
+def _promotion_refusal(
+    *,
+    reason_code: str,
+    pair: DraftLandedObservation,
+    before: ScoreVector,
+    after: ScoreVector,
+    evaluator_identity: str,
+    target_identity: str,
+    scorer: ScorerTaxonomy | None,
+) -> PromotionRefused:
+    input_identities = tuple(
+        identity
+        for identity in (
+            pair.pair_hash,
+            target_identity,
+            before.object_hash,
+            after.object_hash,
+        )
+        if identity
+    )
+    receipt = EvidenceRefusalReceipt(
+        receipt_id=hash_canonical(
+            {
+                "protocol": "sotn-evidence-refusal-v1",
+                "operation": "promote_draft_landed",
+                "reason_code": reason_code,
+                "input_identities": list(input_identities),
+                "observed_identities": [
+                    before.compiler_identity,
+                    after.compiler_identity,
+                ],
+                "new_generation_required": False,
+            }
+        ),
+        operation="promote_draft_landed",
+        reason_code=reason_code,
+        input_identities=input_identities,
+        observed_identities=(before.compiler_identity, after.compiler_identity),
+        new_generation_required=False,
+    )
+    evidence = _make_corpus_evidence(
+        kind="negative",
+        outcome="negative",
+        recipient_id=pair.recipient_id,
+        compiler_identity=pair.compiler_identity,
+        tool_identity=pair.tool_identity,
+        target_identity=target_identity,
+        evaluator_identity=evaluator_identity,
+        config_identity=pair.config_identity,
+        scorer=scorer,
+        draft_landed=(pair,),
+        first_divergence=before.first_divergence,
+        support_identities=(pair.pair_hash,),
+        reason_code=reason_code,
+    )
+    return PromotionRefused(receipt=receipt, evidence=evidence)
+
+
+def promote_draft_landed(
+    pair: DraftLandedObservation,
+    before: ScoreVector,
+    after: ScoreVector,
+    *,
+    evaluator_identity: str,
+    target_identity: str,
+    target_object_hash: str | None = None,
+    target_checksum: str | None = None,
+) -> PromotionAccepted | PromotionRefused:
+    """Gate one draft-landed pair on a proven compiler-bound improvement.
+
+    The pair's own compiler identity must bound both score vectors, the
+    vectors must share one scorer boundary, and ``measure_improvement`` must
+    prove a lower score or an exact target identity. Anything else is
+    retained as typed negative evidence, never as an idiom.
+    """
+
+    if not isinstance(pair, DraftLandedObservation):
+        raise EvidenceIdentityMismatch(
+            "promotion needs a typed draft-landed observation"
+        )
+    try:
+        validate_hash(evaluator_identity, "evaluator_identity")
+        validate_hash(target_identity, "target_identity")
+    except SearchValidationError as exc:
+        raise EvidenceIdentityMismatch(str(exc)) from exc
+    before = _score_vector(before, "before score")
+    after = _score_vector(after, "after score")
+    if (
+        before.compiler_identity != pair.compiler_identity
+        or after.compiler_identity != pair.compiler_identity
+    ):
+        return _promotion_refusal(
+            reason_code="compiler_mismatch",
+            pair=pair,
+            before=before,
+            after=after,
+            evaluator_identity=evaluator_identity,
+            target_identity=target_identity,
+            scorer=None,
+        )
+    if before.scorer_algorithm != after.scorer_algorithm:
+        return _promotion_refusal(
+            reason_code="scorer_boundary_mismatch",
+            pair=pair,
+            before=before,
+            after=after,
+            evaluator_identity=evaluator_identity,
+            target_identity=target_identity,
+            scorer=None,
+        )
+    try:
+        measurement = measure_improvement(
+            before,
+            after,
+            target_object_hash=target_object_hash,
+            target_checksum=target_checksum,
+            evaluator_identity=evaluator_identity,
+            evidence=pair.evidence,
+        )
+    except MeasurementError as exc:
+        raise EvidenceIdentityMismatch(str(exc)) from exc
+    if measurement is None:
+        return _promotion_refusal(
+            reason_code="no_measured_improvement",
+            pair=pair,
+            before=before,
+            after=after,
+            evaluator_identity=evaluator_identity,
+            target_identity=target_identity,
+            scorer=make_scorer_taxonomy(
+                before,
+                after,
+                evaluator_identity=evaluator_identity,
+                target_identity=target_identity,
+            ),
+        )
+    measured_pair = replace(pair, measurement=measurement.to_dict())
+    observation = make_idiom_observation(measured_pair)
+    taxonomy = make_scorer_taxonomy(
+        before,
+        after,
+        evaluator_identity=evaluator_identity,
+        target_identity=target_identity,
+    )
+    support = tuple(
+        identity
+        for identity in (
+            pair.pair_hash,
+            target_object_hash,
+            target_checksum,
+            *measurement.evidence,
+        )
+        if identity
+    )
+    evidence = _make_corpus_evidence(
+        kind="draft_landed",
+        outcome="accepted",
+        recipient_id=pair.recipient_id,
+        compiler_identity=pair.compiler_identity,
+        tool_identity=pair.tool_identity,
+        target_identity=target_identity,
+        evaluator_identity=evaluator_identity,
+        config_identity=pair.config_identity,
+        scorer=taxonomy,
+        draft_landed=(measured_pair,),
+        idiom=observation,
+        support_identities=support,
+    )
+    return PromotionAccepted(observation=observation, evidence=evidence)
+
+
+def collect_recurring_first_divergence(
+    report: SearchPatternReport,
+    contexts: Sequence[CompletedLineageContext | CompletedLineageDiagnostic],
+    *,
+    min_independent_lineages: int = 2,
+) -> Tuple[CorpusEvidence, ...]:
+    """Extract recurring divergence evidence the completed contexts support.
+
+    A recommendation becomes corpus evidence only when every source ledger it
+    cites was loaded as a completed lineage context, the contexts agree with
+    the recommendation's exact identity tuple, and at least two independent
+    lineages contributed. A diagnostic ledger refuses the recommendation as
+    typed evidence with incomplete provenance instead of fabricating a
+    promotion-grade hypothesis.
+    """
+
+    if not isinstance(report, SearchPatternReport):
+        raise EvidenceIdentityMismatch(
+            "recurrence mining needs a typed search pattern report"
+        )
+    if isinstance(min_independent_lineages, bool) or not isinstance(
+        min_independent_lineages, int
+    ) or min_independent_lineages < 2:
+        raise EvidenceIdentityMismatch(
+            "min_independent_lineages must be at least two"
+        )
+    by_ledger: dict[str, CompletedLineageContext | CompletedLineageDiagnostic] = {}
+    for context in contexts:
+        if not isinstance(
+            context, (CompletedLineageContext, CompletedLineageDiagnostic)
+        ):
+            raise EvidenceIdentityMismatch(
+                "lineage contexts must be the typed context or diagnostic records"
+            )
+        by_ledger[context.ledger_identity] = context
+    entries: list[CorpusEvidence] = []
+    for recommendation in report.recommendations:
+        divergence_raw = recommendation.get("first_divergence")
+        if not divergence_raw:
+            continue
+        divergence = FirstDivergence.from_dict(divergence_raw)
+        source_ledgers = tuple(recommendation.get("source_ledgers", ()))
+        lineage_ids = tuple(recommendation.get("lineage_ids", ()))
+        common: dict[str, Any] = {
+            "recipient_id": recommendation.get("recipient_id"),
+            "compiler_identity": recommendation.get("compiler_identity"),
+            "tool_identity": recommendation.get("lane_tool_identity"),
+            "target_identity": recommendation.get("target_identity"),
+            "config_identity": recommendation.get("config_identity"),
+            "first_divergence": divergence,
+        }
+
+        def _entry(
+            *, outcome: str, reason_code: str | None, evaluator_identity: str | None
+        ) -> CorpusEvidence:
+            return _make_corpus_evidence(
+                kind="first_divergence",
+                outcome=outcome,
+                evaluator_identity=evaluator_identity,
+                support_identities=tuple(sorted(set(source_ledgers))),
+                reason_code=reason_code,
+                **common,
+            )
+
+        if any(ledger not in by_ledger for ledger in source_ledgers):
+            entries.append(
+                _entry(
+                    outcome="refused",
+                    reason_code="missing_lineage_context",
+                    evaluator_identity=None,
+                )
+            )
+            continue
+        diagnostics = [
+            by_ledger[ledger]
+            for ledger in source_ledgers
+            if isinstance(by_ledger[ledger], CompletedLineageDiagnostic)
+        ]
+        if diagnostics:
+            entries.append(
+                _entry(
+                    outcome="refused",
+                    reason_code=diagnostics[0].reason_code,
+                    evaluator_identity=None,
+                )
+            )
+            continue
+        contexts_for = [by_ledger[ledger] for ledger in source_ledgers]
+        incompatible = False
+        for context in contexts_for:
+            assert isinstance(context, CompletedLineageContext)
+            context_tool_identities = {
+                tool for _lane, tool in context.lane_tool_identities
+            }
+            context_target_pairs = set(context.recipient_target_identities)
+            if (
+                context.compiler_identity != recommendation.get("compiler_identity")
+                or context.config_identity != recommendation.get("config_identity")
+                or context.schema_identity != recommendation.get("schema_identity")
+                or recommendation.get("scorer_algorithm")
+                not in context.scorer_algorithms
+                or recommendation.get("lane_tool_identity")
+                not in context_tool_identities
+                or (
+                    recommendation.get("recipient_id"),
+                    recommendation.get("target_identity"),
+                )
+                not in context_target_pairs
+                or context.evaluator_identity != recommendation.get("evaluator_identity")
+            ):
+                incompatible = True
+                break
+        if incompatible:
+            entries.append(
+                _entry(
+                    outcome="refused",
+                    reason_code="incompatible_lineage_context",
+                    evaluator_identity=recommendation.get("evaluator_identity"),
+                )
+            )
+            continue
+        if len(set(source_ledgers)) < 2 or len(set(lineage_ids)) < min_independent_lineages:
+            continue
+        # The report artifact identity is bound into the support set so a
+        # recommendation can only support evidence through the verified
+        # report that carried it.
+        support = tuple(
+            sorted(
+                set(source_ledgers) | set(lineage_ids) | {report.artifact.content_hash}
+            )
+        )
+        entries.append(
+            _make_corpus_evidence(
+                kind="first_divergence",
+                outcome="positive",
+                evaluator_identity=recommendation.get("evaluator_identity"),
+                support_identities=support,
+                reason_code=None,
+                **common,
+            )
+        )
+    return tuple(entries)
+
+
 __all__ = [
     "CORPUS_GENERATION_PROTOCOL",
     "AbsenceMaskingClaim",
+    "CorpusEvidence",
     "CorpusGeneration",
     "EvidenceCorpusError",
     "EvidenceIdentityMismatch",
+    "EvidenceRefusalReceipt",
     "LessonCitation",
     "LessonCitationError",
+    "PromotionAccepted",
+    "PromotionRefused",
     "ScorerTaxonomy",
     "build_corpus_generation",
     "canonical_json",
+    "collect_recurring_first_divergence",
     "make_lesson_citation",
     "make_scorer_taxonomy",
+    "promote_draft_landed",
     "scorer_taxonomy_identity_payload",
     "verify_lesson_citation",
 ]

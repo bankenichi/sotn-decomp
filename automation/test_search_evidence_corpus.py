@@ -14,17 +14,29 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from automation.search_archive import ContentAddressedArchive
+from automation.compiler_idioms import DraftLandedObservation
 from automation.search_evidence_corpus import (
     AbsenceMaskingClaim,
+    CorpusEvidence,
     CorpusGeneration,
     EvidenceIdentityMismatch,
     LessonCitationError,
+    PromotionAccepted,
+    PromotionRefused,
     ScorerTaxonomy,
     build_corpus_generation,
+    collect_recurring_first_divergence,
     make_lesson_citation,
     make_scorer_taxonomy,
+    promote_draft_landed,
     scorer_taxonomy_identity_payload,
     verify_lesson_citation,
+)
+from automation.search_patterns import (
+    CompletedLineageContext,
+    CompletedLineageDiagnostic,
+    SearchPatternReport,
+    _report_payload,
 )
 from automation.search_supervisor import (
     EVALUATOR_TOOL_KEY,
@@ -41,10 +53,13 @@ from automation import search_run_factory as _factory
 from automation.search_types import (
     ArtifactRef,
     FirstDivergence,
+    GroupedPatch,
     LANES,
+    PatchHunk,
     ScoreComponents,
     ScoreVector,
     RunManifest,
+    canonical_bytes,
     hash_bytes,
     hash_canonical,
 )
@@ -688,6 +703,335 @@ class LessonCitationAndTaxonomyTests(unittest.TestCase):
                 taxonomy.evaluator_identity,
                 taxonomy.target_identity,
             )
+
+
+def fixture_pair() -> DraftLandedObservation:
+    """One provenance-proven draft-landed pair for promotion gating."""
+
+    draft_hash = digest("pair-draft")
+    landed_hash = digest("pair-landed")
+    draft = ArtifactRef(
+        draft_hash,
+        "artifacts/sources/" + draft_hash[7:] + ".c",
+        "text/x-c",
+        30,
+    )
+    landed = ArtifactRef(
+        landed_hash,
+        "artifacts/sources/" + landed_hash[7:] + ".c",
+        "text/x-c",
+        30,
+    )
+    hunk = PatchHunk(0, "return 0;\n", "return 1;\n", (), ())
+    patch_payload = {
+        "format": "line_context",
+        "base_source_hash": draft_hash,
+        "atomic": True,
+        "hunks": [hunk],
+    }
+    grouped_patch = GroupedPatch(
+        patch_id=hash_canonical(patch_payload),
+        format="line_context",
+        base_source_hash=draft_hash,
+        atomic=True,
+        hunks=(hunk,),
+    )
+    return DraftLandedObservation(
+        recipient_id="us:ST:fn",
+        draft=draft,
+        landed=landed,
+        landing_commit="a" * 40,
+        compiler_identity=digest("compiler"),
+        grouped_patches=(grouped_patch,),
+        evidence=("landing-commit-verified",),
+        tool_identity=digest("tool:cfg_dataflow"),
+    )
+
+
+def fixture_pattern_report(recommendation) -> SearchPatternReport:
+    """A content-addressed report carrying one fully bound recommendation."""
+
+    ledgers = tuple(sorted(set(recommendation["source_ledgers"])))
+    payload = _report_payload(ledgers, [recommendation])
+    report_id = hash_canonical(payload)
+    body = canonical_bytes(payload)
+    artifact = ArtifactRef(
+        hash_bytes(body),
+        "artifacts/pattern_reports/" + report_id[7:] + ".json",
+        "application/json",
+        len(body),
+    )
+    return SearchPatternReport(report_id, ledgers, (recommendation,), artifact)
+
+
+class PromotionAndRecurrenceTests(unittest.TestCase):
+    def test_promotion_requires_compiler_bound_improvement(self) -> None:
+        pair = fixture_pair()
+        before = fixture_score(total=14, compiler_identity=pair.compiler_identity)
+        after = fixture_score(total=7, compiler_identity=pair.compiler_identity)
+        accepted = promote_draft_landed(
+            pair,
+            before,
+            after,
+            evaluator_identity=digest("search-evaluator"),
+            target_identity=digest("target"),
+            target_object_hash=digest("target-object"),
+        )
+        self.assertIsInstance(accepted, PromotionAccepted)
+        assert isinstance(accepted, PromotionAccepted)
+        self.assertIs(accepted.observation.measurement["improved"], True)
+        # DraftLandedObservation.pair_hash covers the measurement, so the
+        # observation's supporting hash binds the measured pair while the
+        # original pre-measurement pair hash stays in evidence provenance.
+        self.assertIn(
+            replace(pair, measurement=dict(accepted.observation.measurement)).pair_hash,
+            accepted.observation.supporting_pair_hashes,
+        )
+        self.assertIn(pair.pair_hash, accepted.evidence.support_identities)
+        self.assertIsInstance(accepted.evidence, CorpusEvidence)
+        self.assertEqual(accepted.evidence.outcome, "accepted")
+        self.assertIsNotNone(accepted.evidence.scorer)
+        self.assertIsNotNone(accepted.evidence.idiom)
+
+    def test_worse_candidate_is_retained_as_negative_refusal_evidence(self) -> None:
+        pair = fixture_pair()
+        refused = promote_draft_landed(
+            pair,
+            fixture_score(total=7, compiler_identity=pair.compiler_identity),
+            fixture_score(total=14, compiler_identity=pair.compiler_identity),
+            evaluator_identity=digest("search-evaluator"),
+            target_identity=digest("target"),
+        )
+        self.assertIsInstance(refused, PromotionRefused)
+        assert isinstance(refused, PromotionRefused)
+        self.assertEqual(refused.receipt.reason_code, "no_measured_improvement")
+        self.assertEqual(refused.evidence.kind, "negative")
+        self.assertEqual(refused.evidence.outcome, "negative")
+        self.assertIsNone(refused.evidence.idiom)
+        self.assertIsNotNone(refused.evidence.scorer)
+
+    def test_compiler_and_scorer_mismatches_are_refused(self) -> None:
+        pair = fixture_pair()
+        with self.assertRaisesRegex(EvidenceIdentityMismatch, "score vector"):
+            promote_draft_landed(
+                pair,
+                "not-a-vector",
+                fixture_score(total=7, compiler_identity=pair.compiler_identity),
+                evaluator_identity=digest("search-evaluator"),
+                target_identity=digest("target"),
+            )
+        mismatched = promote_draft_landed(
+            pair,
+            fixture_score(total=14, compiler_identity=digest("other-compiler")),
+            fixture_score(total=7, compiler_identity=pair.compiler_identity),
+            evaluator_identity=digest("search-evaluator"),
+            target_identity=digest("target"),
+        )
+        self.assertIsInstance(mismatched, PromotionRefused)
+        self.assertEqual(mismatched.receipt.reason_code, "compiler_mismatch")
+        boundary = promote_draft_landed(
+            pair,
+            fixture_score(
+                total=14,
+                compiler_identity=pair.compiler_identity,
+                scorer_algorithm="levenshtein",
+            ),
+            fixture_score(total=7, compiler_identity=pair.compiler_identity),
+            evaluator_identity=digest("search-evaluator"),
+            target_identity=digest("target"),
+        )
+        self.assertIsInstance(boundary, PromotionRefused)
+        self.assertEqual(boundary.receipt.reason_code, "scorer_boundary_mismatch")
+
+    def test_recurring_first_divergence_needs_two_compatible_completed_lineages(self) -> None:
+        first = FirstDivergence(2, 3, "lw", "sw")
+        report = fixture_pattern_report(
+            {
+                "first_divergence": first.to_dict(),
+                "lineage_ids": ["run-a:task-a", "run-b:task-b"],
+                "source_ledgers": [digest("ledger-a"), digest("ledger-b")],
+                "scorer_algorithm": "difflib",
+                "compiler_identity": digest("compiler"),
+                "config_identity": digest("config"),
+                "schema_identity": digest("schema"),
+                "lane_tool_identity": digest("tool:cfg_dataflow"),
+                "recipient_id": "us:ST:fn",
+                "target_identity": digest("target:us:ST:fn"),
+                "evaluator_identity": digest("search-evaluator"),
+            }
+        )
+        contexts = (
+            CompletedLineageContext(
+                ledger_identity=digest("ledger-a"),
+                run_id="run-a",
+                compiler_identity=digest("compiler"),
+                config_identity=digest("config"),
+                schema_identity=digest("schema"),
+                scorer_algorithms=("difflib",),
+                lane_tool_identities=(
+                    ("cfg_dataflow", digest("tool:cfg_dataflow")),
+                ),
+                recipient_target_identities=(
+                    ("us:ST:fn", digest("target:us:ST:fn")),
+                ),
+                evaluator_identity=digest("search-evaluator"),
+            ),
+            CompletedLineageContext(
+                ledger_identity=digest("ledger-b"),
+                run_id="run-b",
+                compiler_identity=digest("compiler"),
+                config_identity=digest("config"),
+                schema_identity=digest("schema"),
+                scorer_algorithms=("difflib",),
+                lane_tool_identities=(
+                    ("cfg_dataflow", digest("tool:cfg_dataflow")),
+                ),
+                recipient_target_identities=(
+                    ("us:ST:fn", digest("target:us:ST:fn")),
+                ),
+                evaluator_identity=digest("search-evaluator"),
+            ),
+        )
+        entries = collect_recurring_first_divergence(report, contexts)
+        self.assertEqual(len(entries), 1)
+        self.assertEqual(entries[0].first_divergence, first)
+        self.assertIn(digest("ledger-a"), entries[0].support_identities)
+        self.assertIn(digest("ledger-b"), entries[0].support_identities)
+        self.assertIn(report.artifact.content_hash, entries[0].support_identities)
+        self.assertEqual(entries[0].tool_identity, digest("tool:cfg_dataflow"))
+        self.assertEqual(entries[0].target_identity, digest("target:us:ST:fn"))
+        self.assertEqual(
+            entries[0].evaluator_identity, digest("search-evaluator")
+        )
+
+    def test_missing_evaluator_lineage_is_typed_refusal(self) -> None:
+        first = FirstDivergence(2, 3, "lw", "sw")
+        report = fixture_pattern_report(
+            {
+                "first_divergence": first.to_dict(),
+                "lineage_ids": ["run-a:task-a", "run-b:task-b"],
+                "source_ledgers": [digest("ledger-a"), digest("ledger-b")],
+                "scorer_algorithm": "difflib",
+                "compiler_identity": digest("compiler"),
+                "config_identity": digest("config"),
+                "schema_identity": digest("schema"),
+                "lane_tool_identity": digest("tool:cfg_dataflow"),
+                "recipient_id": "us:ST:fn",
+                "target_identity": digest("target:us:ST:fn"),
+                "evaluator_identity": digest("search-evaluator"),
+            }
+        )
+        diagnostic = CompletedLineageDiagnostic(
+            ledger_identity=digest("ledger-a"),
+            run_id="run-a",
+            reason_code="missing_evaluator_identity",
+            # R15 canonical form: observed identities are sorted and unique.
+            observed_identities=tuple(
+                sorted(
+                    (
+                        digest("compiler"),
+                        digest("config"),
+                        digest("schema"),
+                        digest("tool:cfg_dataflow"),
+                        digest("target:us:ST:fn"),
+                    )
+                )
+            ),
+        )
+        context = CompletedLineageContext(
+            ledger_identity=digest("ledger-b"),
+            run_id="run-b",
+            compiler_identity=digest("compiler"),
+            config_identity=digest("config"),
+            schema_identity=digest("schema"),
+            scorer_algorithms=("difflib",),
+            lane_tool_identities=(("cfg_dataflow", digest("tool:cfg_dataflow")),),
+            recipient_target_identities=(("us:ST:fn", digest("target:us:ST:fn")),),
+            evaluator_identity=digest("search-evaluator"),
+        )
+        entries = collect_recurring_first_divergence(report, (diagnostic, context))
+        self.assertEqual(len(entries), 1)
+        self.assertEqual(entries[0].outcome, "refused")
+        self.assertEqual(entries[0].reason_code, "missing_evaluator_identity")
+        self.assertEqual(entries[0].first_divergence, first)
+        self.assertEqual(entries[0].tool_identity, digest("tool:cfg_dataflow"))
+        self.assertEqual(entries[0].target_identity, digest("target:us:ST:fn"))
+        self.assertIsNone(entries[0].evaluator_identity)
+
+    def test_single_lineage_recommendation_produces_no_positive_entry(self) -> None:
+        report = fixture_pattern_report(
+            {
+                "first_divergence": FirstDivergence(1, 2, "lw", "sw").to_dict(),
+                "lineage_ids": ["run-a:task-a"],
+                "source_ledgers": [digest("ledger-a")],
+                "scorer_algorithm": "difflib",
+                "compiler_identity": digest("compiler"),
+                "config_identity": digest("config"),
+                "schema_identity": digest("schema"),
+                "lane_tool_identity": digest("tool:cfg_dataflow"),
+                "recipient_id": "us:ST:fn",
+                "target_identity": digest("target:us:ST:fn"),
+                "evaluator_identity": digest("search-evaluator"),
+            }
+        )
+        context = CompletedLineageContext(
+            ledger_identity=digest("ledger-a"),
+            run_id="run-a",
+            compiler_identity=digest("compiler"),
+            config_identity=digest("config"),
+            schema_identity=digest("schema"),
+            scorer_algorithms=("difflib",),
+            lane_tool_identities=(("cfg_dataflow", digest("tool:cfg_dataflow")),),
+            recipient_target_identities=(("us:ST:fn", digest("target:us:ST:fn")),),
+            evaluator_identity=digest("search-evaluator"),
+        )
+        self.assertEqual(collect_recurring_first_divergence(report, (context,)), ())
+
+    def test_incompatible_lineage_context_is_typed_refusal(self) -> None:
+        report = fixture_pattern_report(
+            {
+                "first_divergence": FirstDivergence(1, 2, "lw", "sw").to_dict(),
+                "lineage_ids": ["run-a:task-a", "run-b:task-b"],
+                "source_ledgers": [digest("ledger-a"), digest("ledger-b")],
+                "scorer_algorithm": "difflib",
+                "compiler_identity": digest("compiler"),
+                "config_identity": digest("config"),
+                "schema_identity": digest("schema"),
+                "lane_tool_identity": digest("tool:cfg_dataflow"),
+                "recipient_id": "us:ST:fn",
+                "target_identity": digest("target:us:ST:fn"),
+                "evaluator_identity": digest("search-evaluator"),
+            }
+        )
+        mismatched = CompletedLineageContext(
+            ledger_identity=digest("ledger-a"),
+            run_id="run-a",
+            compiler_identity=digest("other-compiler"),
+            config_identity=digest("config"),
+            schema_identity=digest("schema"),
+            scorer_algorithms=("difflib",),
+            lane_tool_identities=(("cfg_dataflow", digest("tool:cfg_dataflow")),),
+            recipient_target_identities=(("us:ST:fn", digest("target:us:ST:fn")),),
+            evaluator_identity=digest("search-evaluator"),
+        )
+        compatible = CompletedLineageContext(
+            ledger_identity=digest("ledger-b"),
+            run_id="run-b",
+            compiler_identity=digest("compiler"),
+            config_identity=digest("config"),
+            schema_identity=digest("schema"),
+            scorer_algorithms=("difflib",),
+            lane_tool_identities=(("cfg_dataflow", digest("tool:cfg_dataflow")),),
+            recipient_target_identities=(("us:ST:fn", digest("target:us:ST:fn")),),
+            evaluator_identity=digest("search-evaluator"),
+        )
+        entries = collect_recurring_first_divergence(report, (mismatched, compatible))
+        self.assertEqual(len(entries), 1)
+        self.assertEqual(entries[0].outcome, "refused")
+        self.assertEqual(entries[0].reason_code, "incompatible_lineage_context")
+        self.assertEqual(
+            entries[0].evaluator_identity, digest("search-evaluator")
+        )
 
 
 if __name__ == "__main__":

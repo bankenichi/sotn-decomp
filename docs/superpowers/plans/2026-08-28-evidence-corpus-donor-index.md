@@ -757,7 +757,7 @@ Expected result: the focused pattern suite passes, active and partial sources fa
 - Consumes: `DraftLandedObservation`, `make_idiom_observation`, `measure_improvement`, `CompilerIdiomObservation`, `ScorerTaxonomy`, `SearchPatternReport`, and `CompletedLineageContext`.
 - Produces: `promote_draft_landed(...)`, `PromotionAccepted`, `PromotionRefused`, `EvidenceRefusalReceipt`, `CorpusEvidence`, and `collect_recurring_first_divergence(...)`.
 
-- [ ] **Step 1: Write refusal-first promotion and recurrence tests.** The accepted branch must prove the same compiler and scorer on both vectors and must retain the pair hash, grouped patch, evaluator, target, and measurement. The rejected branch becomes negative evidence rather than an idiom.
+- [x] **Step 1: Write refusal-first promotion and recurrence tests.** The accepted branch must prove the same compiler and scorer on both vectors and must retain the pair hash, grouped patch, evaluator, target, and measurement. The rejected branch becomes negative evidence rather than an idiom.
 
 ```python
 def test_promotion_requires_compiler_bound_improvement():
@@ -885,7 +885,7 @@ def test_missing_evaluator_lineage_is_typed_refusal():
     assert entries[0].evaluator_identity is None
 ```
 
-- [ ] **Step 2: Run the promotion failure.**
+- [x] **Step 2: Run the promotion failure.**
 
 ```text
 sotn-cmd run_automation run_selftests.py --only test_search_evidence_corpus.py --jobs 1
@@ -893,7 +893,7 @@ sotn-cmd run_automation run_selftests.py --only test_search_evidence_corpus.py -
 
 Expected result before implementation: the suite fails because `promote_draft_landed` and `collect_recurring_first_divergence` are absent.
 
-- [ ] **Step 3: Implement promotion and recurrence.** For promotion, require recipient, draft, landed, full landing commit, patch, compiler, scorer, evaluator, target, and artifact identities from the existing observation. Call `measure_improvement` exactly once with the same before and after scorer boundary, replace the pair measurement with that result, and call `make_idiom_observation` only on a proven improvement or exact target object. On mismatch or no improvement, emit an `EvidenceRefusalReceipt` and a negative `CorpusEvidence` entry. For recurrence, accept only recommendation source ledgers present in the completed contexts, at least two distinct ledger and lineage identities, and one compatible tuple of compiler, config, schema, scorer algorithm, exact lane tool, recipient, target, and evaluator identities. Bind the report artifact identity to the resulting support set and retain target, lane-tool, evaluator, `FirstDivergence`, ledger, and lineage provenance on every positive entry. A `CompletedLineageDiagnostic`, including `missing_evaluator_identity`, yields typed refusal evidence with any observed target and tool provenance, never a promotion-grade hypothesis. Incompatible runs are separated before aggregation rather than combined under a partial key.
+- [x] **Step 3: Implement promotion and recurrence.** For promotion, require recipient, draft, landed, full landing commit, patch, compiler, scorer, evaluator, target, and artifact identities from the existing observation. Call `measure_improvement` exactly once with the same before and after scorer boundary, replace the pair measurement with that result, and call `make_idiom_observation` only on a proven improvement or exact target object. On mismatch or no improvement, emit an `EvidenceRefusalReceipt` and a negative `CorpusEvidence` entry. For recurrence, accept only recommendation source ledgers present in the completed contexts, at least two distinct ledger and lineage identities, and one compatible tuple of compiler, config, schema, scorer algorithm, exact lane tool, recipient, target, and evaluator identities. Bind the report artifact identity to the resulting support set and retain target, lane-tool, evaluator, `FirstDivergence`, ledger, and lineage provenance on every positive entry. A `CompletedLineageDiagnostic`, including `missing_evaluator_identity`, yields typed refusal evidence with any observed target and tool provenance, never a promotion-grade hypothesis. Incompatible runs are separated before aggregation rather than combined under a partial key.
 
 ```python
 measurement = measure_improvement(
@@ -910,7 +910,7 @@ measured_pair = replace(pair, measurement=measurement.to_dict())
 observation = make_idiom_observation(measured_pair)
 ```
 
-- [ ] **Step 4: Run the promotion and recurrence tests.**
+- [x] **Step 4: Run the promotion and recurrence tests.**
 
 ```text
 sotn-cmd run_automation run_selftests.py --only test_search_evidence_corpus.py --jobs 1
@@ -918,7 +918,7 @@ sotn-cmd run_automation run_selftests.py --only test_search_evidence_corpus.py -
 
 Expected result: the focused suite passes, one incompatible or single-lineage recommendation produces no positive corpus entry, and accepted observations retain exact pair and measurement identities.
 
-- [ ] **Step 5: Stop for the root-only commit boundary.** Root may commit only `automation/search_evidence_corpus.py` and `automation/test_search_evidence_corpus.py` with message `feat: gate compiler evidence promotion`. The worker does not invoke a compiler, build, queue writer, or source writer.
+- [x] **Step 5: Stop for the root-only commit boundary.** Root may commit only `automation/search_evidence_corpus.py` and `automation/test_search_evidence_corpus.py` with message `feat: gate compiler evidence promotion`. The worker does not invoke a compiler, build, queue writer, or source writer.
 
 ### Task 4: Publish one immutable evidence-corpus generation
 
