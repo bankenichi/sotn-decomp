@@ -880,6 +880,9 @@ AUTOMATION_SCRIPTS = {
     # Keep this comment free of parentheses: the doc drift check parses this
     # set literal with a non-greedy match that stops at the first one.
     "test_search_evidence_corpus.py",
+    # The focused donor index suite, corpus plan Task 5. The library module
+    # itself stays unlisted: it is a pure import, not an action.
+    "test_search_donor_index.py",
     "test_build_attribution.py",
     "escalation_triage.py",
     "deferred_triage.py",

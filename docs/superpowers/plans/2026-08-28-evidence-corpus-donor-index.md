@@ -1018,7 +1018,7 @@ Expected result: the focused suite passes with identical replay IDs, preserved n
 - Consumes: the canonical `IntegrationGateReceipt`, existing `DonorEvidence`, `ArtifactRef`, `ContentAddressedArchive`, `validate_commit_identity`, `reject_unsafe_semantic_constant`, and exactly one `scan_revision(revision)` call for each pinned revision.
 - Produces: `DonorRevision`, `DonorIndexBinding`, `DonorIndexEntry`, `DonorIndexGeneration`, `make_donor_binding`, and `build_donor_index`.
 
-- [ ] **Step 1: Write the failing generation and identity-change tests.** Use an archive-owned source artifact for each version and a scanner that records invocation counts. Donor records carry `source=ArtifactRef`, `body=None`, symbols and signatures, declarations, and safe semantic constants.
+- [x] **Step 1: Write the failing generation and identity-change tests.** Use an archive-owned source artifact for each version and a scanner that records invocation counts. Donor records carry `source=ArtifactRef`, `body=None`, symbols and signatures, declarations, and safe semantic constants.
 
 ```python
 def test_generation_scans_each_pinned_version_once(tmp_path):
@@ -1069,7 +1069,7 @@ def test_changed_bound_identity_requires_new_generation(tmp_path):
     assert index_a.artifact.content_hash != index_b.artifact.content_hash
 ```
 
-- [ ] **Step 2: Run the donor-generation failure.**
+- [x] **Step 2: Run the donor-generation failure.**
 
 ```text
 sotn-cmd run_automation run_selftests.py --only test_search_donor_index.py --jobs 1
@@ -1077,7 +1077,7 @@ sotn-cmd run_automation run_selftests.py --only test_search_donor_index.py --job
 
 Expected result before implementation: the focused module fails during import because `automation.search_donor_index` and `DonorIndexGeneration` do not exist.
 
-- [ ] **Step 3: Implement revision and entry validation.** Normalize version labels to `("us", "hd", "pspeu", "saturn")`, require one unique full 40- or 64-hex revision per label, and compute `revision_set_identity` from the complete ordered version, full revision, and source artifact set. Require the canonical gate identity and complete gate binding, plus every indexer, indexer-source, configuration, signature, schema, and ordinal identity. For each scanner result require matching version and revision object, an `ArtifactRef` source verified by `archive.verify`, no body bytes, no forbidden metadata keys `bytes`, `registers`, `relocations`, or `branch_displacements`, and safe constants through `reject_unsafe_semantic_constant`. Compute `entry_id` and semantic `claim_identity` from the exact payloads defined in Shared Exact Interfaces. Store provenance on the immutable `DonorIndexEntry.revision`, never in or over a scanner `DonorEvidence.metadata` mapping. Call the scanner directly once per revision and propagate its internal exceptions without arity retries.
+- [x] **Step 3: Implement revision and entry validation.** Normalize version labels to `("us", "hd", "pspeu", "saturn")`, require one unique full 40- or 64-hex revision per label, and compute `revision_set_identity` from the complete ordered version, full revision, and source artifact set. Require the canonical gate identity and complete gate binding, plus every indexer, indexer-source, configuration, signature, schema, and ordinal identity. For each scanner result require matching version and revision object, an `ArtifactRef` source verified by `archive.verify`, no body bytes, no forbidden metadata keys `bytes`, `registers`, `relocations`, or `branch_displacements`, and safe constants through `reject_unsafe_semantic_constant`. Compute `entry_id` and semantic `claim_identity` from the exact payloads defined in Shared Exact Interfaces. Store provenance on the immutable `DonorIndexEntry.revision`, never in or over a scanner `DonorEvidence.metadata` mapping. Call the scanner directly once per revision and propagate its internal exceptions without arity retries.
 
 ```python
 ordered_revisions = tuple(sorted(revisions, key=lambda item: DONOR_VERSIONS.index(item.version)))
@@ -1094,7 +1094,7 @@ for revision in ordered_revisions:
         records.append(DonorIndexEntry.from_evidence(revision, evidence))
 ```
 
-- [ ] **Step 4: Publish and replay the donor generation.** Sort entries by immutable `entry_id`, put a canonical payload under `donor_indexes` containing the complete integration receipt and flattened gate fields, every pinned revision and source artifact, indexer/config/signature/schema/ordinal binding, and every entry's immutable revision provenance, verify the artifact hash equals `generation_id`, and preserve the old generation when any binding changes.
+- [x] **Step 4: Publish and replay the donor generation.** Sort entries by immutable `entry_id`, put a canonical payload under `donor_indexes` containing the complete integration receipt and flattened gate fields, every pinned revision and source artifact, indexer/config/signature/schema/ordinal binding, and every entry's immutable revision provenance, verify the artifact hash equals `generation_id`, and preserve the old generation when any binding changes.
 
 ```text
 sotn-cmd run_automation run_selftests.py --only test_search_donor_index.py --jobs 1
@@ -1102,7 +1102,7 @@ sotn-cmd run_automation run_selftests.py --only test_search_donor_index.py --job
 
 Expected result: the focused suite passes, reversed revision input is canonicalized, all four versions are represented once, and changed receipt, manifest artifact, subset, queue evidence, selected lanes, coordinator, connector, revision, source artifact, indexer, indexer-source, configuration, signature, schema, or ordinal identities produce a distinct immutable generation.
 
-- [ ] **Step 5: Stop for the root-only commit boundary.** Root may commit only `automation/search_donor_index.py` and `automation/test_search_donor_index.py` with message `feat: publish immutable four-version donor index`. The worker does not fetch, checkout, vendor, build, or modify any donor source.
+- [x] **Step 5: Stop for the root-only commit boundary.** Root may commit only `automation/search_donor_index.py` and `automation/test_search_donor_index.py` with message `feat: publish immutable four-version donor index`. The worker does not fetch, checkout, vendor, build, or modify any donor source.
 
 ### Task 6: Add bounded deterministic donor queries and typed receipts
 

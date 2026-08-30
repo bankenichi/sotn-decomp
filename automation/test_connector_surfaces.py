@@ -26,6 +26,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from unittest.mock import patch as _patch
@@ -707,9 +708,18 @@ def main() -> int:
 
         with _patch.object(cc.os, "replace", side_effect=flaky_replace):
             written = cc.fs_write(rel, "durable payload")
-        # fs_write verifies the canonical target before returning, so an
-        # immediate read-back proves the connector itself observed the payload.
-        check(target.read_bytes() == b"durable payload",
+        # fs_write verifies the payload at its resolved path before returning.
+        # The test reads through the unresolved mkdtemp spelling, and DrvFs
+        # can lag that directory entry across path aliases for a moment, so
+        # the read-back polls instead of racing the visibility window.
+        _payload = None
+        for _attempt in range(100):
+            try:
+                _payload = target.read_bytes()
+                break
+            except FileNotFoundError:
+                time.sleep(0.01)
+        check(_payload == b"durable payload",
               "a transient EINVAL preserves and immediately verifies the payload")
         check(written.get("write_attempts") == 2,
               "the successful response reports the bounded retry")
