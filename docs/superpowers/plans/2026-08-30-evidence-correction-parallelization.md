@@ -504,7 +504,7 @@ No registration change was required. `run_selftests.py` discovers both new
 `test_*.py` suites, while the imported query and adapter modules remain pure
 libraries rather than connector actions.
 
-- [ ] **Step 3: Run one final focused matrix and one consolidated suite**
+- [x] **Step 3: Run one final focused matrix and one consolidated suite**
 
 Run after the final automation edit, without repetition:
 
@@ -513,9 +513,19 @@ run_selftests.py --only test_search_supervisor.py --only test_search_evidence_co
 run_selftests.py --jobs 8
 ```
 
-- [ ] **Step 4: Update documentation and roadmap surgically**
+- [x] **Step 4: Update documentation and roadmap surgically**
 
 Record actual outcomes, supersede stale signatures and findings explicitly, preserve historical failure evidence, and run the living-document generator only on an otherwise clean relevant tree.
+
+Accepted outcome: the seven-suite focused matrix passed in two disjoint jobs
+because the connector caps generic argument vectors at 12 tokens. Job
+`run_automation-200421-12520` passed 4/4 and job
+`run_automation-200434-12520` passed 3/3 with no repeated suite. The first
+consolidated run exposed exactly two integration defects, managed-document
+drift and the two new executable suites missing from the connector allowlist.
+Both were corrected mechanically. Commit `a866e5d556135af021ce3d6019606c379418bdca`
+contains the reviewed implementation and the clean-tree generated document
+sync. Final consolidated job `run_automation-201332-12520` then passed 86/86.
 
 - [ ] **Step 5: Commit with explicit paths and perform the mandatory fresh pre-push gate**
 
