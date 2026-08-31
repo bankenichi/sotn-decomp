@@ -862,7 +862,7 @@ def validate_integration_gate(
     receipt: Any,
     *,
     archive: ContentAddressedArchive,
-) -> None:
+) -> RunManifest:
     """Canonical validator for one archived integration receipt.
 
     Refuses anything that is not a typed receipt whose archived artifact
@@ -947,6 +947,7 @@ def validate_integration_gate(
         raise IntegrationGateError(
             "integration gate terminal proof differs from recovered run"
         )
+    return manifest
 
 
 def load_integration_gate(

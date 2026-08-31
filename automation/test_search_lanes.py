@@ -18,6 +18,7 @@ from automation.search_lanes import (
     DETERMINISTIC_LANES,
     AdapterSignatureError,
     CandidateIdentityMismatch,
+    DonorEvidence,
     LaneError,
     LaneAdapters,
     LaneReceiptProposal,
@@ -819,6 +820,26 @@ class TestSearchLanes(unittest.TestCase):
                 hash_bytes(donor["body"].encode("utf-8")),
             )
 
+    def test_indexed_candidate_mapping_uses_ordinary_discovery_normalization(self) -> None:
+        manifest = make_manifest("record-1")
+        batch = run_lane(
+            manifest,
+            "multi_donor",
+            {"record-1": recipient()},
+            adapters={
+                "multi_donor": lambda _item: {
+                    "candidates": [{"body": BODY}],
+                    "completion_reason": "matched_pending_oracle",
+                }
+            },
+        )
+        self.assertEqual(len(batch.candidates), 1)
+        self.assertEqual(batch[0].candidates[0].source, BODY)
+        self.assertEqual(
+            batch[0].receipt.completion_reason,
+            "matched_pending_oracle",
+        )
+
     def test_donor_ordering_is_stable_and_exactly_deduplicated(self) -> None:
         path = Path(__file__).resolve().parent / "fixtures" / "search" / "multi-donor.json"
         donors = json.loads(path.read_text(encoding="utf-8"))
@@ -839,6 +860,64 @@ class TestSearchLanes(unittest.TestCase):
             len([item for item in batch[0].provenance if item.get("kind") == "semantic_donor"]),
             4,
         )
+
+    def test_donor_evidence_deep_freezes_nested_json_and_thaws_independently(self) -> None:
+        declarations = {"return": {"types": ["int"]}}
+        constants = {"literals": [{"value": 4}]}
+        metadata = {"scanner": {"tags": ["semantic"]}}
+        evidence = DonorEvidence(
+            donor_id="donor-deep-freeze",
+            recipient_id="record-1",
+            version="v1",
+            source="corpus/deep-freeze.c",
+            match_kind="symbol",
+            signature="deep-freeze-sig",
+            symbol="func_lane",
+            declarations=declarations,
+            constants=constants,
+            metadata=metadata,
+        )
+
+        # Mutating the caller's containers after construction cannot alter the
+        # frozen evidence retained by an index entry.
+        declarations["return"]["types"].append("void")
+        constants["literals"][0]["value"] = 9
+        metadata["scanner"]["tags"].append("forged")
+        first = evidence.to_dict()
+
+        # Each serialization is a fresh mutable JSON tree, not a view onto
+        # the frozen nested containers or onto another serialization.
+        first["declarations"]["return"]["types"].append("char")
+        first["constants"]["literals"][0]["value"] = 10
+        second = evidence.to_dict()
+        self.assertEqual(second["declarations"], {"return": {"types": ["int"]}})
+        self.assertEqual(second["constants"], {"literals": [{"value": 4}]})
+        self.assertEqual(second["metadata"], {"scanner": {"tags": ["semantic"]}})
+
+    def test_donor_structural_differences_require_an_explicit_sequence(self) -> None:
+        common = dict(
+            donor_id="donor-differences",
+            recipient_id="record-1",
+            version="v1",
+            source="corpus/differences.c",
+            match_kind="symbol",
+            signature="differences-sig",
+            symbol="func_lane",
+        )
+        for invalid in ("abc", b"abc", {"difference": "x"}, 0, None, ""):
+            with self.subTest(value=invalid):
+                with self.assertRaises(LaneError):
+                    DonorEvidence(
+                        **common,
+                        structural_differences=invalid,
+                    )
+        for valid in (("return type", "calling convention"), ["return type"]):
+            with self.subTest(value=valid):
+                evidence = DonorEvidence(
+                    **common,
+                    structural_differences=valid,
+                )
+                self.assertEqual(evidence.structural_differences, tuple(valid))
 
     def test_unsafe_register_and_branch_values_are_refused(self) -> None:
         self.assertFalse(is_safe_semantic_constant("$t0"))

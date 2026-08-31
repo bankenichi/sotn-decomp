@@ -139,6 +139,44 @@ class ImmutableReferenceError(LaneError):
     """An upstream reference was not resolved to an immutable identity."""
 
 
+def _freeze_donor_json(value: Any, label: str) -> Any:
+    """Deep-freeze one JSON-shaped donor value.
+
+    Donor evidence crosses the index boundary and is retained by immutable
+    generation records.  Freezing only the outer mapping leaves nested lists
+    and mappings as caller-owned mutable aliases, which can change the
+    serialized evidence after its content identity was computed.
+    """
+
+    if isinstance(value, Mapping):
+        if any(not isinstance(key, str) for key in value):
+            raise LaneError(f"{label} mapping keys must be strings")
+        return MappingProxyType(
+            {
+                key: _freeze_donor_json(item, f"{label}.{key}")
+                for key, item in value.items()
+            }
+        )
+    if isinstance(value, (list, tuple)):
+        return tuple(
+            _freeze_donor_json(item, f"{label}[{index}]")
+            for index, item in enumerate(value)
+        )
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    raise LaneError(f"{label} must contain JSON-compatible values")
+
+
+def _thaw_donor_json(value: Any) -> Any:
+    """Return an independent mutable JSON copy of frozen donor evidence."""
+
+    if isinstance(value, Mapping):
+        return {key: _thaw_donor_json(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_thaw_donor_json(item) for item in value]
+    return value
+
+
 @dataclass(frozen=True)
 class Recipient:
     """The queue identity and read-only metadata needed by one lane."""
@@ -764,13 +802,27 @@ class DonorEvidence:
             raise LaneError("donor source must be a path or ArtifactRef")
         if self.body is not None and not isinstance(self.body, str):
             raise LaneError("donor body must be text or null")
-        object.__setattr__(self, "declarations", MappingProxyType(dict(self.declarations)))
-        object.__setattr__(self, "constants", MappingProxyType(dict(self.constants)))
-        differences = tuple(self.structural_differences)
+        for name, value in (
+            ("declarations", self.declarations),
+            ("constants", self.constants),
+            ("metadata", self.metadata),
+        ):
+            if not isinstance(value, Mapping):
+                raise LaneError(f"donor {name} must be a mapping")
+            object.__setattr__(
+                self,
+                name,
+                _freeze_donor_json(value, f"donor {name}"),
+            )
+        if not isinstance(self.structural_differences, (tuple, list)):
+            raise LaneError("donor structural differences must be a tuple or list")
+        try:
+            differences = tuple(self.structural_differences)
+        except (TypeError, ValueError) as exc:
+            raise LaneError("donor structural differences must be a sequence") from exc
         if any(not isinstance(item, str) for item in differences):
             raise LaneError("donor structural differences must be strings")
         object.__setattr__(self, "structural_differences", differences)
-        object.__setattr__(self, "metadata", MappingProxyType(dict(self.metadata)))
 
     @property
     def source_path(self) -> str:
@@ -809,11 +861,11 @@ class DonorEvidence:
             "instruction_signature": self.instruction_signature,
             "cfg_signature": self.cfg_signature,
             "dataflow_signature": self.dataflow_signature,
-            "declarations": dict(self.declarations),
-            "constants": dict(self.constants),
+            "declarations": _thaw_donor_json(self.declarations),
+            "constants": _thaw_donor_json(self.constants),
             "structural_differences": list(self.structural_differences),
             "compatible": self.compatible,
-            "metadata": dict(self.metadata),
+            "metadata": _thaw_donor_json(self.metadata),
         }
 
 
@@ -3635,6 +3687,14 @@ def _dispatch(
         if lane == "mipsmatch_exact":
             return _mipsmatch_discovery(
                 recipient, options=options, root=root, callback=lambda _r: raw
+            )
+        if (
+            lane in {"multi_donor", "cfg_dataflow"}
+            and isinstance(raw, Mapping)
+            and "candidates" in raw
+        ):
+            return _discovery_from_values(
+                raw, lane=lane, recipient=recipient, root=root
             )
         if lane in {"multi_donor", "cfg_dataflow"}:
             if isinstance(raw, Mapping) and "donors" in raw:

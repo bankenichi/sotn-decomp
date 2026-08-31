@@ -1323,6 +1323,20 @@ class IntegrationGateReceiptTests(unittest.TestCase):
             # The validator is idempotent for a verified receipt.
             validate_integration_gate(receipt, archive=archive)
 
+    def test_validator_returns_the_exact_archived_manifest(self):
+        with tempfile.TemporaryDirectory() as directory:
+            archive = ContentAddressedArchive(Path(directory) / "archive")
+            receipt = _factory_gate(archive)
+            expected = RunManifest.from_dict(
+                json.loads((archive.run_root / "manifest.json").read_text())
+            )
+
+            verified = validate_integration_gate(receipt, archive=archive)
+
+            self.assertIsInstance(verified, RunManifest)
+            self.assertEqual(verified, expected)
+            self.assertEqual(verified.to_dict(), expected.to_dict())
+
     def test_factory_multi_record_completion_is_consumable_as_completed_ledger(self):
         with tempfile.TemporaryDirectory() as directory:
             archive = ContentAddressedArchive(Path(directory) / "archive")

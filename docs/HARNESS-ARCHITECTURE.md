@@ -18,7 +18,7 @@ in each case so you can tell a deliberate choice from an accident.
 | Decompiled | **94.1%**, 8180/8730 functions; 550 US `INCLUDE_ASM` stubs remain |
 | Queue | 983 records: 433 matched, 380 todo, 123 escalated, 41 deferred, 6 near |
 | Provenance | upstream-harvest 55, shim-segment 9, shim-header 55, transplant 135, twin-port 31, permuter 18, claude-manual 6, model-fleet 58, unknown 66 |
-| Automation | 122 modules, 48 suites plus 36 module self-tests, 97 tools, 88 diagnostics |
+| Automation | 126 modules, 50 suites plus 36 module self-tests, 97 tools, 90 diagnostics |
 
 This block is regenerated from the same queue, checksum manifest, linker maps, provenance classifier, and connector inventory as `README.md`.
 <!-- LIVE-STATUS:END -->
@@ -538,6 +538,35 @@ complete receipt payload in every generation they build.
 for evaluator and scorer provenance and is deliberately distinct from the
 `full_oracle` landing authority, which cannot satisfy evaluator provenance.
 Focused coverage lives in `automation/test_search_supervisor.py`.
+
+The evidence layer above that gate is also content addressed. The corpus keeps
+typed lesson citations, measured scorer taxonomy, accepted and refused
+draft-landed idioms, and recurring first-divergence observations. A
+`CorpusEvidence` identity covers its protocol, discriminated payload, scorer
+and lineage context, nested refusal receipt when present, and mechanically
+derived support identities. `CorpusGeneration` stores validated typed entries,
+the exact gate binding and canonical artifact metadata, so replay cannot depend
+on a caller remembering to repeat nested provenance.
+
+The donor side freezes one revision per configured version and scans each
+revision once into `DonorIndexGeneration`. Generation is authorized by the
+same archived integration gate and binds the verified manifest compiler,
+configuration, lane tools, revisions and immutable donor evidence. Public
+queries do not trust an in-memory generation by itself. `bind_donor_query`
+first verifies the generation artifact and gate archives, compares the caller's
+expected binding, and then returns a pure read-only query closure. Results are
+typed as matched, empty, incompatible, ambiguous or stale and retain the exact
+query, generation artifact, hits and refusal receipt needed for deterministic
+replay.
+
+`automation/search_indexed_lane.py` is the isolation boundary between those
+queries and ordinary lanes. It binds archive verification once per adapter,
+creates one typed query per recipient, and gives a target renderer only
+version-independent `DonorSemanticClaim` values. Donor source paths, bodies,
+versions, revisions and metadata remain outside the renderer. The adapter
+returns ordinary lane discovery mappings, so existing subset enforcement,
+candidate identity validation, receipts, coordinator durability and recovery
+continue to apply without a second execution path.
 
 ---
 

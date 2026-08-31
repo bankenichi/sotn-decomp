@@ -593,6 +593,13 @@ def main() -> int:
     check(set(cc.AUTOMATION_MUTATORS) <= set(cc.AUTOMATION_SCRIPTS),
           "every privileged writer is also explicitly allowlisted")
 
+    check("test_search_donor_query.py" in cc.AUTOMATION_SCRIPTS and
+          "test_search_indexed_lane.py" in cc.AUTOMATION_SCRIPTS,
+          "the donor-query and indexed-lane suites are explicitly allowlisted")
+    check("search_donor_query.py" not in cc.AUTOMATION_SCRIPTS and
+          "search_indexed_lane.py" not in cc.AUTOMATION_SCRIPTS,
+          "the donor-query and indexed-lane libraries remain unlisted")
+
     print("\nautomation scripts have real command-line entry points")
     _no_entrypoint = []
     for _script_name in sorted(cc.AUTOMATION_SCRIPTS):

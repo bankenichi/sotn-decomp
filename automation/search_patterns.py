@@ -10,6 +10,7 @@ be handed to a later run without changing the run that produced the evidence.
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
 from collections import defaultdict
@@ -181,6 +182,37 @@ class SearchPatternReport:
         recommendations = tuple(_freeze(item, "recommendation") for item in self.recommendations)
         if any(not isinstance(item, Mapping) for item in recommendations):
             raise PatternInputError("recommendations must be objects")
+        for item in recommendations:
+            validate_search_recommendation(item)
+            if not set(item["source_ledgers"]).issubset(source_ledgers):
+                raise PatternIdentityMismatch(
+                    "a recommendation cites a source ledger outside the report"
+                )
+        pattern_ids = [item["pattern_id"] for item in recommendations]
+        if len(set(pattern_ids)) != len(pattern_ids):
+            raise PatternIdentityMismatch(
+                "report recommendations contain duplicate pattern ids"
+            )
+        # The production ranking order is part of the report's meaning: a
+        # self-consistent but reordered recommendation set must not acquire
+        # a valid report identity.
+        ranked_ids = [
+            item["pattern_id"]
+            for item in sorted(
+                recommendations,
+                key=lambda item: (
+                    -int(item["successes"]),
+                    -float(item["success_rate"]),
+                    -int(item["sample_count"]),
+                    int(item["failures"]),
+                    str(item["pattern_id"]),
+                ),
+            )
+        ]
+        if pattern_ids != ranked_ids:
+            raise PatternIdentityMismatch(
+                "report recommendations are not in the production ranking order"
+            )
         object.__setattr__(self, "recommendations", recommendations)
         artifact = self.artifact
         if not isinstance(artifact, ArtifactRef):
@@ -193,8 +225,19 @@ class SearchPatternReport:
         expected = hash_canonical(payload)
         if self.report_id != expected:
             raise PatternIdentityMismatch("report_id does not match canonical report content")
-        if artifact.content_hash != self.report_id:
-            raise PatternIdentityMismatch("report artifact hash differs from report_id")
+        expected_bytes = canonical_bytes(payload)
+        expected_path = (
+            "artifacts/pattern_reports/" + self.report_id.removeprefix("sha256:") + ".json"
+        )
+        if (
+            artifact.content_hash != self.report_id
+            or artifact.media_type != "application/json"
+            or artifact.byte_size != len(expected_bytes)
+            or artifact.path != expected_path
+        ):
+            raise PatternIdentityMismatch(
+                "report artifact identity or metadata differs from canonical report bytes"
+            )
 
     def payload(self) -> Dict[str, Any]:
         """Return the canonical artifact payload without mutable containers."""
@@ -819,6 +862,218 @@ def _lineage_key(
     )
 
 
+_RECOMMENDATION_FIELDS = (
+    "pattern_id",
+    "pass_kind",
+    "patch_id",
+    "lane",
+    "overlay",
+    "function_archetype",
+    "first_divergence",
+    "compiler_identity",
+    "config_identity",
+    "schema_identity",
+    "scorer_algorithm",
+    "lane_tool_identity",
+    "recipient_id",
+    "target_identity",
+    "evaluator_identity",
+    "sample_count",
+    "successes",
+    "failures",
+    "success_rate",
+    "source_ledgers",
+    "lineage_ids",
+)
+
+
+def _recommendation_pattern_id(recommendation: Mapping[str, Any]) -> str:
+    """Recompute the pattern id from the canonical lineage group key."""
+
+    key = _lineage_key(
+        pass_kind=recommendation.get("pass_kind"),
+        patch_id=recommendation.get("patch_id"),
+        lane=recommendation.get("lane"),
+        overlay=recommendation.get("overlay"),
+        archetype=recommendation.get("function_archetype"),
+        first_divergence=recommendation.get("first_divergence"),
+        compiler_identity=recommendation.get("compiler_identity"),
+        config_identity=recommendation.get("config_identity"),
+        schema_identity=recommendation.get("schema_identity"),
+        scorer_algorithm=recommendation.get("scorer_algorithm"),
+        lane_tool_identity=recommendation.get("lane_tool_identity"),
+        recipient_id=recommendation.get("recipient_id"),
+        target_identity=recommendation.get("target_identity"),
+        evaluator_identity=recommendation.get("evaluator_identity"),
+    )
+    return hash_canonical({"key": list(key)})
+
+
+def validate_search_recommendation(value: Any) -> None:
+    """One shared strict validator for the production recommendation schema.
+
+    Both the report boundary and the corpus recurrence consumer call this, so
+    a hand-built mapping that misses production fields, carries a forged
+    pattern id, or contradicts its own aggregates can never pose as mined
+    evidence. The exact production field set is the one ``_recommendations``
+    emits; anything else is not a recommendation this harness produced.
+    """
+
+    if not isinstance(value, Mapping):
+        raise PatternInputError("a recommendation must be an object")
+    fields = set(value)
+    expected = set(_RECOMMENDATION_FIELDS)
+    if fields != expected:
+        missing = sorted(expected - fields)
+        unknown = sorted(fields - expected)
+        detail = []
+        if missing:
+            detail.append("missing: " + ", ".join(missing))
+        if unknown:
+            detail.append("unknown: " + ", ".join(unknown))
+        raise PatternInputError(
+            "recommendation fields do not match the production schema ("
+            + "; ".join(detail)
+            + ")"
+        )
+    for name in (
+        "pattern_id",
+        "compiler_identity",
+        "config_identity",
+        "schema_identity",
+        "lane_tool_identity",
+        "target_identity",
+        "evaluator_identity",
+    ):
+        try:
+            validate_hash(value[name], name)
+        except SearchValidationError as exc:
+            raise PatternInputError(str(exc)) from exc
+    for name in (
+        "lane",
+        "overlay",
+        "function_archetype",
+        "scorer_algorithm",
+        "recipient_id",
+    ):
+        if not isinstance(value[name], str) or not value[name]:
+            raise PatternInputError(
+                f"recommendation {name} must be a nonempty string"
+            )
+    if value["lane"] not in LANES:
+        raise PatternInputError(
+            f"recommendation names the unknown lane {value['lane']!r}"
+        )
+    if value["pass_kind"] is not None and (
+        not isinstance(value["pass_kind"], str) or not value["pass_kind"]
+    ):
+        raise PatternInputError(
+            "recommendation pass_kind must be null or a nonempty string"
+        )
+    if value["patch_id"] is not None:
+        # A non-null patch id is a content identity in production, not just
+        # a label: validate it as the hash it must be.
+        try:
+            validate_hash(value["patch_id"], "patch_id")
+        except SearchValidationError as exc:
+            raise PatternInputError(str(exc)) from exc
+    divergence = value["first_divergence"]
+    if divergence is not None:
+        if not isinstance(divergence, Mapping) or set(divergence) != {
+            "target_index",
+            "candidate_index",
+            "target_instruction",
+            "candidate_instruction",
+        }:
+            raise PatternInputError(
+                "recommendation first divergence must match the exact "
+                "production divergence mapping"
+            )
+        for name in ("target_index", "candidate_index"):
+            item = divergence[name]
+            if isinstance(item, bool) or not isinstance(item, int) or item < 0:
+                raise PatternInputError(
+                    f"recommendation first divergence {name} must be a "
+                    "nonnegative integer"
+                )
+        for name in ("target_instruction", "candidate_instruction"):
+            item = divergence[name]
+            if item is not None and not isinstance(item, str):
+                raise PatternInputError(
+                    f"recommendation first divergence {name} must be a "
+                    "string or null"
+                )
+    counts: Dict[str, int] = {}
+    for name in ("sample_count", "successes", "failures"):
+        item = value[name]
+        if isinstance(item, bool) or not isinstance(item, int) or item < 0:
+            raise PatternInputError(
+                f"recommendation {name} must be a nonnegative integer"
+            )
+        counts[name] = item
+    if counts["successes"] < 1:
+        raise PatternInputError(
+            "a published recommendation records at least one success"
+        )
+    if (
+        counts["sample_count"] < 1
+        or counts["sample_count"] != counts["successes"] + counts["failures"]
+    ):
+        raise PatternInputError("recommendation counts are inconsistent")
+    rate = value["success_rate"]
+    if (
+        isinstance(rate, bool)
+        or not isinstance(rate, float)
+        or not math.isfinite(rate)
+    ):
+        raise PatternInputError(
+            "recommendation success rate must be a finite float"
+        )
+    if rate != round(counts["successes"] / counts["sample_count"], 6):
+        raise PatternInputError(
+            "recommendation success rate differs from its counts"
+        )
+    ledgers = value["source_ledgers"]
+    if isinstance(ledgers, str) or not isinstance(ledgers, (tuple, list)):
+        raise PatternInputError(
+            "recommendation source ledgers must be a sequence of hashes"
+        )
+    if not ledgers or tuple(ledgers) != tuple(sorted(set(ledgers))):
+        raise PatternInputError(
+            "recommendation source ledgers must be sorted and unique"
+        )
+    for ledger in ledgers:
+        try:
+            validate_hash(ledger, "recommendation source ledger")
+        except SearchValidationError as exc:
+            raise PatternInputError(str(exc)) from exc
+    lineages = value["lineage_ids"]
+    if isinstance(lineages, str) or not isinstance(lineages, (tuple, list)):
+        raise PatternInputError(
+            "recommendation lineage ids must be a sequence of strings"
+        )
+    if not lineages or tuple(lineages) != tuple(sorted(set(lineages))):
+        raise PatternInputError(
+            "recommendation lineage ids must be sorted and unique"
+        )
+    for lineage in lineages:
+        if not isinstance(lineage, str) or not lineage:
+            raise PatternInputError(
+                "recommendation lineage ids must be nonempty strings"
+            )
+    if len(lineages) != counts["sample_count"]:
+        # Production emits exactly one run:task lineage id per aggregated
+        # observation; a count mismatch means the aggregates are forged.
+        raise PatternInputError(
+            "recommendation lineage ids must cover exactly one observation "
+            "per sample"
+        )
+    if value["pattern_id"] != _recommendation_pattern_id(value):
+        raise PatternIdentityMismatch(
+            "pattern_id does not match the recommendation lineage key"
+        )
+
+
 def _success(evaluation: Optional[EvaluationEvent], terminal: TaskTerminal) -> bool:
     if terminal.state != "completed" or evaluation is None:
         return False
@@ -1136,21 +1391,28 @@ def load_report_artifact(
         if expected_hash is not None and value.content_hash != expected_hash:
             raise PatternIdentityMismatch("report artifact hash differs from expected identity")
         return _report_from_payload(raw, value)
+    if artifact_root is None:
+        # A bare path cannot prove which archive owns it. Manufacturing the
+        # canonical relative layout here would forge archival provenance, so
+        # the path form requires the real archive root that holds the file.
+        raise PatternArtifactError(
+            "a report artifact path requires its content-addressed archive root"
+        )
     try:
         path = Path(value)
+    except (OSError, TypeError, ValueError) as exc:
+        raise PatternArtifactError("report artifact path is invalid") from exc
+    try:
+        relative = path.resolve().relative_to(Path(artifact_root).resolve()).as_posix()
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise PatternArtifactError("report artifact is outside its archive root") from exc
+    try:
         raw = path.read_bytes()
-    except (TypeError, OSError) as exc:
+    except OSError as exc:
         raise PatternArtifactError("report artifact cannot be read") from exc
     digest = hash_bytes(raw)
     if expected_hash is not None and digest != expected_hash:
         raise PatternIdentityMismatch("report artifact bytes differ from expected identity")
-    if artifact_root is not None:
-        try:
-            relative = path.resolve().relative_to(Path(artifact_root).resolve()).as_posix()
-        except ValueError as exc:
-            raise PatternArtifactError("report artifact is outside its archive root") from exc
-    else:
-        relative = path.name
     artifact = ArtifactRef(digest, relative, "application/json", len(raw))
     return _report_from_payload(raw, artifact)
 
@@ -1233,4 +1495,5 @@ __all__ = [
     "ActiveRun", "ArtifactIdentityMismatch", "AmbiguousLineage", "SearchPatternReport",
     "mine_completed_lineages", "mine_search_patterns", "mine_completed_ledger_prefixes", "mine",
     "load_report_artifact", "load_report", "render_derivation_summary", "render_summary",
+    "validate_search_recommendation",
 ]

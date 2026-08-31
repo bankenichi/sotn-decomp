@@ -17,9 +17,11 @@ from automation.search_archive import ContentAddressedArchive
 from automation.compiler_idioms import DraftLandedObservation
 from automation.search_evidence_corpus import (
     AbsenceMaskingClaim,
+    CORPUS_EVIDENCE_PROTOCOL,
     CorpusEvidence,
     CorpusGeneration,
     EvidenceIdentityMismatch,
+    EvidenceRefusalReceipt,
     LessonCitationError,
     PromotionAccepted,
     PromotionRefused,
@@ -32,11 +34,15 @@ from automation.search_evidence_corpus import (
     scorer_taxonomy_identity_payload,
     verify_lesson_citation,
     _make_corpus_evidence,
+    _required_support_identities,
 )
 from automation.search_patterns import (
     CompletedLineageContext,
     CompletedLineageDiagnostic,
+    PatternArtifactError,
+    PatternInputError,
     SearchPatternReport,
+    _lineage_key,
     _report_payload,
 )
 from automation.search_supervisor import (
@@ -69,6 +75,18 @@ from automation.test_search_schema import manifest
 
 def digest(label: str) -> str:
     return hash_bytes(label.encode("utf-8"))
+
+
+def taxonomy_support(taxonomy: ScorerTaxonomy) -> tuple[str, ...]:
+    """Return every nested score identity required by the corpus boundary."""
+
+    return (
+        taxonomy.taxonomy_id,
+        taxonomy.before.object_hash,
+        taxonomy.before.mismatch_signature,
+        taxonomy.after.object_hash,
+        taxonomy.after.mismatch_signature,
+    )
 
 
 _LESSON_PATH = Path(__file__).resolve().parent.parent / "MATCHING-LESSONS.md"
@@ -342,29 +360,49 @@ class CanonicalGateConsumerTests(unittest.TestCase):
                 schema_identity=digest("other-schema"),
                 archive=archive,
             )
+            def _refusal_entry(target_index: int, candidate_index: int):
+                # Typed evidence only: build_corpus_generation refuses raw
+                # mappings, so the entry carries its refusal receipt and
+                # content address from the typed factory.
+                receipt = EvidenceRefusalReceipt(
+                    receipt_id=hash_canonical(
+                        {
+                            "protocol": "sotn-evidence-refusal-v1",
+                            "operation": "collect_recurring_first_divergence",
+                            "reason_code": "missing_evaluator_identity",
+                            "input_identities": [],
+                            "observed_identities": [],
+                            "new_generation_required": False,
+                        }
+                    ),
+                    operation="collect_recurring_first_divergence",
+                    reason_code="missing_evaluator_identity",
+                    input_identities=(),
+                    observed_identities=(),
+                    new_generation_required=False,
+                )
+                return _make_corpus_evidence(
+                    kind="first_divergence",
+                    outcome="refused",
+                    recipient_id="us:ST:fn",
+                    compiler_identity=digest("compiler"),
+                    tool_identity=digest("tool:cfg_dataflow"),
+                    target_identity=digest("target"),
+                    config_identity=digest("config"),
+                    first_divergence=FirstDivergence(
+                        target_index, candidate_index, "lw", "sw"
+                    ),
+                    reason_code="missing_evaluator_identity",
+                    lane="cfg_dataflow",
+                    schema_identity=digest("schema"),
+                    scorer_algorithm="difflib",
+                    pattern_id=digest("pattern"),
+                    refusal_receipt=receipt,
+                    support_identities=(receipt.receipt_id, digest("pattern")),
+                )
+
             third = build_corpus_generation(
-                (
-                    {
-                        "evidence_id": digest("entry-1"),
-                        "kind": "first_divergence",
-                        "outcome": "refused",
-                        "first_divergence": {
-                            "target_index": 1,
-                            "candidate_index": 2,
-                        },
-                        "reason_code": "missing_evaluator_identity",
-                    },
-                    {
-                        "evidence_id": digest("entry-2"),
-                        "kind": "first_divergence",
-                        "outcome": "refused",
-                        "first_divergence": {
-                            "target_index": 3,
-                            "candidate_index": 4,
-                        },
-                        "reason_code": "missing_evaluator_identity",
-                    },
-                ),
+                (_refusal_entry(1, 2), _refusal_entry(3, 4)),
                 integration_gate=gate,
                 schema_identity=digest("schema"),
                 archive=archive,
@@ -766,23 +804,114 @@ def fixture_pair() -> DraftLandedObservation:
         grouped_patches=(grouped_patch,),
         evidence=("landing-commit-verified",),
         tool_identity=digest("tool:cfg_dataflow"),
+        config_identity=digest("config"),
     )
 
 
-def fixture_pattern_report(recommendation) -> SearchPatternReport:
-    """A content-addressed report carrying one fully bound recommendation."""
+def _fixture_recommendation(**overrides) -> dict:
+    """One full production-shaped recommendation with stable identities.
+
+    The shape is exactly what ``mine_completed_lineages`` emits, including
+    the pattern id recomputed from the canonical lineage key, so the strict
+    shared validator accepts it without being weakened.
+    """
+
+    recommendation = {
+        "pass_kind": None,
+        "patch_id": None,
+        "lane": "cfg_dataflow",
+        "overlay": "st",
+        "function_archetype": "generic",
+        "first_divergence": FirstDivergence(2, 3, "lw", "sw").to_dict(),
+        "compiler_identity": digest("compiler"),
+        "config_identity": digest("config"),
+        "schema_identity": digest("schema"),
+        "scorer_algorithm": "difflib",
+        "lane_tool_identity": digest("tool:cfg_dataflow"),
+        "recipient_id": "us:ST:fn",
+        "target_identity": digest("target:us:ST:fn"),
+        "evaluator_identity": digest("search-evaluator"),
+        "sample_count": 4,
+        "successes": 3,
+        "failures": 1,
+        "success_rate": round(3 / 4, 6),
+        "source_ledgers": sorted(
+            [digest("ledger-a"), digest("ledger-b")]
+        ),
+        "lineage_ids": [
+            "run-a:task-a",
+            "run-a:task-b",
+            "run-b:task-a",
+            "run-b:task-b",
+        ],
+    }
+    recommendation.update(overrides)
+    recommendation["pattern_id"] = hash_canonical(
+        {
+            "key": list(
+                _lineage_key(
+                    pass_kind=recommendation["pass_kind"],
+                    patch_id=recommendation["patch_id"],
+                    lane=recommendation["lane"],
+                    overlay=recommendation["overlay"],
+                    archetype=recommendation["function_archetype"],
+                    first_divergence=recommendation["first_divergence"],
+                    compiler_identity=recommendation["compiler_identity"],
+                    config_identity=recommendation["config_identity"],
+                    schema_identity=recommendation["schema_identity"],
+                    scorer_algorithm=recommendation["scorer_algorithm"],
+                    lane_tool_identity=recommendation["lane_tool_identity"],
+                    recipient_id=recommendation["recipient_id"],
+                    target_identity=recommendation["target_identity"],
+                    evaluator_identity=recommendation["evaluator_identity"],
+                )
+            )
+        }
+    )
+    return recommendation
+
+
+def fixture_pattern_report(recommendation, archive) -> SearchPatternReport:
+    """A published, content-addressed report carrying one recommendation.
+
+    The canonical bytes go through a real content-addressed archive so the
+    recurrence boundary's durable existence layer can verify them; the
+    fabricated-ArtifactRef shortcut would hide R25 defects.
+    """
 
     ledgers = tuple(sorted(set(recommendation["source_ledgers"])))
     payload = _report_payload(ledgers, [recommendation])
-    report_id = hash_canonical(payload)
-    body = canonical_bytes(payload)
-    artifact = ArtifactRef(
-        hash_bytes(body),
-        "artifacts/pattern_reports/" + report_id[7:] + ".json",
-        "application/json",
-        len(body),
+    artifact = archive.put_bytes(
+        canonical_bytes(payload),
+        category="pattern_reports",
+        suffix=".json",
+        media_type="application/json",
     )
-    return SearchPatternReport(report_id, ledgers, (recommendation,), artifact)
+    return SearchPatternReport(
+        hash_canonical(payload), ledgers, (recommendation,), artifact
+    )
+
+
+def fixture_context(ledger: str, run_id: str, **overrides) -> CompletedLineageContext:
+    """One compatible completed lineage context with stable identities."""
+
+    values = {
+        "ledger_identity": digest(ledger),
+        "run_id": run_id,
+        "compiler_identity": digest("compiler"),
+        "config_identity": digest("config"),
+        "schema_identity": digest("schema"),
+        "scorer_algorithms": ("difflib",),
+        "lane_tool_identities": (
+            ("cfg_dataflow", digest("tool:cfg_dataflow")),
+        ),
+        "recipient_target_identities": (
+            ("us:ST:fn", digest("target:us:ST:fn")),
+        ),
+        "evaluator_identity": digest("search-evaluator"),
+    }
+    values.update(overrides)
+    return CompletedLineageContext(**values)
 
 
 class PromotionAndRecurrenceTests(unittest.TestCase):
@@ -866,193 +995,203 @@ class PromotionAndRecurrenceTests(unittest.TestCase):
 
     def test_recurring_first_divergence_needs_two_compatible_completed_lineages(self) -> None:
         first = FirstDivergence(2, 3, "lw", "sw")
-        report = fixture_pattern_report(
-            {
-                "first_divergence": first.to_dict(),
-                "lineage_ids": ["run-a:task-a", "run-b:task-b"],
-                "source_ledgers": [digest("ledger-a"), digest("ledger-b")],
-                "scorer_algorithm": "difflib",
-                "compiler_identity": digest("compiler"),
-                "config_identity": digest("config"),
-                "schema_identity": digest("schema"),
-                "lane_tool_identity": digest("tool:cfg_dataflow"),
-                "recipient_id": "us:ST:fn",
-                "target_identity": digest("target:us:ST:fn"),
-                "evaluator_identity": digest("search-evaluator"),
-            }
-        )
-        contexts = (
-            CompletedLineageContext(
-                ledger_identity=digest("ledger-a"),
-                run_id="run-a",
-                compiler_identity=digest("compiler"),
-                config_identity=digest("config"),
-                schema_identity=digest("schema"),
-                scorer_algorithms=("difflib",),
-                lane_tool_identities=(
-                    ("cfg_dataflow", digest("tool:cfg_dataflow")),
-                ),
-                recipient_target_identities=(
-                    ("us:ST:fn", digest("target:us:ST:fn")),
-                ),
-                evaluator_identity=digest("search-evaluator"),
-            ),
-            CompletedLineageContext(
-                ledger_identity=digest("ledger-b"),
-                run_id="run-b",
-                compiler_identity=digest("compiler"),
-                config_identity=digest("config"),
-                schema_identity=digest("schema"),
-                scorer_algorithms=("difflib",),
-                lane_tool_identities=(
-                    ("cfg_dataflow", digest("tool:cfg_dataflow")),
-                ),
-                recipient_target_identities=(
-                    ("us:ST:fn", digest("target:us:ST:fn")),
-                ),
-                evaluator_identity=digest("search-evaluator"),
-            ),
-        )
-        entries = collect_recurring_first_divergence(report, contexts)
+        with tempfile.TemporaryDirectory() as directory:
+            archive = ContentAddressedArchive(Path(directory) / "reports")
+            recommendation = _fixture_recommendation()
+            report = fixture_pattern_report(recommendation, archive)
+            contexts = (
+                fixture_context("ledger-a", "run-a"),
+                fixture_context("ledger-b", "run-b"),
+            )
+            entries = collect_recurring_first_divergence(
+                report, contexts, artifact_root=archive.run_root
+            )
         self.assertEqual(len(entries), 1)
-        self.assertEqual(entries[0].first_divergence, first)
-        self.assertIn(digest("ledger-a"), entries[0].support_identities)
-        self.assertIn(digest("ledger-b"), entries[0].support_identities)
-        self.assertIn(report.artifact.content_hash, entries[0].support_identities)
-        self.assertEqual(entries[0].tool_identity, digest("tool:cfg_dataflow"))
-        self.assertEqual(entries[0].target_identity, digest("target:us:ST:fn"))
-        self.assertEqual(
-            entries[0].evaluator_identity, digest("search-evaluator")
-        )
+        entry = entries[0]
+        self.assertEqual(entry.first_divergence, first)
+        self.assertIn(digest("ledger-a"), entry.support_identities)
+        self.assertIn(digest("ledger-b"), entry.support_identities)
+        self.assertIn(report.artifact.content_hash, entry.support_identities)
+        self.assertIn(recommendation["pattern_id"], entry.support_identities)
+        self.assertEqual(entry.tool_identity, digest("tool:cfg_dataflow"))
+        self.assertEqual(entry.target_identity, digest("target:us:ST:fn"))
+        self.assertEqual(entry.evaluator_identity, digest("search-evaluator"))
+        # R22: the full recurrence grouping identity is on the record.
+        self.assertEqual(entry.lane, "cfg_dataflow")
+        self.assertEqual(entry.schema_identity, digest("schema"))
+        self.assertEqual(entry.scorer_algorithm, "difflib")
+        self.assertEqual(entry.pattern_id, recommendation["pattern_id"])
 
     def test_missing_evaluator_lineage_is_typed_refusal(self) -> None:
         first = FirstDivergence(2, 3, "lw", "sw")
-        report = fixture_pattern_report(
-            {
-                "first_divergence": first.to_dict(),
-                "lineage_ids": ["run-a:task-a", "run-b:task-b"],
-                "source_ledgers": [digest("ledger-a"), digest("ledger-b")],
-                "scorer_algorithm": "difflib",
-                "compiler_identity": digest("compiler"),
-                "config_identity": digest("config"),
-                "schema_identity": digest("schema"),
-                "lane_tool_identity": digest("tool:cfg_dataflow"),
-                "recipient_id": "us:ST:fn",
-                "target_identity": digest("target:us:ST:fn"),
-                "evaluator_identity": digest("search-evaluator"),
-            }
-        )
-        diagnostic = CompletedLineageDiagnostic(
-            ledger_identity=digest("ledger-a"),
-            run_id="run-a",
-            reason_code="missing_evaluator_identity",
-            # R15 canonical form: observed identities are sorted and unique.
-            observed_identities=tuple(
-                sorted(
-                    (
-                        digest("compiler"),
-                        digest("config"),
-                        digest("schema"),
-                        digest("tool:cfg_dataflow"),
-                        digest("target:us:ST:fn"),
+        with tempfile.TemporaryDirectory() as directory:
+            archive = ContentAddressedArchive(Path(directory) / "reports")
+            report = fixture_pattern_report(_fixture_recommendation(), archive)
+            diagnostic = CompletedLineageDiagnostic(
+                ledger_identity=digest("ledger-a"),
+                run_id="run-a",
+                reason_code="missing_evaluator_identity",
+                # R15 canonical form: observed identities are sorted and unique.
+                observed_identities=tuple(
+                    sorted(
+                        (
+                            digest("compiler"),
+                            digest("config"),
+                            digest("schema"),
+                            digest("tool:cfg_dataflow"),
+                            digest("target:us:ST:fn"),
+                        )
                     )
-                )
-            ),
-        )
-        context = CompletedLineageContext(
-            ledger_identity=digest("ledger-b"),
-            run_id="run-b",
-            compiler_identity=digest("compiler"),
-            config_identity=digest("config"),
-            schema_identity=digest("schema"),
-            scorer_algorithms=("difflib",),
-            lane_tool_identities=(("cfg_dataflow", digest("tool:cfg_dataflow")),),
-            recipient_target_identities=(("us:ST:fn", digest("target:us:ST:fn")),),
-            evaluator_identity=digest("search-evaluator"),
-        )
-        entries = collect_recurring_first_divergence(report, (diagnostic, context))
+                ),
+            )
+            entries = collect_recurring_first_divergence(
+                report,
+                (diagnostic, fixture_context("ledger-b", "run-b")),
+                artifact_root=archive.run_root,
+            )
         self.assertEqual(len(entries), 1)
-        self.assertEqual(entries[0].outcome, "refused")
-        self.assertEqual(entries[0].reason_code, "missing_evaluator_identity")
-        self.assertEqual(entries[0].first_divergence, first)
-        self.assertEqual(entries[0].tool_identity, digest("tool:cfg_dataflow"))
-        self.assertEqual(entries[0].target_identity, digest("target:us:ST:fn"))
-        self.assertIsNone(entries[0].evaluator_identity)
+        entry = entries[0]
+        self.assertEqual(entry.outcome, "refused")
+        self.assertEqual(entry.reason_code, "missing_evaluator_identity")
+        self.assertEqual(entry.first_divergence, first)
+        self.assertEqual(entry.tool_identity, digest("tool:cfg_dataflow"))
+        self.assertEqual(entry.target_identity, digest("target:us:ST:fn"))
+        self.assertIsNone(entry.evaluator_identity)
+        # R20/R22: the refusal keeps its receipt and full recurrence identity.
+        self.assertIsInstance(entry.refusal_receipt, EvidenceRefusalReceipt)
+        self.assertEqual(
+            entry.refusal_receipt.reason_code, "missing_evaluator_identity"
+        )
+        self.assertIn(entry.refusal_receipt.receipt_id, entry.support_identities)
+        self.assertEqual(entry.lane, "cfg_dataflow")
+        self.assertEqual(entry.pattern_id, _fixture_recommendation()["pattern_id"])
+        self.assertIn(report.artifact.content_hash, entry.support_identities)
 
     def test_single_lineage_recommendation_produces_no_positive_entry(self) -> None:
-        report = fixture_pattern_report(
-            {
-                "first_divergence": FirstDivergence(1, 2, "lw", "sw").to_dict(),
-                "lineage_ids": ["run-a:task-a"],
-                "source_ledgers": [digest("ledger-a")],
-                "scorer_algorithm": "difflib",
-                "compiler_identity": digest("compiler"),
-                "config_identity": digest("config"),
-                "schema_identity": digest("schema"),
-                "lane_tool_identity": digest("tool:cfg_dataflow"),
-                "recipient_id": "us:ST:fn",
-                "target_identity": digest("target:us:ST:fn"),
-                "evaluator_identity": digest("search-evaluator"),
-            }
-        )
-        context = CompletedLineageContext(
-            ledger_identity=digest("ledger-a"),
-            run_id="run-a",
-            compiler_identity=digest("compiler"),
-            config_identity=digest("config"),
-            schema_identity=digest("schema"),
-            scorer_algorithms=("difflib",),
-            lane_tool_identities=(("cfg_dataflow", digest("tool:cfg_dataflow")),),
-            recipient_target_identities=(("us:ST:fn", digest("target:us:ST:fn")),),
-            evaluator_identity=digest("search-evaluator"),
-        )
-        self.assertEqual(collect_recurring_first_divergence(report, (context,)), ())
+        with tempfile.TemporaryDirectory() as directory:
+            archive = ContentAddressedArchive(Path(directory) / "reports")
+            report = fixture_pattern_report(
+                _fixture_recommendation(
+                    source_ledgers=[digest("ledger-a")],
+                    lineage_ids=["run-a:task-a"],
+                    sample_count=1,
+                    successes=1,
+                    failures=0,
+                    success_rate=1.0,
+                ),
+                archive,
+            )
+            entries = collect_recurring_first_divergence(
+                report,
+                (fixture_context("ledger-a", "run-a"),),
+                artifact_root=archive.run_root,
+            )
+        self.assertEqual(entries, ())
 
     def test_incompatible_lineage_context_is_typed_refusal(self) -> None:
-        report = fixture_pattern_report(
-            {
-                "first_divergence": FirstDivergence(1, 2, "lw", "sw").to_dict(),
-                "lineage_ids": ["run-a:task-a", "run-b:task-b"],
-                "source_ledgers": [digest("ledger-a"), digest("ledger-b")],
-                "scorer_algorithm": "difflib",
-                "compiler_identity": digest("compiler"),
-                "config_identity": digest("config"),
-                "schema_identity": digest("schema"),
-                "lane_tool_identity": digest("tool:cfg_dataflow"),
-                "recipient_id": "us:ST:fn",
-                "target_identity": digest("target:us:ST:fn"),
-                "evaluator_identity": digest("search-evaluator"),
-            }
-        )
-        mismatched = CompletedLineageContext(
-            ledger_identity=digest("ledger-a"),
-            run_id="run-a",
-            compiler_identity=digest("other-compiler"),
-            config_identity=digest("config"),
-            schema_identity=digest("schema"),
-            scorer_algorithms=("difflib",),
-            lane_tool_identities=(("cfg_dataflow", digest("tool:cfg_dataflow")),),
-            recipient_target_identities=(("us:ST:fn", digest("target:us:ST:fn")),),
-            evaluator_identity=digest("search-evaluator"),
-        )
-        compatible = CompletedLineageContext(
-            ledger_identity=digest("ledger-b"),
-            run_id="run-b",
-            compiler_identity=digest("compiler"),
-            config_identity=digest("config"),
-            schema_identity=digest("schema"),
-            scorer_algorithms=("difflib",),
-            lane_tool_identities=(("cfg_dataflow", digest("tool:cfg_dataflow")),),
-            recipient_target_identities=(("us:ST:fn", digest("target:us:ST:fn")),),
-            evaluator_identity=digest("search-evaluator"),
-        )
-        entries = collect_recurring_first_divergence(report, (mismatched, compatible))
+        with tempfile.TemporaryDirectory() as directory:
+            archive = ContentAddressedArchive(Path(directory) / "reports")
+            report = fixture_pattern_report(_fixture_recommendation(), archive)
+            mismatched = fixture_context(
+                "ledger-a", "run-a", compiler_identity=digest("other-compiler")
+            )
+            entries = collect_recurring_first_divergence(
+                report,
+                (mismatched, fixture_context("ledger-b", "run-b")),
+                artifact_root=archive.run_root,
+            )
         self.assertEqual(len(entries), 1)
         self.assertEqual(entries[0].outcome, "refused")
         self.assertEqual(entries[0].reason_code, "incompatible_lineage_context")
         self.assertEqual(
             entries[0].evaluator_identity, digest("search-evaluator")
         )
+        self.assertIsInstance(entries[0].refusal_receipt, EvidenceRefusalReceipt)
+
+    def test_lineage_ids_must_name_supplied_context_runs(self) -> None:
+        # R23/R25: independence comes from the completed contexts, not from
+        # two arbitrary lineage strings. The recommendation cites lineage ids
+        # from runs that were never supplied as contexts.
+        with tempfile.TemporaryDirectory() as directory:
+            archive = ContentAddressedArchive(Path(directory) / "reports")
+            report = fixture_pattern_report(
+                _fixture_recommendation(
+                    lineage_ids=["run-x:task-a", "run-y:task-b"],
+                    sample_count=2,
+                    successes=2,
+                    failures=0,
+                    success_rate=1.0,
+                ),
+                archive,
+            )
+            entries = collect_recurring_first_divergence(
+                report,
+                (fixture_context("ledger-a", "run-a"), fixture_context("ledger-b", "run-b")),
+                artifact_root=archive.run_root,
+            )
+        self.assertEqual(len(entries), 1)
+        self.assertEqual(entries[0].outcome, "refused")
+        self.assertEqual(entries[0].reason_code, "unverified_lineage_identity")
+
+    def test_two_cited_runs_need_a_lineage_from_each_run(self) -> None:
+        # Two distinct lineage ids from run A cannot make a recommendation
+        # citing runs A and B independent. Run B must contribute an observed
+        # lineage id before the recurrence threshold can be satisfied.
+        with tempfile.TemporaryDirectory() as directory:
+            archive = ContentAddressedArchive(Path(directory) / "reports")
+            report = fixture_pattern_report(
+                _fixture_recommendation(
+                    lineage_ids=["run-a:task-a", "run-a:task-b"],
+                    sample_count=2,
+                    successes=2,
+                    failures=0,
+                    success_rate=1.0,
+                ),
+                archive,
+            )
+            entries = collect_recurring_first_divergence(
+                report,
+                (fixture_context("ledger-a", "run-a"), fixture_context("ledger-b", "run-b")),
+                artifact_root=archive.run_root,
+            )
+        self.assertEqual(len(entries), 1)
+        self.assertEqual(entries[0].outcome, "refused")
+        self.assertEqual(entries[0].reason_code, "unverified_lineage_identity")
+
+    def test_malformed_context_collections_use_the_evidence_error_boundary(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            archive = ContentAddressedArchive(Path(directory) / "reports")
+            report = fixture_pattern_report(_fixture_recommendation(), archive)
+            for invalid in (None, 0, False, ""):
+                with self.subTest(contexts=invalid):
+                    with self.assertRaises(EvidenceIdentityMismatch):
+                        collect_recurring_first_divergence(
+                            report,
+                            invalid,
+                            artifact_root=archive.run_root,
+                        )
+
+    def test_one_run_with_two_tasks_is_not_independent(self) -> None:
+        # Two lineage ids from ONE run are not two independent lineages: the
+        # distinct context-run count decides, not the string count.
+        with tempfile.TemporaryDirectory() as directory:
+            archive = ContentAddressedArchive(Path(directory) / "reports")
+            report = fixture_pattern_report(
+                _fixture_recommendation(
+                    lineage_ids=["run-a:task-a", "run-a:task-b"],
+                    sample_count=2,
+                    successes=2,
+                    failures=0,
+                    success_rate=1.0,
+                ),
+                archive,
+            )
+            entries = collect_recurring_first_divergence(
+                report,
+                (fixture_context("ledger-a", "run-a"), fixture_context("ledger-b", "run-a")),
+                artifact_root=archive.run_root,
+            )
+        self.assertEqual(entries, ())
 
 
 class GenerationPublicationTests(unittest.TestCase):
@@ -1072,11 +1211,16 @@ class GenerationPublicationTests(unittest.TestCase):
                 opcode="andi", masks=("0xff", "0xffff"), scope="argument-use"
             ),
         )
+        # The required-support derivation demands the citation's source
+        # artifact hash and span identity in the support set.
         lesson_entry = _make_corpus_evidence(
             kind="lesson",
             outcome="accepted",
             citations=(citation,),
-            support_identities=(citation.span_identity,),
+            support_identities=(
+                citation.span_identity,
+                citation.source.content_hash,
+            ),
         )
         compiler = digest("compiler")
         taxonomy = make_scorer_taxonomy(
@@ -1092,7 +1236,7 @@ class GenerationPublicationTests(unittest.TestCase):
             evaluator_identity=digest("search-evaluator"),
             target_identity=digest("target"),
             scorer=taxonomy,
-            support_identities=(taxonomy.taxonomy_id,),
+            support_identities=taxonomy_support(taxonomy),
         )
         pair = fixture_pair()
         accepted = promote_draft_landed(
@@ -1112,71 +1256,15 @@ class GenerationPublicationTests(unittest.TestCase):
             target_identity=digest("target"),
         )
         assert isinstance(refused, PromotionRefused)
-        divergence = FirstDivergence(2, 3, "lw", "sw")
-        report = fixture_pattern_report(
-            {
-                "first_divergence": divergence.to_dict(),
-                "lineage_ids": ["run-a:task-a", "run-b:task-b"],
-                "source_ledgers": [digest("ledger-a"), digest("ledger-b")],
-                "scorer_algorithm": "difflib",
-                "compiler_identity": digest("compiler"),
-                "config_identity": digest("config"),
-                "schema_identity": digest("schema"),
-                "lane_tool_identity": digest("tool:cfg_dataflow"),
-                "recipient_id": "us:ST:fn",
-                "target_identity": digest("target:us:ST:fn"),
-                "evaluator_identity": digest("search-evaluator"),
-            }
-        )
+        report = fixture_pattern_report(_fixture_recommendation(), archive)
         contexts = (
-            CompletedLineageContext(
-                ledger_identity=digest("ledger-a"),
-                run_id="run-a",
-                compiler_identity=digest("compiler"),
-                config_identity=digest("config"),
-                schema_identity=digest("schema"),
-                scorer_algorithms=("difflib",),
-                lane_tool_identities=(
-                    ("cfg_dataflow", digest("tool:cfg_dataflow")),
-                ),
-                recipient_target_identities=(
-                    ("us:ST:fn", digest("target:us:ST:fn")),
-                ),
-                evaluator_identity=digest("search-evaluator"),
-            ),
-            CompletedLineageContext(
-                ledger_identity=digest("ledger-b"),
-                run_id="run-b",
-                compiler_identity=digest("compiler"),
-                config_identity=digest("config"),
-                schema_identity=digest("schema"),
-                scorer_algorithms=("difflib",),
-                lane_tool_identities=(
-                    ("cfg_dataflow", digest("tool:cfg_dataflow")),
-                ),
-                recipient_target_identities=(
-                    ("us:ST:fn", digest("target:us:ST:fn")),
-                ),
-                evaluator_identity=digest("search-evaluator"),
-            ),
+            fixture_context("ledger-a", "run-a"),
+            fixture_context("ledger-b", "run-b"),
         )
-        recurring = collect_recurring_first_divergence(report, contexts)
+        recurring = collect_recurring_first_divergence(
+            report, contexts, artifact_root=archive.run_root
+        )
         assert len(recurring) == 1
-        diagnostic_report = fixture_pattern_report(
-            {
-                "first_divergence": divergence.to_dict(),
-                "lineage_ids": ["run-a:task-a", "run-b:task-b"],
-                "source_ledgers": [digest("ledger-a"), digest("ledger-b")],
-                "scorer_algorithm": "difflib",
-                "compiler_identity": digest("compiler"),
-                "config_identity": digest("config"),
-                "schema_identity": digest("schema"),
-                "lane_tool_identity": digest("tool:cfg_dataflow"),
-                "recipient_id": "us:ST:fn",
-                "target_identity": digest("target:us:ST:fn"),
-                "evaluator_identity": digest("search-evaluator"),
-            }
-        )
         diagnostic = CompletedLineageDiagnostic(
             ledger_identity=digest("ledger-a"),
             run_id="run-a",
@@ -1193,19 +1281,10 @@ class GenerationPublicationTests(unittest.TestCase):
                 )
             ),
         )
-        compatible = CompletedLineageContext(
-            ledger_identity=digest("ledger-b"),
-            run_id="run-b",
-            compiler_identity=digest("compiler"),
-            config_identity=digest("config"),
-            schema_identity=digest("schema"),
-            scorer_algorithms=("difflib",),
-            lane_tool_identities=(("cfg_dataflow", digest("tool:cfg_dataflow")),),
-            recipient_target_identities=(("us:ST:fn", digest("target:us:ST:fn")),),
-            evaluator_identity=digest("search-evaluator"),
-        )
         refused_recurrence = collect_recurring_first_divergence(
-            diagnostic_report, (diagnostic, compatible)
+            report,
+            (diagnostic, fixture_context("ledger-b", "run-b")),
+            artifact_root=archive.run_root,
         )
         assert len(refused_recurrence) == 1
         entries = (
@@ -1229,11 +1308,23 @@ class GenerationPublicationTests(unittest.TestCase):
                 archive=archive,
             )
             self.assertEqual(len(generation.entries), 6)
+            # R26: the durable generation keeps typed evidence records.
+            self.assertTrue(
+                all(
+                    isinstance(entry, CorpusEvidence)
+                    for entry in generation.entries
+                )
+            )
+            # R27: the source set is the mechanical union of each entry's
+            # declared support and its required nested identities.
             expected_sources = sorted(
                 {
                     identity
                     for entry in generation.entries
-                    for identity in entry["support_identities"]
+                    for identity in (
+                        set(entry.support_identities)
+                        | _required_support_identities(entry)
+                    )
                     if identity.startswith("sha256:")
                 }
             )
@@ -1249,6 +1340,78 @@ class GenerationPublicationTests(unittest.TestCase):
             self.assertEqual(
                 payload["integration_gate_id"], gate.gate_id
             )
+            # R28: the evidence protocol namespace survives serialization so
+            # replay can select and reject schema versions explicitly.
+            self.assertEqual(
+                {entry["protocol"] for entry in payload["entries"]},
+                {CORPUS_EVIDENCE_PROTOCOL},
+            )
+            # Replay reconstructs an equal typed generation from the record.
+            replayed = CorpusGeneration.from_dict(generation.to_dict())
+            self.assertEqual(replayed, generation)
+            self.assertTrue(
+                all(
+                    isinstance(entry, CorpusEvidence)
+                    for entry in replayed.entries
+                )
+            )
+
+    def test_refusal_receipts_survive_publication_and_replay(self) -> None:
+        # R20: the content-addressed refusal receipt is part of the negative
+        # evidence payload, so the published generation reproduces the exact
+        # refusal, not merely a reason string.
+        with tempfile.TemporaryDirectory() as directory:
+            archive = ContentAddressedArchive(Path(directory) / "archive")
+            gate, entries, _report, _inputs = self.full_entry_set(archive)
+            generation = build_corpus_generation(
+                entries,
+                integration_gate=gate,
+                schema_identity=digest("schema"),
+                archive=archive,
+            )
+            negative = [
+                entry
+                for entry in generation.entries
+                if entry.outcome in ("negative", "refused")
+            ]
+            self.assertEqual(len(negative), 2)
+            for entry in negative:
+                self.assertIsNotNone(entry.refusal_receipt)
+                self.assertIn(
+                    entry.refusal_receipt.receipt_id, entry.support_identities
+                )
+                self.assertEqual(
+                    entry.reason_code, entry.refusal_receipt.reason_code
+                )
+                receipt_payload = entry.refusal_receipt.to_dict()
+                self.assertEqual(
+                    receipt_payload["receipt_id"],
+                    hash_canonical(
+                        {
+                            "protocol": "sotn-evidence-refusal-v1",
+                            "operation": receipt_payload["operation"],
+                            "reason_code": receipt_payload["reason_code"],
+                            "input_identities": receipt_payload["input_identities"],
+                            "observed_identities": receipt_payload[
+                                "observed_identities"
+                            ],
+                            "new_generation_required": receipt_payload[
+                                "new_generation_required"
+                            ],
+                        }
+                    ),
+                )
+            replayed = CorpusGeneration.from_dict(generation.to_dict())
+            for original in negative:
+                match = [
+                    entry
+                    for entry in replayed.entries
+                    if entry.evidence_id == original.evidence_id
+                ]
+                self.assertEqual(len(match), 1)
+                self.assertEqual(
+                    match[0].refusal_receipt, original.refusal_receipt
+                )
 
     def test_generation_is_deterministic_under_entry_reversal(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -1323,16 +1486,20 @@ class GenerationPublicationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             archive = ContentAddressedArchive(Path(directory) / "archive")
             gate = fixture_gate(archive)
+            taxonomy = make_scorer_taxonomy(
+                fixture_score(total=12, compiler_identity=digest("compiler")),
+                fixture_score(total=4, compiler_identity=digest("compiler")),
+                evaluator_identity=digest("search-evaluator"),
+                target_identity=digest("target"),
+            )
             entry = _make_corpus_evidence(
                 kind="scorer",
                 outcome="accepted",
-                scorer=make_scorer_taxonomy(
-                    fixture_score(total=12, compiler_identity=digest("compiler")),
-                    fixture_score(total=4, compiler_identity=digest("compiler")),
-                    evaluator_identity=digest("search-evaluator"),
-                    target_identity=digest("target"),
-                ),
-                support_identities=(digest("taxonomy"),),
+                compiler_identity=digest("compiler"),
+                evaluator_identity=digest("search-evaluator"),
+                target_identity=digest("target"),
+                scorer=taxonomy,
+                support_identities=taxonomy_support(taxonomy),
             )
             with self.assertRaises(EvidenceIdentityMismatch):
                 build_corpus_generation(
@@ -1340,6 +1507,678 @@ class GenerationPublicationTests(unittest.TestCase):
                     integration_gate=gate,
                     schema_identity=digest("schema"),
                     archive=archive,
+                )
+
+
+class EvidenceAddressingTests(unittest.TestCase):
+    """Assigned corrections: content addressing and boundary validation."""
+
+    @staticmethod
+    def _scorer_entry() -> CorpusEvidence:
+        taxonomy = make_scorer_taxonomy(
+            fixture_score(total=12, compiler_identity=digest("compiler")),
+            fixture_score(total=4, compiler_identity=digest("compiler")),
+            evaluator_identity=digest("search-evaluator"),
+            target_identity=digest("target"),
+        )
+        return _make_corpus_evidence(
+            kind="scorer",
+            outcome="accepted",
+            compiler_identity=digest("compiler"),
+            evaluator_identity=digest("search-evaluator"),
+            target_identity=digest("target"),
+            scorer=taxonomy,
+            support_identities=taxonomy_support(taxonomy),
+        )
+
+    def test_direct_evidence_id_forgery_is_refused(self) -> None:
+        entry = self._scorer_entry()
+        with self.assertRaises(EvidenceIdentityMismatch):
+            replace(entry, evidence_id=digest("forged"))
+
+    def test_generation_rejects_tampered_raw_entry_id(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            archive = ContentAddressedArchive(Path(directory) / "archive")
+            gate = fixture_gate(archive)
+            entry = self._scorer_entry()
+            tampered = dict(entry.to_dict())
+            tampered["evidence_id"] = digest("forged")
+            with self.assertRaises(EvidenceIdentityMismatch):
+                build_corpus_generation(
+                    (tampered,),
+                    integration_gate=gate,
+                    schema_identity=digest("schema"),
+                    archive=archive,
+                )
+
+    def test_generation_accepts_typed_evidence_only(self) -> None:
+        # R26: build accepts typed evidence only, and replay through
+        # from_dict reconstructs typed entries while a forged raw-mapping
+        # entry refuses instead of being stored.
+        with tempfile.TemporaryDirectory() as directory:
+            archive = ContentAddressedArchive(Path(directory) / "archive")
+            gate = fixture_gate(archive)
+            entry = self._scorer_entry()
+            with self.assertRaises(EvidenceIdentityMismatch):
+                build_corpus_generation(
+                    (entry.to_dict(),),
+                    integration_gate=gate,
+                    schema_identity=digest("schema"),
+                    archive=archive,
+                )
+            generation = build_corpus_generation(
+                (entry,),
+                integration_gate=gate,
+                schema_identity=digest("schema"),
+                archive=archive,
+            )
+            self.assertTrue(
+                all(isinstance(item, CorpusEvidence) for item in generation.entries)
+            )
+            replayed = CorpusGeneration.from_dict(generation.to_dict())
+            self.assertEqual(replayed, generation)
+            forged = generation.to_dict()
+            forged["entries"] = [dict(forged["entries"][0])]
+            forged["entries"][0]["compiler_identity"] = digest("other-compiler")
+            with self.assertRaises(EvidenceIdentityMismatch):
+                CorpusGeneration.from_dict(forged)
+
+    def test_exact_variant_shapes_hold_for_direct_and_replay_inputs(self) -> None:
+        entry = self._scorer_entry()
+        lesson_bytes = _LESSON_PATH.read_bytes()
+        citation = make_lesson_citation(
+            lesson_source(lesson_bytes),
+            lesson_bytes,
+            section="§2",
+            line_start=146,
+            line_end=178,
+            rule_id="argument-width.absent-andi",
+            absence_masking=AbsenceMaskingClaim(
+                opcode="andi", masks=("0xff", "0xffff"), scope="argument-use"
+            ),
+        )
+        hybrid_support = (
+            *entry.support_identities,
+            citation.span_identity,
+            citation.source.content_hash,
+        )
+        # A scorer with a lesson citation is a contradictory hybrid even when
+        # every nested object is otherwise valid and content-addressed.
+        with self.assertRaises(EvidenceIdentityMismatch):
+            replace(
+                entry,
+                citations=(citation,),
+                support_identities=hybrid_support,
+            )
+        replay_hybrid = entry.to_dict()
+        replay_hybrid["citations"] = [citation.to_dict()]
+        replay_hybrid["support_identities"] = list(hybrid_support)
+        replay_hybrid["evidence_id"] = hash_canonical(
+            {key: value for key, value in replay_hybrid.items() if key != "evidence_id"}
+        )
+        with self.assertRaises(EvidenceIdentityMismatch):
+            CorpusEvidence.from_dict(replay_hybrid)
+
+        pair = fixture_pair()
+        refused = promote_draft_landed(
+            pair,
+            fixture_score(total=7, compiler_identity=pair.compiler_identity),
+            fixture_score(total=14, compiler_identity=pair.compiler_identity),
+            evaluator_identity=digest("search-evaluator"),
+            target_identity=digest("target"),
+        )
+        assert isinstance(refused, PromotionRefused)
+        with self.assertRaises(EvidenceIdentityMismatch):
+            replace(refused.evidence, draft_landed=())
+        replay_missing_pair = refused.evidence.to_dict()
+        replay_missing_pair["draft_landed"] = []
+        replay_missing_pair["evidence_id"] = hash_canonical(
+            {
+                key: value
+                for key, value in replay_missing_pair.items()
+                if key != "evidence_id"
+            }
+        )
+        with self.assertRaises(EvidenceIdentityMismatch):
+            CorpusEvidence.from_dict(replay_missing_pair)
+
+    def test_nonproduction_draft_negative_variant_is_refused_direct_and_replay(self) -> None:
+        pair = fixture_pair()
+        refused = promote_draft_landed(
+            pair,
+            fixture_score(total=7, compiler_identity=pair.compiler_identity),
+            fixture_score(total=14, compiler_identity=pair.compiler_identity),
+            evaluator_identity=digest("search-evaluator"),
+            target_identity=digest("target"),
+        )
+        assert isinstance(refused, PromotionRefused)
+        with self.assertRaises(EvidenceIdentityMismatch):
+            _make_corpus_evidence(
+                kind="draft_landed",
+                outcome="negative",
+                recipient_id=pair.recipient_id,
+                compiler_identity=pair.compiler_identity,
+                tool_identity=pair.tool_identity,
+                target_identity=digest("target"),
+                evaluator_identity=digest("search-evaluator"),
+                config_identity=pair.config_identity,
+                scorer=refused.evidence.scorer,
+                draft_landed=(pair,),
+                first_divergence=refused.evidence.first_divergence,
+                reason_code=refused.evidence.reason_code,
+                refusal_receipt=refused.receipt,
+                support_identities=refused.evidence.support_identities,
+            )
+        replay = refused.evidence.to_dict()
+        replay["kind"] = "draft_landed"
+        replay["evidence_id"] = hash_canonical(
+            {key: value for key, value in replay.items() if key != "evidence_id"}
+        )
+        with self.assertRaises(EvidenceIdentityMismatch):
+            CorpusEvidence.from_dict(replay)
+
+    def test_factory_bound_identities_cannot_be_omitted(self) -> None:
+        pair = fixture_pair()
+        accepted = promote_draft_landed(
+            pair,
+            fixture_score(total=14, compiler_identity=pair.compiler_identity),
+            fixture_score(total=7, compiler_identity=pair.compiler_identity),
+            evaluator_identity=digest("search-evaluator"),
+            target_identity=digest("target"),
+            target_object_hash=digest("target-object"),
+        )
+        refused = promote_draft_landed(
+            pair,
+            fixture_score(total=7, compiler_identity=pair.compiler_identity),
+            fixture_score(total=14, compiler_identity=pair.compiler_identity),
+            evaluator_identity=digest("search-evaluator"),
+            target_identity=digest("target"),
+        )
+        assert isinstance(accepted, PromotionAccepted)
+        assert isinstance(refused, PromotionRefused)
+        required = (
+            "recipient_id",
+            "compiler_identity",
+            "tool_identity",
+            "target_identity",
+            "evaluator_identity",
+            "config_identity",
+        )
+        for evidence in (accepted.evidence, refused.evidence):
+            for field in required:
+                with self.subTest(kind=evidence.kind, field=field):
+                    with self.assertRaises(EvidenceIdentityMismatch):
+                        replace(evidence, **{field: None})
+                    replay = evidence.to_dict()
+                    replay[field] = None
+                    replay["evidence_id"] = hash_canonical(
+                        {
+                            key: value
+                            for key, value in replay.items()
+                            if key != "evidence_id"
+                        }
+                    )
+                    with self.assertRaises(EvidenceIdentityMismatch):
+                        CorpusEvidence.from_dict(replay)
+
+    def test_malformed_corpus_collections_use_the_evidence_error_boundary(self) -> None:
+        entry = self._scorer_entry()
+        for field in ("citations", "draft_landed", "support_identities"):
+            for invalid in (None, 0, False, ""):
+                with self.subTest(field=field, value=invalid):
+                    forged = entry.to_dict()
+                    forged[field] = invalid
+                    with self.assertRaises(EvidenceIdentityMismatch):
+                        CorpusEvidence.from_dict(forged)
+                    with self.assertRaises(EvidenceIdentityMismatch):
+                        replace(entry, **{field: invalid})
+
+    def test_refusal_identity_sets_are_sorted_unique_and_content_addressed(self) -> None:
+        first_values = (digest("z-input"), digest("a-input"), digest("a-input"))
+        second_values = (digest("a-input"), digest("z-input"))
+
+        def receipt(values):
+            canonical = tuple(sorted(set(values)))
+            payload = {
+                "protocol": "sotn-evidence-refusal-v1",
+                "operation": "fixture-refusal",
+                "reason_code": "fixture_reason",
+                "input_identities": list(canonical),
+                "observed_identities": list(canonical),
+                "new_generation_required": False,
+            }
+            return EvidenceRefusalReceipt(
+                receipt_id=hash_canonical(payload),
+                operation="fixture-refusal",
+                reason_code="fixture_reason",
+                input_identities=values,
+                observed_identities=values,
+                new_generation_required=False,
+            )
+
+        first = receipt(first_values)
+        second = receipt(second_values)
+        self.assertEqual(first, second)
+        self.assertEqual(first.input_identities, second_values)
+        self.assertEqual(first.observed_identities, second_values)
+        for field in ("input_identities", "observed_identities"):
+            for invalid in (None, 0, False, ""):
+                with self.subTest(field=field, value=invalid):
+                    with self.assertRaises(EvidenceIdentityMismatch):
+                        replace(first, **{field: invalid})
+
+    def test_generation_entries_reject_falsey_non_sequences(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            archive = ContentAddressedArchive(Path(directory) / "archive")
+            gate = fixture_gate(archive)
+            generation = build_corpus_generation(
+                (),
+                integration_gate=gate,
+                schema_identity=digest("schema"),
+                archive=archive,
+            )
+            for invalid in (None, 0, False, ""):
+                with self.subTest(entries=invalid):
+                    with self.assertRaises(EvidenceIdentityMismatch):
+                        replace(generation, entries=invalid)
+
+    def test_missing_required_support_is_refused_and_derived_for_sources(self) -> None:
+        # R27: a caller-maintained partial support list cannot hide nested
+        # provenance. The taxonomy identity is required at the record
+        # boundary, and the generation derivation supplies it mechanically.
+        taxonomy = make_scorer_taxonomy(
+            fixture_score(total=12, compiler_identity=digest("compiler")),
+            fixture_score(total=4, compiler_identity=digest("compiler")),
+            evaluator_identity=digest("search-evaluator"),
+            target_identity=digest("target"),
+        )
+        for missing in taxonomy_support(taxonomy):
+            supports = tuple(
+                identity
+                for identity in taxonomy_support(taxonomy)
+                if identity != missing
+            )
+            with self.subTest(missing=missing):
+                with self.assertRaisesRegex(
+                    EvidenceIdentityMismatch, "required identities"
+                ):
+                    _make_corpus_evidence(
+                        kind="scorer",
+                        outcome="accepted",
+                        compiler_identity=digest("compiler"),
+                        evaluator_identity=digest("search-evaluator"),
+                        target_identity=digest("target"),
+                        scorer=taxonomy,
+                        support_identities=supports,
+                    )
+
+    def test_evidence_protocol_namespace_is_enforced(self) -> None:
+        # R28: the fixed protocol field is part of the identity payload and
+        # of serialized evidence, so replay can reject other schema versions.
+        entry = self._scorer_entry()
+        payload = entry.to_dict()
+        self.assertEqual(payload["protocol"], CORPUS_EVIDENCE_PROTOCOL)
+        self.assertEqual(
+            entry.evidence_id,
+            hash_canonical(
+                {
+                    key: value
+                    for key, value in payload.items()
+                    if key != "evidence_id"
+                }
+            ),
+        )
+        forged = dict(payload)
+        forged["protocol"] = "sotn-corpus-evidence-v2"
+        with self.assertRaisesRegex(EvidenceIdentityMismatch, "protocol"):
+            CorpusEvidence.from_dict(forged)
+
+    def test_support_order_cannot_create_a_second_identity(self) -> None:
+        # R22 canonicalization: set-like support input order is normalized.
+        taxonomy = make_scorer_taxonomy(
+            fixture_score(total=12, compiler_identity=digest("compiler")),
+            fixture_score(total=4, compiler_identity=digest("compiler")),
+            evaluator_identity=digest("search-evaluator"),
+            target_identity=digest("target"),
+        )
+        extra = (digest("extra-identity"), digest("aux-identity"))
+        nested = taxonomy_support(taxonomy)
+        first = _make_corpus_evidence(
+            kind="scorer",
+            outcome="accepted",
+            compiler_identity=digest("compiler"),
+            evaluator_identity=digest("search-evaluator"),
+            target_identity=digest("target"),
+            scorer=taxonomy,
+            support_identities=(*nested, *extra),
+        )
+        second = _make_corpus_evidence(
+            kind="scorer",
+            outcome="accepted",
+            compiler_identity=digest("compiler"),
+            evaluator_identity=digest("search-evaluator"),
+            target_identity=digest("target"),
+            scorer=taxonomy,
+            support_identities=(extra[1], *reversed(nested), extra[0]),
+        )
+        self.assertEqual(first, second)
+
+    def test_accepted_entry_cannot_carry_a_refusal_reason(self) -> None:
+        with self.assertRaises(EvidenceIdentityMismatch):
+            _make_corpus_evidence(
+                kind="draft_landed",
+                outcome="accepted",
+                recipient_id="us:ST:fn",
+                scorer=make_scorer_taxonomy(
+                    fixture_score(total=12, compiler_identity=digest("compiler")),
+                    fixture_score(total=4, compiler_identity=digest("compiler")),
+                    evaluator_identity=digest("search-evaluator"),
+                    target_identity=digest("target"),
+                ),
+                reason_code="no_measured_improvement",
+            )
+
+    def test_negative_entry_cannot_claim_an_idiom(self) -> None:
+        pair = fixture_pair()
+        accepted = promote_draft_landed(
+            pair,
+            fixture_score(total=14, compiler_identity=pair.compiler_identity),
+            fixture_score(total=7, compiler_identity=pair.compiler_identity),
+            evaluator_identity=digest("search-evaluator"),
+            target_identity=digest("target"),
+        )
+        assert isinstance(accepted, PromotionAccepted)
+        receipt = EvidenceRefusalReceipt(
+            receipt_id=hash_canonical(
+                {
+                    "protocol": "sotn-evidence-refusal-v1",
+                    "operation": "promote_draft_landed",
+                    "reason_code": "no_measured_improvement",
+                    "input_identities": [],
+                    "observed_identities": [],
+                    "new_generation_required": False,
+                }
+            ),
+            operation="promote_draft_landed",
+            reason_code="no_measured_improvement",
+            input_identities=(),
+            observed_identities=(),
+            new_generation_required=False,
+        )
+        with self.assertRaises(EvidenceIdentityMismatch):
+            _make_corpus_evidence(
+                kind="negative",
+                outcome="negative",
+                recipient_id=pair.recipient_id,
+                compiler_identity=pair.compiler_identity,
+                tool_identity=pair.tool_identity,
+                target_identity=digest("target"),
+                evaluator_identity=digest("search-evaluator"),
+                config_identity=pair.config_identity,
+                scorer=accepted.evidence.scorer,
+                draft_landed=(pair,),
+                idiom=accepted.observation,
+                reason_code="no_measured_improvement",
+                refusal_receipt=receipt,
+                support_identities=tuple(
+                    sorted(
+                        set(accepted.evidence.support_identities)
+                        | {receipt.receipt_id, pair.pair_hash}
+                    )
+                ),
+            )
+
+    def test_refused_evidence_requires_its_receipt(self) -> None:
+        # R20: a refused record without its typed receipt is not publishable
+        # negative evidence; the reason alone is forgeable.
+        with self.assertRaisesRegex(EvidenceIdentityMismatch, "refusal[_ ]receipt"):
+            _make_corpus_evidence(
+                kind="first_divergence",
+                outcome="refused",
+                recipient_id="us:ST:fn",
+                compiler_identity=digest("compiler"),
+                tool_identity=digest("tool:cfg_dataflow"),
+                target_identity=digest("target"),
+                config_identity=digest("config"),
+                lane="cfg_dataflow",
+                schema_identity=digest("schema"),
+                scorer_algorithm="difflib",
+                pattern_id=digest("pattern"),
+                first_divergence=FirstDivergence(1, 2, "lw", "sw"),
+                reason_code="missing_evaluator_identity",
+                support_identities=(digest("pattern"),),
+            )
+
+    def test_receipt_reason_must_match_the_evidence_reason(self) -> None:
+        receipt = EvidenceRefusalReceipt(
+            receipt_id=hash_canonical(
+                {
+                    "protocol": "sotn-evidence-refusal-v1",
+                    "operation": "collect_recurring_first_divergence",
+                    "reason_code": "missing_evaluator_identity",
+                    "input_identities": [],
+                    "observed_identities": [],
+                    "new_generation_required": False,
+                }
+            ),
+            operation="collect_recurring_first_divergence",
+            reason_code="missing_evaluator_identity",
+            input_identities=(),
+            observed_identities=(),
+            new_generation_required=False,
+        )
+        with self.assertRaisesRegex(
+            EvidenceIdentityMismatch, "refusal receipt"
+        ):
+            _make_corpus_evidence(
+                kind="first_divergence",
+                outcome="refused",
+                first_divergence=FirstDivergence(1, 2, "lw", "sw"),
+                reason_code="incompatible_lineage_context",
+                refusal_receipt=receipt,
+                support_identities=(receipt.receipt_id,),
+            )
+
+
+class PromotionWrapperTests(unittest.TestCase):
+    """R29: the promotion wrappers enforce their paired records."""
+
+    def test_accepted_wrapper_rejects_unrelated_evidence(self) -> None:
+        pair = fixture_pair()
+        accepted = promote_draft_landed(
+            pair,
+            fixture_score(total=14, compiler_identity=pair.compiler_identity),
+            fixture_score(total=7, compiler_identity=pair.compiler_identity),
+            evaluator_identity=digest("search-evaluator"),
+            target_identity=digest("target"),
+            target_object_hash=digest("target-object"),
+        )
+        assert isinstance(accepted, PromotionAccepted)
+        other_pair = replace(pair, landing_commit="b" * 40)
+        other = promote_draft_landed(
+            other_pair,
+            fixture_score(total=14, compiler_identity=pair.compiler_identity),
+            fixture_score(total=7, compiler_identity=pair.compiler_identity),
+            evaluator_identity=digest("search-evaluator"),
+            target_identity=digest("target"),
+            target_object_hash=digest("target-object"),
+        )
+        assert isinstance(other, PromotionAccepted)
+        with self.assertRaises(EvidenceIdentityMismatch):
+            PromotionAccepted(
+                observation=other.observation, evidence=accepted.evidence
+            )
+        with self.assertRaises(EvidenceIdentityMismatch):
+            PromotionAccepted(
+                observation=accepted.observation, evidence=other.evidence
+            )
+        negative = promote_draft_landed(
+            pair,
+            fixture_score(total=7, compiler_identity=pair.compiler_identity),
+            fixture_score(total=14, compiler_identity=pair.compiler_identity),
+            evaluator_identity=digest("search-evaluator"),
+            target_identity=digest("target"),
+        )
+        assert isinstance(negative, PromotionRefused)
+        with self.assertRaises(EvidenceIdentityMismatch):
+            PromotionAccepted(
+                observation=accepted.observation, evidence=negative.evidence
+            )
+        # The honest wrapper still constructs.
+        self.assertIsInstance(
+            PromotionAccepted(
+                observation=accepted.observation, evidence=accepted.evidence
+            ),
+            PromotionAccepted,
+        )
+
+    def test_refused_wrapper_rejects_mismatched_receipt_or_evidence(self) -> None:
+        pair = fixture_pair()
+        refused = promote_draft_landed(
+            pair,
+            fixture_score(total=7, compiler_identity=pair.compiler_identity),
+            fixture_score(total=14, compiler_identity=pair.compiler_identity),
+            evaluator_identity=digest("search-evaluator"),
+            target_identity=digest("target"),
+        )
+        assert isinstance(refused, PromotionRefused)
+        other = promote_draft_landed(
+            replace(pair, landing_commit="c" * 40),
+            fixture_score(total=7, compiler_identity=pair.compiler_identity),
+            fixture_score(total=14, compiler_identity=pair.compiler_identity),
+            evaluator_identity=digest("search-evaluator"),
+            target_identity=digest("target"),
+        )
+        assert isinstance(other, PromotionRefused)
+        with self.assertRaises(EvidenceIdentityMismatch):
+            PromotionRefused(receipt=other.receipt, evidence=refused.evidence)
+        with self.assertRaises(EvidenceIdentityMismatch):
+            PromotionRefused(receipt=refused.receipt, evidence=other.evidence)
+        self.assertIsInstance(
+            PromotionRefused(receipt=refused.receipt, evidence=refused.evidence),
+            PromotionRefused,
+        )
+
+
+class RecurrenceBoundaryTests(unittest.TestCase):
+    def test_duplicate_lineage_contexts_are_refused(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            archive = ContentAddressedArchive(Path(directory) / "reports")
+            report = fixture_pattern_report(_fixture_recommendation(), archive)
+            with self.assertRaises(EvidenceIdentityMismatch):
+                collect_recurring_first_divergence(
+                    report,
+                    (fixture_context("ledger-a", "run-a"),) * 2,
+                    artifact_root=archive.run_root,
+                )
+
+    def test_string_source_ledgers_are_refused_at_the_report_boundary(self) -> None:
+        # R23: the strict production validator refuses a string where a
+        # sequence of source ledgers belongs; nothing decomposes it into
+        # characters downstream.
+        recommendation = _fixture_recommendation(source_ledgers="ledger-a")
+        ledgers = (digest("ledger-a"), digest("ledger-b"))
+        payload = _report_payload(ledgers, [recommendation])
+        with self.assertRaises(PatternInputError):
+            SearchPatternReport(
+                hash_canonical(payload),
+                ledgers,
+                (recommendation,),
+                ArtifactRef(
+                    hash_bytes(canonical_bytes(payload)),
+                    "artifacts/pattern_reports/forged.json",
+                    "application/json",
+                    len(canonical_bytes(payload)),
+                ),
+            )
+
+    def test_malformed_divergence_is_refused(self) -> None:
+        recommendation = _fixture_recommendation(first_divergence="not-a-divergence")
+        ledgers = tuple(recommendation["source_ledgers"])
+        payload = _report_payload(ledgers, [recommendation])
+        with self.assertRaises(PatternInputError):
+            SearchPatternReport(
+                hash_canonical(payload),
+                ledgers,
+                (recommendation,),
+                ArtifactRef(
+                    hash_bytes(canonical_bytes(payload)),
+                    "artifacts/pattern_reports/forged.json",
+                    "application/json",
+                    len(canonical_bytes(payload)),
+                ),
+            )
+
+    def test_cross_lane_tool_pair_is_refused(self) -> None:
+        # The recommendation borrows the cfg_dataflow tool identity while
+        # claiming the upstream_current lane: the exact lane pair is bound in
+        # the context, so this refuses as incompatible rather than accepting
+        # on tool identity alone.
+        with tempfile.TemporaryDirectory() as directory:
+            archive = ContentAddressedArchive(Path(directory) / "reports")
+            report = fixture_pattern_report(
+                _fixture_recommendation(lane="upstream_current"),
+                archive,
+            )
+            entries = collect_recurring_first_divergence(
+                report,
+                (fixture_context("ledger-a", "run-a"), fixture_context("ledger-b", "run-b")),
+                artifact_root=archive.run_root,
+            )
+        self.assertEqual(len(entries), 1)
+        self.assertEqual(entries[0].outcome, "refused")
+        self.assertEqual(entries[0].reason_code, "incompatible_lineage_context")
+        self.assertEqual(entries[0].lane, "upstream_current")
+
+    def test_forged_pattern_id_is_refused_at_the_report_boundary(self) -> None:
+        # R23: pattern_id must be recomputable from the canonical lineage
+        # key; a recommendation cannot mint an arbitrary id.
+        recommendation = _fixture_recommendation()
+        recommendation["pattern_id"] = digest("forged-pattern")
+        ledgers = tuple(recommendation["source_ledgers"])
+        payload = _report_payload(ledgers, [recommendation])
+        with self.assertRaises(PatternInputError):
+            SearchPatternReport(
+                hash_canonical(payload),
+                ledgers,
+                (recommendation,),
+                ArtifactRef(
+                    hash_bytes(canonical_bytes(payload)),
+                    "artifacts/pattern_reports/forged.json",
+                    "application/json",
+                    len(canonical_bytes(payload)),
+                ),
+            )
+
+    def test_missing_report_artifact_is_refused_before_any_consumption(self) -> None:
+        # R25: the recurrence boundary verifies the report's durable bytes
+        # before reading recommendations or consuming contexts.
+        with tempfile.TemporaryDirectory() as directory:
+            archive = ContentAddressedArchive(Path(directory) / "reports")
+            report = fixture_pattern_report(_fixture_recommendation(), archive)
+
+            class ExplodingContexts:
+                def __iter__(self):
+                    raise AssertionError("contexts must not be consumed")
+
+            with self.assertRaises(PatternArtifactError):
+                collect_recurring_first_divergence(
+                    report,
+                    ExplodingContexts(),
+                    artifact_root=Path(directory) / "empty-archive",
+                )
+
+    def test_corrupt_report_artifact_is_refused(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            archive = ContentAddressedArchive(Path(directory) / "reports")
+            report = fixture_pattern_report(_fixture_recommendation(), archive)
+            path = archive.resolve(report.artifact)
+            path.write_bytes(b"corrupt bytes")
+            with self.assertRaises(PatternArtifactError):
+                collect_recurring_first_divergence(
+                    report,
+                    (fixture_context("ledger-a", "run-a"),),
+                    artifact_root=archive.run_root,
                 )
 
 

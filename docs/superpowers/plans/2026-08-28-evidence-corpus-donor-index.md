@@ -1104,6 +1104,19 @@ Expected result: the focused suite passes, reversed revision input is canonicali
 
 - [x] **Step 5: Stop for the root-only commit boundary.** Root may commit only `automation/search_donor_index.py` and `automation/test_search_donor_index.py` with message `feat: publish immutable four-version donor index`. The worker does not fetch, checkout, vendor, build, or modify any donor source.
 
+> **Owner correction recorded 2026-08-30:** Tasks 6 through 8 below are
+> preserved as historical design evidence but their interfaces and examples
+> are superseded by
+> `docs/superpowers/plans/2026-08-30-evidence-correction-parallelization.md`.
+> Do not implement the unverified `query_donor_index(index, query,
+> expected_binding=...)` boundary or pass `DonorEvidence` to a renderer. The
+> corrected query boundary verifies both the donor-index archive and the
+> integration-run archive before consuming entries. The corrected adapter
+> receives only `DonorSemanticClaim` values, which structurally exclude donor
+> artifacts, bodies, donor IDs and version-specific provenance. Findings R24
+> and R30 in `.zcode/parallel-coordination.md` record why the earlier contracts
+> were rejected.
+
 ### Task 6: Add bounded deterministic donor queries and typed receipts
 
 **Files:**

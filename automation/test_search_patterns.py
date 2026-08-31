@@ -2,8 +2,10 @@ import json
 import tempfile
 import unittest
 from dataclasses import replace
+import math
 from pathlib import Path
 import sys
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -23,10 +25,13 @@ from automation.search_patterns import (
     PatternLedgerCorrupt,
     PatternPartialLedger,
     SearchPatternReport,
+    _lineage_key,
+    _report_payload,
     load_completed_lineage_contexts,
     load_report_artifact,
     mine_completed_lineages,
     render_derivation_summary,
+    validate_search_recommendation,
 )
 from automation.search_supervisor import EVALUATOR_TOOL_KEY
 from automation.search_types import (
@@ -995,6 +1000,301 @@ class CompletedLineageContextTests(unittest.TestCase):
                 {item["evaluator_identity"] for item in report.recommendations},
                 {_lineage_digest("evaluator-a"), _lineage_digest("evaluator-b")},
             )
+
+
+class StrictRecommendationBoundaryTests(unittest.TestCase):
+    """R23: the shared strict validator and report artifact metadata."""
+
+    @staticmethod
+    def _recommendation(**overrides):
+        def digest(label):
+            return hash_bytes(label.encode("utf-8"))
+
+        recommendation = {
+            "pass_kind": None,
+            "patch_id": None,
+            "lane": "cfg_dataflow",
+            "overlay": "st",
+            "function_archetype": "generic",
+            "first_divergence": None,
+            "compiler_identity": digest("compiler"),
+            "config_identity": digest("config"),
+            "schema_identity": digest("schema"),
+            "scorer_algorithm": "difflib",
+            "lane_tool_identity": digest("tool:cfg_dataflow"),
+            "recipient_id": "us:ST:fn",
+            "target_identity": digest("target:us:ST:fn"),
+            "evaluator_identity": digest("search-evaluator"),
+            "sample_count": 4,
+            "successes": 3,
+            "failures": 1,
+            "success_rate": round(3 / 4, 6),
+            "source_ledgers": sorted([digest("ledger-a"), digest("ledger-b")]),
+            "lineage_ids": [
+                "run-a:task-a",
+                "run-a:task-b",
+                "run-b:task-a",
+                "run-b:task-b",
+            ],
+        }
+        forged_pattern_id = overrides.pop("pattern_id", None)
+        recommendation.update(overrides)
+        recommendation["pattern_id"] = forged_pattern_id or hash_canonical(
+            {
+                "key": list(
+                    _lineage_key(
+                        pass_kind=recommendation["pass_kind"],
+                        patch_id=recommendation["patch_id"],
+                        lane=recommendation["lane"],
+                        overlay=recommendation["overlay"],
+                        archetype=recommendation["function_archetype"],
+                        first_divergence=recommendation["first_divergence"],
+                        compiler_identity=recommendation["compiler_identity"],
+                        config_identity=recommendation["config_identity"],
+                        schema_identity=recommendation["schema_identity"],
+                        scorer_algorithm=recommendation["scorer_algorithm"],
+                        lane_tool_identity=recommendation["lane_tool_identity"],
+                        recipient_id=recommendation["recipient_id"],
+                        target_identity=recommendation["target_identity"],
+                        evaluator_identity=recommendation["evaluator_identity"],
+                    )
+                )
+            }
+        )
+        return recommendation
+
+    def _report(self, recommendation, *, artifact=None, source_ledgers=None):
+        def digest(label):
+            return hash_bytes(label.encode("utf-8"))
+
+        ledgers = source_ledgers or tuple(recommendation["source_ledgers"])
+        payload = _report_payload(ledgers, [recommendation])
+        body = canonical_bytes(payload)
+        report_id = hash_canonical(payload)
+        if artifact is None:
+            artifact = ArtifactRef(
+                hash_bytes(body),
+                "artifacts/pattern_reports/" + report_id.removeprefix("sha256:") + ".json",
+                "application/json",
+                len(body),
+            )
+        return SearchPatternReport(report_id, ledgers, (recommendation,), artifact)
+
+    def test_production_shaped_recommendation_constructs(self) -> None:
+        report = self._report(self._recommendation())
+        self.assertEqual(len(report.recommendations), 1)
+
+    def test_incomplete_recommendation_schema_is_refused(self) -> None:
+        recommendation = self._recommendation()
+        del recommendation["pattern_id"]
+        with self.assertRaises(PatternInputError):
+            self._report(recommendation)
+
+    def test_forged_pattern_id_is_refused(self) -> None:
+        recommendation = self._recommendation(
+            pattern_id=hash_bytes(b"forged-pattern")
+        )
+        with self.assertRaises(PatternIdentityMismatch):
+            self._report(recommendation)
+
+    def test_inconsistent_counts_and_success_rate_are_refused(self) -> None:
+        with self.assertRaises(PatternInputError):
+            self._report(self._recommendation(success_rate=0.9))
+        with self.assertRaises(PatternInputError):
+            self._report(
+                self._recommendation(sample_count=4, successes=3, failures=2)
+            )
+        with self.assertRaises(PatternInputError):
+            self._report(self._recommendation(successes=0))
+
+    def test_unknown_lane_and_string_collections_are_refused(self) -> None:
+        with self.assertRaises(PatternInputError):
+            self._report(self._recommendation(lane="not_a_lane"))
+        with self.assertRaises(PatternInputError):
+            self._report(
+                self._recommendation(source_ledgers=hash_bytes(b"one-ledger"))
+            )
+
+    def test_recommendation_ledgers_must_belong_to_the_report(self) -> None:
+        def digest(label):
+            return hash_bytes(label.encode("utf-8"))
+
+        recommendation = self._recommendation()
+        # The report cites only one of the recommendation's two ledgers, so
+        # the second cited ledger lies outside the report's source set.
+        with self.assertRaises(PatternIdentityMismatch):
+            self._report(
+                recommendation,
+                source_ledgers=(recommendation["source_ledgers"][0],),
+            )
+
+    def test_report_artifact_metadata_is_validated_against_payload_bytes(self) -> None:
+        recommendation = self._recommendation()
+        with self.assertRaises(PatternIdentityMismatch):
+            self._report(
+                recommendation,
+                artifact=replace(
+                    self._report(recommendation).artifact, media_type="text/plain"
+                ),
+            )
+        with self.assertRaises(PatternIdentityMismatch):
+            self._report(
+                recommendation,
+                artifact=replace(
+                    self._report(recommendation).artifact, byte_size=7
+                ),
+            )
+        with self.assertRaises(PatternIdentityMismatch):
+            self._report(
+                recommendation,
+                artifact=replace(
+                    self._report(recommendation).artifact,
+                    path="artifacts/pattern_reports/wrong.json",
+                ),
+            )
+
+    def test_patch_id_is_a_content_identity_when_present(self) -> None:
+        def digest(label):
+            return hash_bytes(label.encode("utf-8"))
+
+        filled = self._recommendation(
+            pass_kind="declaration_shape",
+            patch_id=digest("patch-content"),
+        )
+        self._report(filled)
+        with self.assertRaises(PatternInputError):
+            self._report(self._recommendation(patch_id="bare-label"))
+
+    def test_first_divergence_must_match_the_exact_production_mapping(self) -> None:
+        with self.assertRaises(PatternInputError):
+            self._report(
+                self._recommendation(
+                    first_divergence={"target_index": -1, "candidate_index": 2}
+                )
+            )
+        with self.assertRaises(PatternInputError):
+            self._report(
+                self._recommendation(
+                    first_divergence={
+                        "target_index": 1,
+                        "candidate_index": 2,
+                        "target_instruction": "lw",
+                        "extra": "field",
+                    }
+                )
+            )
+        with self.assertRaises(PatternInputError):
+            self._report(
+                self._recommendation(
+                    first_divergence={
+                        "target_index": 1,
+                        "candidate_index": 2,
+                        "target_instruction": 7,
+                        "candidate_instruction": None,
+                    }
+                )
+            )
+        self._report(self._recommendation(first_divergence=None))
+
+    def test_boolean_success_rate_is_refused(self) -> None:
+        with self.assertRaises(PatternInputError):
+            self._report(self._recommendation(success_rate=True))
+
+    def test_success_rate_requires_a_finite_float(self) -> None:
+        for invalid in (3, math.nan, math.inf, -math.inf):
+            with self.subTest(success_rate=invalid):
+                with self.assertRaises(PatternInputError):
+                    self._report(self._recommendation(success_rate=invalid))
+
+    def test_lineage_ids_must_cover_exactly_one_observation_per_sample(self) -> None:
+        with self.assertRaises(PatternInputError):
+            self._report(
+                self._recommendation(lineage_ids=["run-a:task-a", "run-b:task-b"])
+            )
+
+    def test_duplicate_pattern_ids_are_refused(self) -> None:
+        recommendation = self._recommendation()
+        with self.assertRaises(PatternIdentityMismatch):
+            self._report_pair(recommendation, dict(recommendation))
+
+    def test_recommendations_must_follow_the_production_ranking_order(self) -> None:
+        strong = self._recommendation()
+        weak = self._recommendation(
+            lane="upstream_current",
+            sample_count=2,
+            successes=1,
+            failures=1,
+            success_rate=0.5,
+            lineage_ids=["run-x:task-a", "run-y:task-b"],
+        )
+        correct = self._report_pair(strong, weak)
+        self.assertEqual(
+            [item["pattern_id"] for item in correct.recommendations],
+            [strong["pattern_id"], weak["pattern_id"]],
+        )
+        with self.assertRaises(PatternIdentityMismatch):
+            self._report_pair(weak, strong)
+
+    def _report_pair(self, first, second):
+        def digest(label):
+            return hash_bytes(label.encode("utf-8"))
+
+        ledgers = tuple(
+            sorted(set(first["source_ledgers"]) | set(second["source_ledgers"]))
+        )
+        payload = _report_payload(ledgers, [first, second])
+        body = canonical_bytes(payload)
+        report_id = hash_canonical(payload)
+        return SearchPatternReport(
+            report_id,
+            ledgers,
+            (first, second),
+            ArtifactRef(
+                hash_bytes(body),
+                "artifacts/pattern_reports/"
+                + report_id.removeprefix("sha256:")
+                + ".json",
+                "application/json",
+                len(body),
+            ),
+        )
+
+    def test_bare_report_path_requires_its_archive_root(self) -> None:
+        # R33: the loader must not manufacture archival provenance for a
+        # bare path, even when the file name matches its own digest.
+        with tempfile.TemporaryDirectory() as directory:
+            archive = ContentAddressedArchive(Path(directory) / "reports")
+            report = self._report(self._recommendation())
+            artifact = archive.put_bytes(
+                canonical_bytes(report.payload()),
+                category="pattern_reports",
+                suffix=".json",
+                media_type="application/json",
+            )
+            stored = archive.resolve(artifact)
+            # Authority is checked before path conversion or file access. A
+            # caller cannot make a bare path consume bytes from an arbitrary
+            # location and only then discover that its archive was unspecified.
+            with patch.object(Path, "read_bytes", side_effect=AssertionError):
+                with self.assertRaises(PatternArtifactError):
+                    load_report_artifact(stored)
+            loaded = load_report_artifact(stored, artifact_root=archive.run_root)
+            self.assertEqual(loaded.report_id, report.report_id)
+
+    def test_report_path_resolution_failures_stay_in_pattern_domain(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            archive = ContentAddressedArchive(Path(directory) / "reports")
+            report = self._report(self._recommendation())
+            artifact = archive.put_bytes(
+                canonical_bytes(report.payload()),
+                category="pattern_reports",
+                suffix=".json",
+                media_type="application/json",
+            )
+            stored = archive.resolve(artifact)
+            with patch.object(Path, "resolve", side_effect=OSError("resolver")):
+                with self.assertRaises(PatternArtifactError):
+                    load_report_artifact(stored, artifact_root=archive.run_root)
 
 
 if __name__ == "__main__":

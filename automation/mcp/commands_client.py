@@ -883,6 +883,11 @@ AUTOMATION_SCRIPTS = {
     # The focused donor index suite, corpus plan Task 5. The library module
     # itself stays unlisted: it is a pure import, not an action.
     "test_search_donor_index.py",
+    # The donor-query and indexed-lane focused suites are executable test
+    # actions. Their implementation modules remain pure import libraries and
+    # are intentionally not allowlisted.
+    "test_search_donor_query.py",
+    "test_search_indexed_lane.py",
     "test_build_attribution.py",
     "escalation_triage.py",
     "deferred_triage.py",
