@@ -1284,6 +1284,52 @@ class SearchSupervisorIntegrationTests(unittest.TestCase):
             )
         self.assertEqual(called, [])
 
+    def test_factory_run_reconstructs_production_adapters_automatically(self):
+        value = self.instrumented_manifest()
+        tools = dict(value.tool_identities)
+        tools["search_run_factory_marker"] = hash_bytes(b"factory-marker")
+        value = replace(value, tool_identities=tools)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "run"
+            self.write_manifest(root, value)
+            reconstructed = _search_supervisor.LaneAdapters(
+                upstream_current=lambda _recipient: None
+            )
+            with patch(
+                "automation.search_run_factory.verify_factory_runtime",
+                return_value=value,
+            ), patch(
+                "automation.search_provider_lanes.reconstruct_lane_adapters",
+                return_value=reconstructed,
+            ) as rebuild:
+                result = run_instrumented(
+                    root / "manifest.json",
+                    lease_path=Path(directory) / "lease.json",
+                )
+            self.assertEqual(len(result["executed_task_ids"]), 1)
+            rebuild.assert_called_once_with(value, root, caller_adapters=None)
+
+    def test_factory_run_rejects_caller_adapter_override(self):
+        value = self.instrumented_manifest()
+        tools = dict(value.tool_identities)
+        tools["search_run_factory_marker"] = hash_bytes(b"factory-marker")
+        value = replace(value, tool_identities=tools)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "run"
+            self.write_manifest(root, value)
+            with patch(
+                "automation.search_run_factory.verify_factory_runtime",
+                return_value=value,
+            ), self.assertRaisesRegex(
+                SupervisorIntegrationError,
+                "providers could not be reconstructed",
+            ):
+                run_instrumented(
+                    root / "manifest.json",
+                    adapters=self.adapters(),
+                    lease_path=Path(directory) / "lease.json",
+                )
+
 
 class IntegrationGateReceiptTests(unittest.TestCase):
     """Canonical Task 8.2 integration receipt: production, load and refusal."""

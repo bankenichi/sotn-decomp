@@ -724,6 +724,15 @@ class LaneAdapters:
     dependency_closure: Optional[Callable[[Recipient], Any]] = None
     multi_donor: Optional[Callable[[Recipient], Any]] = None
     cfg_dataflow: Optional[Callable[[Recipient], Any]] = None
+    m2c_ensemble: Optional[Callable[[Recipient], Any]] = None
+    idiom_atlas: Optional[Callable[[Recipient], Any]] = None
+    bounded_synthesis: Optional[Callable[[Recipient], Any]] = None
+    permuter_random: Optional[Callable[[Recipient], Any]] = None
+    permuter_targeted: Optional[Callable[[Recipient], Any]] = None
+    permuter_recombine: Optional[Callable[[Recipient], Any]] = None
+    permuter_ddmin: Optional[Callable[[Recipient], Any]] = None
+    model_fleet: Optional[Callable[[Recipient], Any]] = None
+    model_expensive: Optional[Callable[[Recipient], Any]] = None
 
     def for_lane(self, lane: str) -> Optional[Callable[[Recipient], Any]]:
         return getattr(self, lane, None)
@@ -3705,6 +3714,20 @@ def _dispatch(
                 recipient, options=scoped, root=root, lane=lane
             )
         if lane in {"upstream_current", "upstream_pinned"}:
+            return _discovery_from_values(
+                raw, lane=lane, recipient=recipient, root=root
+            )
+        if lane in {
+            "m2c_ensemble",
+            "idiom_atlas",
+            "bounded_synthesis",
+            "permuter_random",
+            "permuter_targeted",
+            "permuter_recombine",
+            "permuter_ddmin",
+            "model_fleet",
+            "model_expensive",
+        }:
             return _discovery_from_values(
                 raw, lane=lane, recipient=recipient, root=root
             )

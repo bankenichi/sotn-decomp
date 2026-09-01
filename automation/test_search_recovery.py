@@ -4,6 +4,7 @@ import unittest
 from dataclasses import replace
 from pathlib import Path
 import sys
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -68,6 +69,18 @@ class CountingOracle:
 
 
 class TestSearchRecovery(unittest.TestCase):
+    @staticmethod
+    def _factory_manifest():
+        base = manifest()
+        return replace(
+            base,
+            tool_identities={
+                **base.tool_identities,
+                "search_run_factory": hash_bytes(b"factory-module"),
+                "search_run_factory_marker": hash_bytes(b"factory-marker"),
+            },
+        )
+
     @staticmethod
     def _manifest_for_oracle(oracle):
         base = manifest()
@@ -442,6 +455,97 @@ class TestSearchRecovery(unittest.TestCase):
             )
             resumed = SearchCoordinator(directory, empty)
             self.assertEqual(resumed.pending_task_ids(), ())
+
+    def test_factory_recovery_verifies_archive_then_provider_before_accepting_state(self):
+        run_manifest = self._factory_manifest()
+        with tempfile.TemporaryDirectory() as directory:
+            SearchCoordinator(directory, run_manifest)
+            order = []
+
+            def verify_archive(run_root, typed_manifest):
+                order.append(("archive", run_root, typed_manifest))
+                self.assertIsInstance(typed_manifest, type(run_manifest))
+                return typed_manifest
+
+            def verify_provider(typed_manifest, run_root):
+                order.append(("provider", run_root, typed_manifest))
+
+            with mock.patch(
+                "automation.search_run_factory.verify_factory_archive",
+                side_effect=verify_archive,
+            ), mock.patch(
+                "automation.search_provider_lanes.verify_lane_provider",
+                side_effect=verify_provider,
+            ):
+                state = recover_run(directory)
+
+            self.assertEqual([entry[0] for entry in order], ["archive", "provider"])
+            self.assertEqual(state.manifest, run_manifest)
+
+    def test_factory_recovery_refuses_missing_or_corrupt_provider_state(self):
+        for failure in (FileNotFoundError("provider state missing"), RuntimeError("provider state corrupt")):
+            with self.subTest(failure=type(failure).__name__), tempfile.TemporaryDirectory() as directory:
+                run_manifest = self._factory_manifest()
+                SearchCoordinator(directory, run_manifest)
+                with mock.patch(
+                    "automation.search_run_factory.verify_factory_archive",
+                    return_value=run_manifest,
+                ), mock.patch(
+                    "automation.search_provider_lanes.verify_lane_provider",
+                    side_effect=failure,
+                ):
+                    with self.assertRaisesRegex(
+                        RecoveryError,
+                        "provider state could not be revalidated",
+                    ):
+                        recover_run(directory)
+
+    def test_legacy_recovery_does_not_require_factory_provider_state(self):
+        with tempfile.TemporaryDirectory() as directory:
+            run_manifest = manifest()
+            SearchCoordinator(directory, run_manifest)
+            with mock.patch(
+                "automation.search_run_factory.verify_factory_archive",
+                side_effect=AssertionError("legacy recovery must not use factory archive"),
+            ), mock.patch(
+                "automation.search_provider_lanes.verify_lane_provider",
+                side_effect=AssertionError("legacy recovery must not use providers"),
+            ):
+                state = recover_run(directory)
+            self.assertEqual(state.manifest, run_manifest)
+
+    def test_repeated_factory_recovery_has_no_provider_side_effects(self):
+        run_manifest = self._factory_manifest()
+        with tempfile.TemporaryDirectory() as directory:
+            SearchCoordinator(directory, run_manifest)
+            provider_calls = []
+
+            def verify_provider(typed_manifest, run_root):
+                provider_calls.append((typed_manifest, run_root))
+
+            def snapshot():
+                return {
+                    path.relative_to(directory): path.read_bytes()
+                    for path in Path(directory).rglob("*")
+                    if path.is_file()
+                }
+
+            with mock.patch(
+                "automation.search_run_factory.verify_factory_archive",
+                return_value=run_manifest,
+            ), mock.patch(
+                "automation.search_provider_lanes.verify_lane_provider",
+                side_effect=verify_provider,
+            ):
+                before = snapshot()
+                recover_run(directory)
+                middle = snapshot()
+                recover_run(directory)
+                after = snapshot()
+
+            self.assertEqual(before, middle)
+            self.assertEqual(middle, after)
+            self.assertEqual(len(provider_calls), 2)
 
     def test_oracle_recovery_reuses_request_and_result_without_execution(self):
         with tempfile.TemporaryDirectory() as reference_directory:

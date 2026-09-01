@@ -3,14 +3,16 @@
 from __future__ import annotations
 
 import sys
+import tempfile
 import unittest
 from dataclasses import replace
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from automation.search_archive import ArtifactRef
+from automation.search_archive import ArtifactRef, ContentAddressedArchive
 from automation.search_coordinator import SearchCoordinator, TaskResult
 from automation.search_donor_query import (
     DonorQuery,
@@ -19,7 +21,15 @@ from automation.search_donor_query import (
     bind_donor_query,
     query_donor_index,
 )
-from automation.search_indexed_lane import indexed_lane_adapter
+from automation.search_indexed_lane import (
+    _renderer_source_identity,
+    _runtime_archive_root,
+    _validate_runtime_binding,
+    _target_context_callbacks,
+    indexed_lane_adapter,
+    production_indexed_adapters,
+)
+from automation.search_indexed_runtime import IndexedRuntimeGeneration
 from automation.search_lanes import (
     CandidateIdentityMismatch,
     LaneCandidate,
@@ -30,9 +40,17 @@ from automation.search_lanes import (
     run_lane,
 )
 from automation.search_recovery import recover_run
-from automation.search_types import CandidateRecord, hash_bytes, hash_canonical
+from automation.search_types import CandidateRecord, RunManifest, hash_bytes, hash_canonical
 from automation.test_search_donor_query import _index_fixture, _query
 from automation.test_search_lanes import make_manifest
+from automation.test_search_target_renderer import _target_fixture
+from automation.search_target_renderer import (
+    TARGET_RENDERER_IDENTITY,
+    _assembly_signatures,
+    _parse_assembly,
+    TargetContextUnsupported,
+)
+from automation.test_search_target_renderer import TARGET_ASM
 
 
 TARGET_BODY = "int fn(void) { return 9; }\n"
@@ -274,6 +292,64 @@ class IndexedLaneAdapterTests(unittest.TestCase):
             self.assertEqual(raw["completion_reason"], "inapplicable")
             self.assertIsInstance(raw["provenance"][0]["receipt"], dict)
 
+    def test_refused_then_matched_retry_does_not_consume_stale_target_query(self) -> None:
+        with _index_fixture() as (index, archive, gate_archive, _gate, _calls, _sources):
+            item = recipient()
+            manifest = RunManifest.from_dict(make_manifest(item.recipient_id))
+            first_query = _query(symbol="missing")
+            matched_query = _query(symbol="fn")
+            query_values = iter((first_query, matched_query))
+            query_calls = []
+            rendered_queries = []
+
+            def query_for(_manifest, _target_index, _received):
+                query = next(query_values)
+                query_calls.append(query)
+                return query
+
+            def render_target(
+                _manifest,
+                _target_index,
+                received,
+                _claims,
+                *,
+                lane,
+                query,
+            ):
+                rendered_queries.append(query)
+                return target_candidate(received, lane)
+
+            with patch(
+                "automation.search_target_renderer.query_for_recipient",
+                side_effect=query_for,
+            ), patch(
+                "automation.search_target_renderer.render_target_candidate",
+                side_effect=render_target,
+            ):
+                query_callback, render_callback = _target_context_callbacks(
+                    manifest,
+                    None,
+                    lane="cfg_dataflow",
+                )
+                adapter = indexed_lane_adapter(
+                    index,
+                    lane="cfg_dataflow",
+                    expected_binding=index.binding,
+                    index_archive=archive,
+                    integration_archive=gate_archive,
+                    query_for=query_callback,
+                    render_target_context=render_callback,
+                )
+                first = adapter(item)
+                second = adapter(item)
+
+            self.assertEqual(first["candidates"], ())
+            self.assertEqual(first["refusal_code"], "donor_query_empty")
+            self.assertEqual(len(second["candidates"]), 1)
+            self.assertEqual(query_calls, [first_query, matched_query])
+            self.assertEqual(rendered_queries, [matched_query])
+            self.assertIs(rendered_queries[0], matched_query)
+
     def test_provenance_and_inputs_bind_claim_and_refusal_identities(self) -> None:
         with _index_fixture() as (index, archive, gate_archive, _gate, _calls, _sources):
             item = recipient()
@@ -386,7 +462,7 @@ class IndexedLaneAdapterTests(unittest.TestCase):
             with self.assertRaises(LaneError):
                 adapter(item)
 
-    def test_rejects_renderer_source_identity_mismatch(self) -> None:
+    def test_rejects_renderer_candidate_source_identity_mismatch(self) -> None:
         with _index_fixture() as (index, archive, gate_archive, _gate, _calls, _sources):
             item = recipient()
             forged = target_candidate(item, "multi_donor")
@@ -402,6 +478,116 @@ class IndexedLaneAdapterTests(unittest.TestCase):
             )
             with self.assertRaises(CandidateIdentityMismatch):
                 adapter(item)
+
+    def test_runtime_binding_requires_protocol_and_manifest_renderer_source_identities(self) -> None:
+        with _index_fixture() as (index, _archive, _gate_archive, _gate, _calls, _sources):
+            item = recipient()
+            runtime_id = hash_bytes(b"renderer-binding-runtime")
+            renderer_source_identity = hash_bytes(b"archived-target-renderer-source")
+            manifest = RunManifest.from_dict(make_manifest(item.recipient_id))
+            manifest = replace(
+                manifest,
+                compiler_identity=index.binding.compiler_identity,
+                config_identity=index.binding.config_identity,
+                tool_identities={
+                    **manifest.tool_identities,
+                    "runtime_id": runtime_id,
+                    "search_target_renderer": renderer_source_identity,
+                },
+            )
+            binding = SimpleNamespace(
+                donor_index_generation_id=index.generation_id,
+                donor_index_artifact=index.artifact,
+                compiler_identity=index.binding.compiler_identity,
+                config_identity=index.binding.config_identity,
+                renderer_identity=TARGET_RENDERER_IDENTITY,
+                renderer_source_identity=renderer_source_identity,
+            )
+            runtime = SimpleNamespace(runtime_id=runtime_id, binding=binding)
+            _validate_runtime_binding(runtime, index, manifest=manifest)
+
+            forged_binding_values = vars(binding).copy()
+            forged_binding_values["renderer_source_identity"] = hash_bytes(
+                b"forged-renderer-source"
+            )
+            forged_binding = SimpleNamespace(**forged_binding_values)
+            with self.assertRaises(LaneError):
+                _validate_runtime_binding(
+                    SimpleNamespace(runtime_id=runtime_id, binding=forged_binding),
+                    index,
+                    manifest=manifest,
+                )
+
+            missing_binding = SimpleNamespace(**vars(binding))
+            del missing_binding.renderer_source_identity
+            with self.assertRaises(LaneError):
+                _validate_runtime_binding(
+                    SimpleNamespace(runtime_id=runtime_id, binding=missing_binding),
+                    index,
+                    manifest=manifest,
+                )
+
+            invalid_protocol = SimpleNamespace(**vars(binding))
+            invalid_protocol.renderer_identity = "renderer-protocol-is-not-a-hash"
+            with self.assertRaises(LaneError):
+                _validate_runtime_binding(
+                    SimpleNamespace(runtime_id=runtime_id, binding=invalid_protocol),
+                    index,
+                    manifest=manifest,
+                )
+
+            with tempfile.TemporaryDirectory() as directory:
+                renderer_root = Path(directory) / "automation"
+                renderer_root.mkdir()
+                renderer_path = renderer_root / "search_target_renderer.py"
+                renderer_path.write_bytes(b"renderer source bytes")
+                derived_source_identity = _renderer_source_identity(Path(directory))
+                with self.assertRaises(LaneError):
+                    _validate_runtime_binding(
+                        runtime,
+                        index,
+                        manifest=manifest,
+                        renderer_source_identity=derived_source_identity,
+                    )
+
+                bound_manifest = replace(
+                    manifest,
+                    tool_identities={
+                        **manifest.tool_identities,
+                        "search_target_renderer": derived_source_identity,
+                    },
+                )
+                bound_values = vars(binding).copy()
+                bound_values["renderer_source_identity"] = derived_source_identity
+                _validate_runtime_binding(
+                    SimpleNamespace(
+                        runtime_id=runtime_id,
+                        binding=SimpleNamespace(**bound_values),
+                    ),
+                    index,
+                    manifest=bound_manifest,
+                    renderer_source_identity=derived_source_identity,
+                )
+
+    def test_runtime_archive_root_requires_canonical_factory_search_run(self) -> None:
+        runtime = SimpleNamespace(runtime_id=hash_bytes(b"runtime-path"))
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            canonical = root / "nonmatchings" / "anchor" / "search-runs" / "run-path"
+            canonical.mkdir(parents=True)
+            self.assertEqual(
+                _runtime_archive_root(runtime, ContentAddressedArchive(canonical)),
+                root
+                / "nonmatchings"
+                / "search-evidence"
+                / "indexed-runtimes"
+                / runtime.runtime_id.removeprefix("sha256:"),
+            )
+            noncanonical = root / "nonmatchings" / "not-a-factory-run"
+            noncanonical.mkdir(parents=True)
+            archive = ContentAddressedArchive(noncanonical)
+            with self.assertRaises(LaneError):
+                _runtime_archive_root(runtime, archive)
 
     def test_renderer_requires_canonical_source_artifact_metadata(self) -> None:
         with _index_fixture() as (index, archive, gate_archive, _gate, _calls, _sources):
@@ -525,6 +711,51 @@ class IndexedLaneAdapterTests(unittest.TestCase):
             with self.assertRaises(LaneError):
                 adapter(recipient())
 
+    def test_target_context_refusal_is_an_ordinary_typed_lane_refusal(self) -> None:
+        with _index_fixture() as (index, archive, gate_archive, _gate, _calls, _sources):
+            item = recipient()
+            query = _query(recipient_id=item.recipient_id)
+            refusal = TargetContextUnsupported(
+                recipient_id=item.recipient_id,
+                query=query,
+                target_identity=hash_bytes(b"target-identity"),
+                target_artifact_identity=hash_bytes(b"target-evidence"),
+                reason="unsupported branch shape",
+                input_identities=(query.query_identity,),
+                provenance=(
+                    {
+                        "kind": "target_context",
+                        "source": "asm/us/st/fn.s",
+                        "source_identity": hash_bytes(b"target-assembly"),
+                        "input_identity": query.query_identity,
+                    },
+                ),
+            )
+            renderer_calls = []
+
+            def render(received, _claims):
+                renderer_calls.append(received.recipient_id)
+                return refusal
+
+            adapter = indexed_lane_adapter(
+                index,
+                lane="multi_donor",
+                expected_binding=index.binding,
+                index_archive=archive,
+                integration_archive=gate_archive,
+                query_for=lambda _item: query,
+                render_target_context=render,
+            )
+            raw = adapter(item)
+            self.assertEqual(raw["candidates"], ())
+            self.assertEqual(raw["refusal_code"], "target_context_unsupported")
+            self.assertEqual(raw["completion_reason"], "inapplicable")
+            self.assertIn(query.query_identity, raw["input_identities"])
+            self.assertEqual(renderer_calls, [item.recipient_id])
+            self.assertTrue(
+                any(edge["kind"] == "target_context" for edge in raw["provenance"])
+            )
+
     def test_matched_candidate_reaches_ordinary_lane_and_coordinator_recovery(self) -> None:
         with _index_fixture() as (index, archive, gate_archive, _gate, _calls, _sources):
             item = recipient()
@@ -600,6 +831,162 @@ class IndexedLaneAdapterTests(unittest.TestCase):
             )
             recovered = recover_run(run_root)
             self.assertIn(task.task_id, recovered.completed_task_ids)
+
+    def test_production_indexed_adapters_require_typed_manifest_bound_runtime(self) -> None:
+        # An untyped value must not become a production runtime merely because
+        # it carries a valid donor index and caller-supplied archive handles.
+        # Those injected handles belong to the lower-level testable adapter.
+        target_instruction, target_cfg, target_dataflow = _assembly_signatures(
+            _parse_assembly(TARGET_ASM.decode("utf-8"))
+        )
+
+        def target_signature_fixture(_revision, evidence):
+            return replace(
+                evidence,
+                instruction_signature=target_instruction,
+                cfg_signature=target_cfg,
+                dataflow_signature=target_dataflow,
+            )
+
+        with _index_fixture(target_signature_fixture) as (
+            index,
+            index_archive,
+            integration_archive,
+            _gate,
+            _calls,
+            _sources,
+        ):
+            (
+                _target_temp,
+                run_archive,
+                target_manifest,
+                _target_index,
+            ) = _target_fixture()
+            try:
+                manifest = replace(
+                    target_manifest,
+                    compiler_identity=index.binding.compiler_identity,
+                    config_identity=index.binding.config_identity,
+                )
+                runtime_id = hash_bytes(b"indexed-runtime")
+                runtime = SimpleNamespace(
+                    runtime_id=runtime_id,
+                    binding=SimpleNamespace(
+                        donor_index_generation_id=index.generation_id,
+                        donor_index_artifact=index.artifact,
+                        compiler_identity=index.binding.compiler_identity,
+                        config_identity=index.binding.config_identity,
+                        renderer_identity=TARGET_RENDERER_IDENTITY,
+                    ),
+                    donor_index=index,
+                    index_archive=index_archive,
+                    integration_archive=integration_archive,
+                )
+                manifest = replace(
+                    manifest,
+                    tool_identities={
+                        **manifest.tool_identities,
+                        "indexed_runtime": runtime_id,
+                    },
+                )
+                with self.assertRaises(LaneError):
+                    production_indexed_adapters(
+                        manifest,
+                        runtime,
+                        run_archive,
+                    )
+            finally:
+                _target_temp.cleanup()
+
+    def test_production_adapters_refuse_unbound_or_injected_runtime_inputs(self) -> None:
+        target_instruction, target_cfg, target_dataflow = _assembly_signatures(
+            _parse_assembly(TARGET_ASM.decode("utf-8"))
+        )
+
+        def target_signature_fixture(_revision, evidence):
+            return replace(
+                evidence,
+                instruction_signature=target_instruction,
+                cfg_signature=target_cfg,
+                dataflow_signature=target_dataflow,
+            )
+
+        with _index_fixture(target_signature_fixture) as (
+            index,
+            index_archive,
+            integration_archive,
+            _gate,
+            _calls,
+            _sources,
+        ):
+            _target_temp, run_archive, target_manifest, _target_index = _target_fixture()
+            try:
+                manifest = replace(
+                    target_manifest,
+                    compiler_identity=index.binding.compiler_identity,
+                    config_identity=index.binding.config_identity,
+                )
+                runtime_id = hash_bytes(b"indexed-runtime-negative")
+                binding = SimpleNamespace(
+                    donor_index_generation_id=index.generation_id,
+                    donor_index_artifact=index.artifact,
+                    compiler_identity=index.binding.compiler_identity,
+                    config_identity=index.binding.config_identity,
+                    renderer_identity=TARGET_RENDERER_IDENTITY,
+                )
+                base = {
+                    "runtime_id": runtime_id,
+                    "binding": binding,
+                    "donor_index": index,
+                    "index_archive": index_archive,
+                    "integration_archive": integration_archive,
+                }
+                manifest = replace(
+                    manifest,
+                    tool_identities={
+                        **manifest.tool_identities,
+                        "indexed_runtime": runtime_id,
+                    },
+                )
+
+                missing_archive = dict(base)
+                missing_archive.pop("index_archive")
+                with self.assertRaises(LaneError):
+                    production_indexed_adapters(
+                        manifest,
+                        SimpleNamespace(**missing_archive),
+                        run_archive,
+                    )
+
+                injected = dict(base)
+                injected["query_for"] = lambda _recipient: None
+                with self.assertRaises(LaneError):
+                    production_indexed_adapters(
+                        manifest,
+                        SimpleNamespace(**injected),
+                        run_archive,
+                    )
+
+                wrong_manifest = replace(
+                    manifest,
+                    tool_identities={
+                        **manifest.tool_identities,
+                        "indexed_runtime": hash_bytes(b"different-runtime"),
+                    },
+                )
+                with self.assertRaises(LaneError):
+                    production_indexed_adapters(wrong_manifest, SimpleNamespace(**base), run_archive)
+
+                arbitrary_typed_runtime = object.__new__(IndexedRuntimeGeneration)
+                object.__setattr__(arbitrary_typed_runtime, "untrusted_path", "runtime.json")
+                with self.assertRaises(LaneError):
+                    production_indexed_adapters(
+                        manifest,
+                        arbitrary_typed_runtime,
+                        run_archive,
+                    )
+            finally:
+                _target_temp.cleanup()
 
 
 if __name__ == "__main__":

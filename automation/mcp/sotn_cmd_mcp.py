@@ -539,6 +539,8 @@ def job_start(action: str, version: str = "us", script: str = "",
             make_force_symbols | make_reports | make_duplicates_report |
             make_function_finder | run_automation | run_analysis | permuter |
             worker_once | git_push
+    Indexed-runtime publication is exposed as the dedicated
+    search_publish_indexed_runtime tool and is not a generic action.
     For run_automation or its run_analysis compatibility alias, pass script=
     (e.g. asm_twin_finder.py) and args=.
     For worker_once, pass only= with a queue id: it runs the ordinary worker
@@ -740,7 +742,10 @@ def search_plan(name: str, record_ids: list[str], lanes: list[str]) -> dict:
 
 @mcp.tool()
 def search_create_instrumented(
-    name: str, record_ids: list[str], lanes: list[str]
+    name: str,
+    record_ids: list[str],
+    lanes: list[str],
+    runtime_id: str | None = None,
 ) -> dict:
     """Create one immutable canonical instrumented search run.
 
@@ -753,6 +758,7 @@ def search_create_instrumented(
         name=name,
         record_ids=record_ids,
         lanes=lanes,
+        runtime_id=runtime_id,
     )
     result["name"] = name
     return result
@@ -794,6 +800,30 @@ def search_stop(run_id: str, timeout: int = 300) -> dict:
 def search_verify_ledger(run_id: str, timeout: int = 300) -> dict:
     """Validate one exact canonical run manifest and ledger. Read-only."""
     return cc.run("search_verify_ledger", timeout=timeout, run_id=run_id)
+
+
+@mcp.tool()
+def search_publish_indexed_runtime(
+    gate_run_id: str,
+    revisions: list[str],
+) -> dict:
+    """Publish one immutable indexed runtime as an observable background job.
+
+    The gate run id and exactly four platform=full-revision pairs are the only
+    inputs. The child CLI resolves immutable donor manifests from the repository;
+    callers cannot supply a path or arbitrary argv.
+    """
+    return cc.start_job(
+        "search_publish_indexed_runtime",
+        gate_run_id=gate_run_id,
+        revisions=revisions,
+    )
+
+
+@mcp.tool()
+def search_verify_indexed_runtime(runtime_id: str) -> dict:
+    """Verify one immutable indexed runtime without rescanning or mutation."""
+    return cc.run("search_verify_indexed_runtime", runtime_id=runtime_id)
 
 
 @mcp.tool()

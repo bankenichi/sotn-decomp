@@ -54,7 +54,17 @@ UNDOCUMENTED_CONNECTOR_TOOLS = {
     "search_status",
     "search_stop",
     "search_verify_ledger",
+    "search_publish_indexed_runtime",
+    "search_verify_indexed_runtime",
 }
+
+# The packaged manifest is part of the live connector surface. No callable
+# tool may be hidden behind an unpackaged exemption.
+UNPACKAGED_CONNECTOR_TOOLS: set[str] = set()
+_INDEXED_RUNTIME_TOOLS = frozenset({
+    "search_publish_indexed_runtime",
+    "search_verify_indexed_runtime",
+})
 
 import pathlib
 
@@ -196,9 +206,11 @@ def main() -> int:
         "search_start_instrumented",
         "search_resume_instrumented",
         "search_stop",
+        "search_publish_indexed_runtime",
     }
     _search_read_only = {
         "search_plan", "search_status", "search_verify_ledger",
+        "search_verify_indexed_runtime",
     }
     check(set(cc.SEARCH_SURFACE_MUTATORS) == _search_mutators,
           "instrumented-search mutators are explicitly inventoried")
@@ -290,6 +302,29 @@ def main() -> int:
                    _create_argv[_create_argv.index("--lanes") + 1:] == [
                        "upstream_current", "model_fleet",
                    ], "search_create_instrumented carries canonical logical inputs")
+            _runtime_id = "sha256:" + "a" * 64
+            _indexed_create_argv = cc.build_argv(
+                "search_create_instrumented",
+                name="connector-indexed",
+                record_ids=["us:ST/RDAI:func_one"],
+                lanes=["multi_donor"],
+                runtime_id=_runtime_id,
+            )
+            check(
+                _indexed_create_argv[-2:] == ["--runtime-id", _runtime_id],
+                "search_create_instrumented carries one exact indexed runtime identity",
+            )
+            try:
+                cc.build_argv(
+                    "search_create_instrumented",
+                    name="connector-indexed",
+                    record_ids=["us:ST/RDAI:func_one"],
+                    lanes=["multi_donor"],
+                    runtime_id="latest",
+                )
+                check(False, "search_create_instrumented refuses an untyped runtime selector")
+            except cc.Rejected:
+                check(True, "search_create_instrumented refuses an untyped runtime selector")
             try:
                 cc.build_argv(
                     "search_create_instrumented",
@@ -316,6 +351,74 @@ def main() -> int:
             )
             check("--records" in _empty_plan and "--lanes" in _empty_plan,
                   "an explicit empty subset remains representable")
+
+            _revision_pairs = [
+                "saturn=" + "d" * 40,
+                "us=" + "a" * 40,
+                "pspeu=" + "c" * 40,
+                "hd=" + "b" * 40,
+            ]
+            _publish_argv = cc.build_argv(
+                "search_publish_indexed_runtime",
+                gate_run_id="run-connector",
+                revisions=_revision_pairs,
+            )
+            check(
+                _publish_argv == [
+                    cc.PYTHON,
+                    "automation/search_cli.py",
+                    "publish-indexed-runtime",
+                    "--gate-run-id",
+                    "run-connector",
+                    "--revisions",
+                    "us=" + "a" * 40,
+                    "hd=" + "b" * 40,
+                    "pspeu=" + "c" * 40,
+                    "saturn=" + "d" * 40,
+                ],
+                "indexed-runtime publication has one exact pathless argv",
+            )
+            _verify_runtime_argv = cc.build_argv(
+                "search_verify_indexed_runtime",
+                runtime_id="sha256:" + "e" * 64,
+            )
+            check(
+                _verify_runtime_argv == [
+                    cc.PYTHON,
+                    "automation/search_cli.py",
+                    "verify-indexed-runtime",
+                    "--runtime-id",
+                    "sha256:" + "e" * 64,
+                ],
+                "indexed-runtime verification has one exact typed argv",
+            )
+            for _bad_revisions in (
+                _revision_pairs[:3],
+                _revision_pairs + ["us=" + "f" * 40],
+                ["us=" + "A" * 40, *_revision_pairs[1:]],
+                ["us=" + "a" * 39, *_revision_pairs[1:]],
+                [*_revision_pairs[:3], "other=" + "f" * 40],
+                ["us=" + "a" * 40, "hd=" + "b" * 40,
+                 "pspeu=" + "c" * 40, "saturn=../escape"],
+            ):
+                try:
+                    cc.build_argv(
+                        "search_publish_indexed_runtime",
+                        gate_run_id="run-connector",
+                        revisions=_bad_revisions,
+                    )
+                    check(False, "indexed-runtime publication refuses malformed revisions")
+                except cc.Rejected:
+                    check(True, "indexed-runtime publication refuses malformed revisions")
+            for _bad_runtime in ("latest", "sha256:" + "F" * 64, "../runtime"):
+                try:
+                    cc.build_argv(
+                        "search_verify_indexed_runtime",
+                        runtime_id=_bad_runtime,
+                    )
+                    check(False, "indexed-runtime verification refuses an untyped runtime")
+                except cc.Rejected:
+                    check(True, "indexed-runtime verification refuses an untyped runtime")
 
             for _bad_plan in (
                 {"name": "../escape", "record_ids": [],
@@ -555,6 +658,11 @@ def main() -> int:
                             "search_resume_instrumented",
                             run_id="run-connector",
                         )
+                        _publish_job = cc.start_job(
+                            "search_publish_indexed_runtime",
+                            gate_run_id="run-connector",
+                            revisions=_revision_pairs,
+                        )
                 finally:
                     cc.DRYRUN = _saved_dryrun
                 check(_start_job.get("job_id") ==
@@ -562,10 +670,19 @@ def main() -> int:
                       _resume_job.get("job_id") ==
                       "search_resume_instrumented-job",
                       "start and resume return job ids without blocking")
-                check(len(_job_calls) == 2 and
-                      _job_calls[0][1][2:5] == ["--run", "--mode", "instrumented"] and
-                      _job_calls[1][1][2:5] == ["--resume", "--mode", "instrumented"],
-                      "background jobs use fixed instrumented supervisor argv")
+                check(
+                    len(_job_calls) == 3
+                    and _job_calls[0][1][2:5] == ["--run", "--mode", "instrumented"]
+                    and _job_calls[1][1][2:5] == ["--resume", "--mode", "instrumented"]
+                    and _job_calls[2][0] == "search_publish_indexed_runtime"
+                    and _job_calls[2][1][2:6] == [
+                        "publish-indexed-runtime",
+                        "--gate-run-id",
+                        "run-connector",
+                        "--revisions",
+                    ],
+                    "publication uses the existing observable background job authority",
+                )
             else:
                 check(False, "jobs module is available for bounded search jobs")
         finally:
@@ -623,6 +740,14 @@ def main() -> int:
     else:
         check(False,
               "pure library modules cannot become no-op automation actions")
+    try:
+        cc.REGISTRY["run_automation"](script="search_indexed_runtime.py")
+    except cc.Rejected:
+        check(True,
+              "the indexed runtime library remains off the generic automation allowlist")
+    else:
+        check(False,
+              "the indexed runtime library remains off the generic automation allowlist")
     try:
         cc.REGISTRY["run_automation"](
             script="quality_audit.py",
@@ -2096,6 +2221,12 @@ def main() -> int:
         _man_tools = {t["name"] for t in _man.get("tools", [])}
         _missing = sorted(tools - _man_tools)
         _extra = sorted(_man_tools - tools)
+        check(not UNPACKAGED_CONNECTOR_TOOLS,
+              "the manifest parity audit has no unpackaged-tool exemptions")
+        check(_INDEXED_RUNTIME_TOOLS.isdisjoint(UNPACKAGED_CONNECTOR_TOOLS),
+              "indexed-runtime tools cannot be hidden by a future exemption")
+        check(_INDEXED_RUNTIME_TOOLS <= _man_tools,
+              "both indexed-runtime tools are explicitly packaged")
         check(not _missing,
               f"every callable tool is listed in the manifest (missing: {_missing})")
         check(not _extra,

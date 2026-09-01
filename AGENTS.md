@@ -100,6 +100,15 @@ These are absolute. Each exists because breaking it cost real work.
     defers and stages nothing, and generated output from a raced generator
     pass is never swept into a caller's commit. The lead owns living-document
     edits, including any deferred generator output.
+22. **A declared capability is not an implemented capability.** A schema enum,
+    lane name, CLI option, connector validator, test fixture, receipt type, or
+    generic dispatch loop never counts as production wiring by itself. Before
+    calling a named capability complete, prove its concrete provider, immutable
+    factory input and tool binding, dispatcher or adapter registration,
+    supervisor reconstruction, recovery validation, ordinary receipt path, and
+    live CLI or connector reachability independently. A typed unavailable or
+    inapplicable result is acceptable only when it is the real executed
+    platform-specific outcome, not a substitute for a missing provider.
 
 ## 3. Where everything is
 

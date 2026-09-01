@@ -104,6 +104,9 @@ _FACTORY_TOOL_KEY = "search_run_factory"
 _FACTORY_MARKER_KEY = "search_run_factory_marker"
 _FACTORY_MARKER_PROTOCOL = "sotn-search-run-factory-created-v1"
 _FACTORY_MODULE = ("automation/search_run_factory.py", _FACTORY_TOOL_KEY)
+_INDEXED_LANES = frozenset({"multi_donor", "cfg_dataflow"})
+_INDEXED_RUNTIME_TOOL_KEY = "indexed_runtime"
+_TARGET_RENDERER_SOURCE_TOOL_KEY = "target_renderer_source"
 _CORE_MODULES = (
     ("automation/search_lanes.py", "search_lanes"),
     ("automation/search_supervisor.py", "search_supervisor"),
@@ -118,6 +121,18 @@ _LANE_MODULES = {
     "upstream_open_pr": ("automation/upstream_harvest.py",),
     "shared_header": ("automation/shim_sweep.py",),
     "transplant": ("automation/asm_twin_finder.py", "automation/transplant.py"),
+    "multi_donor": (
+        "automation/search_provider_lanes.py",
+        "automation/search_indexed_lane.py",
+        "automation/search_donor_query.py",
+        "automation/search_target_renderer.py",
+    ),
+    "cfg_dataflow": (
+        "automation/search_provider_lanes.py",
+        "automation/search_indexed_lane.py",
+        "automation/search_donor_query.py",
+        "automation/search_target_renderer.py",
+    ),
 }
 
 
@@ -234,6 +249,65 @@ def _normalize_inputs(
         raise InputRefusal(f"unknown lane: {unknown[0]}")
     selected = tuple(lane for lane in LANES if lane in raw_lanes)
     return run_id, normalized_ids, selected
+
+
+def _normalize_indexed_runtime_id(
+    runtime_id: Any,
+    selected_lanes: Sequence[str],
+) -> Optional[str]:
+    indexed = any(lane in _INDEXED_LANES for lane in selected_lanes)
+    if runtime_id is None:
+        if indexed:
+            raise InputRefusal(
+                "indexed lanes require one explicit indexed runtime identity"
+            )
+        return None
+    if not indexed:
+        raise InputRefusal(
+            "an indexed runtime is irrelevant when no indexed lane is selected"
+        )
+    try:
+        return validate_hash(runtime_id, "indexed runtime identity")
+    except (SearchValidationError, TypeError, ValueError) as exc:
+        raise InputRefusal("indexed runtime identity is invalid") from exc
+
+
+def _load_indexed_runtime_generation(runtime_id: str, repo: Path) -> Any:
+    """Load and verify one exact published runtime without accepting a path."""
+
+    try:
+        from .search_indexed_runtime import (
+            IndexedRuntimeGeneration,
+            IndexedRuntimeError,
+            load_indexed_runtime,
+            verify_indexed_runtime,
+        )
+    except ImportError:
+        try:  # direct invocation from automation/
+            from search_indexed_runtime import (  # type: ignore
+                IndexedRuntimeGeneration,
+                IndexedRuntimeError,
+                load_indexed_runtime,
+                verify_indexed_runtime,
+            )
+        except ImportError as exc:
+            raise EvidenceRefusal(
+                "indexed runtime implementation is unavailable"
+            ) from exc
+    try:
+        generation = load_indexed_runtime(runtime_id, repo=repo)
+        if type(generation) is not IndexedRuntimeGeneration:
+            raise EvidenceRefusal("indexed runtime loader returned a noncanonical value")
+        verify_indexed_runtime(generation, repo=repo)
+    except EvidenceRefusal:
+        raise
+    except (IndexedRuntimeError, OSError, TypeError, ValueError) as exc:
+        raise EvidenceRefusal(
+            "indexed runtime is missing, corrupt, or outside the canonical archive"
+        ) from exc
+    if generation.runtime_id != runtime_id:
+        raise EvidenceRefusal("indexed runtime identity differs from the request")
+    return generation
 
 
 def canonical_anchor_function(function_ids: Iterable[str]) -> str:
@@ -918,7 +992,12 @@ def _candidate_file_manifest(repo: Path) -> dict[str, Any]:
     return {**payload, "identity": hash_canonical(payload)}
 
 
-def _lane_input_state(repo: Path, lane: str) -> dict[str, Any]:
+def _lane_input_state(
+    repo: Path,
+    lane: str,
+    *,
+    indexed_runtime: Any = None,
+) -> dict[str, Any]:
     if lane == "upstream_current":
         return _upstream_ref_state(repo)
     if lane in {"upstream_pinned", "upstream_open_pr"}:
@@ -928,6 +1007,19 @@ def _lane_input_state(repo: Path, lane: str) -> dict[str, Any]:
         }
     if lane == "preserved_candidate":
         return _candidate_file_manifest(repo)
+    if lane in _INDEXED_LANES:
+        if indexed_runtime is None:
+            raise EvidenceRefusal("indexed lane has no immutable runtime binding")
+        binding = indexed_runtime.binding
+        return {
+            "kind": "indexed_runtime",
+            "runtime_id": indexed_runtime.runtime_id,
+            "binding_identity": hash_canonical(binding.to_dict()),
+            "corpus_generation_id": binding.corpus_generation_id,
+            "donor_index_generation_id": binding.donor_index_generation_id,
+            "renderer_identity": binding.renderer_identity,
+            "renderer_source_identity": binding.renderer_source_identity,
+        }
     return {"kind": "none"}
 
 
@@ -942,6 +1034,7 @@ def _tool_identities(
     *,
     config_path: Optional[Path] = None,
     schema_path: Optional[Path] = None,
+    indexed_runtime: Any = None,
 ) -> tuple[dict[str, str], dict[str, Any]]:
     core_modules: dict[str, dict[str, Any]] = {}
     core_hashes: dict[str, str] = {}
@@ -989,7 +1082,11 @@ def _tool_identities(
                 "byte_size": len(data),
             })
         lane_modules[lane] = entries
-        input_state = _lane_input_state(repo, lane)
+        input_state = _lane_input_state(
+            repo,
+            lane,
+            indexed_runtime=indexed_runtime,
+        )
         lane_inputs[lane] = input_state
         identities[lane] = hash_canonical({
             "core_modules": core_hashes,
@@ -1002,6 +1099,11 @@ def _tool_identities(
         })
     mode = mode_identity(INSTRUMENTED_MODE)
     identities[MODE_TOOL_KEY] = mode
+    if indexed_runtime is not None:
+        identities[_INDEXED_RUNTIME_TOOL_KEY] = indexed_runtime.runtime_id
+        identities[_TARGET_RENDERER_SOURCE_TOOL_KEY] = (
+            indexed_runtime.binding.renderer_source_identity
+        )
     if config_path is None:
         config_path = repo.joinpath(*_CONFIG_PATH_PARTS)
     if schema_path is None:
@@ -1256,6 +1358,11 @@ def _verify_existing_artifacts(
         "target_evidence", "target_index", "source", "config", "schema",
         "tools", "compiler", "manifest_intent",
     }
+    expected_runtime_id = (
+        (expected_tool_identities or {}).get(_INDEXED_RUNTIME_TOOL_KEY)
+    )
+    if expected_runtime_id is not None:
+        expected_index_fields.add("indexed_runtime")
     if set(index) != expected_index_fields:
         raise PartialRunRefusal("run evidence index has unknown or missing fields")
     required = (
@@ -1276,6 +1383,8 @@ def _verify_existing_artifacts(
         ("compiler", index["compiler"]),
         ("manifest_intent", index["manifest_intent"]),
     ]
+    if expected_runtime_id is not None:
+        refs.append(("indexed_runtime", index["indexed_runtime"]))
     targets = index["target_evidence"]
     if not isinstance(targets, Mapping) or not targets:
         raise PartialRunRefusal("run evidence index target coverage is missing")
@@ -1292,6 +1401,7 @@ def _verify_existing_artifacts(
         "tools": "application/json",
         "compiler": "application/json",
         "manifest_intent": "application/json",
+        "indexed_runtime": "application/json",
     }
     for label, raw in refs:
         reference = _artifact_ref_from_dict(raw, label)
@@ -1465,6 +1575,34 @@ def _verify_existing_artifacts(
         }
         if compiler_descriptor and hash_canonical(compiler_descriptor) != expected_compiler_identity:
             raise PartialRunRefusal("compiler descriptor does not match its identity")
+
+        if expected_runtime_id is not None:
+            runtime_ref = _artifact_ref_from_dict(
+                index["indexed_runtime"], "indexed_runtime"
+            )
+            runtime_document = json.loads(
+                archive.verify(runtime_ref).decode("utf-8")
+            )
+            try:
+                try:
+                    from .search_indexed_runtime import IndexedRuntimeGeneration
+                except ImportError:  # direct invocation from automation/
+                    from search_indexed_runtime import IndexedRuntimeGeneration  # type: ignore
+                runtime = IndexedRuntimeGeneration.from_dict(runtime_document)
+            except Exception as exc:  # noqa: BLE001
+                raise PartialRunRefusal(
+                    "indexed runtime binding artifact is invalid"
+                ) from exc
+            if (
+                runtime.runtime_id != expected_runtime_id
+                or runtime.binding.renderer_source_identity
+                != (expected_tool_identities or {}).get(
+                    _TARGET_RENDERER_SOURCE_TOOL_KEY
+                )
+            ):
+                raise PartialRunRefusal(
+                    "indexed runtime binding differs from the manifest"
+                )
 
         intent_ref = _artifact_ref_from_dict(
             index["manifest_intent"], "manifest_intent"
@@ -1785,11 +1923,18 @@ def verify_factory_runtime(
     if compiler_identity != manifest.compiler_identity:
         raise EvidenceRefusal("current compiler differs from the frozen run")
 
+    runtime_id = manifest.tool_identities.get(_INDEXED_RUNTIME_TOOL_KEY)
+    indexed_runtime = (
+        _load_indexed_runtime_generation(runtime_id, root_repo)
+        if runtime_id is not None
+        else None
+    )
     current_tools, _current_tool_document = _tool_identities(
         root_repo,
         tuple(manifest.selected_lanes),
         config_path=config_path,
         schema_path=schema_path,
+        indexed_runtime=indexed_runtime,
     )
     if current_tools != dict(manifest.tool_identities):
         raise EvidenceRefusal("current search tools or bound lane inputs differ from the frozen run")
@@ -1848,6 +1993,7 @@ def _create_instrumented_run_locked(
     queue_reader: Optional[QueueReader] = None,
     compiler_identity_resolver: Optional[IdentityResolver] = None,
     config_path: Optional[Path | str] = None,
+    runtime_id: Optional[str] = None,
     now: Optional[Clock] = None,
     fault_hook: Optional[FactoryFaultHook] = None,
 ) -> dict[str, Any]:
@@ -1858,6 +2004,10 @@ def _create_instrumented_run_locked(
     todo eligibility.
     """
     run_id, normalized_ids, selected_lanes = _normalize_inputs(name, record_ids, lanes)
+    normalized_runtime_id = _normalize_indexed_runtime_id(
+        runtime_id,
+        selected_lanes,
+    )
     task_count = len(normalized_ids) * len(selected_lanes)
     if task_count > _MAX_TASKS:
         raise InputRefusal("requested subset exceeds the bounded task budget")
@@ -1898,6 +2048,13 @@ def _create_instrumented_run_locked(
         ):
             raise RunNameCollision(
                 "run name already binds a different subset or lane set"
+            )
+        if (
+            existing_manifest.tool_identities.get(_INDEXED_RUNTIME_TOOL_KEY)
+            != normalized_runtime_id
+        ):
+            raise RunNameCollision(
+                "run name already binds a different indexed runtime"
             )
         if canonical_anchor_function(existing_manifest.function_ids) != anchor:
             raise RunNameCollision("run name already binds a different canonical anchor")
@@ -1980,11 +2137,24 @@ def _create_instrumented_run_locked(
     compiler_identity, compiler_payload = _compiler_identity(
         resolved_config, compiler_identity_resolver
     )
+    indexed_runtime = (
+        _load_indexed_runtime_generation(normalized_runtime_id, root_repo)
+        if normalized_runtime_id is not None
+        else None
+    )
+    if indexed_runtime is not None and (
+        indexed_runtime.binding.compiler_identity != compiler_identity
+        or indexed_runtime.binding.config_identity != config_identity
+    ):
+        raise EvidenceRefusal(
+            "indexed runtime compiler or configuration differs from the new run"
+        )
     tool_identities, tool_payload = _tool_identities(
         root_repo,
         selected_lanes,
         config_path=resolved_config,
         schema_path=resolved_schema,
+        indexed_runtime=indexed_runtime,
     )
 
     target_payloads: dict[str, dict[str, Any]] = {}
@@ -2028,22 +2198,23 @@ def _create_instrumented_run_locked(
         }
         target_identities[record_id] = hash_canonical(target_payloads[record_id])
 
+    seed_payload = {
+        "compiler_identity": compiler_identity,
+        "config_identity": config_identity,
+        "lanes": list(selected_lanes),
+        "mode_identity": tool_identities[MODE_TOOL_KEY],
+        "protocol": "sotn-search-seed-v1",
+        "queue_evidence_identity": queue_evidence_identity,
+        "run_id": run_id,
+        "schema_identity": schema_identity,
+        "source_identity": source_identity,
+        "subset_identity": subset_identity,
+        "target_identities": target_identities,
+    }
+    if normalized_runtime_id is not None:
+        seed_payload["indexed_runtime_id"] = normalized_runtime_id
     run_seed = int(
-        hash_canonical(
-            {
-                "compiler_identity": compiler_identity,
-                "config_identity": config_identity,
-                "lanes": list(selected_lanes),
-                "mode_identity": tool_identities[MODE_TOOL_KEY],
-                "protocol": "sotn-search-seed-v1",
-                "queue_evidence_identity": queue_evidence_identity,
-                "run_id": run_id,
-                "schema_identity": schema_identity,
-                "source_identity": source_identity,
-                "subset_identity": subset_identity,
-                "target_identities": target_identities,
-            }
-        )[7:23],
+        hash_canonical(seed_payload)[7:23],
         16,
     )
     manifest = RunManifest(
@@ -2142,6 +2313,15 @@ def _create_instrumented_run_locked(
     compiler_ref = archive.put_json(
         compiler_payload, category="compiler-evidence", suffix=".json"
     )
+    indexed_runtime_ref = (
+        archive.put_json(
+            indexed_runtime.to_dict(),
+            category="indexed-runtime",
+            suffix=".json",
+        )
+        if indexed_runtime is not None
+        else None
+    )
     # Preserve exact manifest bytes across a crash between index and publication.
     manifest_intent_ref = archive.put_json(
         manifest.to_dict(), category="manifest-intent", suffix=".json"
@@ -2167,6 +2347,8 @@ def _create_instrumented_run_locked(
         "compiler": compiler_ref.to_dict(),
         "manifest_intent": manifest_intent_ref.to_dict(),
     }
+    if indexed_runtime_ref is not None:
+        index_payload["indexed_runtime"] = indexed_runtime_ref.to_dict()
     index_ref = archive.put_json(index_payload, category="run-index", suffix=".json")
     for reference in (
         subset_ref,
@@ -2178,6 +2360,7 @@ def _create_instrumented_run_locked(
         tools_ref,
         compiler_ref,
         manifest_intent_ref,
+        *((indexed_runtime_ref,) if indexed_runtime_ref is not None else ()),
         index_ref,
         *target_ref_map.values(),
     ):
@@ -2222,6 +2405,7 @@ def create_instrumented_run(
     queue_reader: Optional[QueueReader] = None,
     compiler_identity_resolver: Optional[IdentityResolver] = None,
     config_path: Optional[Path | str] = None,
+    runtime_id: Optional[str] = None,
     now: Optional[Clock] = None,
     fault_hook: Optional[FactoryFaultHook] = None,
 ) -> dict[str, Any]:
@@ -2234,6 +2418,7 @@ def create_instrumented_run(
     """
 
     run_id, normalized_ids, selected_lanes = _normalize_inputs(name, record_ids, lanes)
+    _normalize_indexed_runtime_id(runtime_id, selected_lanes)
     if len(normalized_ids) * len(selected_lanes) > _MAX_TASKS:
         raise InputRefusal("requested subset exceeds the bounded task budget")
     root_repo = _repo_root(repo)
@@ -2253,6 +2438,7 @@ def create_instrumented_run(
                 queue_reader=queue_reader,
                 compiler_identity_resolver=compiler_identity_resolver,
                 config_path=config_path,
+                runtime_id=runtime_id,
                 now=now,
                 fault_hook=fault_hook,
             )

@@ -2566,6 +2566,23 @@ def _run_instrumented_entry(
             raise SupervisorIntegrationError(
                 "factory runtime evidence differs from the immutable run"
             ) from exc
+        if "search_run_factory_marker" in manifest.tool_identities:
+            try:
+                try:
+                    from .search_provider_lanes import reconstruct_lane_adapters
+                except ImportError:  # pragma: no cover - direct script compatibility
+                    from search_provider_lanes import reconstruct_lane_adapters  # type: ignore
+                adapters = reconstruct_lane_adapters(
+                    manifest,
+                    root,
+                    caller_adapters=adapters,
+                )
+            except SupervisorIntegrationError:
+                raise
+            except Exception as exc:  # noqa: BLE001
+                raise SupervisorIntegrationError(
+                    "production lane providers could not be reconstructed"
+                ) from exc
         coordinator = SearchCoordinator(root, manifest, oracle=oracle)
         if resume:
             latest_transition = next(

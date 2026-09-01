@@ -126,6 +126,7 @@ def _corpus_sequence(value: Any, label: str) -> Tuple[Any, ...]:
         raise SearchValidationError(f"{label} must be an array") from exc
 
 
+# production-audit: pure-value
 @dataclass(frozen=True)
 class AbsenceMaskingClaim:
     """The one negative-evidence shape the corpus records.
@@ -161,6 +162,7 @@ _ABSENCE_LINE_START = 146
 _ABSENCE_LINE_END = 178
 
 
+# production-audit: pure-value
 @dataclass(frozen=True)
 class LessonCitation:
     """A content-addressed citation into MATCHING-LESSONS.
@@ -430,6 +432,7 @@ def scorer_taxonomy_identity_payload(taxonomy: "ScorerTaxonomy") -> dict[str, An
     }
 
 
+# production-audit: pure-value
 @dataclass(frozen=True)
 class ScorerTaxonomy:
     """One before/after score pair with its evaluator and target binding.
@@ -563,6 +566,7 @@ def make_scorer_taxonomy(
     )
 
 
+# production-audit: pure-value
 @dataclass(frozen=True)
 class CorpusGeneration:
     """One immutable corpus generation bound to a validated integration gate.
@@ -786,6 +790,16 @@ class CorpusGeneration:
             "entries": [entry.to_dict() for entry in self.entries],
             "artifact": self.artifact.to_dict(),
         }
+
+    def payload(self) -> dict[str, Any]:
+        """Return the canonical corpus payload archived for this generation."""
+
+        return _corpus_generation_payload(
+            schema_identity=self.schema_identity,
+            integration_gate=self.integration_gate,
+            source_identities=self.source_identities,
+            entries=self.entries,
+        )
 
 
 def _corpus_generation_payload(
@@ -1196,6 +1210,7 @@ def build_corpus_generation(
 # corpus identity rules require canonical serialization everywhere.
 
 
+# production-audit: pure-value
 @dataclass(frozen=True)
 class EvidenceRefusalReceipt:
     """Typed refusal for one evidence-gating operation.
@@ -1484,6 +1499,7 @@ def _draft_landed_from_dict(value: Any) -> DraftLandedObservation:
         ) from exc
 
 
+# production-audit: pure-value
 @dataclass(frozen=True)
 class CorpusEvidence:
     """One corpus record: a promotion, a recurrence, or negative evidence.
@@ -1893,6 +1909,7 @@ def _make_corpus_evidence(
     )
 
 
+# production-audit: pure-value
 @dataclass(frozen=True)
 class PromotionAccepted:
     """A proven compiler-bound improvement over one draft-landed pair."""
@@ -1931,6 +1948,7 @@ class PromotionAccepted:
             )
 
 
+# production-audit: pure-value
 @dataclass(frozen=True)
 class PromotionRefused:
     """A refused promotion retained as typed negative evidence."""
@@ -2513,9 +2531,32 @@ def collect_recurring_first_divergence(
     return tuple(entries)
 
 
+# The production audit treats these deterministic constructors and typed value
+# records as pure. Publication still reaches them through the runtime module;
+# the annotation only prevents the audit from mistaking a value constructor for
+# an unowned side-effecting entry point.
+PRODUCTION_PURE_VALUE_EXPORTS = frozenset(
+    {
+        "automation.search_evidence_corpus.AbsenceMaskingClaim",
+        "automation.search_evidence_corpus.LessonCitation",
+        "automation.search_evidence_corpus.ScorerTaxonomy",
+        "automation.search_evidence_corpus.EvidenceRefusalReceipt",
+        "automation.search_evidence_corpus.CorpusEvidence",
+        "automation.search_evidence_corpus.CorpusGeneration",
+        "automation.search_evidence_corpus.PromotionAccepted",
+        "automation.search_evidence_corpus.PromotionRefused",
+        "automation.search_evidence_corpus.make_lesson_citation",
+        "automation.search_evidence_corpus.make_scorer_taxonomy",
+        "automation.search_evidence_corpus.scorer_taxonomy_identity_payload",
+        "automation.search_evidence_corpus.verify_lesson_citation",
+    }
+)
+
+
 __all__ = [
     "CORPUS_EVIDENCE_PROTOCOL",
     "CORPUS_GENERATION_PROTOCOL",
+    "PRODUCTION_PURE_VALUE_EXPORTS",
     "AbsenceMaskingClaim",
     "CorpusEvidence",
     "CorpusGeneration",

@@ -18,6 +18,7 @@ import argparse
 import dataclasses
 import json
 import os
+import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -31,6 +32,7 @@ try:  # package import when called as ``python -m automation.search_cli``
     from .search_recovery import fork_run as core_fork_run
     from .search_recovery import recover_run
     from .search_types import (
+        ArtifactRef,
         LANES,
         RunManifest,
         SearchValidationError,
@@ -40,6 +42,7 @@ try:  # package import when called as ``python -m automation.search_cli``
         canonical_subset_identity,
         canonical_subset_payload,
         hash_canonical,
+        hash_bytes,
         validate_hash,
         validate_id,
         validate_lane,
@@ -51,6 +54,7 @@ except ImportError:  # direct invocation from the automation directory
     from automation.search_recovery import fork_run as core_fork_run  # type: ignore
     from automation.search_recovery import recover_run  # type: ignore
     from automation.search_types import (  # type: ignore
+        ArtifactRef,
         LANES,
         RunManifest,
         SearchValidationError,
@@ -97,6 +101,253 @@ class CoreDependencyError(SearchCliError):
 
 class RunInputError(SearchCliError):
     code = "invalid_run"
+
+
+_DONOR_VERSIONS = ("us", "hd", "pspeu", "saturn")
+_FULL_REVISION_RE = re.compile(r"^[0-9a-f]{40}(?:[0-9a-f]{24})?$")
+
+
+def _normalize_revision_pairs(value: Any) -> Tuple[Tuple[str, str], ...]:
+    """Normalize exactly four platform/full-revision pairs.
+
+    The command accepts logical pair values only. Source manifests are resolved
+    from the immutable donor archives below the repository, so a caller cannot
+    smuggle a checkout path or an alternate argv into publication.
+    """
+
+    if isinstance(value, (str, bytes, bytearray)) or value is None:
+        raise ArgumentFailure(
+            "--revisions must contain exactly four platform/full-revision pairs"
+        )
+    try:
+        groups = tuple(value)
+    except (TypeError, ValueError) as exc:
+        raise ArgumentFailure(
+            "--revisions must contain exactly four platform/full-revision pairs"
+        ) from exc
+    tokens: list[str] = []
+    for group in groups:
+        if isinstance(group, (tuple, list)):
+            if not group:
+                raise ArgumentFailure("--revisions cannot contain an empty group")
+            pieces = tuple(group)
+        elif isinstance(group, str):
+            pieces = (group,)
+        else:
+            raise ArgumentFailure("--revisions pairs must be strings")
+        for piece in pieces:
+            if not isinstance(piece, str):
+                raise ArgumentFailure("--revisions pairs must be strings")
+            for token in piece.split(","):
+                token = token.strip()
+                if not token:
+                    raise ArgumentFailure("--revisions contains an empty pair")
+                tokens.append(token)
+    if len(tokens) != len(_DONOR_VERSIONS):
+        raise ArgumentFailure(
+            "--revisions must contain exactly one pair for US, HD, PSPEU, and Saturn"
+        )
+    parsed: dict[str, str] = {}
+    for token in tokens:
+        if "=" in token:
+            version, revision = token.split("=", 1)
+        elif ":" in token:
+            version, revision = token.split(":", 1)
+        else:
+            raise ArgumentFailure(
+                "each revision pair must be written platform=full-revision"
+            )
+        version = version.strip()
+        revision = revision.strip()
+        if version not in _DONOR_VERSIONS:
+            raise ArgumentFailure("revision pair names an unsupported platform")
+        if version in parsed:
+            raise ArgumentFailure("revision pairs must name each platform once")
+        if _FULL_REVISION_RE.fullmatch(revision) is None:
+            raise ArgumentFailure(
+                "each revision must be a lowercase full 40- or 64-character commit id"
+            )
+        parsed[version] = revision
+    if set(parsed) != set(_DONOR_VERSIONS):
+        raise ArgumentFailure(
+            "revision pairs must include US, HD, PSPEU, and Saturn exactly once"
+        )
+    return tuple((version, parsed[version]) for version in _DONOR_VERSIONS)
+
+
+def _revision_source_references(
+    gate_run_id: str,
+    pairs: Sequence[Tuple[str, str]],
+) -> Tuple[Any, ...]:
+    """Resolve each requested revision to one archive-owned donor manifest."""
+
+    try:
+        from .search_archive import ContentAddressedArchive
+        from .search_donor_index import DonorRevision
+        from .search_indexed_runtime import (
+            DONOR_SNAPSHOT_ARCHIVE_ROOT,
+            DONOR_SNAPSHOT_MANIFEST_PROTOCOL,
+            _gate_root,
+        )
+    except ImportError:
+        from automation.search_archive import ContentAddressedArchive  # type: ignore
+        from automation.search_donor_index import DonorRevision  # type: ignore
+        from automation.search_indexed_runtime import (  # type: ignore
+            DONOR_SNAPSHOT_ARCHIVE_ROOT,
+            DONOR_SNAPSHOT_MANIFEST_PROTOCOL,
+            _gate_root,
+        )
+
+    try:
+        repo = _REPO.resolve(strict=True)
+        gate_root = _gate_root(repo, gate_run_id)
+    except (OSError, RuntimeError, TypeError, ValueError) as exc:
+        raise RunInputError("the explicit integration gate cannot be resolved") from exc
+
+    roots: list[Path] = []
+    for candidate in (gate_root, repo / DONOR_SNAPSHOT_ARCHIVE_ROOT):
+        try:
+            root = candidate.resolve(strict=True)
+        except (OSError, RuntimeError):
+            continue
+        if root.is_symlink() or not root.is_dir():
+            continue
+        if root not in roots:
+            roots.append(root)
+
+    wanted = dict(pairs)
+    matches: dict[str, list[Tuple[Path, ArtifactRef]]] = {
+        version: [] for version, _revision in pairs
+    }
+    for root in roots:
+        source_root = root / "artifacts" / "sources"
+        if source_root.is_symlink():
+            raise RunInputError("donor source archive contains a symlink")
+        if not source_root.is_dir():
+            continue
+        archive = ContentAddressedArchive(root)
+        try:
+            paths = sorted(source_root.rglob("*.json"))
+        except OSError as exc:
+            raise RunInputError("donor source archive cannot be inspected") from exc
+        for path in paths:
+            if path.is_symlink() or not path.is_file():
+                continue
+            try:
+                relative = path.relative_to(root).as_posix()
+                raw = path.read_bytes()
+                document = json.loads(raw.decode("utf-8"))
+            except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+                continue
+            if not isinstance(document, Mapping):
+                continue
+            if document.get("protocol") != DONOR_SNAPSHOT_MANIFEST_PROTOCOL:
+                continue
+            version = document.get("version")
+            revision = document.get("revision")
+            if version not in wanted or revision != wanted[version]:
+                continue
+            reference = ArtifactRef(
+                hash_bytes(raw),
+                relative,
+                "application/json",
+                len(raw),
+            )
+            try:
+                if archive.verify(reference) != raw:
+                    raise RunInputError("donor source archive bytes changed")
+            except (OSError, RuntimeError, SearchValidationError, TypeError, ValueError) as exc:
+                raise RunInputError(
+                    "requested donor source manifest is missing or corrupt"
+                ) from exc
+            matches[version].append((root, reference))
+
+    missing = [version for version in _DONOR_VERSIONS if not matches[version]]
+    if missing:
+        raise RunInputError(
+            "no immutable donor source manifest is available for: "
+            + ", ".join(missing)
+        )
+    ambiguous = [version for version in _DONOR_VERSIONS if len(matches[version]) != 1]
+    if ambiguous:
+        raise RunInputError(
+            "requested donor source manifest is ambiguous for: "
+            + ", ".join(ambiguous)
+        )
+    revisions = tuple(
+        DonorRevision(
+            version=version,
+            revision=wanted[version],
+            source_artifact=matches[version][0][1],
+        )
+        for version in _DONOR_VERSIONS
+    )
+    return revisions
+
+
+def publish_indexed_runtime(
+    gate_run_id: str,
+    revisions: Sequence[str] | Sequence[Sequence[str]],
+) -> dict[str, Any]:
+    """Publish one verified indexed runtime from a gate and four pinned pairs."""
+
+    try:
+        from .search_indexed_runtime import publish_indexed_runtime as publish
+    except ImportError:
+        from automation.search_indexed_runtime import publish_indexed_runtime as publish  # type: ignore
+    try:
+        gate_run_id = validate_run_id(gate_run_id, "gate_run_id")
+    except (SearchValidationError, TypeError, ValueError) as exc:
+        raise RunInputError("gate_run_id is invalid") from exc
+    pairs = _normalize_revision_pairs(revisions)
+    typed_revisions = _revision_source_references(gate_run_id, pairs)
+    try:
+        generation = publish(gate_run_id, typed_revisions, repo=_REPO)
+    except (OSError, RuntimeError, SearchValidationError, TypeError, ValueError) as exc:
+        raise RunInputError("indexed runtime publication was refused") from exc
+    try:
+        runtime_id = validate_hash(generation.runtime_id, "runtime_id")
+        document = generation.to_dict()
+    except (AttributeError, SearchValidationError, TypeError, ValueError) as exc:
+        raise RunInputError("indexed runtime publisher returned an invalid generation") from exc
+    return {
+        "command": "publish-indexed-runtime",
+        "ok": True,
+        "gate_run_id": gate_run_id,
+        "revisions": [f"{version}={revision}" for version, revision in pairs],
+        "runtime_id": runtime_id,
+        "runtime": document,
+    }
+
+
+def verify_indexed_runtime(runtime_id: str) -> dict[str, Any]:
+    """Load and verify one immutable indexed runtime without rescanning."""
+
+    try:
+        from .search_indexed_runtime import load_indexed_runtime as load
+    except ImportError:
+        from automation.search_indexed_runtime import load_indexed_runtime as load  # type: ignore
+    try:
+        runtime_id = validate_hash(runtime_id, "runtime_id")
+    except (SearchValidationError, TypeError, ValueError) as exc:
+        raise RunInputError("runtime_id is invalid") from exc
+    try:
+        generation = load(runtime_id, repo=_REPO)
+    except (OSError, RuntimeError, SearchValidationError, TypeError, ValueError) as exc:
+        raise RunInputError("indexed runtime verification was refused") from exc
+    try:
+        if validate_hash(generation.runtime_id, "runtime_id") != runtime_id:
+            raise RunInputError("indexed runtime identity differs from request")
+        document = generation.to_dict()
+    except (AttributeError, SearchValidationError, TypeError, ValueError) as exc:
+        raise RunInputError("indexed runtime returned an invalid generation") from exc
+    return {
+        "command": "verify-indexed-runtime",
+        "ok": True,
+        "runtime_id": runtime_id,
+        "runtime": document,
+        "verdict": "valid",
+    }
 
 
 @dataclass(frozen=True)
@@ -368,6 +619,8 @@ def create_instrumented_run(
     name: str,
     record_ids: Sequence[str],
     lanes: Sequence[str],
+    *,
+    runtime_id: Optional[str] = None,
 ) -> dict[str, Any]:
     """Create one bounded canonical instrumented run from exact todo IDs."""
 
@@ -376,7 +629,7 @@ def create_instrumented_run(
     except ImportError:  # direct invocation from the automation directory
         from automation.search_run_factory import create_instrumented_run as create_run  # type: ignore
     try:
-        return create_run(name, record_ids, lanes)
+        return create_run(name, record_ids, lanes, runtime_id=runtime_id)
     except RuntimeError as exc:
         raise RunInputError(str(exc) or "run creation refused") from exc
 
@@ -757,6 +1010,10 @@ def build_parser() -> argparse.ArgumentParser:
     create.add_argument("--name", required=True)
     create.add_argument("--records", action="append", nargs="+", required=True)
     create.add_argument("--lanes", action="append", nargs="+", required=True)
+    create.add_argument(
+        "--runtime-id",
+        help="exact indexed runtime identity required by indexed lanes",
+    )
 
     run = commands.add_parser("run", help="initialize a manifest-owned run")
     run.add_argument("--manifest", required=True)
@@ -773,6 +1030,25 @@ def build_parser() -> argparse.ArgumentParser:
     fork = commands.add_parser("fork", help="fork one immutable run")
     fork.add_argument("--run", required=True)
     fork.add_argument("--config", required=True)
+
+    publish = commands.add_parser(
+        "publish-indexed-runtime",
+        help="publish one immutable indexed runtime",
+    )
+    publish.add_argument("--gate-run-id", required=True)
+    publish.add_argument(
+        "--revisions",
+        action="append",
+        nargs="+",
+        required=True,
+        help="exactly four platform=full-revision pairs",
+    )
+
+    verify = commands.add_parser(
+        "verify-indexed-runtime",
+        help="verify one immutable indexed runtime",
+    )
+    verify.add_argument("--runtime-id", required=True)
     return parser
 
 
@@ -792,7 +1068,12 @@ def _dispatch(args: argparse.Namespace) -> dict[str, Any]:
             args.lanes, label="lanes", allow_explicit_empty=False
         )
         assert records is not None and lanes is not None
-        return create_instrumented_run(args.name, records, lanes)
+        return create_instrumented_run(
+            args.name,
+            records,
+            lanes,
+            runtime_id=args.runtime_id,
+        )
     if args.command == "run":
         return run_manifest(args.manifest)
     if args.command == "resume":
@@ -805,6 +1086,10 @@ def _dispatch(args: argparse.Namespace) -> dict[str, Any]:
         return verify_ledger(args.run)
     if args.command == "fork":
         return fork_run(args.run, args.config)
+    if args.command == "publish-indexed-runtime":
+        return publish_indexed_runtime(args.gate_run_id, args.revisions)
+    if args.command == "verify-indexed-runtime":
+        return verify_indexed_runtime(args.runtime_id)
     raise ArgumentFailure("unknown command")
 
 
@@ -853,6 +1138,9 @@ __all__ = [
     "verify_ledger",
     "stop_run",
     "fork_run",
+    "publish_indexed_runtime",
+    "verify_indexed_runtime",
+    "_normalize_revision_pairs",
     "build_parser",
     "main",
 ]

@@ -870,6 +870,28 @@ class DonorQueryResult:
             "provenance_artifact": self.provenance_artifact.to_dict(),
         }
 
+    @property
+    def semantic_claims(self) -> Tuple[DonorSemanticClaim, ...]:
+        """Return the canonical renderer-safe claims for a matched result.
+
+        Query hits retain their full donor evidence for durable provenance, but
+        this projection deliberately exposes only :class:`DonorSemanticClaim`
+        values.  Equivalent support from several pinned revisions is collapsed
+        by claim identity before a target renderer can observe it.
+        """
+
+        if self.status != "matched":
+            return ()
+        claims: dict[str, DonorSemanticClaim] = {}
+        for hit in self.hits:
+            claim = DonorSemanticClaim.from_evidence(hit.entry.evidence)
+            if claim.claim_identity != hit.claim_identity:
+                raise DonorQueryIdentityMismatch(
+                    "query hit semantic claim differs from its claim identity"
+                )
+            claims.setdefault(claim.claim_identity, claim)
+        return tuple(claims[identity] for identity in sorted(claims))
+
     @classmethod
     def from_dict(
         cls,

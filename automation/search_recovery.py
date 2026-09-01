@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextvars import ContextVar
 import hashlib
 import json
 import os
@@ -60,6 +61,13 @@ class InjectedFault(RecoveryError):
 
 FAULT_POINTS = DURABLE_FAULT_POINTS
 
+_FACTORY_TOOL_KEY = "search_run_factory"
+_FACTORY_MARKER_KEY = "search_run_factory_marker"
+_PROVIDER_VALIDATION_ACTIVE: ContextVar[bool] = ContextVar(
+    "search_recovery_provider_validation_active",
+    default=False,
+)
+
 
 class FaultInjector:
     """Raise once at configured transition names for fault-injection tests."""
@@ -116,6 +124,55 @@ def _load_manifest(run_root: Path) -> RunManifest:
         raise RecoveryError("run manifest is missing") from exc
     except (json.JSONDecodeError, OSError, ValueError) as exc:
         raise RecoveryError("run manifest is invalid") from exc
+
+
+def _establish_factory_manifest(
+    run_root: Path,
+    manifest: RunManifest,
+) -> tuple[RunManifest, bool]:
+    """Verify the immutable factory archive before replaying a factory run."""
+
+    factory_created = any(
+        key in manifest.tool_identities
+        for key in (_FACTORY_TOOL_KEY, _FACTORY_MARKER_KEY)
+    )
+    if not factory_created:
+        return manifest, False
+    try:
+        try:
+            from .search_run_factory import verify_factory_archive
+        except ImportError:  # pragma: no cover - direct script compatibility
+            from search_run_factory import verify_factory_archive  # type: ignore
+        verified = verify_factory_archive(run_root, manifest)
+    except Exception as exc:  # typed factory refusal domains differ here
+        raise RecoveryError("factory archive validation failed during recovery") from exc
+    if not isinstance(verified, RunManifest):
+        raise RecoveryError("factory archive validator returned an untyped manifest")
+    return verified, True
+
+
+def _verify_factory_provider(manifest: RunManifest, run_root: Path) -> None:
+    """Revalidate registry-backed providers before accepting recovered state."""
+
+    if _PROVIDER_VALIDATION_ACTIVE.get():
+        # Canonical gate validation recovers the same run to inspect its
+        # terminal proof.  The outer recovery already owns provider
+        # revalidation, so nested evidence recovery must not recurse into the
+        # provider registry a second time.
+        return
+    token = _PROVIDER_VALIDATION_ACTIVE.set(True)
+    try:
+        try:
+            from .search_provider_lanes import verify_lane_provider
+        except ImportError:  # pragma: no cover - direct script compatibility
+            from search_provider_lanes import verify_lane_provider  # type: ignore
+        verify_lane_provider(manifest, run_root)
+    except Exception as exc:  # provider refusal domains differ by lane
+        raise RecoveryError(
+            "factory-created provider state could not be revalidated"
+        ) from exc
+    finally:
+        _PROVIDER_VALIDATION_ACTIVE.reset(token)
 
 
 def _validate_artifacts(events: Sequence[LedgerEvent], archive: ContentAddressedArchive) -> None:
@@ -284,6 +341,7 @@ def recover_run(
     """Reconstruct authoritative state from manifest, ledger and artifacts."""
     root = Path(run_root)
     manifest = _load_manifest(root)
+    manifest, factory_created = _establish_factory_manifest(root, manifest)
     _compare_identity(manifest, expected_identity)
     archive = ContentAddressedArchive(root)
     ledger = AppendOnlyLedger(root / "ledger.jsonl", run_id=manifest.run_id, archive=archive)
@@ -308,6 +366,8 @@ def recover_run(
         )
     except CoordinatorError as exc:
         raise RecoveryError("ledger prefix violates persisted search invariants") from exc
+    if factory_created:
+        _verify_factory_provider(manifest, root)
 
     tasks: Dict[str, SearchTask] = {}
     terminal: Dict[str, TaskTerminal] = {}

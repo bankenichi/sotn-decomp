@@ -90,6 +90,7 @@ AmbiguousLineage = PatternAmbiguousLineage
 
 
 REPORT_VERSION = "1.0.0"
+LINEAGE_CONTEXT_PROTOCOL = "sotn-completed-lineage-context-v1"
 DEFAULT_MIN_SAMPLES = 2
 DEFAULT_MIN_SUCCESSES = 2
 DEFAULT_MAX_RECOMMENDATIONS = 32
@@ -163,6 +164,7 @@ def _report_payload(
     }
 
 
+# production-audit: pure-value
 @dataclass(frozen=True)
 class SearchPatternReport:
     """Immutable, content-addressed summary of completed search evidence."""
@@ -488,6 +490,7 @@ def _load_completed_ledger(value: Any) -> _CompletedLedger:
     return _CompletedLedger(root, ledger_path, manifest, tuple(events), identity)
 
 
+# production-audit: pure-value
 @dataclass(frozen=True)
 class CompletedLineageContext:
     """One completed, artifact-verified ledger bound to its exact identities.
@@ -587,7 +590,70 @@ class CompletedLineageContext:
         except SearchValidationError as exc:
             raise PatternInputError(str(exc)) from exc
 
+    def to_dict(self) -> Dict[str, Any]:
+        """Serialize the complete immutable projection for runtime binding."""
 
+        return {
+            "protocol": LINEAGE_CONTEXT_PROTOCOL,
+            "kind": "context",
+            "ledger_identity": self.ledger_identity,
+            "run_id": self.run_id,
+            "compiler_identity": self.compiler_identity,
+            "config_identity": self.config_identity,
+            "schema_identity": self.schema_identity,
+            "scorer_algorithms": list(self.scorer_algorithms),
+            "lane_tool_identities": [
+                [lane, identity] for lane, identity in self.lane_tool_identities
+            ],
+            "recipient_target_identities": [
+                [recipient, identity]
+                for recipient, identity in self.recipient_target_identities
+            ],
+            "evaluator_identity": self.evaluator_identity,
+        }
+
+    @classmethod
+    def from_dict(cls, value: Mapping[str, Any]) -> "CompletedLineageContext":
+        if not isinstance(value, Mapping):
+            raise PatternInputError("lineage context must be an object")
+        fields = {
+            "protocol",
+            "kind",
+            "ledger_identity",
+            "run_id",
+            "compiler_identity",
+            "config_identity",
+            "schema_identity",
+            "scorer_algorithms",
+            "lane_tool_identities",
+            "recipient_target_identities",
+            "evaluator_identity",
+        }
+        if set(value) != fields:
+            raise PatternInputError("lineage context fields do not match its protocol")
+        if value["protocol"] != LINEAGE_CONTEXT_PROTOCOL or value["kind"] != "context":
+            raise PatternInputError("unsupported lineage context protocol")
+        try:
+            return cls(
+                ledger_identity=value["ledger_identity"],
+                run_id=value["run_id"],
+                compiler_identity=value["compiler_identity"],
+                config_identity=value["config_identity"],
+                schema_identity=value["schema_identity"],
+                scorer_algorithms=tuple(value["scorer_algorithms"]),
+                lane_tool_identities=tuple(
+                    tuple(item) for item in value["lane_tool_identities"]
+                ),
+                recipient_target_identities=tuple(
+                    tuple(item) for item in value["recipient_target_identities"]
+                ),
+                evaluator_identity=value["evaluator_identity"],
+            )
+        except (KeyError, TypeError, ValueError) as exc:
+            raise PatternInputError("lineage context payload is invalid") from exc
+
+
+# production-audit: pure-value
 @dataclass(frozen=True)
 class CompletedLineageDiagnostic:
     """A completed ledger that cannot become a promotion-eligible context.
@@ -638,6 +704,44 @@ class CompletedLineageDiagnostic:
             object.__setattr__(self, "observed_identities", observed)
         except SearchValidationError as exc:
             raise PatternInputError(str(exc)) from exc
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Serialize diagnostic provenance without promoting it to evidence."""
+
+        return {
+            "protocol": LINEAGE_CONTEXT_PROTOCOL,
+            "kind": "diagnostic",
+            "ledger_identity": self.ledger_identity,
+            "run_id": self.run_id,
+            "reason_code": self.reason_code,
+            "observed_identities": list(self.observed_identities),
+        }
+
+    @classmethod
+    def from_dict(cls, value: Mapping[str, Any]) -> "CompletedLineageDiagnostic":
+        if not isinstance(value, Mapping):
+            raise PatternInputError("lineage diagnostic must be an object")
+        fields = {
+            "protocol",
+            "kind",
+            "ledger_identity",
+            "run_id",
+            "reason_code",
+            "observed_identities",
+        }
+        if set(value) != fields:
+            raise PatternInputError("lineage diagnostic fields do not match its protocol")
+        if value["protocol"] != LINEAGE_CONTEXT_PROTOCOL or value["kind"] != "diagnostic":
+            raise PatternInputError("unsupported lineage diagnostic protocol")
+        try:
+            return cls(
+                ledger_identity=value["ledger_identity"],
+                run_id=value["run_id"],
+                reason_code=value["reason_code"],
+                observed_identities=tuple(value["observed_identities"]),
+            )
+        except (KeyError, TypeError, ValueError) as exc:
+            raise PatternInputError("lineage diagnostic payload is invalid") from exc
 
 
 def _normalize_ledger_inputs(
@@ -1488,12 +1592,30 @@ load_report = load_report_artifact
 render_summary = render_derivation_summary
 
 
+# The production audit treats these immutable projections and deterministic
+# render and validation helpers as intentionally pure value surfaces. They
+# remain exported for typed callers, but do not constitute an archive or
+# queue write path.
+PRODUCTION_PURE_VALUE_EXPORTS = frozenset(
+    {
+        "automation.search_patterns.SearchPatternReport",
+        "automation.search_patterns.CompletedLineageContext",
+        "automation.search_patterns.CompletedLineageDiagnostic",
+        "automation.search_patterns.validate_search_recommendation",
+        "automation.search_patterns.render_derivation_summary",
+    }
+)
+
+
 __all__ = [
-    "REPORT_VERSION", "SearchPatternError", "PatternInputError", "PatternLedgerCorrupt",
+    "REPORT_VERSION", "LINEAGE_CONTEXT_PROTOCOL", "PRODUCTION_PURE_VALUE_EXPORTS",
+    "SearchPatternError", "PatternInputError", "PatternLedgerCorrupt",
     "PatternPartialLedger", "PatternActiveRun", "PatternArtifactError", "PatternIdentityMismatch",
     "PatternAmbiguousLineage", "PatternInsufficientEvidence", "LedgerCorrupt", "PartialLedger",
     "ActiveRun", "ArtifactIdentityMismatch", "AmbiguousLineage", "SearchPatternReport",
+    "CompletedLineageContext", "CompletedLineageDiagnostic",
     "mine_completed_lineages", "mine_search_patterns", "mine_completed_ledger_prefixes", "mine",
-    "load_report_artifact", "load_report", "render_derivation_summary", "render_summary",
+    "load_completed_lineage_contexts", "load_report_artifact", "load_report",
+    "render_derivation_summary", "render_summary",
     "validate_search_recommendation",
 ]

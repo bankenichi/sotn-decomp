@@ -54,6 +54,10 @@ FMT = {"plain", "color", "json", "html"}
 # intentional: queue ids contain `/` and `:`, while a run id is a directory
 # component and must never contain either.
 _SEARCH_COMPONENT_RX = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
+_SEARCH_IDENTITY_RX = re.compile(r"^sha256:[0-9a-f]{64}$")
+_SEARCH_REVISION_PAIR_RX = re.compile(
+    r"^(us|hd|pspeu|saturn)=([0-9a-f]{40}(?:[0-9a-f]{24})?)$"
+)
 _SEARCH_LANES = (
     "upstream_current",
     "upstream_pinned",
@@ -81,11 +85,13 @@ SEARCH_SURFACE_MUTATORS = frozenset({
     "search_start_instrumented",
     "search_resume_instrumented",
     "search_stop",
+    "search_publish_indexed_runtime",
 })
 SEARCH_SURFACE_READ_ONLY = frozenset({
     "search_plan",
     "search_status",
     "search_verify_ledger",
+    "search_verify_indexed_runtime",
 })
 SEARCH_SURFACE_ACTIONS = (
     SEARCH_SURFACE_MUTATORS | SEARCH_SURFACE_READ_ONLY
@@ -93,6 +99,7 @@ SEARCH_SURFACE_ACTIONS = (
 SEARCH_JOB_ACTIONS = frozenset({
     "search_start_instrumented",
     "search_resume_instrumented",
+    "search_publish_indexed_runtime",
 })
 
 
@@ -108,6 +115,52 @@ def _search_component(value: str, label: str) -> str:
             f"{label} must match ^[A-Za-z0-9][A-Za-z0-9_-]{{0,63}}$ "
             "and contain no separators, traversal, globs or shell text"
         )
+    return value
+
+
+def _search_revision_pairs(values) -> tuple[str, ...]:
+    """Validate exactly four canonical platform/full-revision pair values."""
+
+    if isinstance(values, (str, bytes, bytearray)) or values is None:
+        raise Rejected(
+            "revisions must contain exactly four platform/full-revision pairs"
+        )
+    try:
+        raw_values = tuple(values)
+    except (TypeError, ValueError) as exc:
+        raise Rejected(
+            "revisions must contain exactly four platform/full-revision pairs"
+        ) from exc
+    if len(raw_values) != len(VERSIONS):
+        raise Rejected(
+            "revisions must contain exactly four platform/full-revision pairs"
+        )
+    parsed: dict[str, str] = {}
+    for value in raw_values:
+        if not isinstance(value, str):
+            raise Rejected("revision pairs must be strings")
+        if value != value.strip():
+            raise Rejected("revision pairs must not contain whitespace")
+        match = _SEARCH_REVISION_PAIR_RX.fullmatch(value)
+        if match is None:
+            raise Rejected(
+                "each revision must be platform=lowercase full 40- or 64-character id"
+            )
+        version, revision = match.groups()
+        if version in parsed:
+            raise Rejected("revision pairs must name each platform once")
+        parsed[version] = revision
+    expected = ("us", "hd", "pspeu", "saturn")
+    if set(parsed) != set(expected):
+        raise Rejected(
+            "revision pairs must include US, HD, PSPEU, and Saturn exactly once"
+        )
+    return tuple(f"{version}={parsed[version]}" for version in expected)
+
+
+def _search_identity(value: str, label: str) -> str:
+    if not isinstance(value, str) or not _SEARCH_IDENTITY_RX.fullmatch(value):
+        raise Rejected(label + " must be a full sha256 identity")
     return value
 
 
@@ -285,7 +338,12 @@ def _search_plan_argv(name: str, record_ids, lanes) -> list[str]:
     ]
 
 
-def _search_create_argv(name: str, record_ids, lanes) -> list[str]:
+def _search_create_argv(
+    name: str,
+    record_ids,
+    lanes,
+    runtime_id: str | None = None,
+) -> list[str]:
     """Build the bounded production run-creation argv.
 
     Creation is deliberately a foreground operation.  It receives only the
@@ -298,7 +356,7 @@ def _search_create_argv(name: str, record_ids, lanes) -> list[str]:
     if not records:
         raise Rejected("record_ids must be a nonempty sequence for run creation")
     selected = _search_lanes(lanes)
-    return [
+    argv = [
         PYTHON,
         "automation/search_cli.py",
         "create",
@@ -309,6 +367,11 @@ def _search_create_argv(name: str, record_ids, lanes) -> list[str]:
         "--lanes",
         *selected,
     ]
+    if runtime_id is not None:
+        argv.extend(
+            ["--runtime-id", _search_identity(runtime_id, "runtime_id")]
+        )
+    return argv
 
 
 def _search_supervisor_argv(run_id: str, flag: str) -> list[str]:
@@ -333,6 +396,31 @@ def _search_verify_argv(run_id: str) -> list[str]:
         "verify-ledger",
         "--run",
         str(manifest_path.parent),
+    ]
+
+
+def _search_publish_indexed_runtime_argv(
+    gate_run_id: str,
+    revisions,
+) -> list[str]:
+    return [
+        PYTHON,
+        "automation/search_cli.py",
+        "publish-indexed-runtime",
+        "--gate-run-id",
+        _search_component(gate_run_id, "gate_run_id"),
+        "--revisions",
+        *_search_revision_pairs(revisions),
+    ]
+
+
+def _search_verify_indexed_runtime_argv(runtime_id: str) -> list[str]:
+    return [
+        PYTHON,
+        "automation/search_cli.py",
+        "verify-indexed-runtime",
+        "--runtime-id",
+        _search_identity(runtime_id, "runtime_id"),
     ]
 
 
@@ -888,6 +976,20 @@ AUTOMATION_SCRIPTS = {
     # are intentionally not allowlisted.
     "test_search_donor_query.py",
     "test_search_indexed_lane.py",
+    "test_search_donor_scan.py",
+    "test_search_generated_lanes.py",
+    "test_search_idiom_atlas.py",
+    "test_search_indexed_runtime.py",
+    "test_search_model_executor.py",
+    "test_search_model_lanes.py",
+    "test_search_permuter_executor.py",
+    "test_search_permuter_lanes.py",
+    "test_search_provider_lanes.py",
+    "test_search_production_audit.py",
+    "test_search_semantic_signatures.py",
+    "test_search_target_renderer.py",
+    "test_m2c_revision_provider.py",
+    "test_m2c_revision_matrix.py",
     "test_build_attribution.py",
     "escalation_triage.py",
     "deferred_triage.py",
@@ -1374,8 +1476,8 @@ REGISTRY = {
     # never caller-controlled here.
     "search_plan": lambda name, record_ids, lanes: _search_plan_argv(
         name, record_ids, lanes),
-    "search_create_instrumented": lambda name, record_ids, lanes: _search_create_argv(
-        name, record_ids, lanes),
+    "search_create_instrumented": lambda name, record_ids, lanes, runtime_id=None: _search_create_argv(
+        name, record_ids, lanes, runtime_id),
     "search_start_instrumented": lambda run_id: _search_supervisor_argv(
         run_id, "--run"),
     "search_resume_instrumented": lambda run_id: _search_supervisor_argv(
@@ -1385,6 +1487,12 @@ REGISTRY = {
     "search_stop": lambda run_id: _search_supervisor_argv(
         run_id, "--stop"),
     "search_verify_ledger": lambda run_id: _search_verify_argv(run_id),
+    "search_publish_indexed_runtime": lambda gate_run_id, revisions: (
+        _search_publish_indexed_runtime_argv(gate_run_id, revisions)
+    ),
+    "search_verify_indexed_runtime": lambda runtime_id: (
+        _search_verify_indexed_runtime_argv(runtime_id)
+    ),
     # ONE record, named, in the foreground.
     #
     # fleet_start was the only way to run a worker, and it launches N detached

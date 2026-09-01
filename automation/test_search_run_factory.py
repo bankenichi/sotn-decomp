@@ -136,6 +136,7 @@ class FactoryFixture(unittest.TestCase):
         *,
         queue_reader=None,
         compiler_identity_resolver=None,
+        runtime_id=None,
         now=None,
         fault_hook=None,
     ):
@@ -150,9 +151,99 @@ class FactoryFixture(unittest.TestCase):
                 compiler_identity_resolver
                 or (lambda _path: hash_bytes(b"compiler-v1"))
             ),
+            runtime_id=runtime_id,
             now=now or (lambda: "2026-08-28T00:00:00Z"),
             fault_hook=fault_hook,
         )
+
+    def test_indexed_runtime_is_required_only_for_indexed_lanes(self) -> None:
+        runtime_id = hash_bytes(b"runtime")
+        with self.assertRaisesRegex(InputRefusal, "require one explicit"):
+            self.create("indexed-missing", lanes=["multi_donor"])
+        with self.assertRaisesRegex(InputRefusal, "irrelevant"):
+            self.create(
+                "runtime-irrelevant",
+                lanes=["upstream_current"],
+                runtime_id=runtime_id,
+            )
+        with self.assertRaisesRegex(InputRefusal, "invalid"):
+            self.create(
+                "runtime-invalid",
+                lanes=["cfg_dataflow"],
+                runtime_id="latest",
+            )
+
+    def test_indexed_runtime_cli_commands_have_typed_parser_and_dispatch(self) -> None:
+        pairs = [
+            "us=" + "a" * 40,
+            "hd=" + "b" * 40,
+            "pspeu=" + "c" * 40,
+            "saturn=" + "d" * 40,
+        ]
+        parser = search_cli.build_parser()
+
+        parsed_publish = parser.parse_args(
+            [
+                "publish-indexed-runtime",
+                "--gate-run-id",
+                "gate-run",
+                "--revisions",
+                *reversed(pairs),
+            ]
+        )
+        with mock.patch.object(
+            search_cli,
+            "publish_indexed_runtime",
+            return_value={"ok": True, "command": "publish-indexed-runtime"},
+        ) as publish:
+            self.assertEqual(search_cli._dispatch(parsed_publish), {
+                "ok": True,
+                "command": "publish-indexed-runtime",
+            })
+        publish.assert_called_once_with("gate-run", [list(reversed(pairs))])
+
+        parsed_verify = parser.parse_args(
+            [
+                "verify-indexed-runtime",
+                "--runtime-id",
+                "sha256:" + "e" * 64,
+            ]
+        )
+        with mock.patch.object(
+            search_cli,
+            "verify_indexed_runtime",
+            return_value={"ok": True, "command": "verify-indexed-runtime"},
+        ) as verify:
+            self.assertEqual(search_cli._dispatch(parsed_verify), {
+                "ok": True,
+                "command": "verify-indexed-runtime",
+            })
+        verify.assert_called_once_with("sha256:" + "e" * 64)
+
+        for bad_revisions in (
+            pairs[:3],
+            [pairs[0], pairs[1], pairs[2], pairs[0]],
+            ["us=" + "A" * 40, *pairs[1:]],
+        ):
+            with self.subTest(bad_revisions=bad_revisions):
+                with self.assertRaises(search_cli.ArgumentFailure):
+                    search_cli._normalize_revision_pairs(bad_revisions)
+
+        for bad_runtime_id in ("latest", "../runtime"):
+            with self.subTest(bad_runtime_id=bad_runtime_id):
+                with self.assertRaises(search_cli.RunInputError):
+                    search_cli.verify_indexed_runtime(bad_runtime_id)
+
+        with self.assertRaises(search_cli.ArgumentFailure):
+            parser.parse_args(
+                [
+                    "verify-indexed-runtime",
+                    "--runtime-id",
+                    "sha256:" + "f" * 64,
+                    "--repo",
+                    "outside",
+                ]
+            )
 
     def test_one_record_captures_full_queue_and_exact_targets(self) -> None:
         result = self.create("run-one", ids=[IDS[0]])

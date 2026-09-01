@@ -424,6 +424,35 @@ class DonorQueryRecordTests(unittest.TestCase):
             with self.assertRaises(DonorQueryInputError):
                 replace(claim, compatible=1)
 
+    def test_result_renderer_claim_projection_is_typed_and_deduplicated(self) -> None:
+        with _index_fixture() as (index, archive, gate_archive, _gate, _calls, _sources):
+            result = query_donor_index(
+                index,
+                _query(),
+                expected_binding=index.binding,
+                index_archive=archive,
+                integration_archive=gate_archive,
+            )
+            claims = result.semantic_claims
+            self.assertEqual(len(claims), 1)
+            self.assertIsInstance(claims[0], DonorSemanticClaim)
+            self.assertEqual(
+                tuple(item.claim_identity for item in claims),
+                tuple(sorted({hit.claim_identity for hit in result.hits})),
+            )
+            self.assertNotIn("source", claims[0].to_dict())
+            self.assertNotIn("body", claims[0].to_dict())
+            self.assertEqual(
+                query_donor_index(
+                    index,
+                    _query(symbol="missing"),
+                    expected_binding=index.binding,
+                    index_archive=archive,
+                    integration_archive=gate_archive,
+                ).semantic_claims,
+                (),
+            )
+
     def test_public_hit_receipt_and_result_records_reject_forgeries(self) -> None:
         with _index_fixture() as (index, archive, gate_archive, _gate, _calls, _sources):
             result = query_donor_index(

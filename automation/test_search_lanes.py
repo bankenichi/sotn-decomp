@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import replace
+from dataclasses import fields, replace
 
 import json
 import os
@@ -104,6 +104,51 @@ def recipient(record_id: str = "record-1") -> Recipient:
 
 
 class TestSearchLanes(unittest.TestCase):
+    def test_lane_adapter_fields_cover_every_advertised_lane(self) -> None:
+        self.assertEqual(
+            {field.name for field in fields(LaneAdapters)},
+            set(LANES),
+        )
+
+    def test_every_external_provider_lane_uses_the_ordinary_outcome_path(self) -> None:
+        external = (
+            "m2c_ensemble",
+            "idiom_atlas",
+            "bounded_synthesis",
+            "permuter_random",
+            "permuter_targeted",
+            "permuter_recombine",
+            "permuter_ddmin",
+            "model_fleet",
+            "model_expensive",
+        )
+        for lane in external:
+            with self.subTest(lane=lane):
+                calls = []
+
+                def callback(item):
+                    calls.append(item.recipient_id)
+                    return {
+                        "candidates": (),
+                        "attempts": 1,
+                        "completion_reason": "inapplicable",
+                        "refusal_code": "provider_unavailable",
+                        "reason": "focused external-provider fixture",
+                    }
+
+                batch = run_lane(
+                    make_manifest("record-1"),
+                    lane,
+                    {"record-1": recipient()},
+                    adapters={lane: callback},
+                )
+                self.assertEqual(calls, ["record-1"])
+                self.assertEqual(batch.outcomes[0].lane, lane)
+                self.assertEqual(
+                    batch.outcomes[0].refusal.code,
+                    "provider_unavailable",
+                )
+
     def test_manifest_requires_all_immutable_identities_and_rejects_bad_tools(self) -> None:
         manifest = make_manifest("record-1")
         for field in ("source_identity", "config_identity", "compiler_identity"):
