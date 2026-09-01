@@ -179,4 +179,3 @@ or an exception that aborts unrelated work. The real acceptance run exercises
 every mechanical and local provider. External model availability is verified
 through the provider preflight and deterministic replay fixture; an unavailable
 paid provider does not authorize a paid call or make the connector unreachable.
-

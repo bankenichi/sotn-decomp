@@ -213,4 +213,3 @@
 - [ ] Route all nine through ordinary `execute_task`, candidate fan-out, receipts, ledger, stop, and resume. Remove no lane merely to satisfy the audit.
 - [ ] Run generated-provider, lanes, factory, supervisor, coordinator, recovery, permuter-vendor, compiler-idiom, and draft-miner suites once after the final edit.
 - [ ] Extend production acceptance to execute all local providers and the deterministic model-provider replay, and require the export and lane closure audits to report zero unreachable surfaces.
-
