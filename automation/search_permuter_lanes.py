@@ -79,7 +79,10 @@ PERMUTER_MAX_CALLS = 4
 PERMUTER_MAX_ITERATIONS = 100000
 PERMUTER_MAX_CANDIDATES = 32
 PERMUTER_MAX_STATE_BYTES = 1048576
-PERMUTER_MAX_CANDIDATE_CHARS = 65536
+# A target-preprocessed translation unit includes the SDK and Entity layouts.
+# Keep that exact compiler input instead of rejecting real overlay candidates
+# at the old function-body-sized limit.
+PERMUTER_MAX_CANDIDATE_CHARS = 1048576
 MODULE_IDENTITY = hash_canonical(
     {
         "module": "automation.search_permuter_lanes",
@@ -105,6 +108,7 @@ _COMPLETION_REASONS = frozenset(
         "budget_exhausted",
         "search_space_exhausted",
         "inapplicable",
+        "execution_failed",
         "matched_pending_oracle",
         "operator_stop",
         "superseded_by_stronger_evidence",
@@ -463,6 +467,8 @@ class PermuterToolBinding:
     def __post_init__(self) -> None:
         if self.lane not in PERMUTER_LANES:
             raise PermuterProviderInputError("unsupported permuter binding lane")
+        if type(self.available) is not bool:
+            raise PermuterProviderInputError("binding available must be an exact boolean")
         object.__setattr__(self, "vendor_revision", _identity(self.vendor_revision, "vendor_revision"))
         object.__setattr__(self, "algorithm", _text(self.algorithm, "algorithm"))
         if self.tool_artifact is not None:
@@ -489,7 +495,7 @@ class PermuterToolBinding:
                 "algorithm_identity",
                 hash_canonical(
                     {
-                        "protocol": PERMUTER_BINDING_PROTOCOL,
+                        "protocol": PERMUTER_CONFIG_PROTOCOL,
                         "lane": self.lane,
                         "algorithm": self.algorithm,
                     }
@@ -1116,6 +1122,8 @@ class PermuterCheckpoint:
     def __post_init__(self) -> None:
         if self.lane not in PERMUTER_LANES or self.phase not in _PHASES:
             raise PermuterProviderInputError("checkpoint lane or phase is invalid")
+        if type(self.stopped) is not bool:
+            raise PermuterProviderInputError("checkpoint stopped must be an exact boolean")
         for name in ("session_identity", "request_identity", "scratch_identity", "checkpoint_identity"):
             object.__setattr__(self, name, _identity(getattr(self, name), name))
         _integer(self.iterations, "checkpoint iterations", 0, PERMUTER_MAX_ITERATIONS)
@@ -1201,6 +1209,71 @@ class PermuterCheckpoint:
             stopped=data["stopped"],
             stop_reason=data["stop_reason"],
             checkpoint_identity=data["checkpoint_identity"],
+        )
+
+
+@dataclass(frozen=True)
+class PermuterStop:
+    """Typed durable stop reservation for one request phase."""
+
+    lane: str
+    phase: str
+    session_identity: str
+    request_identity: str
+    scratch_identity: str
+    reason: str
+    stop_identity: str
+
+    def __post_init__(self) -> None:
+        if self.lane not in PERMUTER_LANES or self.phase not in _PHASES:
+            raise PermuterProviderInputError("stop lane or phase is invalid")
+        for name in ("session_identity", "request_identity", "scratch_identity", "stop_identity"):
+            object.__setattr__(self, name, _identity(getattr(self, name), name))
+        object.__setattr__(self, "reason", _text(self.reason, "stop reason"))
+        if self.stop_identity != hash_canonical(self.identity_payload()):
+            raise PermuterProviderInputError("stop identity changed")
+
+    def identity_payload(self) -> dict[str, Any]:
+        return {
+            "protocol": PERMUTER_STOP_PROTOCOL,
+            "lane": self.lane,
+            "phase": self.phase,
+            "session_identity": self.session_identity,
+            "request_identity": self.request_identity,
+            "scratch_identity": self.scratch_identity,
+            "reason": self.reason,
+        }
+
+    def to_dict(self) -> dict[str, Any]:
+        return dict(self.identity_payload(), stop_identity=self.stop_identity)
+
+    @classmethod
+    def from_dict(cls, value: Mapping[str, Any]) -> "PermuterStop":
+        data = _strict(
+            value,
+            (
+                "protocol",
+                "lane",
+                "phase",
+                "session_identity",
+                "request_identity",
+                "scratch_identity",
+                "reason",
+                "stop_identity",
+            ),
+            (),
+            "permuter stop",
+        )
+        if data["protocol"] != PERMUTER_STOP_PROTOCOL:
+            raise PermuterProviderInputError("stop protocol differs")
+        return cls(
+            lane=data["lane"],
+            phase=data["phase"],
+            session_identity=data["session_identity"],
+            request_identity=data["request_identity"],
+            scratch_identity=data["scratch_identity"],
+            reason=data["reason"],
+            stop_identity=data["stop_identity"],
         )
 
 
@@ -1752,7 +1825,31 @@ class PermuterHandoffStore:
         return self._put(checkpoint.to_dict(), PERMUTER_CHECKPOINT_CATEGORY)
 
     def put_stop(self, document: Mapping[str, Any]) -> ArtifactRef:
-        return self._put(document, PERMUTER_STOP_CATEGORY)
+        try:
+            stop = PermuterStop.from_dict(document)
+        except PermuterProviderError as exc:
+            raise PermuterProviderHandoffError("stop handoff is not typed") from exc
+        return self._put(stop.to_dict(), PERMUTER_STOP_CATEGORY)
+
+    def _find_unique(self, category: str, label: str, decoder, predicate):
+        matches = []
+        for document, reference in self._iter_documents(category):
+            try:
+                item = decoder(document, reference)
+            except Exception as exc:
+                raise PermuterProviderHandoffError(
+                    f"{label} handoff is not a typed canonical record"
+                ) from exc
+            if predicate(item):
+                matches.append((item, reference))
+        if len(matches) > 1:
+            raise PermuterProviderHandoffError(
+                f"ambiguous {label} handoff claims one identity"
+            )
+        if not matches:
+            return None
+        item, reference = matches[0]
+        return item.to_dict(), reference
 
     def _iter_documents(self, category: str):
         if not isinstance(category, str) or not category or "/" in category or "\\" in category:
@@ -1797,46 +1894,54 @@ class PermuterHandoffStore:
 
     def find_request(self, request_identity: str):
         _identity(request_identity, "request_identity")
-        for document, reference in self._iter_documents(PERMUTER_REQUEST_CATEGORY):
-            if document.get("request_identity") == request_identity:
-                return document, reference
-        return None
+        return self._find_unique(
+            PERMUTER_REQUEST_CATEGORY,
+            "request",
+            lambda document, _reference: PermuterRequest.from_dict(document),
+            lambda item: item.request_identity == request_identity,
+        )
 
     def find_response(self, request_identity: str):
         _identity(request_identity, "request_identity")
-        for document, reference in self._iter_documents(PERMUTER_RESPONSE_CATEGORY):
-            if document.get("request_identity") == request_identity:
-                return document, reference
-        return None
+        return self._find_unique(
+            PERMUTER_RESPONSE_CATEGORY,
+            "response",
+            lambda document, _reference: PermuterProviderResponse.from_dict(document),
+            lambda item: item.request_identity == request_identity,
+        )
 
     def find_result(self, session_identity: str, phase: str):
         _identity(session_identity, "session_identity")
         if phase not in _PHASES:
             raise PermuterProviderInputError("result phase is invalid")
-        for document, reference in self._iter_documents(PERMUTER_RESULT_CATEGORY):
-            if (
-                document.get("session_identity") == session_identity
-                and document.get("phase") == phase
-            ):
-                return document, reference
-        return None
+        return self._find_unique(
+            PERMUTER_RESULT_CATEGORY,
+            "result",
+            lambda document, reference: PermuterProviderResult.from_dict(
+                document, result_artifact=reference
+            ),
+            lambda item: item.session_identity == session_identity and item.phase == phase,
+        )
 
     def find_checkpoint(self, checkpoint_identity: str):
         _identity(checkpoint_identity, "checkpoint_identity")
-        for document, reference in self._iter_documents(PERMUTER_CHECKPOINT_CATEGORY):
-            if document.get("checkpoint_identity") == checkpoint_identity:
-                return document, reference
-        return None
+        return self._find_unique(
+            PERMUTER_CHECKPOINT_CATEGORY,
+            "checkpoint",
+            lambda document, _reference: PermuterCheckpoint.from_dict(document),
+            lambda item: item.checkpoint_identity == checkpoint_identity,
+        )
 
     def find_stop(self, session_identity: str, phase: str):
         _identity(session_identity, "session_identity")
-        for document, reference in self._iter_documents(PERMUTER_STOP_CATEGORY):
-            if (
-                document.get("session_identity") == session_identity
-                and document.get("phase") == phase
-            ):
-                return document, reference
-        return None
+        if phase not in _PHASES:
+            raise PermuterProviderInputError("stop phase is invalid")
+        return self._find_unique(
+            PERMUTER_STOP_CATEGORY,
+            "stop",
+            lambda document, _reference: PermuterStop.from_dict(document),
+            lambda item: item.session_identity == session_identity and item.phase == phase,
+        )
 
 
 def _manifest_identity(manifest: RunManifest) -> str:
@@ -2317,7 +2422,8 @@ def _result_payload(
     completion_reason = (
         response.stop_reason if result_status == "stopped" and response.stop_reason in _COMPLETION_REASONS
         else "operator_stop" if result_status == "stopped"
-        else "inapplicable"
+        else "inapplicable" if result_status == "unavailable"
+        else "execution_failed"
         if result_status in _FAILURE_CODES or result_status == "handoff_pending"
         else "search_space_exhausted"
     )
@@ -2364,7 +2470,7 @@ def _result_payload(
         "completion_reason": completion_reason,
         "reason": reason,
         "refusal_code": response.refusal_code,
-        "rejection_counts": {},
+        "rejection_counts": {response.refusal_code: 1} if response.refusal_code else {},
         "state": _plain(response.state),
         "best_score": response.best_score,
     }
@@ -2665,7 +2771,11 @@ class PermuterLaneProvider:
             response = self._decode_response(request, existing_response[0])
             return self._terminal(request, request_artifact, response, prior=prior)
         if request_found or request.request_identity in self._issued:
-            return self._pending(request, request_artifact)
+            # Only the concrete worker has deterministic prefix replay and an
+            # OS session lock. Generic callbacks retain the non-retry boundary.
+            from .search_permuter_executor import PermuterExecutor
+            if type(self.executor_callback) is not PermuterExecutor:
+                return self._pending(request, request_artifact)
         stop = store.find_stop(request.session_identity, phase)
         if stop is not None and not resume:
             response = _failure_response(
@@ -3177,6 +3287,7 @@ __all__ = [
     "PermuterRawCandidate",
     "PermuterRecombineProvider",
     "PermuterSeedInput",
+    "PermuterStop",
     "PermuterTargetedProvider",
     "PermuterToolBinding",
     "ProviderHandoffPending",

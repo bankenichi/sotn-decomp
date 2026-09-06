@@ -66,6 +66,8 @@ MODEL_PROVIDER_PROTOCOL = "sotn-model-provider-v1"
 MODEL_TARGET_PROTOCOL = "sotn-model-target-input-v1"
 MODEL_REQUEST_PROTOCOL = "sotn-model-request-v1"
 MODEL_RESPONSE_PROTOCOL = "sotn-model-response-v1"
+MODEL_TELEMETRY_RESPONSE_PROTOCOL = "sotn-model-response-v2"
+MODEL_TELEMETRY_PROTOCOL = "sotn-model-telemetry-v1"
 MODEL_RESULT_PROTOCOL = "sotn-model-result-v1"
 MODEL_HANDOFF_PROTOCOL = "sotn-model-handoff-v1"
 ARCHIVE_PROTOCOL = "content-addressed-sha256-v1"
@@ -129,6 +131,10 @@ _RESULT_COMPLETION = frozenset(
 class ModelLaneError(LaneError):
     """Base class for model lane validation failures."""
 
+    def __init__(self, message: str, *, response: Optional["ModelResponse"] = None):
+        super().__init__(message)
+        self.response = response
+
 
 class ModelInputError(ModelLaneError):
     """A manifest, binding, or archived input is malformed."""
@@ -156,6 +162,12 @@ class ModelInvalidResponse(ModelLaneError):
 
 class ModelReplayError(ModelLaneError):
     """A durable request/result handoff does not match this run."""
+
+
+class ModelLegacyRequestRefused(ModelReplayError):
+    """A pre-budget request is readable but cannot be replayed safely."""
+
+    code = "model_legacy_request_refused"
 
 
 class ModelSubsetViolation(SubsetViolation, ModelLaneError):
@@ -699,12 +711,16 @@ class ModelRequest:
             "config_identity", "tool_identity", "budget_identity", "prompt_artifact", "ordinal", "request_id",
             "request_artifact", "external_call_limit", "call_charge_identity",
         }
-        # Requests written by the pre-budget implementation remain readable so
-        # a legacy run can be refused safely instead of silently re-invoking a
-        # provider.  New requests always carry the explicit charge fields.
+        # Requests written by the pre-budget implementation remain detectable,
+        # but they have no durable charge reservation.  Refuse them with one
+        # stable type before construction can accidentally re-invoke a provider.
         legacy_fields = fields - {"external_call_limit", "call_charge_identity"}
         if set(value) not in (fields, legacy_fields) or value.get("protocol") != MODEL_REQUEST_PROTOCOL:
             raise ModelReplayError("model request has the wrong schema")
+        if set(value) == legacy_fields:
+            raise ModelLegacyRequestRefused(
+                "legacy model request has no durable external-call budget"
+            )
         prompt_artifact = _artifact(value["prompt_artifact"], "prompt_artifact")
         request_artifact = value["request_artifact"]
         if request_artifact is not None:
@@ -734,6 +750,40 @@ class ModelRequest:
         )
 
 
+def _validated_telemetry(value: Mapping[str, Any]) -> Mapping[str, Any]:
+    if not value:
+        return MappingProxyType({})
+    fields = {
+        "protocol", "provider", "endpoint_identity", "requested_model", "returned_model",
+        "provider_request_id", "provider_response_id", "finish_reason", "usage",
+        "has_reasoning", "http_status", "transport_outcome",
+    }
+    if not isinstance(value, Mapping) or set(value) != fields:
+        raise ModelInvalidResponse("model telemetry fields differ")
+    if value["protocol"] != MODEL_TELEMETRY_PROTOCOL:
+        raise ModelInvalidResponse("model telemetry protocol differs")
+    _identity(value["endpoint_identity"], "telemetry endpoint identity")
+    for name in ("provider", "requested_model", "returned_model", "provider_request_id",
+                 "provider_response_id", "finish_reason", "transport_outcome"):
+        item = value[name]
+        if item is not None:
+            _text(item, "telemetry " + name, 512)
+    if type(value["has_reasoning"]) is not bool:
+        raise ModelInvalidResponse("reasoning presence must be a boolean")
+    status = value["http_status"]
+    if status is not None and (type(status) is not int or not 100 <= status <= 599):
+        raise ModelInvalidResponse("telemetry HTTP status is invalid")
+    usage = value["usage"]
+    if not isinstance(usage, Mapping) or set(usage) != {
+        "prompt_tokens", "completion_tokens", "total_tokens", "reasoning_tokens", "cached_tokens",
+    }:
+        raise ModelInvalidResponse("model usage fields differ")
+    for item in usage.values():
+        if item is not None and (type(item) is not int or item < 0):
+            raise ModelInvalidResponse("model usage must be measured nonnegative integers or null")
+    return _freeze_json(value, "model telemetry")
+
+
 @dataclass(frozen=True)
 class ModelResponse:
     """A typed response body before the lane assigns its archive reference."""
@@ -745,8 +795,13 @@ class ModelResponse:
     detail: str = ""
     response_identity: str = ""
     response_artifact: Optional[ArtifactRef] = None
+    telemetry: Mapping[str, Any] = field(default_factory=dict)
+    elapsed_ms: Optional[int] = field(default=None, compare=False, repr=False)
 
     def __post_init__(self) -> None:
+        object.__setattr__(self, "telemetry", _validated_telemetry(self.telemetry))
+        if self.elapsed_ms is not None and (type(self.elapsed_ms) is not int or self.elapsed_ms < 0):
+            raise ModelInvalidResponse("model elapsed time is invalid")
         _identity(self.request_id, "model response request_id")
         if self.status not in _MODEL_RESPONSE_STATUSES:
             raise ModelInvalidResponse("unknown model response status")
@@ -769,7 +824,8 @@ class ModelResponse:
 
     def identity_payload_without_identity(self) -> dict[str, Any]:
         return {
-            "protocol": MODEL_RESPONSE_PROTOCOL,
+            **({"telemetry": _plain(self.telemetry)} if self.telemetry else {}),
+            "protocol": MODEL_TELEMETRY_RESPONSE_PROTOCOL if self.telemetry else MODEL_RESPONSE_PROTOCOL,
             "request_id": self.request_id,
             "status": self.status,
             "body_identity": hash_bytes(self.response_text.encode("utf-8")),
@@ -796,7 +852,11 @@ class ModelResponse:
         if not isinstance(value, Mapping):
             raise ModelReplayError("model response must be an object")
         fields = {"protocol", "request_id", "status", "body_identity", "response_text", "error_code", "detail", "response_identity", "response_artifact"}
-        if set(value) != fields or value.get("protocol") != MODEL_RESPONSE_PROTOCOL:
+        if value.get("protocol") == MODEL_TELEMETRY_RESPONSE_PROTOCOL:
+            fields.add("telemetry")
+        elif value.get("protocol") != MODEL_RESPONSE_PROTOCOL:
+            raise ModelReplayError("model response has the wrong protocol")
+        if set(value) != fields:
             raise ModelReplayError("model response has the wrong schema")
         text = value["response_text"]
         if hash_bytes(str(text).encode("utf-8")) != value["body_identity"]:
@@ -810,6 +870,7 @@ class ModelResponse:
             detail=value["detail"],
             response_identity=value["response_identity"],
             response_artifact=(_artifact(reference, "response_artifact") if reference is not None else None),
+            telemetry=value.get("telemetry", {}),
         )
 
 
@@ -946,6 +1007,16 @@ def _response_from_provider(
         suffix=".json",
         media_type="application/json",
     )
+    if response.elapsed_ms is not None:
+        archive.put_json(
+            {
+                "protocol": "sotn-model-call-observation-v1",
+                "request_id": response.request_id,
+                "response_identity": response.response_identity,
+                "elapsed_ms": response.elapsed_ms,
+            },
+            category="model-call-observations",
+        )
     return ModelResponse(
         request_id=response.request_id,
         status=response.status,
@@ -954,6 +1025,7 @@ def _response_from_provider(
         detail=response.detail,
         response_identity=response.response_identity,
         response_artifact=reference,
+        telemetry=response.telemetry,
     )
 
 
@@ -1514,7 +1586,7 @@ def discover_model_archive(archive: ContentAddressedArchive) -> ModelArchiveReco
         full = dict(identity)
         full["request_id"] = request_id
         full["request_artifact"] = reference.to_dict()
-        if full.get("external_call_limit", 0):
+        if "external_call_limit" in full:
             full["call_charge_identity"] = hash_canonical(
                 {
                     "protocol": "sotn-model-call-charge-v1",
@@ -1533,7 +1605,11 @@ def discover_model_archive(archive: ContentAddressedArchive) -> ModelArchiveReco
             "protocol", "request_id", "status", "body_identity", "response_text",
             "error_code", "detail", "response_identity",
         }
-        if set(value) != expected or value.get("protocol") != MODEL_RESPONSE_PROTOCOL:
+        if value.get("protocol") == MODEL_TELEMETRY_RESPONSE_PROTOCOL:
+            expected.add("telemetry")
+        elif value.get("protocol") != MODEL_RESPONSE_PROTOCOL:
+            raise ModelReplayError("model response artifact has the wrong protocol")
+        if set(value) != expected:
             raise ModelReplayError("model response artifact has the wrong schema")
         full = dict(value)
         full["response_artifact"] = reference.to_dict()
@@ -1589,6 +1665,18 @@ def discover_model_archive(archive: ContentAddressedArchive) -> ModelArchiveReco
         raise ModelReplayError("model response exists without its durable request")
     for request_id in set(result_records_by_request).difference(requests):
         raise ModelReplayError("model result exists without its durable request")
+
+    for _, observation in _scan_model_json_category(archive, "model-call-observations", "call observation"):
+        if set(observation) != {"protocol", "request_id", "response_identity", "elapsed_ms"}:
+            raise ModelReplayError("model call observation fields differ")
+        response = responses.get(observation["request_id"])
+        if (
+            observation["protocol"] != "sotn-model-call-observation-v1"
+            or response is None or observation["request_id"] not in requests
+            or observation["response_identity"] != response.response_identity
+            or type(observation["elapsed_ms"]) is not int or observation["elapsed_ms"] < 0
+        ):
+            raise ModelReplayError("model call observation binding differs")
 
     pending = {
         request_id: request
@@ -2486,6 +2574,7 @@ def build_model_provider(
     external_call_budget: Optional[int] = None,
     fault_hook: Optional[ModelFaultHook] = None,
     fault_injector: Optional[ModelFaultHook] = None,
+    _recipient: Optional[str] = None,
 ) -> ModelLaneProvider:
     """Build one model lane against an explicit manifest-bound subset.
 
@@ -2510,6 +2599,8 @@ def build_model_provider(
     fault = fault_hook if fault_hook is not None else fault_injector
     provider = _validate_provider(provider)
     targets = _validate_target_subset(manifest, target_inputs, lane)
+    if _recipient is not None and _recipient not in {target.recipient_id for target in targets}:
+        raise ModelSubsetViolation("scheduled model recipient is outside the frozen subset")
     for target in targets:
         _verify_target_archives(archive, target)
     manifest_identity = _manifest_identity(manifest)
@@ -2555,6 +2646,12 @@ def build_model_provider(
     calls_consumed = 0
     used_request_ids: set[str] = set()
     target_recipients = {item.recipient_id for item in targets}
+    reserved_calls = sum(request.lane == lane and request.manifest_identity == manifest_identity
+                         for request in records.requests.values())
+    if reserved_calls > external_limit:
+        raise ModelBudgetError("durable model reservations exceed the immutable limit")
+    if _recipient is not None:
+        calls_consumed = reserved_calls
     for ordinal, target in enumerate(targets):
         rendered_prompt = _render_prompt(binding, target)
         expected_prompt_identity = hash_bytes(rendered_prompt.encode("utf-8"))
@@ -2589,7 +2686,8 @@ def build_model_provider(
         if matching_requests:
             request = matching_requests[0]
             used_request_ids.add(request.request_id)
-            calls_consumed += 1
+            if _recipient is None:
+                calls_consumed += 1
             if calls_consumed > external_limit:
                 raise ModelReplayError("archived model requests exceed the external call budget")
             handoff = records.handoffs.get(request.request_id)
@@ -2648,7 +2746,9 @@ def build_model_provider(
         # A completed or pending archive reservation is charged already.  A
         # new reservation is allowed only while the explicit external cap has
         # room, and the charge is established before the provider callback.
-        if calls_consumed >= external_limit:
+        if _recipient is not None and target.recipient_id != _recipient:
+            continue
+        if reserved_calls >= external_limit:
             parsed = _failure_result("refused", "model budget is zero")
             parsed = ModelParsedResult(
                 status=parsed.status,
@@ -2695,6 +2795,7 @@ def build_model_provider(
         _verify_request_archive(archive, request)
         _call_fault(fault, MODEL_FAULT_AFTER_REQUEST)
         calls_consumed += 1
+        reserved_calls += 1
         _call_fault(fault, MODEL_FAULT_BEFORE_CALLBACK)
         prompt = _archive_verify(
             archive,
@@ -2717,13 +2818,13 @@ def build_model_provider(
                     contexts=tuple(target.context_bytes),
                 )
             except ModelUnavailable as exc:
-                response = ModelResponse(request.request_id, "unavailable", detail=str(exc))
+                response = exc.response or ModelResponse(request.request_id, "unavailable", detail=str(exc))
             except ModelTimeout as exc:
-                response = ModelResponse(request.request_id, "timeout", detail=str(exc))
+                response = exc.response or ModelResponse(request.request_id, "timeout", detail=str(exc))
             except ModelRefused as exc:
-                response = ModelResponse(request.request_id, "refused", detail=str(exc))
+                response = exc.response or ModelResponse(request.request_id, "refused", detail=str(exc))
             except ModelInvalidResponse as exc:
-                response = ModelResponse(request.request_id, "invalid", detail=str(exc))
+                response = exc.response or ModelResponse(request.request_id, "invalid", detail=str(exc))
             except Exception as exc:  # provider failures are typed and charged
                 response = ModelResponse(
                     request.request_id,
@@ -2785,6 +2886,8 @@ def build_model_provider(
     }
     if unused_archive_requests:
         raise ModelReplayError("archived model request is outside the active invocation")
+    if _recipient is not None:
+        return next(dict(result) for recipient, result in results if recipient == _recipient)
     return ModelLaneProvider(
         lane=lane,
         manifest_identity=manifest_identity,
@@ -2987,6 +3090,7 @@ __all__ = [
     "ModelHandoff",
     "ModelInputError",
     "ModelInvalidResponse",
+    "ModelLegacyRequestRefused",
     "ModelLaneError",
     "ModelLaneProvider",
     "ModelArchiveRecords",

@@ -461,12 +461,50 @@ def find_executable(arch_executable: Tuple[str, ...], arch_name: str) -> str:
 
 
 def objdump(
-    o_filename: str, arch: ArchSettings, *, stack_differences: bool = False
+    o_filename: str, arch: ArchSettings, *, stack_differences: bool = False,
+    symbol: Optional[str] = None,
 ) -> List[Line]:
     executable = find_executable(tuple(arch.executable), arch.name)
-    output = subprocess.check_output([executable] + arch.arguments + [o_filename])
+    extra = []
+    if symbol is not None:
+        if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", symbol):
+            raise ValueError("invalid function symbol")
+        table = subprocess.check_output([executable, "-t", o_filename]).decode("utf-8")
+        matches = [
+            row.split() for row in table.splitlines()
+            if row.split() and row.split()[-1] == symbol
+            and ".text" in row.split()
+        ]
+        if len(matches) != 1:
+            raise ValueError("function symbol is absent or ambiguous")
+        # A target TU may place the selected function after other functions.
+        # Rebase internal branch addresses after normalization.
+        address = int(matches[0][0], 16)
+        size = int(matches[0][-2], 16)
+        extra = ["--disassemble=" + symbol]
+    output = subprocess.check_output([executable] + arch.arguments + extra + [o_filename])
     lines = output.decode("utf-8").splitlines()
-    return simplify_objdump(lines, arch, stack_differences=stack_differences)
+    result = simplify_objdump(lines, arch, stack_differences=stack_differences)
+    if symbol is not None and address:
+        for line in result:
+            if line.mnemonic not in arch.branch_instructions:
+                continue
+            if line.has_symbol:
+                # MIPS absolute joins can carry an R_MIPS_26 relocation to
+                # .text plus an offset. Rebase only a proven intra-function
+                # destination; named symbols and external branches stay exact.
+                local = re.search(r"(?<=[,\t])\.text\+0x([0-9a-fA-F]+)$", line.row)
+                if local is not None:
+                    destination = int(local.group(1), 16)
+                    if address <= destination < address + size:
+                        line.row = line.row[:local.start(1)] + format(destination - address, "x")
+                continue
+            match = re.search(r"(?<=[,\t])([0-9a-fA-F]+)$", line.row)
+            if match is not None:
+                destination = int(match.group(1), 16)
+                if address <= destination < address + size:
+                    line.row = line.row[:match.start(1)] + format(destination - address, "x")
+    return result
 
 
 if __name__ == "__main__":

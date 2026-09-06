@@ -59,7 +59,7 @@ if not Path(PYTHON).exists():                                # pragma: no cover
     PYTHON = sys.executable
 
 UPSTREAM = "upstream/master"
-ARTIFACT_SCHEMA = "upstream-harvest-v3-us-conditional-extraction"
+ARTIFACT_SCHEMA = "upstream-harvest-v4-preserved-overlay-conditionals"
 _UPSTREAM_COMMIT = ""
 
 sys.path.insert(0, str(REPO / "automation"))
@@ -874,10 +874,15 @@ def _mask_c_noncode(text: str) -> str:
     return "".join(chars)
 
 
-def _us_preprocessor_condition(expression: str) -> bool:
+def _us_preprocessor_condition(expression: str) -> bool | None:
     values = {"VERSION_US": True, "VERSION_PSP": False,
               "VERSION_HD": False, "VERSION_PC": False}
     expr = expression.strip()
+    # Absence from this platform table is not proof that a donor feature is
+    # undefined. Shared headers get their configuration from their consumer.
+    names = set(re.findall(r"\b[A-Za-z_]\w*\b", expr)) - {"defined"}
+    if names.difference(values):
+        return None
     expr = re.sub(
         r"!?defined\s*\(\s*([A-Za-z_]\w*)\s*\)",
         lambda match: str(int((not values.get(match.group(1), False))
@@ -890,15 +895,33 @@ def _us_preprocessor_condition(expression: str) -> bool:
     try:
         return bool(eval(expr, {"__builtins__": {}}, {}))
     except (SyntaxError, TypeError, ValueError):
-        return True
+        return None
 
 
 def _mask_inactive_us(text: str) -> str:
     """Mask inactive PSP/HD branches for US brace matching, preserving offsets."""
+    lines = text.splitlines(keepends=True)
+    # Decide whole conditional groups first. A later unknown #elif requires
+    # retaining its opening #if too, otherwise extraction emits orphan arms.
+    groups: dict[int, bool] = {}
+    opening: list[int] = []
+    for number, line in enumerate(lines):
+        directive = re.match(r"\s*#\s*(if|ifdef|ifndef|elif|endif)\b(.*)", line)
+        if not directive:
+            continue
+        kind, tail = directive.groups()
+        if kind in {"if", "ifdef", "ifndef"}:
+            opening.append(number)
+            expression = tail if kind == "if" else f"defined({tail.strip()})"
+            groups[number] = _us_preprocessor_condition(expression) is not None
+        elif kind == "elif" and opening:
+            groups[opening[-1]] &= _us_preprocessor_condition(tail) is not None
+        elif kind == "endif" and opening:
+            opening.pop()
     out: list[str] = []
     active = True
     stack: list[dict] = []
-    for line in text.splitlines(keepends=True):
+    for number, line in enumerate(lines):
         stripped = line.lstrip()
         directive = re.match(r"#\s*(if|ifdef|ifndef|elif|else|endif)\b(.*)",
                              stripped)
@@ -913,23 +936,28 @@ def _mask_inactive_us(text: str) -> str:
                         f"!defined({tail.strip()})")
                 else:
                     condition = _us_preprocessor_condition(tail)
-                frame = {"parent": active, "taken": condition}
+                passthrough = not groups[number]
+                frame = {"parent": active, "taken": condition, "passthrough": passthrough}
                 stack.append(frame)
-                active = active and condition
+                active = active and (passthrough or bool(condition))
             elif kind == "elif" and stack:
                 frame = stack[-1]
                 condition = (not frame["taken"]
                              and _us_preprocessor_condition(tail))
                 frame["taken"] = frame["taken"] or condition
-                active = bool(frame["parent"] and condition)
+                active = bool(frame["parent"] and (frame["passthrough"] or condition))
             elif kind == "else" and stack:
                 frame = stack[-1]
                 condition = not frame["taken"]
                 frame["taken"] = True
-                active = bool(frame["parent"] and condition)
+                active = bool(frame["parent"] and (frame["passthrough"] or condition))
             elif kind == "endif" and stack:
-                active = bool(stack.pop()["parent"])
-            out.append("".join("\n" if char == "\n" else " " for char in line))
+                frame = stack.pop()
+                active = bool(frame["parent"])
+            else:
+                raise ValueError("unbalanced donor conditional")
+            out.append(line if frame["parent"] and frame["passthrough"] else
+                       "".join("\n" if char == "\n" else " " for char in line))
         elif active:
             out.append(line)
         else:
@@ -1149,6 +1177,19 @@ def self_test() -> int:
        "comments survive extraction")
     ck("us_only();" in extracted_fixture and "psp_only();" not in extracted_fixture,
        "only the configured US branch survives extraction")
+    configured = (
+        'void Feature(void) {\n#ifdef HAS_ORIENTATIONS\n'
+        '    assign_pointer();\n#endif\n'
+        '#ifdef VERSION_PSP\n    psp_only();\n'
+        '#elif defined(DAMAGE_ENT_ON_HIT)\n    allocate();\n'
+        '#else\n    move();\n#endif\n}\n')
+    preserved = _extract(configured, "Feature")
+    ck('#ifdef HAS_ORIENTATIONS' in preserved and 'assign_pointer();' in preserved,
+       "unknown donor features retain their control and body")
+    ck('#ifdef VERSION_PSP' in preserved and '#elif defined(DAMAGE_ENT_ON_HIT)' in preserved,
+       "an unknown later arm retains its opening directive")
+    ck('allocate();' in preserved and 'move();' in preserved,
+       "donor configuration is not silently chosen during platform extraction")
 
     print("\nbatch publication accepts exact-ID maps and lists")
     ck(publish_ids({"us:ST/RNO0:One": {}, "us:ST/RNO0:Two": {}}) ==

@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import json
+import io
 import sys
 import tempfile
 import unittest
+import zipfile
 from pathlib import Path
 from unittest.mock import patch
 
@@ -15,6 +17,7 @@ from automation.m2c_revision_executor import (
     M2CExecutorInputError,
     M2CExecutorInvalidResponse,
     M2CExecutorInapplicable,
+    M2CExecutorPending,
     M2CExecutorTimeout,
     M2CExecutionResult,
     M2CRevisionExecutor,
@@ -44,7 +47,7 @@ ASSEMBLY = b"generated:\n  jr $ra\n  nop\n"
 CONTEXT = b"typedef int s32;\n"
 
 
-def make_fixture(directory: str, *, recipient: str = "us:ST:generated"):
+def make_fixture(directory: str, *, recipient: str = "us:ST:generated", tool_bytes: bytes = RUNNER):
     archive = ContentAddressedArchive(Path(directory) / "run")
     source = archive.put_bytes(
         b"pinned m2c revision source\n",
@@ -53,7 +56,7 @@ def make_fixture(directory: str, *, recipient: str = "us:ST:generated"):
         media_type="text/plain",
     )
     tool = archive.put_bytes(
-        RUNNER,
+        tool_bytes,
         category="m2c-revision-tools",
         suffix=".py",
         media_type="text/x-python",
@@ -121,6 +124,17 @@ def make_fixture(directory: str, *, recipient: str = "us:ST:generated"):
     return archive, pin, invocation, executor
 
 
+def vendored_m2c_zip() -> bytes:
+    root = Path(__file__).resolve().parents[1] / "tools" / "m2c"
+    stream = io.BytesIO()
+    with zipfile.ZipFile(stream, "w", compression=zipfile.ZIP_DEFLATED) as bundle:
+        for path in sorted(root.rglob("*"), key=lambda item: item.as_posix()):
+            if not path.is_file() or any(part in {".git", "__pycache__", ".pytest_cache"} for part in path.parts):
+                continue
+            bundle.writestr(path.relative_to(root).as_posix(), path.read_bytes())
+    return stream.getvalue()
+
+
 class M2CRevisionExecutorTests(unittest.TestCase):
     def test_current_pin_preflight_runs_archive_bound_runner(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -131,6 +145,15 @@ class M2CRevisionExecutorTests(unittest.TestCase):
             self.assertEqual(report.pin_identity, pin.pin_identity)
             self.assertEqual(report.target_map, dict(M2C_TARGET_MAP))
             self.assertEqual(report.platform, "native-posix")
+
+    def test_current_pin_preflight_unpacks_the_vendored_m2c_runner(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            _archive, _pin, _invocation, executor = make_fixture(
+                directory,
+                tool_bytes=vendored_m2c_zip(),
+            )
+            report = executor.preflight()
+            self.assertTrue(report.ready, report.detail)
 
     def test_native_argv_is_fixed_shell_free_and_request_is_durable_first(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -197,7 +220,7 @@ class M2CRevisionExecutorTests(unittest.TestCase):
                 seen.setdefault("translations", []).append(argv)
                 return type("Completed", (), {"returncode": 0, "stdout": "/mnt/c/safe", "stderr": ""})()
 
-            with patch("automation.m2c_revision_executor.os.name", "nt"), patch(
+            with patch("automation.m2c_revision_executor._is_windows_host", return_value=True), patch(
                 "automation.m2c_revision_executor.shutil.which", return_value="wsl.exe"
             ), patch("automation.m2c_revision_executor.subprocess.run", side_effect=fake_run), patch(
                 "automation.m2c_revision_executor.subprocess.Popen", return_value=FakeProcess()
@@ -212,6 +235,32 @@ class M2CRevisionExecutorTests(unittest.TestCase):
             self.assertFalse(popen.call_args.kwargs["shell"])
             self.assertTrue(seen["translations"])
 
+    def test_pspeu_uses_the_exact_arm_target(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            _archive, _pin, invocation, executor = make_fixture(directory, recipient="pspeu:ST:generated")
+
+            class FakeProcess:
+                pid = 4247
+                returncode = 0
+
+                def communicate(self, timeout=None):
+                    return b"int generated(void) { return 1; }\n", b""
+
+                def terminate(self):
+                    pass
+
+                def kill(self):
+                    pass
+
+                def wait(self, timeout=None):
+                    return 0
+
+            with patch("automation.m2c_revision_executor.subprocess.Popen", return_value=FakeProcess()) as popen:
+                result = executor.execute(invocation, assembly=ASSEMBLY, contexts=(CONTEXT,))
+            self.assertEqual(result.status, "success")
+            argv = popen.call_args.args[0]
+            self.assertEqual(argv[argv.index("--target") + 1], "arm-gcc-c")
+
     def test_round_trip_rechecks_artifacts_without_archive_writes_or_runner_calls(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             archive, _pin, _invocation, executor = make_fixture(directory)
@@ -222,6 +271,46 @@ class M2CRevisionExecutorTests(unittest.TestCase):
                 rebuilt = M2CRevisionExecutor.from_dict(serialized, archive=archive)
             self.assertEqual(rebuilt.to_dict(), serialized)
             self.assertEqual(serialized["protocol"], M2C_EXECUTOR_PROTOCOL)
+
+    def test_completed_request_replays_draft_without_a_second_runner_call(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            archive, _pin, invocation, executor = make_fixture(directory)
+
+            class FakeProcess:
+                pid = 4246
+                returncode = 0
+
+                def communicate(self, timeout=None):
+                    return b"int generated(void) { return 1; }\n", b""
+
+                def terminate(self):
+                    pass
+
+                def kill(self):
+                    pass
+
+                def wait(self, timeout=None):
+                    return 0
+
+            with patch("automation.m2c_revision_executor.subprocess.Popen", return_value=FakeProcess()) as popen:
+                first = executor.generate_draft(invocation, assembly=ASSEMBLY, contexts=(CONTEXT,))
+            with patch("automation.m2c_revision_executor.subprocess.Popen", side_effect=AssertionError("duplicate m2c call")):
+                second = executor.generate_draft(invocation, assembly=ASSEMBLY, contexts=(CONTEXT,))
+            self.assertEqual(first, second)
+            self.assertEqual(popen.call_count, 1)
+
+    def test_durable_request_without_terminal_result_is_pending_and_not_retried(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            archive, _pin, invocation, executor = make_fixture(directory)
+            with patch.object(executor, "_persist_result", side_effect=OSError("result store stopped")), patch(
+                "automation.m2c_revision_executor.subprocess.Popen", side_effect=AssertionError("runner must not start")
+            ):
+                # The request is archived before the injected result-store fault.
+                with self.assertRaises(OSError):
+                    executor.execute(invocation, assembly=ASSEMBLY, contexts=(CONTEXT,))
+            with patch("automation.m2c_revision_executor.subprocess.Popen", side_effect=AssertionError("duplicate m2c call")):
+                with self.assertRaisesRegex(M2CExecutorPending, "durable but has no terminal result"):
+                    executor.execute(invocation, assembly=ASSEMBLY, contexts=(CONTEXT,))
 
     def test_corrupt_and_forged_state_is_refused(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

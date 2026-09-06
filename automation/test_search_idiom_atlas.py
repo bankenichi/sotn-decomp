@@ -345,6 +345,132 @@ class BuildAndReplayTests(unittest.TestCase):
         self.assertEqual(dict(result["rejection_counts"])["budget_exhausted"], 1)
 
 
+class LazyExecutionTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.fixture = IdiomAtlasFixture()
+        self.entry = _accepted_entry(self.fixture.archive)
+
+    def tearDown(self) -> None:
+        self.fixture.close()
+
+    def _build(self, *, manifest=None, targets=None):
+        return build_idiom_atlas_provider(
+            manifest or _manifest(),
+            targets or [self.fixture.target()],
+            [self.entry],
+            [_context()],
+            archive=self.fixture.archive,
+        )
+
+    def test_build_validates_inputs_without_replay_or_candidate_generation(self) -> None:
+        with mock.patch(
+            "automation.search_idiom_atlas.replay_grouped_patch",
+            side_effect=AssertionError("build must not replay patches"),
+        ), mock.patch(
+            "automation.search_idiom_atlas.port_grouped_patch",
+            side_effect=AssertionError("build must not port patches"),
+        ), mock.patch(
+            "automation.search_idiom_atlas._candidate",
+            side_effect=AssertionError("build must not construct candidates"),
+        ), mock.patch.object(
+            self.fixture.archive,
+            "put_bytes",
+            side_effect=AssertionError("build must not write the archive"),
+        ), mock.patch.object(
+            self.fixture.archive,
+            "put_text",
+            side_effect=AssertionError("build must not write the archive"),
+        ):
+            provider = self._build()
+        self.assertEqual(provider.results, ())
+        self.assertEqual(provider.to_dict()["results"], [])
+
+    def test_from_dict_reconstructs_spec_without_replay_or_candidate_generation(self) -> None:
+        provider = self._build()
+        state = provider.to_dict()
+        with mock.patch(
+            "automation.search_idiom_atlas.replay_grouped_patch",
+            side_effect=AssertionError("reconstruction must not replay patches"),
+        ), mock.patch(
+            "automation.search_idiom_atlas.port_grouped_patch",
+            side_effect=AssertionError("reconstruction must not port patches"),
+        ), mock.patch(
+            "automation.search_idiom_atlas._candidate",
+            side_effect=AssertionError("reconstruction must not construct candidates"),
+        ), mock.patch.object(
+            self.fixture.archive,
+            "put_bytes",
+            side_effect=AssertionError("reconstruction must not write the archive"),
+        ), mock.patch.object(
+            self.fixture.archive,
+            "put_text",
+            side_effect=AssertionError("reconstruction must not write the archive"),
+        ):
+            restored = IdiomAtlasProvider.from_dict(
+                json.loads(json.dumps(state, sort_keys=True)),
+                archive=ContentAddressedArchive(self.fixture.archive.run_root),
+            )
+        self.assertEqual(restored.results, ())
+        self.assertEqual(restored.to_dict(), state)
+
+    def test_callback_is_recipient_scoped_and_repeated_calls_are_deterministic(self) -> None:
+        manifest = _manifest()
+        second_recipient = "us:TEST:func_test_two"
+        second_target = _hash("second-target")
+        manifest["queue_record_ids"] = [RECIPIENT, second_recipient]
+        manifest["function_ids"] = ["func_test_one", "func_test_two"]
+        manifest["subset_identity"] = canonical_subset_identity(
+            [RECIPIENT, second_recipient]
+        )
+        manifest["target_identities"][second_recipient] = second_target
+        target_two = IdiomAtlasTargetInput(
+            recipient_id=second_recipient,
+            target_identity=second_target,
+            draft_artifact=self.fixture.draft_ref,
+            draft_bytes=DRAFT_TEXT.encode("utf-8"),
+        )
+        provider = self._build(
+            manifest=manifest,
+            targets=[self.fixture.target(), target_two],
+        )
+        recipient = Recipient.from_dict({"recipient_id": second_recipient})
+        with mock.patch(
+            "automation.search_idiom_atlas._apply_observation",
+            wraps=__import__(
+                "automation.search_idiom_atlas",
+                fromlist=["_apply_observation"],
+            )._apply_observation,
+        ) as apply:
+            first = provider.callback(recipient)
+            second = provider.callback(recipient)
+            with self.assertRaises(IdiomAtlasSubsetViolation):
+                provider.callback(
+                    Recipient.from_dict({"recipient_id": "us:TEST:outside"})
+                )
+        self.assertEqual(first, second)
+        self.assertEqual(first["candidates"][0].source, LANDED_TEXT)
+        self.assertEqual(apply.call_count, 2)
+        self.assertEqual(provider.to_dict()["results"], [])
+
+    def test_serialized_spec_is_identical_before_and_after_callback(self) -> None:
+        provider = self._build()
+        before = json.dumps(provider.to_dict(), sort_keys=True)
+        recipient = Recipient.from_dict({"recipient_id": RECIPIENT})
+        first = provider.callback(recipient)
+        after = json.dumps(provider.to_dict(), sort_keys=True)
+        restored = IdiomAtlasProvider.from_dict(
+            json.loads(after),
+            archive=ContentAddressedArchive(self.fixture.archive.run_root),
+        )
+        repeated = restored.callback(recipient)
+        self.assertEqual(before, after)
+        self.assertEqual(first, repeated)
+        self.assertEqual(
+            json.dumps(restored.to_dict(), sort_keys=True),
+            before,
+        )
+
+
 class ApplicabilityRefusalTests(unittest.TestCase):
     def setUp(self) -> None:
         self.fixture = IdiomAtlasFixture()
@@ -576,7 +702,11 @@ class RecordAndCallbackTests(unittest.TestCase):
 
     def test_provider_direct_construction_refuses_forged_results(self) -> None:
         recipient = self.provider.target_inputs[0]
-        forged_result = dict(self.provider.results[0][1])
+        forged_result = dict(
+            self.provider.callback(
+                Recipient.from_dict({"recipient_id": recipient.recipient_id})
+            )
+        )
         forged_result["unknown_field"] = 1
         foreign_result = {
             "candidates": (),
@@ -702,10 +832,10 @@ class RecordAndCallbackTests(unittest.TestCase):
         with self.assertRaises(IdiomAtlasSubsetViolation):
             IdiomAtlasProvider.from_dict(duplicate_target, archive=self.fixture.archive)
 
-        mismatched_result = json.loads(json.dumps(state))
-        mismatched_result["results"][0]["candidate_ids"] = []
+        malformed_results = json.loads(json.dumps(state))
+        malformed_results["results"] = [{"recipient_id": RECIPIENT}]
         with self.assertRaises(IdiomAtlasInputError):
-            IdiomAtlasProvider.from_dict(mismatched_result, archive=self.fixture.archive)
+            IdiomAtlasProvider.from_dict(malformed_results, archive=self.fixture.archive)
 
     def test_provider_reconstruction_preserves_fail_closed_lineage_requirement(self) -> None:
         state = self.provider.to_dict()

@@ -146,9 +146,13 @@ def _factory_gate(archive: ContentAddressedArchive, *, multi_record: bool = Fals
         "search_supervisor.py",
         "search_run_factory.py",
         "search_coordinator.py",
+        "search_frontier.py",
         "search_types.py",
         "search_archive.py",
         "search_recovery.py",
+        "search_evaluator.py",
+        "compiler_corpus.py",
+        "search_source_context.py",
         "upstream_harvest.py",
         "shim_sweep.py",
         "asm_twin_finder.py",
@@ -158,6 +162,10 @@ def _factory_gate(archive: ContentAddressedArchive, *, multi_record: bool = Fals
         (repo / "automation" / module).write_text(
             f"{module.replace('.', '_')} = 1\n", encoding="utf-8"
         )
+    vendor = repo / "tools" / "decomp-permuter" / "src"
+    vendor.mkdir(parents=True)
+    for module in ("scorer.py", "objdump.py"):
+        (vendor / module).write_text("IMPLEMENTATION = 1\n", encoding="utf-8")
     (repo / "automation" / "mcp" / "commands_client.py").write_text(
         "COMMANDS = 1\n", encoding="utf-8"
     )

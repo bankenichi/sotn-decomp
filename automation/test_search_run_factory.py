@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import sys
 import tempfile
 import unittest
@@ -67,9 +68,13 @@ class FactoryFixture(unittest.TestCase):
         )
         for module in (
             "search_coordinator.py",
+            "search_frontier.py",
             "search_types.py",
             "search_archive.py",
             "search_recovery.py",
+            "search_evaluator.py",
+            "compiler_corpus.py",
+            "search_source_context.py",
             "upstream_harvest.py",
             "shim_sweep.py",
             "asm_twin_finder.py",
@@ -78,6 +83,19 @@ class FactoryFixture(unittest.TestCase):
             (self.repo / "automation" / module).write_text(
                 f"{module.replace('.', '_')} = 1\n", encoding="utf-8"
             )
+        vendor = self.repo / "tools" / "decomp-permuter" / "src"
+        vendor.mkdir(parents=True)
+        for module in ("scorer.py", "objdump.py"):
+            (vendor / module).write_text("IMPLEMENTATION = 1\n", encoding="utf-8")
+        actual_repo = Path(__file__).resolve().parents[1]
+        for paths in _factory._LANE_MODULES.values():
+            for relative in paths:
+                path = self.repo / relative
+                if not path.exists():
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    path.write_bytes((actual_repo / relative).read_bytes())
+        shutil.copytree(actual_repo / "tools/decomp-permuter", vendor.parent,
+                        dirs_exist_ok=True, ignore=shutil.ignore_patterns("__pycache__", ".git", ".mypy_cache", ".pytest_cache"))
         (self.repo / "automation" / "search-ledger.schema.json").write_text(
             "{}\n", encoding="utf-8"
         )
@@ -92,7 +110,7 @@ class FactoryFixture(unittest.TestCase):
             obj = self.repo / "build" / build / "src" / Path(*overlay.lower().split("/"))
             asm.mkdir(parents=True)
             obj.mkdir(parents=True)
-            (asm / f"{function}.s").write_text(f"{function}:\n\tnop\n", encoding="utf-8")
+            (asm / f"{function}.s").write_text(f"{function}:\n\tli $v0, 7\n\tjr $ra\n\tnop\n", encoding="utf-8")
             (obj / f"{unit}.c.o").write_bytes((function + " object\n").encode("ascii"))
         self.records = [
             {
@@ -127,6 +145,39 @@ class FactoryFixture(unittest.TestCase):
 
     def tearDown(self) -> None:
         self.temp.cleanup()
+
+    def test_transplant_binds_ninja_authority_and_source_freshness(self) -> None:
+        database = self.repo / ".ninja_deps"
+        graph = self.repo / "build.ninja"
+        database.write_bytes(b"dependency generation one")
+        graph.write_text("rule compile\n  command = cc\n", encoding="utf-8")
+        original = _factory._lane_input_state(self.repo, "transplant")
+        by_path = {entry["path"]: entry for entry in original["files"]}
+        self.assertEqual(by_path[".ninja_deps"]["content_hash"], hash_bytes(database.read_bytes()))
+        self.assertEqual(by_path["build.ninja"]["content_hash"], hash_bytes(graph.read_bytes()))
+        self.assertFalse(any(path.endswith(".d") for path in by_path))
+        database.write_bytes(b"dependency generation two")
+        changed = _factory._lane_input_state(self.repo, "transplant")
+        self.assertNotEqual(original, changed)
+        source = self.repo / "include/header.h"
+        source_time = source.stat().st_mtime_ns
+        os.utime(source, ns=(source_time, source_time + 1_000_000_000))
+        self.assertNotEqual(changed, _factory._lane_input_state(self.repo, "transplant"))
+
+    def test_source_walk_refuses_nested_file_and_directory_links(self) -> None:
+        root = self.repo / "src"
+        for target, directory in ((self.repo / "include/header.h", False),
+                                  (self.repo / "include", True)):
+            link = root / "evidence-link"
+            try:
+                link.symlink_to(target, target_is_directory=directory)
+            except OSError:
+                self.skipTest("symlink creation is unavailable")
+            try:
+                with self.assertRaises(EvidenceRefusal):
+                    _factory._walk_regular_files(root, self.repo, "source")
+            finally:
+                link.unlink()
 
     def create(
         self,
@@ -538,6 +589,21 @@ class FactoryFixture(unittest.TestCase):
         self.assertFalse(started.called)
         self.assertEqual(adapter_calls, [])
 
+    def test_factory_rejects_caller_callbacks_before_dispatch(self) -> None:
+        result = self.create("reject-injection", ids=[IDS[0]], lanes=[LANES[0]])
+        manifest = RunManifest.from_dict(result["manifest"])
+        callback = mock.Mock()
+        with mock.patch.object(
+            _factory, "_compiler_identity",
+            return_value=(manifest.compiler_identity, {"identity": manifest.compiler_identity}),
+        ):
+            with self.assertRaisesRegex(SupervisorIntegrationError, "providers"):
+                run_instrumented(
+                    Path(result["run_root"]) / "manifest.json",
+                    adapters={LANES[0]: callback}, lease_path=self.repo / "lease.json",
+                )
+        callback.assert_not_called()
+
     def test_factory_run_executes_base_and_child_tasks_with_bounded_ordinals(self) -> None:
         result = self.create("factory-run", ids=[IDS[0]], lanes=[LANES[0]])
         manifest_path = Path(result["run_root"]) / "manifest.json"
@@ -551,7 +617,12 @@ class FactoryFixture(unittest.TestCase):
                 ]
             }
         }
-        with mock.patch.object(
+        # Isolate scheduling: production reconstruction rejects caller callbacks.
+        with mock.patch(
+            "automation.search_provider_lanes.reconstruct_lane_adapters", return_value=adapters,
+        ), mock.patch(
+            "automation.search_evaluator.IsolatedEvaluator._from_verified_factory", return_value=None,
+        ), mock.patch.object(
             _factory,
             "_compiler_identity",
             return_value=(
@@ -605,7 +676,12 @@ class FactoryFixture(unittest.TestCase):
                 ]
             }
         }
-        with mock.patch.object(
+        # Isolate scheduling: production reconstruction rejects caller callbacks.
+        with mock.patch(
+            "automation.search_provider_lanes.reconstruct_lane_adapters", return_value=adapters,
+        ), mock.patch(
+            "automation.search_evaluator.IsolatedEvaluator._from_verified_factory", return_value=None,
+        ), mock.patch.object(
             _factory,
             "_compiler_identity",
             return_value=(

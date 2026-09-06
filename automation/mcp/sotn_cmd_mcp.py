@@ -747,13 +747,14 @@ def search_create_instrumented(
     lanes: list[str],
     runtime_id: str | None = None,
 ) -> dict:
-    """Create one immutable canonical instrumented search run.
+    """Create one immutable canonical instrumented search run as a background job.
 
     Mutating.  The factory resolves exact live todo records and repository
     evidence from these typed values.  It does not accept a path or arbitrary
-    argv and never mutates the live queue.
+    argv and never mutates the live queue. Poll the returned job id to obtain
+    the published manifest. Evidence capture can exceed the transport timeout.
     """
-    result = cc.run(
+    result = cc.start_job(
         "search_create_instrumented",
         name=name,
         record_ids=record_ids,

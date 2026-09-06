@@ -31,6 +31,7 @@ try:
     from .search_lanes import LaneAdapters, LaneError
     from .search_model_executor import TrustedModelExecutor
     from .search_model_lanes import MODEL_LANES, ModelLaneProvider
+    from .search_model_provider import DeferredModelLaneProvider
     from .search_permuter_executor import PermuterExecutor
     from .search_permuter_lanes import PERMUTER_LANES, PermuterLaneProvider
     from .search_types import (
@@ -53,6 +54,7 @@ except ImportError:  # direct invocation from automation/
     from search_lanes import LaneAdapters, LaneError  # type: ignore
     from search_model_executor import TrustedModelExecutor  # type: ignore
     from search_model_lanes import MODEL_LANES, ModelLaneProvider  # type: ignore
+    from search_model_provider import DeferredModelLaneProvider  # type: ignore
     from search_permuter_executor import PermuterExecutor  # type: ignore
     from search_permuter_lanes import PERMUTER_LANES, PermuterLaneProvider  # type: ignore
     from search_types import (  # type: ignore
@@ -190,7 +192,7 @@ def provider_state_document(
             if not isinstance(executor, PermuterExecutor):
                 raise ProviderRegistryError("permuter executor is required for " + lane)
         elif lane in _MODEL_SET:
-            if not isinstance(value, ModelLaneProvider):
+            if not isinstance(value, (ModelLaneProvider, DeferredModelLaneProvider)):
                 raise ProviderRegistryError("model provider type differs for " + lane)
             if not isinstance(executor, TrustedModelExecutor):
                 raise ProviderRegistryError("model executor is required for " + lane)
@@ -328,6 +330,14 @@ def _load_provider_state(
 
     root = _canonical_run_root(run_root, manifest)
     archive = ContentAddressedArchive(root)
+    expected_reference = None
+    if (archive.artifacts_root / "run-index").exists():
+        from .search_run_factory import _load_index
+        index, _ = _load_index(root)
+        if "provider_state" not in index:
+            raise ProviderRegistryError("factory index has no provider-state binding")
+        expected_reference = ArtifactRef.from_dict(index["provider_state"])
+        archive.verify(expected_reference)
     category = archive.artifacts_root / PROVIDER_STATE_CATEGORY
     if category.is_symlink() or not category.is_dir():
         raise ProviderRegistryError("provider-state artifact is missing")
@@ -360,6 +370,8 @@ def _load_provider_state(
             media_type="application/json",
             byte_size=len(raw),
         )
+        if expected_reference is not None and reference != expected_reference:
+            raise ProviderRegistryError("provider state differs from factory index")
         try:
             verified = archive.verify(reference)
         except (ArchiveError, OSError, ValueError) as exc:
@@ -517,8 +529,14 @@ def _validate_permuter_executor(
         raise ProviderRegistryError("permuter executor tool binding differs for " + lane)
     if executor.binding.algorithm_identity != provider.binding.algorithm_identity:
         raise ProviderRegistryError("permuter executor algorithm binding differs for " + lane)
-    if executor.platform not in {"posix", "windows-wsl"}:
+    if executor.platform not in {"native-posix", "windows-wsl"}:
         raise ProviderRegistryError("permuter executor platform is unsupported")
+    if executor.runtimes:
+        if set(executor.runtimes) != set(manifest.queue_record_ids):
+            raise ProviderRegistryError("permuter runtime routes differ from manifest subset")
+        for runtime in executor.runtimes.values():
+            if runtime.evaluator_identity != manifest.compiler_identity:
+                raise ProviderRegistryError("permuter routed evaluator differs from manifest")
     if executor.runtime is not None and executor.runtime.evaluator_identity != provider.config.evaluator_identity:
         raise ProviderRegistryError("permuter executor evaluator binding differs for " + lane)
     if executor.binding.tool_identity != provider.tool_identity:
@@ -659,7 +677,10 @@ def _model_provider(manifest: RunManifest, run_root: Path) -> LaneAdapters:
             raise ProviderRegistryError("model executor state is missing for " + lane)
         try:
             executor = TrustedModelExecutor.from_dict(record["executor"])
-            provider = ModelLaneProvider.from_dict(record["provider"], archive=archive)
+            if record["provider"].get("protocol") == "sotn-model-lazy-provider-v1":
+                provider = DeferredModelLaneProvider.from_dict(record["provider"], archive=archive, executor=executor)
+            else:
+                provider = ModelLaneProvider.from_dict(record["provider"], archive=archive)
         except Exception as exc:
             raise ProviderRegistryError("model provider reconstruction failed for " + lane) from exc
         _validate_provider_binding(manifest, lane, provider, record)

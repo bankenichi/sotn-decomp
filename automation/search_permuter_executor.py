@@ -17,6 +17,7 @@ It never falls back to a callback, a checkout path, or a fabricated candidate.
 
 from __future__ import annotations
 
+import json
 import math
 import os
 import queue
@@ -32,6 +33,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Optional
+from types import MappingProxyType
 
 try:
     from .search_archive import ArchiveError, ContentAddressedArchive
@@ -114,8 +116,8 @@ _ALGORITHM_MAP = {
     # lane name to its parser.
     "random": "difflib",
     "targeted": "difflib",
-    "recombine": "levenshtein",
-    "ddmin": "levenshtein",
+    "recombine": "difflib",
+    "ddmin": "difflib",
     "difflib": "difflib",
     "levenshtein": "levenshtein",
 }
@@ -129,6 +131,39 @@ _MAX_SOURCE_BYTES = PERMUTER_MAX_CANDIDATE_CHARS
 _OUTPUT_DIR_RE = re.compile(r"^output-((?:[0-9]+(?:\.[0-9]+)?|inf))-([0-9]+)$", re.IGNORECASE)
 _ITERATION_RE = re.compile(r"\biteration\s+(\d+)\s*,")
 _SCORE_RE = re.compile(r"\bscore\s*=\s*(-?(?:\d+(?:\.\d+)?|inf))\b", re.I)
+
+# The vendored runner has one compiler-wrapper entry point.  Its bytes and the
+# structured invocation are repository-owned constants, not authority granted
+# by a caller-provided executable or shell body.  The wrapper is intentionally
+# tiny because the runner supplies exactly ``input.c -o output.o``.
+_COMPILER_DRIVER_PATH = Path(__file__).with_name("search_compile_driver.py")
+_COMPILER_CORPUS_PATH = Path(__file__).with_name("compiler_corpus.py")
+_COMPILER_DRIVER_IDENTITY = hash_bytes(_COMPILER_DRIVER_PATH.read_bytes())
+_COMPILER_CORPUS_IDENTITY = hash_bytes(_COMPILER_CORPUS_PATH.read_bytes())
+_STRATEGY_WORKER_IDENTITY = hash_bytes(Path(__file__).with_name("search_permuter_worker.py").read_bytes())
+_MUTATIONS_IDENTITY = hash_bytes(Path(__file__).with_name("search_mutations.py").read_bytes())
+_SOURCE_CONTEXT_IDENTITY = hash_bytes(Path(__file__).with_name("search_source_context.py").read_bytes())
+_PROCESS_LOCK_IDENTITY = hash_bytes(Path(__file__).with_name("search_process_lock.py").read_bytes())
+REPOSITORY_COMPILE_WRAPPER_BYTES = (
+    '#!/bin/sh\n'
+    '# driver ' + _COMPILER_DRIVER_IDENTITY + '\n'
+    '# pipeline ' + _COMPILER_CORPUS_IDENTITY + '\n'
+    '# strategies ' + _STRATEGY_WORKER_IDENTITY + '\n'
+    '# patches ' + _MUTATIONS_IDENTITY + '\n'
+    '# source-context ' + _SOURCE_CONTEXT_IDENTITY + '\n'
+    '# process-lock ' + _PROCESS_LOCK_IDENTITY + '\n'
+    'exec python3 "${SOTN_REPO_ROOT:?}/automation/search_compile_driver.py" "$@"\n'
+).encode("utf-8")
+REPOSITORY_COMPILE_WRAPPER_IDENTITY = hash_bytes(REPOSITORY_COMPILE_WRAPPER_BYTES)
+REPOSITORY_COMPILER_EXECUTABLE = "python3"
+REPOSITORY_COMPILER_ARGV_TEMPLATE = ("{input}", "-o", "{output}")
+REPOSITORY_COMPILER_ENVIRONMENT = (
+    ("LANG", "C"),
+    ("LC_ALL", "C"),
+    ("PATH", "/usr/bin:/bin"),
+)
+REPOSITORY_COMPILER_INPUT_LOCATION = "argv[0]"
+REPOSITORY_COMPILER_OUTPUT_LOCATION = "argv[2]"
 
 
 class PermuterExecutorError(PermuterProviderError):
@@ -194,14 +229,35 @@ def _text(value: Any, label: str, *, allow_empty: bool = False) -> str:
     return value
 
 
-def _bytes(value: Any, label: str, maximum: int) -> bytes:
+def _bytes(value: Any, label: str, maximum: int, *, binary: bool = False) -> bytes:
     if not isinstance(value, bytes) or not value:
         raise PermuterExecutorInputError(f"{label} must be nonempty bytes")
     if len(value) > maximum:
         raise PermuterExecutorInputError(f"{label} exceeds its immutable bound")
-    if b"\x00" in value:
+    if not binary and b"\x00" in value:
         raise PermuterExecutorInputError(f"{label} contains NUL bytes")
     return value
+
+
+def _compiler_environment(value: Any) -> tuple[tuple[str, str], ...]:
+    if isinstance(value, Mapping):
+        items = tuple(sorted(value.items()))
+    elif isinstance(value, (tuple, list)):
+        items = tuple(value)
+    else:
+        raise PermuterExecutorInputError("compiler environment must be a mapping")
+    normalized: list[tuple[str, str]] = []
+    for item in items:
+        if not isinstance(item, (tuple, list)) or len(item) != 2:
+            raise PermuterExecutorInputError("compiler environment entries must be pairs")
+        key, value_item = item
+        if not isinstance(key, str) or not isinstance(value_item, str):
+            raise PermuterExecutorInputError("compiler environment entries must be text")
+        normalized.append((key, value_item))
+    result = tuple(sorted(normalized))
+    if len({key for key, _value in result}) != len(result):
+        raise PermuterExecutorInputError("compiler environment has duplicate keys")
+    return result
 
 
 def _safe_artifact(value: Any, label: str) -> ArtifactRef:
@@ -356,6 +412,12 @@ def _runtime_identity(
     target_object_artifact: Optional[ArtifactRef],
     compiler_type: str,
     function_name: Optional[str],
+    compiler_executable: str,
+    compiler_argv_template: Sequence[str],
+    compiler_environment: Sequence[tuple[str, str]],
+    input_location: str,
+    output_location: str,
+    wrapper_identity: str,
 ) -> str:
     return hash_canonical(
         {
@@ -369,6 +431,12 @@ def _runtime_identity(
             ),
             "compiler_type": compiler_type,
             "function_name": function_name,
+            "compiler_executable": compiler_executable,
+            "compiler_argv_template": list(compiler_argv_template),
+            "compiler_environment": dict(compiler_environment),
+            "input_location": input_location,
+            "output_location": output_location,
+            "wrapper_identity": wrapper_identity,
         }
     )
 
@@ -391,6 +459,12 @@ class PermuterRuntimeBinding:
     function_name: Optional[str] = None
     target_object_artifact: Optional[ArtifactRef] = None
     target_object_bytes: Optional[bytes] = None
+    compiler_executable: str = REPOSITORY_COMPILER_EXECUTABLE
+    compiler_argv_template: tuple[str, ...] = REPOSITORY_COMPILER_ARGV_TEMPLATE
+    compiler_environment: tuple[tuple[str, str], ...] = REPOSITORY_COMPILER_ENVIRONMENT
+    input_location: str = REPOSITORY_COMPILER_INPUT_LOCATION
+    output_location: str = REPOSITORY_COMPILER_OUTPUT_LOCATION
+    wrapper_identity: str = REPOSITORY_COMPILE_WRAPPER_IDENTITY
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "evaluator_identity", _identity(self.evaluator_identity, "runtime evaluator identity"))
@@ -422,56 +496,45 @@ class PermuterRuntimeBinding:
             object.__setattr__(
                 self,
                 "target_object_bytes",
-                _bytes(self.target_object_bytes, "target object", 16 * 1024 * 1024),
+                _bytes(self.target_object_bytes, "target object", 16 * 1024 * 1024, binary=True),
             )
             if hash_bytes(self.target_object_bytes) != self.target_object_artifact.content_hash:
                 raise PermuterExecutorInputError("target object differs from its artifact")
             if len(self.target_object_bytes) != self.target_object_artifact.byte_size:
                 raise PermuterExecutorInputError("target object size differs from its artifact")
+        if self.compiler_executable != REPOSITORY_COMPILER_EXECUTABLE:
+            raise PermuterExecutorInputError("compiler executable is not repository-owned")
+        try:
+            argv_template = tuple(self.compiler_argv_template)
+        except TypeError as exc:
+            raise PermuterExecutorInputError("compiler argv template must be a sequence") from exc
+        if argv_template != REPOSITORY_COMPILER_ARGV_TEMPLATE:
+            raise PermuterExecutorInputError("compiler argv template is not repository-owned")
+        object.__setattr__(self, "compiler_argv_template", argv_template)
+        environment = _compiler_environment(self.compiler_environment)
+        if environment != REPOSITORY_COMPILER_ENVIRONMENT:
+            raise PermuterExecutorInputError("compiler environment is not repository-owned")
+        object.__setattr__(self, "compiler_environment", environment)
+        if self.input_location != REPOSITORY_COMPILER_INPUT_LOCATION:
+            raise PermuterExecutorInputError("compiler input location is not repository-owned")
+        if self.output_location != REPOSITORY_COMPILER_OUTPUT_LOCATION:
+            raise PermuterExecutorInputError("compiler output location is not repository-owned")
+        object.__setattr__(self, "wrapper_identity", _identity(self.wrapper_identity, "wrapper_identity"))
+        if self.wrapper_identity != REPOSITORY_COMPILE_WRAPPER_IDENTITY:
+            raise PermuterExecutorInputError("compile wrapper identity is not repository-owned")
         self._validate_compile_script()
 
     def _validate_compile_script(self) -> None:
-        try:
-            text = self.compile_script_bytes.decode("utf-8")
-        except UnicodeDecodeError as exc:
-            raise PermuterExecutorInputError("compile script must be UTF-8") from exc
-        lowered = text.lower()
-        forbidden = (
-            "git",
-            "make",
-            "ninja",
-            "cmake",
-            "sotn_queue",
-            "sotn_repo",
-            "oracle",
-            "../",
-            "..\\",
-            "cd ",
-            "pushd ",
-            "popd ",
-            "rm ",
-            "unlink ",
-            "rmdir ",
-            "eval ",
-            "sh -c",
-            "bash -c",
-            ";",
-            "&&",
-            "||",
-            "`",
-            "$(",
-            ">",
-            "<",
-            "|",
-        )
-        if any(marker in lowered for marker in forbidden):
+        if self.compile_script_bytes != REPOSITORY_COMPILE_WRAPPER_BYTES:
             raise PermuterExecutorInputError(
-                "compile script contains a checkout, build, or shell traversal operation"
+                "compile wrapper bytes are not the repository-owned immutable wrapper"
             )
-        if "$@" not in text and "$1" not in text:
+        if self.compile_script_artifact.content_hash != REPOSITORY_COMPILE_WRAPPER_IDENTITY:
             raise PermuterExecutorInputError(
-                "compile script must consume the vendored compiler arguments"
+                "compile wrapper artifact is not the repository-owned immutable wrapper"
             )
+        if self.compile_script_artifact.byte_size != len(REPOSITORY_COMPILE_WRAPPER_BYTES):
+            raise PermuterExecutorInputError("compile wrapper artifact size is not canonical")
 
     @property
     def runtime_identity(self) -> str:
@@ -481,6 +544,12 @@ class PermuterRuntimeBinding:
             target_object_artifact=self.target_object_artifact,
             compiler_type=self.compiler_type,
             function_name=self.function_name,
+            compiler_executable=self.compiler_executable,
+            compiler_argv_template=self.compiler_argv_template,
+            compiler_environment=self.compiler_environment,
+            input_location=self.input_location,
+            output_location=self.output_location,
+            wrapper_identity=self.wrapper_identity,
         )
 
     def verify(self, archive: ContentAddressedArchive) -> None:
@@ -508,6 +577,12 @@ class PermuterRuntimeBinding:
             "compile_script_identity": self.compile_script_artifact.content_hash,
             "compiler_type": self.compiler_type,
             "function_name": self.function_name,
+            "compiler_executable": self.compiler_executable,
+            "compiler_argv_template": list(self.compiler_argv_template),
+            "compiler_environment": dict(self.compiler_environment),
+            "input_location": self.input_location,
+            "output_location": self.output_location,
+            "wrapper_identity": self.wrapper_identity,
             "target_object_artifact": (
                 _artifact_identity(self.target_object_artifact)
                 if self.target_object_artifact is not None
@@ -539,6 +614,12 @@ class PermuterRuntimeBinding:
                 "compile_script_identity",
                 "compiler_type",
                 "function_name",
+                "compiler_executable",
+                "compiler_argv_template",
+                "compiler_environment",
+                "input_location",
+                "output_location",
+                "wrapper_identity",
                 "target_object_artifact",
                 "target_object_identity",
                 "runtime_identity",
@@ -589,6 +670,12 @@ class PermuterRuntimeBinding:
             compile_script_bytes=compile_script_bytes,
             compiler_type=data["compiler_type"],
             function_name=data["function_name"],
+            compiler_executable=data["compiler_executable"],
+            compiler_argv_template=tuple(data["compiler_argv_template"]),
+            compiler_environment=data["compiler_environment"],
+            input_location=data["input_location"],
+            output_location=data["output_location"],
+            wrapper_identity=data["wrapper_identity"],
             target_object_artifact=target_object_ref,
             target_object_bytes=target_object_bytes,
         )
@@ -704,6 +791,7 @@ class PermuterExecutor:
         binding: PermuterToolBinding,
         *,
         runtime: Optional[PermuterRuntimeBinding] = None,
+        runtimes: Optional[Mapping[str, PermuterRuntimeBinding]] = None,
         repo_root: Optional[str | os.PathLike[str]] = None,
         timeout_seconds: float = 300.0,
     ) -> None:
@@ -721,6 +809,16 @@ class PermuterExecutor:
         self.archive = archive
         self.binding = binding
         self.runtime = runtime
+        routes = dict(runtimes or {})
+        if routes and runtime is not None:
+            raise PermuterExecutorInputError("executor cannot mix a single runtime with recipient routes")
+        for recipient, bound_runtime in routes.items():
+            if not isinstance(recipient, str) or not isinstance(bound_runtime, PermuterRuntimeBinding):
+                raise PermuterExecutorInputError("runtime routes must bind recipients to typed runtimes")
+            if bound_runtime.function_name != recipient.split(":")[-1]:
+                raise PermuterExecutorInputError("routed runtime function differs from recipient")
+            bound_runtime.verify(archive)
+        self.runtimes = MappingProxyType(dict(sorted(routes.items())))
         if repo_root is None:
             root = Path(__file__).resolve().parents[1]
         else:
@@ -766,6 +864,9 @@ class PermuterExecutor:
                 "vendor_revision": self.vendor_revision,
                 "binding_identity": self.binding.identity,
                 "runtime_identity": self.runtime.runtime_identity if self.runtime else None,
+                **({"runtime_routes": {key: value.runtime_identity for key, value in self.runtimes.items()}} if self.runtimes else {}),
+                "platform": self.platform,
+                "timeout_seconds": self.timeout_seconds,
             }
         )
 
@@ -779,6 +880,7 @@ class PermuterExecutor:
             "vendor_revision": self.vendor_revision,
             "binding": self.binding.to_dict(),
             "runtime": self.runtime.to_dict() if self.runtime else None,
+            **({"runtime_routes": {key: value.to_dict() for key, value in self.runtimes.items()}} if self.runtimes else {}),
             "executor_identity": self.identity,
             "platform": self.platform,
             "timeout_seconds": self.timeout_seconds,
@@ -814,6 +916,7 @@ class PermuterExecutor:
                 "executor_identity",
                 "platform",
                 "timeout_seconds",
+                *(("runtime_routes",) if "runtime_routes" in value else ()),
             ),
             "permuter executor",
         )
@@ -838,10 +941,18 @@ class PermuterExecutor:
             runtime = None
         else:
             runtime = PermuterRuntimeBinding.from_dict(runtime_value, archive=archive)
+        routes = data.get("runtime_routes", {})
+        if not isinstance(routes, Mapping) or ("runtime_routes" in data and not routes):
+            raise PermuterExecutorInputError("runtime routes must be a nonempty mapping when present")
+        runtimes = {
+            key: PermuterRuntimeBinding.from_dict(item, archive=archive)
+            for key, item in routes.items()
+        }
         executor = cls(
             archive,
             binding,
             runtime=runtime,
+            runtimes=runtimes,
             repo_root=repo_root,
             timeout_seconds=data["timeout_seconds"],
         )
@@ -983,6 +1094,16 @@ class PermuterExecutor:
             raise PermuterExecutorInputError("binding bytes differ from vendored bytes")
         if self.runtime is not None:
             self.runtime.verify(self.archive)
+            for relative, expected in (
+                ("automation/search_compile_driver.py", _COMPILER_DRIVER_IDENTITY),
+                ("automation/compiler_corpus.py", _COMPILER_CORPUS_IDENTITY),
+                ("automation/search_permuter_worker.py", _STRATEGY_WORKER_IDENTITY),
+                ("automation/search_mutations.py", _MUTATIONS_IDENTITY),
+                ("automation/search_source_context.py", _SOURCE_CONTEXT_IDENTITY),
+                ("automation/search_process_lock.py", _PROCESS_LOCK_IDENTITY),
+            ):
+                if hash_bytes(_regular_file(self.repo_root / relative, "compiler driver")) != expected:
+                    raise PermuterExecutorInputError("repository compiler driver identity changed")
         return runner, weights
 
     def _minimal_env(self) -> dict[str, str]:
@@ -996,6 +1117,14 @@ class PermuterExecutor:
             "PYTHONDONTWRITEBYTECODE": "1",
             "PYTHONUNBUFFERED": "1",
         }
+
+    def _execution_env(self) -> dict[str, str]:
+        environment = self._minimal_env()
+        if self.runtime is not None:
+            environment.update(dict(self.runtime.compiler_environment))
+            environment["SOTN_REPO_ROOT"] = str(self.repo_root)
+            environment["SOTN_COMPILER_IDENTITY"] = self.runtime.evaluator_identity
+        return environment
 
     def _wsl_executable(self) -> str:
         if os.name != "nt":
@@ -1092,54 +1221,18 @@ class PermuterExecutor:
         runner_algorithm: str,
         runner_seed: int,
     ) -> tuple[list[str], Optional[str]]:
-        function_name = _function_name(request.recipient_id)
-        del function_name
+        del vendor_root, runner_algorithm, runner_seed
+        worker = self.repo_root / "automation/search_permuter_worker.py"
         if os.name == "nt":
-            wsl = self._wsl_executable()
-            wsl_vendor = self._wsl_path(vendor_root)
-            wsl_work = self._wsl_path(work_root)
-            command = [
-                wsl,
-                "--cd",
-                wsl_vendor,
-                "--exec",
-                "python3",
-                 "-B",
-                 "-u",
-                f"{wsl_vendor}/permuter.py",
-                "--algorithm",
-                runner_algorithm,
-                "--stop-on-zero",
-                "--better-only",
-                "--keep-prob",
-                "0",
-                "-j",
-                "1",
-                "--seed",
-                str(runner_seed),
-                str(wsl_work),
-            ]
-            return command, None
-        return (
-            [
-                sys.executable,
-                "-B",
-                "-u",
-                str(vendor_root / "permuter.py"),
-                "--algorithm",
-                runner_algorithm,
-                "--stop-on-zero",
-                "--better-only",
-                "--keep-prob",
-                "0",
-                "-j",
-                "1",
-                "--seed",
-                str(runner_seed),
-                str(work_root),
-            ],
-            str(vendor_root),
-        )
+            return [
+                self._wsl_executable(), "--exec", "python3", "-B", "-u",
+                self._wsl_path(worker), "--work", self._wsl_path(work_root),
+                "--run-root", self._wsl_path(self.archive.run_root),
+            ], None
+        return [
+            sys.executable, "-B", "-u", str(worker),
+            "--work", str(work_root), "--run-root", str(self.archive.run_root),
+        ], str(work_root / "vendor")
 
     def _probe_runner(self) -> None:
         command, cwd = self._help_command(self.vendor_root)
@@ -1331,7 +1424,7 @@ class PermuterExecutor:
         if (
             checkpoint.checkpoint_identity != request.prior_checkpoint_identity
             or checkpoint.lane != request.lane
-            or checkpoint.phase != "start"
+            or checkpoint.phase not in {"start", "resume"}
             or checkpoint.session_identity != request.session_identity
             or checkpoint.scratch_identity != request.scratch_identity
             or checkpoint.iterations != request.start_iteration
@@ -1357,6 +1450,8 @@ class PermuterExecutor:
     ) -> tuple[Path, Path, int]:
         scratch = _safe_component_path(self.archive.run_root, request.scratch_path, "scratch path")
         self._ensure_directory(self.archive.run_root, request.scratch_path)
+        scratch = self._ensure_directory(scratch, request.phase + "-" + request.request_identity[7:23])
+        self._write_exact(scratch, "prior-state.json", canonical_bytes(checkpoint_state))
         marker = {
             "protocol": EXECUTOR_PROTOCOL,
             "request_identity": request.request_identity,
@@ -1375,6 +1470,7 @@ class PermuterExecutor:
             raise PermuterExecutorInputError("vendored bytes were not verified before materialization")
         self._copy_vendor_tree(vendor_destination, vendor_files)
         self._write_exact(vendor_destination, "default_weights.toml", weights_bytes)
+        self._ensure_directory(scratch, "tmp")
         self._write_exact(scratch, "base.c", seed_bytes)
         self._write_exact(scratch, "target.s", target_bytes)
         if self.runtime is None:
@@ -1434,7 +1530,22 @@ class PermuterExecutor:
 
     def _terminate(self, process: subprocess.Popen[str]) -> None:
         try:
-            if os.name != "nt" and isinstance(getattr(process, "pid", None), int):
+            if os.name == "nt" and isinstance(getattr(process, "pid", None), int):
+                # ``wsl.exe`` is only the host wrapper.  A Windows process
+                # group is not sufficient to prove Linux descendants are
+                # gone, so use the OS tree terminator for the wrapper and all
+                # descendants before waiting at this boundary.
+                subprocess.run(
+                    ["taskkill.exe", "/PID", str(process.pid), "/T", "/F"],
+                    capture_output=True,
+                    text=True,
+                    encoding="utf-8",
+                    errors="replace",
+                    timeout=5,
+                    check=False,
+                    shell=False,
+                )
+            elif isinstance(getattr(process, "pid", None), int):
                 os.killpg(process.pid, signal.SIGTERM)
             else:
                 process.terminate()
@@ -1467,10 +1578,14 @@ class PermuterExecutor:
                 "errors": "replace",
                 "bufsize": 1,
                 "shell": False,
-                "env": self._minimal_env(),
+                "env": {**self._execution_env(), **(
+                    {"TMPDIR": str(Path(cwd).parent / "tmp")} if cwd is not None else {}
+                )},
             }
             if os.name != "nt":
                 kwargs["start_new_session"] = True
+            else:
+                kwargs["creationflags"] = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x00000200)
             process = subprocess.Popen(list(command), **kwargs)
         except OSError as exc:
             raise PermuterExecutorUnavailable(
@@ -1541,130 +1656,101 @@ class PermuterExecutor:
         runner_algorithm: str,
         runner_seed: int,
     ) -> dict[str, Any]:
-        iterations_seen = [int(match.group(1)) for match in _ITERATION_RE.finditer(output)]
-        absolute_iterations = (
-            request.start_iteration + max(iterations_seen)
-            if iterations_seen
-            else request.start_iteration
-        )
-        if controlled_stop:
-            absolute_iterations = max(
-                absolute_iterations, request.max_iterations
-            )
-        iterations = absolute_iterations - request.start_iteration
-        if iterations < 0 or iterations > request.max_iterations:
-            raise PermuterExecutorInvalidResponse("vendored runner exceeded iteration bound")
-        if returncode != 0 and not controlled_stop:
-            detail = " ".join(output.split())[-256:] or "runner returned a nonzero status"
-            raise PermuterExecutorRefused(
-                f"vendored decomp-permuter failed: {detail}",
-                code="permuter_runner_failed",
-            )
-        try:
-            entries = sorted(
-                item
-                for item in scratch.iterdir()
-                if item.name not in output_before and _OUTPUT_DIR_RE.fullmatch(item.name)
-            )
-        except OSError as exc:
-            raise PermuterExecutorInvalidResponse("runner output directory cannot be listed") from exc
-        if len(entries) > request.max_candidates:
-            raise PermuterExecutorInvalidResponse("runner candidate count exceeds its bound")
-        candidates: list[dict[str, Any]] = []
-        scores: list[float] = []
-        for index, directory in enumerate(entries, start=1):
-            if directory.is_symlink() or not directory.is_dir():
-                raise PermuterExecutorInvalidResponse("runner output contains a symlink")
-            match = _OUTPUT_DIR_RE.fullmatch(directory.name)
-            assert match is not None
-            score = _number_from_score(match.group(1))
-            source_path = directory / "source.c"
-            source = _candidate_file(source_path, "runner candidate source")
-            if len(source) > _MAX_SOURCE_BYTES:
-                raise PermuterExecutorInvalidResponse("runner candidate source exceeds its bound")
-            if b"\x00" in source:
-                raise PermuterExecutorInvalidResponse("runner candidate source contains NUL bytes")
+        from .search_permuter_worker import load_events
+        del scratch, output_before
+        if returncode == 75:
+            from .search_permuter_lanes import PermuterProviderHandoffPending
+            raise PermuterProviderHandoffPending("the previous worker still owns this session; retry after it exits")
+        failed = returncode != 0 and not controlled_stop
+        failure_detail = " ".join(output.split())[-512:] or "worker returned a nonzero status"
+        terminals = []
+        for line in output.splitlines():
             try:
-                source_text = source.decode("utf-8")
-            except UnicodeDecodeError as exc:
-                raise PermuterExecutorInvalidResponse("runner candidate source is not UTF-8") from exc
-            if not source_text.strip():
-                raise PermuterExecutorInvalidResponse("runner candidate source is empty")
-            score_text_bytes = _candidate_file(directory / "score.txt", "runner candidate score")
-            try:
-                score_text = score_text_bytes.decode("ascii").strip()
-            except UnicodeDecodeError as exc:
-                raise PermuterExecutorInvalidResponse("runner candidate score is not ASCII") from exc
-            if score is None:
-                if score_text.lower() != "inf":
-                    raise PermuterExecutorInvalidResponse("runner candidate score disagrees with its directory")
-            else:
-                try:
-                    score_file_value = float(score_text)
-                except ValueError as exc:
-                    raise PermuterExecutorInvalidResponse("runner candidate score is not numeric") from exc
-                if not math.isfinite(score_file_value) or score_file_value != score:
-                    raise PermuterExecutorInvalidResponse("runner candidate score disagrees with its directory")
+                document = json.loads(line)
+            except (json.JSONDecodeError, ValueError):
+                continue
+            if isinstance(document, dict) and "permuter_terminal" in document:
+                terminals.append(document["permuter_terminal"])
+        events = load_events(self.archive, request.session_identity)
+        if not failed and not controlled_stop and len(terminals) != 1:
+            raise PermuterExecutorInvalidResponse("runner has no unique structured terminal")
+        references = [reference.to_dict() for reference, _ in events]
+        if terminals and (
+            terminals[0].get("evaluation_artifacts") != references
+            or terminals[0].get("absolute_iterations") != len(events)
+        ):
+            raise PermuterExecutorInvalidResponse("runner terminal differs from durable evaluations")
+        if not request.start_iteration <= len(events) <= request.max_iterations:
+            raise PermuterExecutorInvalidResponse("durable evaluation count exceeds request bounds")
+        candidates = []
+        scores = []
+        for reference, event in events:
+            if (
+                event["evaluator_identity"] != request.evaluator_identity
+                or event["target_identity"] != request.target_identity
+                or event["strategy"] != request.algorithm
+            ):
+                raise PermuterExecutorInvalidResponse("evaluation event binding differs")
+            score = event["score"]["total"]
             if score is not None:
                 scores.append(score)
-            iteration = min(
-                request.max_iterations,
-                request.start_iteration + index,
-            )
-            candidates.append(
-                {
-                    "source": source_text,
-                    "score": score,
-                    "iteration": iteration,
-                    "provenance": {
-                        "kind": "vendored_decomp_permuter",
-                        "executor_protocol": EXECUTOR_PROTOCOL,
-                        "runner_identity": self.runner_identity,
-                        "vendor_revision": self.vendor_revision,
-                        "tool_identity": request.tool_identity,
-                        "weights_identity": request.weights_identity,
-                        "request_identity": request.request_identity,
-                        "phase": request.phase,
-                        "lane_algorithm": request.algorithm,
-                        "runner_algorithm": runner_algorithm,
-                        "runner_seed": runner_seed,
-                    },
-                }
-            )
-        if len(candidates) > request.max_candidates:
-            raise PermuterExecutorInvalidResponse("runner candidate count exceeds its bound")
-        for match in _SCORE_RE.finditer(output):
-            score = _number_from_score(match.group(1))
-            if score is not None:
-                scores.append(score)
-        best_score = min(scores) if scores else None
-        stopped = controlled_stop
-        stop_reason = "budget_exhausted" if stopped else ""
+            if event["iteration"] <= request.start_iteration:
+                continue
+            source = self.archive.verify(ArtifactRef.from_dict(event["source"])).decode("utf-8")
+            candidates.append({
+                "source": source, "score": score, "iteration": event["iteration"],
+                "provenance": {
+                    **event["provenance"],
+                    "kind": "vendored_decomp_permuter",
+                    "evaluation_artifact": reference.to_dict(),
+                    "score_vector": event["score"],
+                    "executor_protocol": EXECUTOR_PROTOCOL,
+                    "vendor_revision": self.vendor_revision,
+                    "tool_identity": request.tool_identity,
+                    "weights_identity": request.weights_identity,
+                    "lane_algorithm": request.algorithm,
+                    "runner_algorithm": runner_algorithm,
+                },
+            })
+        candidates.sort(key=lambda item: (
+            item["score"] is None, item["score"] if item["score"] is not None else 0,
+            item["iteration"],
+        ))
+        selected = candidates[:request.max_candidates]
+        stopped = controlled_stop or not terminals[0]["completed"] if terminals else True
+        terminal = terminals[0] if terminals else {}
+        status = "refused" if failed else terminal.get("status", "stopped" if stopped else "completed")
         return {
-            "status": "stopped" if stopped else "completed",
-            "iterations": iterations,
-            "candidates": candidates,
+            "status": status,
+            "iterations": len(events) - request.start_iteration,
+            "candidates": selected,
             "state": {
                 "protocol": STATE_PROTOCOL,
-                "request_identity": request.request_identity,
-                "phase": request.phase,
-                "runner_identity": self.runner_identity,
-                "vendor_revision": self.vendor_revision,
-                "tool_identity": request.tool_identity,
-                "weights_identity": request.weights_identity,
-                "runner_algorithm": runner_algorithm,
-                "runner_seed": runner_seed,
-                "start_iteration": request.start_iteration,
-                "absolute_iterations": absolute_iterations,
-                "controlled_stop": controlled_stop,
-                "output_count": len(candidates),
+                "runner_seed": runner_seed, "runner_algorithm": runner_algorithm,
+                "absolute_iterations": len(events),
+                "evaluation_artifacts": references,
+                "unreturned_candidate_ids": [
+                    hash_bytes(item["source"].encode("utf-8"))
+                    for item in candidates[request.max_candidates:]
+                ],
             },
-            "best_score": best_score,
-            "reason": "vendored decomp-permuter completed within the immutable bounds",
-            "stop_reason": stop_reason,
+            "best_score": min(scores) if scores else None,
+            "reason": ("structured permuter failed: " + failure_detail if failed else
+                       terminal.get("reason", "structured permutation evaluations are durable")),
+            "refusal_code": "permuter_runner_failed" if failed else terminal.get("refusal_code"),
+            "stop_reason": "budget_exhausted" if stopped else "",
         }
 
     def __call__(self, request: PermuterRequest) -> Mapping[str, Any]:
+        if self.runtimes:
+            self._verify_request(request)
+            runtime = self.runtimes.get(request.recipient_id)
+            if runtime is None:
+                raise PermuterExecutorInputError("recipient has no immutable runtime route")
+            return PermuterExecutor(
+                self.archive, self.binding, runtime=runtime,
+                repo_root=self.repo_root, timeout_seconds=self.timeout_seconds,
+            )(request)
         preflight = self.preflight(request)
         if not preflight.ready:
             raise PermuterExecutorUnavailable(
@@ -1696,18 +1782,23 @@ class PermuterExecutor:
             runner_algorithm,
             runner_seed,
         )
+        # The OS result is (returncode, output, stopped). Pass named fields
+        # to the parser so a tuple-order change cannot corrupt the boundary.
+        returncode, output, controlled_stop = self._run_process(
+            command,
+            cwd,
+            request,
+            iteration_limit=request.max_iterations,
+        )
         return self._parse_output(
             request,
             scratch,
             before,
-            *self._run_process(
-                command,
-                cwd,
-                request,
-                iteration_limit=request.max_iterations,
-            ),
-            runner_algorithm,
-            runner_seed,
+            output=output,
+            returncode=returncode,
+            controlled_stop=controlled_stop,
+            runner_algorithm=runner_algorithm,
+            runner_seed=runner_seed,
         )
 
     execute = __call__
@@ -1743,6 +1834,13 @@ __all__ = [
     "EXECUTOR_PROTOCOL",
     "MODULE_IDENTITY",
     "PREFLIGHT_PROTOCOL",
+    "REPOSITORY_COMPILE_WRAPPER_BYTES",
+    "REPOSITORY_COMPILE_WRAPPER_IDENTITY",
+    "REPOSITORY_COMPILER_ARGV_TEMPLATE",
+    "REPOSITORY_COMPILER_ENVIRONMENT",
+    "REPOSITORY_COMPILER_EXECUTABLE",
+    "REPOSITORY_COMPILER_INPUT_LOCATION",
+    "REPOSITORY_COMPILER_OUTPUT_LOCATION",
     "RUNTIME_PROTOCOL",
     "STATE_PROTOCOL",
     "TrustedPermuterExecutor",

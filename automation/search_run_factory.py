@@ -104,23 +104,44 @@ _FACTORY_TOOL_KEY = "search_run_factory"
 _FACTORY_MARKER_KEY = "search_run_factory_marker"
 _FACTORY_MARKER_PROTOCOL = "sotn-search-run-factory-created-v1"
 _FACTORY_MODULE = ("automation/search_run_factory.py", _FACTORY_TOOL_KEY)
-_INDEXED_LANES = frozenset({"multi_donor", "cfg_dataflow"})
+_INDEXED_LANES = frozenset({"multi_donor", "cfg_dataflow", "idiom_atlas"})
 _INDEXED_RUNTIME_TOOL_KEY = "indexed_runtime"
 _TARGET_RENDERER_SOURCE_TOOL_KEY = "target_renderer_source"
 _CORE_MODULES = (
     ("automation/search_lanes.py", "search_lanes"),
     ("automation/search_supervisor.py", "search_supervisor"),
     ("automation/search_coordinator.py", "search_coordinator"),
+    ("automation/search_frontier.py", "search_frontier"),
     ("automation/search_types.py", "search_types"),
     ("automation/search_archive.py", "search_archive"),
     ("automation/search_recovery.py", "search_recovery"),
+    ("automation/search_evaluator.py", "search_evaluator"),
+    ("automation/compiler_corpus.py", "compiler_corpus"),
+    ("automation/search_source_context.py", "search_source_context"),
+    ("tools/decomp-permuter/src/scorer.py", "evaluator_scorer"),
+    ("tools/decomp-permuter/src/objdump.py", "evaluator_objdump"),
 )
 _LANE_MODULES = {
+    "idiom_atlas": (
+        "automation/search_provider_factory.py", "automation/search_provider_lanes.py",
+        "automation/search_idiom_atlas.py", "automation/compiler_idioms.py",
+        "automation/search_patterns.py", "automation/search_mutations.py",
+        "automation/search_target_renderer.py",
+    ),
+    "bounded_synthesis": (
+        "automation/search_provider_factory.py", "automation/search_provider_lanes.py",
+        "automation/search_generated_lanes.py", "automation/search_target_renderer.py",
+    ),
     "upstream_current": ("automation/upstream_harvest.py",),
     "upstream_pinned": ("automation/upstream_harvest.py",),
     "upstream_open_pr": ("automation/upstream_harvest.py",),
     "shared_header": ("automation/shim_sweep.py",),
-    "transplant": ("automation/asm_twin_finder.py", "automation/transplant.py"),
+    "transplant": (
+        "automation/asm_twin_finder.py", "automation/transplant.py",
+        "automation/asm_delta.py", "automation/upstream_harvest.py",
+        "automation/permuter_supervisor.py", "automation/member_types.py",
+        "automation/win/worker_direct.py", "automation/artifact_store.py",
+    ),
     "multi_donor": (
         "automation/search_provider_lanes.py",
         "automation/search_indexed_lane.py",
@@ -134,6 +155,22 @@ _LANE_MODULES = {
         "automation/search_target_renderer.py",
     ),
 }
+
+for _permuter_lane in ("permuter_random", "permuter_targeted", "permuter_recombine", "permuter_ddmin"):
+    _LANE_MODULES[_permuter_lane] = (
+        "automation/search_provider_factory.py", "automation/search_provider_lanes.py",
+        "automation/search_permuter_lanes.py", "automation/search_permuter_executor.py",
+        "automation/search_permuter_worker.py", "automation/search_compile_driver.py",
+        "automation/search_mutations.py", "automation/search_target_renderer.py",
+        "automation/search_process_lock.py",
+    )
+
+for _model_lane in ("model_fleet", "model_expensive"):
+    _LANE_MODULES[_model_lane] = (
+        "automation/search_provider_factory.py", "automation/search_provider_lanes.py",
+        "automation/search_model_lanes.py", "automation/search_model_executor.py",
+        "automation/search_model_provider.py",
+    )
 
 
 class SearchRunFactoryError(RuntimeError):
@@ -255,6 +292,10 @@ def _normalize_indexed_runtime_id(
     runtime_id: Any,
     selected_lanes: Sequence[str],
 ) -> Optional[str]:
+    if set(selected_lanes).intersection({"model_fleet", "model_expensive"}):
+        raise InputRefusal(
+            "model lanes are deferred until the programmatic qualification gate is complete and accepted"
+        )
     indexed = any(lane in _INDEXED_LANES for lane in selected_lanes)
     if runtime_id is None:
         if indexed:
@@ -617,24 +658,29 @@ def _walk_regular_files(root: Path, repo: Path, label: str) -> list[Path]:
         raise EvidenceRefusal(f"{label} root is not a real directory")
     result: list[Path] = []
     try:
-        for current, directories, files in os.walk(root, followlinks=False):
-            current_path = Path(current)
-            for directory in directories:
-                candidate = current_path / directory
-                if candidate.is_symlink():
-                    raise EvidenceRefusal(f"{label} contains a symlink")
-            for filename in files:
-                candidate = current_path / filename
-                if candidate.is_symlink() or not candidate.is_file():
-                    raise EvidenceRefusal(f"{label} contains a non-regular file")
-                result.append(candidate.resolve(strict=True))
-                if len(result) > _MAX_SOURCE_FILES:
-                    raise EvidenceRefusal(f"{label} exceeds the bounded file count")
+        pending = [root]
+        while pending:
+            # scandir retains the directory entry's type information. Resolving
+            # every ancestor of every leaf repeatedly is very expensive on WSL
+            # shared drives. The root and each descendant are still vetted.
+            with os.scandir(pending.pop()) as entries:
+                for entry in entries:
+                    if entry.is_symlink():
+                        raise EvidenceRefusal(f"{label} contains a symlink")
+                    candidate = Path(entry.path)
+                    if entry.is_dir(follow_symlinks=False):
+                        pending.append(candidate)
+                    elif entry.is_file(follow_symlinks=False):
+                        result.append(candidate)
+                        if len(result) > _MAX_SOURCE_FILES:
+                            raise EvidenceRefusal(f"{label} exceeds the bounded file count")
+                    else:
+                        raise EvidenceRefusal(f"{label} contains a non-regular file")
     except SearchRunFactoryError:
         raise
     except OSError as exc:
         raise EvidenceRefusal(f"{label} could not be inspected") from exc
-    return sorted(result, key=lambda path: _relative(repo, path))
+    return sorted(result, key=lambda path: path.relative_to(repo).as_posix())
 
 
 def _source_identity(repo: Path) -> tuple[str, dict[str, Any]]:
@@ -648,7 +694,7 @@ def _source_identity(repo: Path) -> tuple[str, dict[str, Any]]:
     for path in roots:
         data = _read_evidence_bytes(path, "repository source file")
         files.append({
-            "path": _relative(repo, path),
+            "path": path.relative_to(repo).as_posix(),
             "content_hash": hash_bytes(data),
             "byte_size": len(data),
         })
@@ -979,7 +1025,7 @@ def _candidate_file_manifest(repo: Path) -> dict[str, Any]:
     for path in _walk_regular_files(root, repo, "automation candidate inputs"):
         data = _read_evidence_bytes(path, "automation candidate input")
         files.append({
-            "path": _relative(repo, path),
+            "path": path.relative_to(repo).as_posix(),
             "content_hash": hash_bytes(data),
             "byte_size": len(data),
         })
@@ -998,6 +1044,61 @@ def _lane_input_state(
     *,
     indexed_runtime: Any = None,
 ) -> dict[str, Any]:
+    if lane == "transplant":
+        # Preflight consults compiled donor objects, dependency freshness and
+        # assembly/twin indexes. Bind those real inputs in addition to src/ and
+        # include/, which are already covered by the factory source identity.
+        files = []
+        for relative, suffixes in (("build/us", {".o", ".d"}), ("asm/us", {".s"})):
+            directory = repo / relative
+            if not directory.exists():
+                continue
+            for path in _walk_regular_files(directory, repo, "transplant inputs"):
+                if path.suffix not in suffixes:
+                    continue
+                data = _read_evidence_bytes(path, "transplant input")
+                files.append({"path": path.relative_to(repo).as_posix(), "content_hash": hash_bytes(data),
+                              "byte_size": len(data), "mtime_ns": path.stat().st_mtime_ns})
+        # Ninja consumes depfiles into this database and normally removes the
+        # .d files. Hashing only .d would leave the actual freshness authority
+        # unbound. Bind absence as well, since creating it changes preflight.
+        for relative in (".ninja_deps", "build.ninja"):
+            path = repo / relative
+            if path.exists() or path.is_symlink():
+                path = _safe_repo_file(repo, str(path), "Ninja transplant input")
+                data = _read_evidence_bytes(path, "Ninja transplant input")
+                files.append({"path": relative, "content_hash": hash_bytes(data),
+                              "byte_size": len(data)})
+            else:
+                files.append({"path": relative, "missing": True})
+        # Source bytes have a separate identity, but donor freshness also uses
+        # their timestamps. A touch must invalidate this run's frozen inputs.
+        for relative in ("src", "include"):
+            for path in _walk_regular_files(repo / relative, repo, "transplant source freshness"):
+                files.append({"path": path.relative_to(repo).as_posix(),
+                              "mtime_ns": path.stat().st_mtime_ns})
+        index = repo / "automation/twins.us.json"
+        if index.exists():
+            index = _safe_repo_file(repo, str(index), "twin index")
+            data = _read_evidence_bytes(index, "twin index")
+            files.append({"path": _relative(repo, index), "content_hash": hash_bytes(data),
+                          "byte_size": len(data)})
+        return {"kind": "compiled_transplant_inputs", "files": sorted(files, key=lambda item: item["path"])}
+    if lane in {"model_fleet", "model_expensive"}:
+        from .search_provider_factory import model_input_state
+        try:
+            return model_input_state(repo, lane)
+        except (OSError, ValueError) as exc:
+            raise EvidenceRefusal(str(exc)) from exc
+    if lane == "bounded_synthesis":
+        return {"kind": "target_return_expression", "protocol": "sotn-provider-input-v1"}
+    if lane in {"permuter_random", "permuter_targeted", "permuter_recombine", "permuter_ddmin"}:
+        from .search_permuter_executor import vendored_tree_identity
+        return {
+            "kind": "target_or_preserved_seed", "protocol": "sotn-provider-input-v1",
+            "candidate_inputs": _candidate_file_manifest(repo),
+            "vendor_revision": vendored_tree_identity(repo / "tools/decomp-permuter"),
+        }
     if lane == "upstream_current":
         return _upstream_ref_state(repo)
     if lane in {"upstream_pinned", "upstream_open_pr"}:
@@ -1011,7 +1112,7 @@ def _lane_input_state(
         if indexed_runtime is None:
             raise EvidenceRefusal("indexed lane has no immutable runtime binding")
         binding = indexed_runtime.binding
-        return {
+        state = {
             "kind": "indexed_runtime",
             "runtime_id": indexed_runtime.runtime_id,
             "binding_identity": hash_canonical(binding.to_dict()),
@@ -1020,6 +1121,9 @@ def _lane_input_state(
             "renderer_identity": binding.renderer_identity,
             "renderer_source_identity": binding.renderer_source_identity,
         }
+        if lane == "idiom_atlas":
+            state["candidate_inputs"] = _candidate_file_manifest(repo)
+        return state
     return {"kind": "none"}
 
 
@@ -1069,6 +1173,7 @@ def _tool_identities(
     }
     identities[factory_key] = factory_identity
     identities[_FACTORY_MARKER_KEY] = _factory_marker_identity()
+    captured_inputs = {}
     for lane in lanes:
         entries = []
         for relative in _LANE_MODULES.get(lane, ()):
@@ -1082,11 +1187,10 @@ def _tool_identities(
                 "byte_size": len(data),
             })
         lane_modules[lane] = entries
-        input_state = _lane_input_state(
-            repo,
-            lane,
-            indexed_runtime=indexed_runtime,
-        )
+        input_kind = "permuter" if lane.startswith("permuter_") else lane
+        if input_kind not in captured_inputs:
+            captured_inputs[input_kind] = _lane_input_state(repo, lane, indexed_runtime=indexed_runtime)
+        input_state = captured_inputs[input_kind]
         lane_inputs[lane] = input_state
         identities[lane] = hash_canonical({
             "core_modules": core_hashes,
@@ -1361,6 +1465,10 @@ def _verify_existing_artifacts(
     expected_runtime_id = (
         (expected_tool_identities or {}).get(_INDEXED_RUNTIME_TOOL_KEY)
     )
+    from .search_provider_lanes import EXTERNAL_LANES
+    has_provider_state = bool(set(expected_tool_identities or {}).intersection(EXTERNAL_LANES))
+    if has_provider_state:
+        expected_index_fields.add("provider_state")
     if expected_runtime_id is not None:
         expected_index_fields.add("indexed_runtime")
     if set(index) != expected_index_fields:
@@ -1385,6 +1493,8 @@ def _verify_existing_artifacts(
     ]
     if expected_runtime_id is not None:
         refs.append(("indexed_runtime", index["indexed_runtime"]))
+    if has_provider_state:
+        refs.append(("provider_state", index["provider_state"]))
     targets = index["target_evidence"]
     if not isinstance(targets, Mapping) or not targets:
         raise PartialRunRefusal("run evidence index target coverage is missing")
@@ -2198,6 +2308,15 @@ def _create_instrumented_run_locked(
         }
         target_identities[record_id] = hash_canonical(target_payloads[record_id])
 
+    from .search_provider_factory import prepare_provider_inputs, publish_provider_state
+    try:
+        provider_inputs = prepare_provider_inputs(
+            root_repo, selected_lanes, target_bytes, tool_payload["lane_inputs"],
+            indexed_runtime=indexed_runtime,
+        )
+    except ValueError as exc:
+        raise EvidenceRefusal(str(exc)) from exc
+
     seed_payload = {
         "compiler_identity": compiler_identity,
         "config_identity": config_identity,
@@ -2323,6 +2442,11 @@ def _create_instrumented_run_locked(
         else None
     )
     # Preserve exact manifest bytes across a crash between index and publication.
+    provider_state_ref = publish_provider_state(
+        manifest, archive, root_repo, target_bytes, target_artifact_refs,
+        provider_inputs, tool_payload["lane_inputs"],
+        indexed_runtime=indexed_runtime,
+    )
     manifest_intent_ref = archive.put_json(
         manifest.to_dict(), category="manifest-intent", suffix=".json"
     )
@@ -2349,6 +2473,8 @@ def _create_instrumented_run_locked(
     }
     if indexed_runtime_ref is not None:
         index_payload["indexed_runtime"] = indexed_runtime_ref.to_dict()
+    if provider_state_ref is not None:
+        index_payload["provider_state"] = provider_state_ref.to_dict()
     index_ref = archive.put_json(index_payload, category="run-index", suffix=".json")
     for reference in (
         subset_ref,
@@ -2361,6 +2487,7 @@ def _create_instrumented_run_locked(
         compiler_ref,
         manifest_intent_ref,
         *((indexed_runtime_ref,) if indexed_runtime_ref is not None else ()),
+        *((provider_state_ref,) if provider_state_ref is not None else ()),
         index_ref,
         *target_ref_map.values(),
     ):

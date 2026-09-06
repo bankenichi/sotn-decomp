@@ -1456,6 +1456,28 @@ def preflight(fn: str, mapping: list[str] | None = None,
         return False, "", (f"scan-class: {scan_class}\n"
                            "no usable twin in this tree; tried "
                            + (rendered if rendered else "nothing"))
+    configuration_notes: list[str] = []
+    if score_context and re.search(r"(?m)^\s*#\s*(?:if|ifdef|ifndef)\b", body):
+        # A shared header's feature branches belong to its selected compiled
+        # consumer. Platform-only extraction cannot decide those branches.
+        consumer = compiled_consumer_source(str((selected_delta or {}).get("twin_asm", "")))
+        if consumer is None:
+            return False, "", "scan-class: context\nconditional donor has no exact compiled consumer"
+        from automation.compiler_corpus import _pipeline
+        from automation.search_source_context import preprocess_for_mutation
+        from automation.search_lanes import _extract_function
+        consumer_overlay = "/".join(consumer.relative_to(REPO / "src").parts[:-1]).upper()
+        with tempfile.TemporaryDirectory(prefix="transplant-context-") as scratch:
+            expanded = preprocess_for_mutation(
+                consumer.read_text(), f"us:{consumer_overlay}:{base}",
+                _pipeline().identity.identity, Path(scratch),
+            )
+        body = _extract_function(expanded, base)
+        if not body:
+            return False, "", "scan-class: context\nconfigured donor does not define the requested function"
+        configuration_notes.append(
+            "configured donor consumer: " + consumer.relative_to(REPO).as_posix()
+            + "; expanded body sha256=" + hashlib.sha256(body.encode()).hexdigest())
     try:
         body, include_notes = expand_function_local_includes(
             body, REPO / path)
@@ -1464,7 +1486,7 @@ def preflight(fn: str, mapping: list[str] | None = None,
     body = rename_function(body, base, fn)
 
     pairs = list(mapping or [])
-    auto_notes: list[str] = list(include_notes)
+    auto_notes: list[str] = [*configuration_notes, *include_notes]
     target_symbols: set[str] = set()
     adapt_kind = ""
     if auto:
@@ -1562,6 +1584,50 @@ def preflight(fn: str, mapping: list[str] | None = None,
     for n in decl_notes:
         detail += f"\n  decl: {n}"
     return True, body, detail
+
+
+def instrumented_draft(fn: str, overlay: str) -> tuple[bool, str, str, str]:
+    """Prepare a destination translation unit without writing source or queue.
+
+    The instrumented factory binds source, compiler, donor objects, dependency
+    files and the twin index before dispatch. Its coordinator owns compilation
+    and oracle handoff; the legacy apply/build path is deliberately not called.
+    """
+    ok, body, detail = preflight(fn, auto=True, adapt=True, skip_clean=True,
+                                 stub_overlay=overlay, score_context=True)
+    if not ok:
+        return False, "", "", detail
+    found = _sup().find_stub(fn, overlay)
+    if found is None:
+        return False, "", "", "destination stub changed during preparation"
+    path, asm_rel, _ = found
+    relative = path.relative_to(REPO).as_posix()
+    sys.path.insert(0, str(REPO / "automation" / "win"))
+    import worker_direct as wd
+    exact, support = split_prepared_draft(body, fn)
+    whole = wd.virtual_apply({"src_rel": relative, "asm_rel": asm_rel}, fn, exact,
+                             support_declarations=support)
+    if not whole:
+        return False, "", relative, "exact destination stub could not be substituted"
+    whole = wd._declare_stub_siblings(whole, whole)
+    return True, whole, relative, detail
+
+
+def split_prepared_draft(body: str, fn: str) -> tuple[str, list[str]]:
+    """Separate exact prepared source spans before canonicalizing a function.
+
+    The source-write helper deliberately rejects surrounding declarations and
+    normalizes trailing whitespace. Neither behavior is suitable for finding
+    the original function span in a preparation receipt.
+    """
+    from automation.search_lanes import _extract_function
+    exact = _extract_function(body, fn)
+    if not exact:
+        raise ValueError(f"prepared draft has no complete definition of {fn}")
+    support = receipt_support_declarations(body, exact)
+    # Change only the target's linkage, never a preceding support declaration.
+    exact = re.sub(r"^(\s*)static\s+(?=[A-Za-z_])", r"\1", exact, count=1)
+    return exact, support
 
 
 def run(fn: str, apply: bool, mapping: list[str] | None = None,

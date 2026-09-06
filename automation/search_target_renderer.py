@@ -1204,7 +1204,8 @@ def _deterministic_local_draft(
                 source = _target_parameter_for_register(registers[1], parameters)
                 if source is None:
                     return None
-                expression = f"{source} + {literal}"
+                operator = "|" if mnemonic == "ori" else "+"
+                expression = f"{source} {operator} {literal}"
             else:
                 expression = str(literal)
             continue
@@ -1227,13 +1228,10 @@ def _deterministic_local_draft(
                 returned = True
                 continue
             return None
-        # Stack save/restore instructions are compiler context, not source
-        # semantics.  Other memory, branch, call, coprocessor and arithmetic
-        # forms need a richer target translation and fail closed.
-        if mnemonic in {"addiu", "addi"} and len(registers) >= 2 and registers[0] == registers[1] == "sp":
-            continue
-        if mnemonic in {"sw", "lw", "sh", "lh", "sb", "lb"} and "sp" in registers:
-            continue
+        # A stack address does not prove callee-save traffic. Loads can define
+        # the return value and stores can affect caller-owned arguments. Until
+        # stack slots have proven ownership and register liveness, refuse every
+        # memory operation rather than silently dropping target semantics.
         return None
     if not returned:
         return None

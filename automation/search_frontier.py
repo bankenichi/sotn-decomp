@@ -47,25 +47,22 @@ class CandidateGraph:
             old_identity = (
                 existing.recipient_id,
                 existing.source_artifact.content_hash,
-                existing.parent_candidate_ids,
-                existing.mutation_id,
-                existing.lane,
-                existing.depth,
             )
             new_identity = (
                 candidate.recipient_id,
                 candidate.source_artifact.content_hash,
-                candidate.parent_candidate_ids,
-                candidate.mutation_id,
-                candidate.lane,
-                candidate.depth,
             )
             if old_identity != new_identity:
                 raise FrontierError("candidate id maps to conflicting metadata")
-            # Evaluation and lifecycle status are the only fields that may
-            # advance after materialization.  Replacing the record here keeps
-            # recovery and live evaluation commits on the same graph state.
-            self._candidates[candidate.candidate_id] = candidate
+            if existing.evaluation is not None and candidate.evaluation is not None and existing.evaluation != candidate.evaluation:
+                raise FrontierError("same source has conflicting measured scores")
+            # Source identity is shared by convergent discovery paths. Keep
+            # the first materialization as the canonical node and retain each
+            # lane/parent/mutation origin as an edge below.
+            self._candidates[candidate.candidate_id] = replace(
+                existing, evaluation=candidate.evaluation or existing.evaluation,
+                status=candidate.status if candidate.evaluation is not None else existing.status,
+            )
         else:
             self._candidates[candidate.candidate_id] = candidate
         source_hash = candidate.source_artifact.content_hash

@@ -97,6 +97,7 @@ SEARCH_SURFACE_ACTIONS = (
     SEARCH_SURFACE_MUTATORS | SEARCH_SURFACE_READ_ONLY
 )
 SEARCH_JOB_ACTIONS = frozenset({
+    "search_create_instrumented",
     "search_start_instrumented",
     "search_resume_instrumented",
     "search_publish_indexed_runtime",
@@ -983,6 +984,10 @@ AUTOMATION_SCRIPTS = {
     "test_search_model_executor.py",
     "test_search_model_lanes.py",
     "test_search_permuter_executor.py",
+    "test_search_permuter_worker.py",
+    "test_search_compile_driver.py",
+    "test_search_evaluator.py",
+    "test_search_model_provider.py",
     "test_search_permuter_lanes.py",
     "test_search_provider_lanes.py",
     "test_search_production_audit.py",

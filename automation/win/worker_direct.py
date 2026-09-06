@@ -4849,7 +4849,8 @@ def validate_candidate(code: str) -> str:
     return ""
 
 
-def virtual_apply(ctx: dict, fn: str, code: str) -> str:
+def virtual_apply(ctx: dict, fn: str, code: str,
+                  support_declarations: list[str] | None = None) -> str:
     """The file as it WOULD look after apply_code, without writing anything.
 
     The checks need whole-file context: linkage has to see which functions the
@@ -4871,7 +4872,8 @@ def virtual_apply(ctx: dict, fn: str, code: str) -> str:
     # In lockstep with apply_code, including the injected declarations. If the
     # gate inspected a file without them it would report link and linkage
     # findings about a state that is never built.
-    body = _prepare_candidate_body(original, code, fn, ctx["src_rel"])
+    body = _prepare_candidate_body(original, code, fn, ctx["src_rel"],
+                                   support_declarations=support_declarations)
     return pattern.sub(lambda _m: body.replace("\r\n", "\n"), original, count=1)
 
 

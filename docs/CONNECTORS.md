@@ -26,7 +26,7 @@ under any MCP client.
 | Decompiled | **94.1%**, 8180/8730 functions; 550 US `INCLUDE_ASM` stubs remain |
 | Queue | 983 records: 433 matched, 380 todo, 123 escalated, 41 deferred, 6 near |
 | Provenance | upstream-harvest 55, shim-segment 9, shim-header 55, transplant 135, twin-port 31, permuter 18, claude-manual 6, model-fleet 58, unknown 66 |
-| Automation | 155 modules, 65 suites plus 36 module self-tests, 99 tools, 104 diagnostics |
+| Automation | 167 modules, 69 suites plus 36 module self-tests, 99 tools, 108 diagnostics |
 
 This block is regenerated from the same queue, checksum manifest, linker maps, provenance classifier, and connector inventory as `README.md`.
 <!-- LIVE-STATUS:END -->
@@ -195,7 +195,7 @@ caller-controlled paths and arbitrary argv out of the boundary:
 | tool | authority |
 |---|---|
 | `search_plan` | Read-only. Canonicalizes an explicit record-ID subset and lane list. It neither reads the live queue nor creates a run. |
-| `search_create_instrumented` | Mutating. Resolves exact live `todo` records and repository-owned evidence, then publishes one immutable canonical run. It does not change the queue. |
+| `search_create_instrumented` | Background job. Resolves exact live `todo` records and repository-owned evidence, then publishes one immutable canonical run. Poll its job id for the manifest. It does not change the queue. |
 | `search_start_instrumented` | Mutating background job. Starts the exact frozen manifest selected by a safe run ID. |
 | `search_resume_instrumented` | Mutating background job. Resumes the same stopped manifest and durable ledger. |
 | `search_status` | Read-only. Recovers status from the archived manifest and ledger without consulting current queue eligibility. |

@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import copy
+import json
 import sys
 import tempfile
 import unittest
+import urllib.error
+from unittest.mock import patch
 from dataclasses import replace
 from pathlib import Path
 from typing import Any, Tuple
@@ -20,6 +23,7 @@ from automation.search_model_lanes import (
     ModelBinding,
     ModelArtifactError,
     ModelInputError,
+    ModelLegacyRequestRefused,
     ModelInvalidResponse,
     ModelLaneProvider,
     ModelProviderProtocolError,
@@ -36,6 +40,7 @@ from automation.search_model_lanes import (
     MODEL_FAULT_BEFORE_REQUEST,
     build_model_expensive_provider,
     build_model_fleet_provider,
+    discover_model_archive,
     model_lane_adapters,
 )
 from automation.search_types import (
@@ -165,6 +170,59 @@ class ModelProviderBuildTests(unittest.TestCase):
 
     def tearDown(self) -> None:
         self.temp.cleanup()
+
+    def test_transport_telemetry_survives_lane_archiving_and_restart(self):
+        from automation.search_model_executor import make_trusted_model_executor, DEFAULT_LOCAL_ENDPOINT
+        from automation.test_search_model_executor import _Response
+        manifest = _manifest()
+        binding = _binding(manifest)
+        executor = make_trusted_model_executor(
+            binding, lane=MODEL_FLEET_LANE,
+            manifest_identity=hash_canonical(manifest.to_dict()),
+            subset_identity=manifest.subset_identity, selected=True,
+            provider="local", endpoint=DEFAULT_LOCAL_ENDPOINT,
+        )
+        body = b'{"model":"served","choices":[{"finish_reason":"stop","message":{"content":"{\\"candidates\\":[]}"}}],"usage":{"total_tokens":17}}'
+        with patch("automation.search_model_executor.urllib.request.urlopen", return_value=_Response(body)):
+            lane = build_model_fleet_provider(
+                manifest, [_target(self.archive)], binding, archive=self.archive, provider=executor,
+            )
+        restored = discover_model_archive(self.archive)
+        response = next(iter(restored.responses.values()))
+        self.assertEqual(response.telemetry["returned_model"], "served")
+        self.assertEqual(response.telemetry["usage"]["total_tokens"], 17)
+        self.assertEqual(response, lane.handoffs[0].response)
+        observations = tuple((self.archive.artifacts_root / "model-call-observations").glob("*.json"))
+        self.assertEqual(len(observations), 1)
+        observation = json.loads(observations[0].read_text())
+        self.assertEqual(observation["response_identity"], response.response_identity)
+        self.assertGreaterEqual(observation["elapsed_ms"], 0)
+        with patch("automation.search_model_executor.urllib.request.urlopen", side_effect=AssertionError("recalled")):
+            rebuilt = build_model_fleet_provider(
+                manifest, [_target(self.archive)], binding, archive=self.archive, provider=executor,
+            )
+        self.assertEqual(rebuilt.handoffs, lane.handoffs)
+
+    def test_failure_envelope_survives_lane_error_conversion(self):
+        from automation.search_model_executor import make_trusted_model_executor, DEFAULT_LOCAL_ENDPOINT
+        manifest = _manifest()
+        binding = _binding(manifest)
+        executor = make_trusted_model_executor(
+            binding, lane=MODEL_FLEET_LANE,
+            manifest_identity=hash_canonical(manifest.to_dict()),
+            subset_identity=manifest.subset_identity, selected=True,
+            provider="local", endpoint=DEFAULT_LOCAL_ENDPOINT,
+        )
+        failure = urllib.error.HTTPError(DEFAULT_LOCAL_ENDPOINT, 429, "limited", {}, None)
+        with patch("automation.search_model_executor.urllib.request.urlopen", side_effect=failure):
+            lane = build_model_fleet_provider(
+                manifest, [_target(self.archive)], binding, archive=self.archive, provider=executor,
+            )
+        response = next(iter(discover_model_archive(self.archive).responses.values()))
+        self.assertEqual(response.status, "unavailable")
+        self.assertEqual(response.error_code, "rate_limited")
+        self.assertEqual(response.telemetry["http_status"], 429)
+        self.assertIsNone(response.telemetry["usage"]["total_tokens"])
 
     def test_fleet_success_is_an_ordinary_proposal_result(self) -> None:
         manifest = _manifest()
@@ -468,6 +526,38 @@ class ModelArchiveReplayAndBudgetTests(unittest.TestCase):
         self.assertEqual(second_provider.calls, [])
         self.assertEqual(first.to_dict(), replay.to_dict())
         self.assertEqual(replay.external_calls_consumed, 1)
+
+    def test_legacy_request_discovery_is_a_stable_typed_refusal(self) -> None:
+        manifest = _manifest(budget_limit=2)
+        binding = _binding(manifest, max_candidates=2)
+
+        def fault(point: str) -> None:
+            if point == MODEL_FAULT_AFTER_REQUEST:
+                raise RuntimeError("simulate loss after durable request")
+
+        with self.assertRaises(RuntimeError):
+            build_model_fleet_provider(
+                manifest,
+                [_target(self.archive)],
+                binding,
+                archive=self.archive,
+                provider=FixtureProvider(),
+                fault_hook=fault,
+            )
+        request_paths = sorted((self.archive.artifacts_root / "model-requests").glob("*.json"))
+        self.assertEqual(len(request_paths), 1)
+        document = json.loads(request_paths[0].read_text(encoding="utf-8"))
+        legacy_request = dict(document["request"])
+        legacy_request.pop("external_call_limit")
+        request_paths[0].unlink()
+        self.archive.put_json(
+            {"protocol": document["protocol"], "request": legacy_request},
+            category="model-requests",
+            suffix=".json",
+        )
+        with self.assertRaises(ModelLegacyRequestRefused) as error:
+            discover_model_archive(self.archive)
+        self.assertEqual(error.exception.code, "model_legacy_request_refused")
 
     def test_one_shot_fault_boundaries_leave_replay_safe_pending_or_terminal_state(self) -> None:
         pending_points = {

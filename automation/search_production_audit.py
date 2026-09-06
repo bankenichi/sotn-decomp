@@ -128,12 +128,6 @@ TRANCHE_MODULES = frozenset(
 
 EXPECTED_LANE_CLOSURE_GAPS = (
     "m2c_ensemble",
-    "idiom_atlas",
-    "bounded_synthesis",
-    "permuter_random",
-    "permuter_targeted",
-    "permuter_recombine",
-    "permuter_ddmin",
     "model_fleet",
     "model_expensive",
 )
@@ -1036,6 +1030,20 @@ def _literal_mapping(module: Optional[_Module], name: str) -> dict[str, ast.AST]
     for key, item in zip(value.keys, value.values):
         if isinstance(key, ast.Constant) and isinstance(key.value, str):
             result[key.value] = item
+    # The factory binds related lanes through a closed module-level loop.
+    # Expand only literal iterables and literal values, never execute Python.
+    for statement in module.tree.body:
+        if not isinstance(statement, ast.For) or not isinstance(statement.target, ast.Name):
+            continue
+        keys = _literal_strings(statement.iter)
+        if not keys:
+            continue
+        for assignment in statement.body:
+            if not isinstance(assignment, ast.Assign) or _literal_string_sequence(assignment.value) is None:
+                continue
+            if any(_subscript_is_name(target, name, statement.target.id) for target in assignment.targets):
+                for key in keys:
+                    result[key] = assignment.value
     return result
 
 
@@ -1426,6 +1434,19 @@ def _factory_surface(
         and _definition_uses_name(normalize, "LANES")
         and _definition_uses_name(normalize, "lanes")
     )
+    # An explicit lane-selection refusal is a real production admission gap,
+    # even if preserved provider code and registry bindings remain present.
+    admission = factory.definitions.get("_normalize_indexed_runtime_id") if factory else None
+    if admission is not None and any(_definition_has_call(item, {"_normalize_indexed_runtime_id"}) for item in factory_defs):
+        for branch in ast.walk(admission.node):
+            if not isinstance(branch, ast.If) or not any(isinstance(item, ast.Raise) for item in branch.body):
+                continue
+            test = branch.test
+            if (isinstance(test, ast.Call) and isinstance(test.func, ast.Attribute)
+                    and test.func.attr == "intersection" and len(test.args) == 1
+                    and _call_references_name(test, {"selected_lanes"})
+                    and lane in _literal_string_set(test.args[0])):
+                input_ok = False
     entries = _literal_mapping(factory, "_LANE_MODULES")
     raw_entry = entries.get(lane)
     paths = _literal_string_sequence(raw_entry)
@@ -1557,7 +1578,12 @@ def _supervisor_adapter_reconstruction(
                 continue
             if not _call_references_name(node, {"manifest"}):
                 continue
-            if not _call_references_name(node, {"runtime", "run_archive", "archive", "runtime_id"}):
+            bound_inputs = {"runtime", "run_archive", "archive", "runtime_id"}
+            for assignment in ast.walk(definition.node):
+                if (isinstance(assignment, ast.Assign) and isinstance(assignment.value, ast.Call)
+                        and _call_target_name(assignment.value.func) == "_safe_run_root"):
+                    bound_inputs.update(_assignment_names(assignment))
+            if not _call_references_name(node, bound_inputs):
                 continue
             return True
     return False
@@ -1689,10 +1715,16 @@ def _is_event_branch(test: ast.AST, event_type: str) -> bool:
     return False
 
 
-def _recovery_provider_revalidation(recover: _Definition) -> bool:
+def _recovery_provider_revalidation(recover: _Definition, module: _Module) -> bool:
     """Require a runtime/provider identity verifier on the recovery path."""
 
     has_verifier = _definition_has_call(recover, _RUNTIME_REVALIDATION_NAMES)
+    for call in ast.walk(recover.node):
+        if not isinstance(call, ast.Call) or not _call_references_name(call, {"manifest"}):
+            continue
+        helper = module.definitions.get(_call_target_name(call.func))
+        if helper is not None and _definition_has_call(helper, _RUNTIME_REVALIDATION_NAMES):
+            has_verifier = True
     lane_identity = (
         _attribute_on_name(recover, "manifest", "tool_identities")
         and _attribute_on_name(recover, "receipt", "tool_identities")
@@ -1735,7 +1767,7 @@ def _recovery_lane_reconstruction(
     )
     if not (event_branch and generic_replay):
         return False
-    if require_provider_chain and not _recovery_provider_revalidation(recover):
+    if require_provider_chain and not _recovery_provider_revalidation(recover, module):
         return False
     return True
 

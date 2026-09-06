@@ -354,6 +354,8 @@ def recover_run(
     if not isinstance(events[0].payload, RunManifest) or events[0].payload != manifest:
         raise RecoveryError("manifest and run_started disagree")
     _validate_artifacts(events, archive)
+    from .search_evaluator import validate_evaluation_receipts
+    validate_evaluation_receipts(manifest, archive)
     try:
         # Keep restart validation identical to coordinator reopen.  The
         # generic artifact pass above handles all ordinary references; this

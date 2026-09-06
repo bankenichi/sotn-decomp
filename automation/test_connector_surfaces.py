@@ -40,7 +40,13 @@ sys.path.insert(0, str(MCP))
 # must live beside the exclusion rather than hiding in a broad glob exception.
 # The PSX compiler corpus is supported through the WSL connector and therefore
 # must not be added here merely because a local shell lacks its toolchain.
-UNSUPPORTED_TOP_LEVEL_TESTS: dict[str, str] = {}
+UNSUPPORTED_TOP_LEVEL_TESTS: dict[str, str] = {
+    # The concrete m2c executor suite is a paused worker-owned path, not a
+    # released connector action. Keep this exclusion explicit until that
+    # implementation is released and registered.
+    "test_m2c_revision_executor.py":
+        "m2c revision executor remains a paused unreleased connector path",
+}
 
 # Task 8.3 is intentionally limited to the live connector surfaces and its
 # inventories. The operator documentation is reconciled in the later
@@ -335,16 +341,8 @@ def main() -> int:
                 check(False, "search_create_instrumented refuses an empty subset")
             except cc.Rejected:
                 check(True, "search_create_instrumented refuses an empty subset")
-            try:
-                cc.start_job(
-                    "search_create_instrumented",
-                    name="connector-create",
-                    record_ids=["us:ST/RDAI:func_one"],
-                    lanes=["upstream_current"],
-                )
-                check(False, "generic job_start refuses synchronous run creation")
-            except cc.Rejected:
-                check(True, "generic job_start refuses synchronous run creation")
+            check("search_create_instrumented" in cc.SEARCH_JOB_ACTIONS,
+                  "repository evidence capture is classified as a long action")
             _empty_plan = cc.build_argv(
                 "search_plan", name="empty", record_ids=[],
                 lanes=["upstream_current"],
@@ -663,6 +661,10 @@ def main() -> int:
                             gate_run_id="run-connector",
                             revisions=_revision_pairs,
                         )
+                        _create_job = cc.start_job(
+                            "search_create_instrumented", name="run-connector",
+                            record_ids=["us:ST/RNO0:func_test"], lanes=["preserved_candidate"],
+                        )
                 finally:
                     cc.DRYRUN = _saved_dryrun
                 check(_start_job.get("job_id") ==
@@ -671,7 +673,7 @@ def main() -> int:
                       "search_resume_instrumented-job",
                       "start and resume return job ids without blocking")
                 check(
-                    len(_job_calls) == 3
+                    len(_job_calls) == 4
                     and _job_calls[0][1][2:5] == ["--run", "--mode", "instrumented"]
                     and _job_calls[1][1][2:5] == ["--resume", "--mode", "instrumented"]
                     and _job_calls[2][0] == "search_publish_indexed_runtime"
@@ -683,6 +685,9 @@ def main() -> int:
                     ],
                     "publication uses the existing observable background job authority",
                 )
+                check(_create_job.get("job_id") == "search_create_instrumented-job"
+                      and _job_calls[3][1][2] == "create",
+                      "creation captures repository evidence as an observable background job")
             else:
                 check(False, "jobs module is available for bounded search jobs")
         finally:

@@ -16,7 +16,7 @@ For the mechanisms that land matches, read `automation/README.md`.
 | Decompiled | **94.1%**, 8180/8730 functions; 550 US `INCLUDE_ASM` stubs remain |
 | Queue | 983 records: 433 matched, 380 todo, 123 escalated, 41 deferred, 6 near |
 | Provenance | upstream-harvest 55, shim-segment 9, shim-header 55, transplant 135, twin-port 31, permuter 18, claude-manual 6, model-fleet 58, unknown 66 |
-| Automation | 155 modules, 65 suites plus 36 module self-tests, 99 tools, 104 diagnostics |
+| Automation | 167 modules, 69 suites plus 36 module self-tests, 99 tools, 108 diagnostics |
 
 This block is regenerated from the same queue, checksum manifest, linker maps, provenance classifier, and connector inventory as `README.md`.
 <!-- LIVE-STATUS:END -->
@@ -421,7 +421,7 @@ queue. The normal lifecycle is:
 
 ```
 search_plan(name, record_ids, lanes)                # read-only preview
-search_create_instrumented(name, record_ids, lanes) # freeze one todo subset
+search_create_instrumented(name, record_ids, lanes) # job: freeze one todo subset
 search_start_instrumented(run_id)                   # returns a background job
 job_status(job_id)                                  # bounded polling
 search_status(run_id)                               # durable recovered state
@@ -435,6 +435,48 @@ the separate mutating boundary: every requested record must exist in live
 queue records plus source, target assembly and object, compiler, configuration,
 schema, search-tool and dynamic lane-input identities. It never reports to or
 claims from the queue.
+
+Creation is a background job because source and provider capture can exceed
+the connector transport timeout. Poll its returned job id before starting the
+run. The 2026-09-05 live programmatic run reproduced a timeout after creation
+had continued in the child process; an expired call is never permission to
+launch a duplicate. Check the process or existing manifest first.
+
+Preserved translation units must belong to the exact recipient. A shared
+function name does not authorize compiling another overlay's whole file.
+The live RNZ1 `SpikesApplyDamage` run selected RNO2 history and failed on its
+header before this check was added. Explicit record tags and scoped filenames
+now constrain preserved candidates and permuter seeds; rejected files remain
+in the evidence store. The evaluator resolves quoted overlay includes from
+the manifest recipient and records diagnosed preprocessor failures as failed
+candidates, so one invalid source does not abort all later lanes.
+
+The permuter measures its seed before attempting mutations. A failed seed is
+an `execution_failed` receipt with its diagnostic and measured source, rather
+than an inapplicable lane. GCC 2.6 can diagnose an undeclared identifier without
+the word `error`; classification uses source-located diagnostic wording.
+Worker failures retain their durable evaluation prefix. Full preprocessed
+overlay candidates have a bounded 1 MiB source allowance because SDK and Entity
+declarations exceed the old 64 KiB function-body limit.
+
+Run and status output include a `funnel` derived from ordinary lane outcomes,
+coordinator evaluations and request-bound permuter evaluation prefixes. Provider
+and coordinator measurements have separate counters, while unique source counts
+merge their overlap. A terminal task, failed execution, isolated zero and
+checksum-verified match are distinct outcomes. Historical results are retained;
+the first September 6 run's five inapplicable lanes did not prove five methods
+were unavailable, because worker failures had hidden their measurements.
+
+The production `transplant` lane invokes the existing automatic preparation
+path, including assembly-derived maps, exact overlay ownership and destination
+translation-unit construction. Shared-header conditionals use the selected
+compiled consumer's actual preprocessing context. Its factory input binding
+includes donor objects, Ninja's `.ninja_deps` database and build graph, source
+freshness timestamps, assembly inputs and the twin index. Depfiles alone are
+insufficient because Ninja normally consumes and removes them. Factory scans
+vet directory entries once instead of resolving every leaf's ancestors again.
+Harvest extraction preserves unknown overlay conditionals instead of silently
+treating every feature absent from its platform table as false.
 
 An exact same-name retry is archive-idempotent. It validates and returns the
 already frozen manifest before reading the current queue, so later notes,

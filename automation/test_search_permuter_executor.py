@@ -30,6 +30,7 @@ from automation.search_permuter_executor import (
     PermuterExecutorInvalidResponse,
     PermuterExecutorUnavailable,
     PermuterRuntimeBinding,
+    REPOSITORY_COMPILE_WRAPPER_BYTES,
     _ALGORITHM_MAP,
     _stable_seed,
     build_permuter_executor,
@@ -37,6 +38,7 @@ from automation.search_permuter_executor import (
     vendored_tree_identity,
 )
 from automation.search_types import (
+    ArtifactRef,
     Budget,
     RunManifest,
     canonical_subset_identity,
@@ -68,7 +70,7 @@ def make_manifest(
         selected_lanes=(lane,),
         source_identity=digest("source:" + run_id),
         target_identities={record_id: digest("target:" + record_id)},
-        compiler_identity=digest("compiler:" + run_id),
+        compiler_identity=config.evaluator_identity,
         tool_identities={lane: digest("manifest-tool:" + lane)},
         config_identity=config.identity,
         schema_identity=digest("schema:" + run_id),
@@ -150,7 +152,7 @@ def make_runtime(
     archive: ContentAddressedArchive,
     evaluator_identity: str,
 ) -> PermuterRuntimeBinding:
-    script = b"#!/bin/sh\nexec cc \"$@\"\n"
+    script = REPOSITORY_COMPILE_WRAPPER_BYTES
     script_artifact = archive.put_bytes(
         script,
         category="permuter-runtime",
@@ -175,11 +177,12 @@ def make_fixture(
     *,
     config: PermuterLaneConfig | None = None,
     runtime: bool = False,
+    seed: str | None = None,
 ):
     lane = PERMUTER_RANDOM_LANE
     archive = ContentAddressedArchive(directory)
     typed_manifest = make_manifest(lane, config=config)
-    item = make_input(archive, typed_manifest)
+    item = make_input(archive, typed_manifest, **({"seed": seed} if seed is not None else {}))
     binding = make_binding(archive, lane)
     provider = build_permuter_random_provider(
         typed_manifest,
@@ -202,6 +205,147 @@ def make_fixture(
 
 
 class PermuterExecutorTests(unittest.TestCase):
+
+    def test_real_executor_compiles_and_archives_actual_target_scores(self):
+        from automation.compiler_corpus import _pipeline, _compile_source, DEFAULT_CONFIG_PATH
+        from automation.search_permuter_worker import load_events
+        with tempfile.TemporaryDirectory() as directory:
+            pipeline = _pipeline(config_path=DEFAULT_CONFIG_PATH)
+            config = PermuterLaneConfig(
+                lane=PERMUTER_RANDOM_LANE, algorithm="random",
+                evaluator_identity=pipeline.identity.identity,
+                max_iterations=12, checkpoint_interval=1,
+            )
+            archive, typed_manifest, item, _, provider, request, executor, recipient = make_fixture(
+                directory, config=config, runtime=True,
+                seed='#include "stage.h"\nint func_permuter_executor_test(int x) { int y = x + 1; if (y > 3) y = y * 2; return y; }\n',
+            )
+            executor.timeout_seconds = 45
+            with tempfile.TemporaryDirectory() as compile_dir:
+                obj = _compile_source(
+                    "int func_permuter_executor_test(void) { return 2; }",
+                    pipeline, Path(compile_dir), name="target",
+                )[0].read_bytes()
+            executor.runtime = replace(
+                executor.runtime, target_object_artifact=archive.put_object(obj),
+                target_object_bytes=obj, compiler_type="gcc",
+            )
+            response = executor(request)
+            # Simulate launcher loss after the worker persisted its evaluations
+            # but before the provider could publish the response/result chain.
+            PermuterHandoffStore(archive).put_request(request)
+            provider.executor_callback = executor
+            recovered = provider.run(recipient)
+            self.assertNotEqual(recovered.status, "handoff_pending")
+            events = load_events(archive, request.session_identity)
+            self.assertGreater(len(events), 0)
+            self.assertEqual(response["iterations"], len(events))
+            for reference, event in events:
+                self.assertEqual(event["score"]["compiler_identity"], pipeline.identity.identity)
+                self.assertIsNotNone(event["object"])
+                self.assertEqual(event["strategy"], "random")
+                if event["provenance"].get("kind") == "seed_baseline":
+                    self.assertEqual(archive.verify(ArtifactRef.from_dict(event["source"])).decode(), item.seed_source)
+                else:
+                    self.assertEqual(event["provenance"]["mutation"]["after_source"],
+                                     archive.verify(ArtifactRef.from_dict(event["source"])).decode())
+            self.assertEqual(response["candidates"][0]["provenance"]["evaluation_artifact"],
+                             events[0][0].to_dict())
+            from automation.search_permuter_lanes import _normalize_response, _checkpoint_for
+            typed_response = _normalize_response(response, request)
+            checkpoint = _checkpoint_for(request, typed_response, typed_response.candidates)
+            PermuterHandoffStore(archive).put_checkpoint(checkpoint)
+            resume = provider._request(item, "resume", checkpoint)
+            resumed = executor(resume)
+            all_events = load_events(archive, request.session_identity)
+            self.assertEqual(all_events[:len(events)], events)
+            self.assertGreater(len(all_events), len(events))
+            self.assertEqual(resumed["iterations"], len(all_events) - len(events))
+            self.assertTrue(any(event["source"]["byte_size"] > 65536 for _, event in all_events))
+            # A later process failure must preserve this exact measured prefix.
+            failed = executor._parse_output(
+                request, archive.run_root, frozenset(), output="worker failed after evaluation",
+                returncode=1, controlled_stop=False, runner_algorithm="random", runner_seed=17,
+            )
+            self.assertEqual(failed["status"], "refused")
+            self.assertEqual(failed["iterations"], len(all_events))
+            self.assertEqual(failed["state"]["evaluation_artifacts"], [ref.to_dict() for ref, _ in all_events])
+            # Re-entering the same completed phase reads durable scores. A
+            # compiler failure here would prove unwanted recompilation.
+            from automation import search_permuter_worker as worker
+            phase = archive.run_root / resume.scratch_path / ("resume-" + resume.request_identity[7:23])
+            with patch.object(worker, "compile_against_object", side_effect=AssertionError("recompiled")):
+                replay = worker.run(phase, archive.run_root)
+            self.assertEqual(replay["absolute_iterations"], len(all_events))
+            from automation.search_evaluator import permuter_measurements
+            measurements = permuter_measurements(typed_manifest, archive)
+            self.assertEqual(len(measurements[(recipient.recipient_id, request.lane)]), len(all_events))
+
+    def test_invalid_seed_is_measured_before_mutation_and_reaches_failure_receipt(self):
+        from automation.compiler_corpus import _pipeline, _compile_source
+        from automation.search_evaluator import permuter_measurements
+        from automation.search_lanes import run_lane
+        pipeline = _pipeline()
+        config = PermuterLaneConfig(
+            lane=PERMUTER_RANDOM_LANE, algorithm="random",
+            evaluator_identity=pipeline.identity.identity, max_iterations=8,
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            archive, typed_manifest, _, _, provider, _, executor, recipient = make_fixture(
+                directory, config=config, runtime=True,
+                seed="int func_permuter_executor_test(void) { return MISSING_SEED_CONSTANT; }\n",
+            )
+            with tempfile.TemporaryDirectory() as scratch:
+                target = _compile_source(
+                    "int func_permuter_executor_test(void) { return 2; }", pipeline,
+                    Path(scratch), name="target",
+                )[0].read_bytes()
+            executor.runtime = replace(executor.runtime,
+                target_object_artifact=archive.put_object(target), target_object_bytes=target)
+            provider.executor_callback = executor
+            result = provider.run(recipient)
+            self.assertEqual(result.status, "refused")
+            self.assertEqual(result.refusal_code, "seed_compile_failed", result.reason)
+            self.assertEqual(result.iterations, 1)
+            measured = permuter_measurements(typed_manifest, archive)[(recipient.recipient_id, config.lane)]
+            self.assertEqual(len(measured), 1)
+            self.assertEqual(next(iter(measured.values()))[0].compile_status, "failed")
+            outcome = run_lane(typed_manifest, config.lane, [recipient],
+                               adapters={config.lane: provider}).outcomes[0]
+            self.assertFalse(outcome.inapplicable)
+            self.assertEqual(outcome.receipt.completion_reason, "execution_failed")
+            self.assertEqual(outcome.receipt.rejection_counts["seed_compile_failed"], 1)
+
+
+    def test_runtime_accepts_binary_object_bytes_with_nuls(self):
+        with tempfile.TemporaryDirectory() as directory:
+            archive = ContentAddressedArchive(Path(directory))
+            original = make_runtime(archive, digest("evaluator"))
+            target = bytes.fromhex("7f454c4601000000")
+            runtime = replace(
+                original, target_object_artifact=archive.put_object(target), target_object_bytes=target,
+            )
+            runtime.verify(archive)
+            self.assertEqual(runtime.target_object_bytes, target)
+
+
+
+    def test_complete_executor_parses_process_result_in_declared_order(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            _archive, _manifest, _item, _binding, _provider, request, executor, _recipient = make_fixture(
+                directory, runtime=True
+            )
+            # The tuple contract is independent of the structured event format.
+            with (
+                patch.object(executor, "_run_process", return_value=(0, "process output", False)),
+                patch.object(executor, "_parse_output", return_value={"verified": True}) as parse,
+            ):
+                response = executor(request)
+            self.assertEqual(response, {"verified": True})
+            self.assertEqual(parse.call_args.kwargs["output"], "process output")
+            self.assertEqual(parse.call_args.kwargs["returncode"], 0)
+            self.assertIs(parse.call_args.kwargs["controlled_stop"], False)
+
     def test_production_builder_is_a_real_typed_callable_without_callback_state(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             fixture = make_fixture(directory)
@@ -262,6 +406,96 @@ class PermuterExecutorTests(unittest.TestCase):
             with self.assertRaises(PermuterExecutorInputError):
                 PermuterRuntimeBinding.from_dict(forged, archive=archive)
 
+    def test_compiler_invocation_is_structured_and_rejects_caller_scripts(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            archive, _manifest, _item, _binding, _provider, _request, executor, _recipient = make_fixture(
+                directory, runtime=True
+            )
+            runtime = executor.runtime
+            serialized = runtime.to_dict()
+            self.assertEqual(serialized["compiler_executable"], "python3")
+            self.assertEqual(serialized["compiler_argv_template"], ["{input}", "-o", "{output}"])
+            self.assertEqual(serialized["input_location"], "argv[0]")
+            self.assertEqual(serialized["output_location"], "argv[2]")
+            for field, changed in (
+                ("compiler_executable", "/usr/bin/python3"),
+                ("compiler_argv_template", ["{output}", "-o", "{input}"]),
+                ("compiler_environment", {"PATH": "/tmp"}),
+                ("wrapper_identity", digest("caller wrapper")),
+            ):
+                with self.subTest(field=field):
+                    forged = dict(serialized)
+                    forged[field] = changed
+                    with self.assertRaises(PermuterExecutorInputError):
+                        PermuterRuntimeBinding.from_dict(forged, archive=archive)
+
+            for script in (
+                b'#!/bin/sh\nexec /usr/bin/python3 -c "import os; os.remove(\'victim\')" "$@"\n',
+                b'#!/bin/sh\necho changed > /tmp/permuter-owned\nexec cc "$@"\n',
+            ):
+                with self.subTest(script=script):
+                    artifact = archive.put_bytes(
+                        script,
+                        category="permuter-runtime",
+                        suffix=".sh",
+                        media_type="text/x-shellscript",
+                    )
+                    with self.assertRaises(PermuterExecutorInputError):
+                        replace(
+                            runtime,
+                            compile_script_artifact=artifact,
+                            compile_script_bytes=script,
+                        )
+
+    def test_executor_timeout_and_checkpoint_booleans_are_identity_bound(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            archive, _manifest, _item, binding, _provider, request, executor, _recipient = make_fixture(
+                directory, runtime=True
+            )
+            changed_timeout = PermuterExecutor(
+                archive,
+                binding,
+                runtime=executor.runtime,
+                timeout_seconds=11,
+            )
+            self.assertNotEqual(executor.identity, changed_timeout.identity)
+            forged = executor.to_dict()
+            forged["timeout_seconds"] = 11
+            with self.assertRaises(PermuterExecutorInputError):
+                PermuterExecutor.from_dict(forged, archive=archive)
+
+            state = {
+                "protocol": "sotn-permuter-checkpoint-v1",
+                "lane": request.lane,
+                "phase": "start",
+                "session_identity": request.session_identity,
+                "request_identity": request.request_identity,
+                "scratch_identity": request.scratch_identity,
+                "iterations": 0,
+                "candidates": [],
+                "state": {},
+                "stopped": "false",
+                "stop_reason": "",
+                "checkpoint_identity": digest("forged checkpoint"),
+            }
+            with self.assertRaises(Exception):
+                PermuterCheckpoint.from_dict(state)
+
+    def test_windows_termination_targets_wsl_descendant_tree(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            _archive, _manifest, _item, _binding, _provider, _request, executor, _recipient = make_fixture(
+                directory
+            )
+            process = SimpleNamespace(pid=2718, wait=lambda timeout: None)
+            result = SimpleNamespace(returncode=0, stdout="", stderr="")
+            with (
+                patch.object(executor_module.os, "name", "nt"),
+                patch("automation.search_permuter_executor.subprocess.run", return_value=result) as run,
+            ):
+                executor._terminate(process)
+            self.assertEqual(run.call_args.args[0], ["taskkill.exe", "/PID", "2718", "/T", "/F"])
+            self.assertFalse(run.call_args.kwargs["shell"])
+
     def test_materialization_uses_verified_vendor_snapshot_and_parser_is_typed(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             archive, _manifest, _item, _binding, _provider, request, executor, _recipient = make_fixture(
@@ -277,7 +511,8 @@ class PermuterExecutorTests(unittest.TestCase):
                 weights_bytes,
                 {},
             )
-            self.assertEqual(scratch.parent, archive.run_root / "permuter-scratch" / request.lane)
+            self.assertEqual(scratch.parent.parent, archive.run_root / "permuter-scratch" / request.lane)
+            self.assertTrue(scratch.name.startswith("start-"))
             self.assertTrue((vendor / "permuter.py").is_file())
             self.assertEqual((vendor / "permuter.py").read_bytes(), runner_bytes)
             self.assertEqual((vendor / "default_weights.toml").read_bytes(), weights_bytes)
@@ -291,21 +526,12 @@ class PermuterExecutorTests(unittest.TestCase):
             (output / "source.c").write_text(source)
             (output / "score.txt").write_text("7\n")
             (output / "diff.txt").write_text("diff\n")
-            response = executor._parse_output(
-                request,
-                scratch,
-                before,
-                "iteration 1, 0 errors, score = 7\n",
-                0,
-                False,
-                _ALGORITHM_MAP[request.algorithm],
-                seed,
-            )
-            self.assertEqual(response["status"], "completed")
-            self.assertEqual(response["iterations"], 1)
-            self.assertEqual(response["best_score"], 7.0)
-            self.assertEqual(response["candidates"][0]["source"], source)
-            self.assertEqual(response["candidates"][0]["provenance"]["runner_seed"], seed)
+            # Legacy directory labels cannot supply measured chronology.
+            with self.assertRaisesRegex(PermuterExecutorInvalidResponse, "structured terminal"):
+                executor._parse_output(
+                    request, scratch, before, "iteration 1, 0 errors, score = 7\\n",
+                    0, False, _ALGORITHM_MAP[request.algorithm], seed,
+                )
 
     def test_parser_rejects_score_file_forgery_and_iteration_overflow(self) -> None:
         config = PermuterLaneConfig(
@@ -446,18 +672,11 @@ class PermuterExecutorTests(unittest.TestCase):
                 "int func_permuter_executor_test(void) { return 5; }\n"
             )
             (output / "score.txt").write_text("5\n")
-            resumed = executor._parse_output(
-                resume_request,
-                scratch,
-                before,
-                "iteration 1, 0 errors, score = 5\n",
-                0,
-                False,
-                _ALGORITHM_MAP[resume_request.algorithm],
-                runner_seed,
-            )
-            self.assertEqual(resumed["iterations"], 1)
-            self.assertEqual(resumed["state"]["absolute_iterations"], 3)
+            with self.assertRaisesRegex(PermuterExecutorInvalidResponse, "structured terminal"):
+                executor._parse_output(
+                    resume_request, scratch, before, "iteration 1, 0 errors, score = 5",
+                    0, False, _ALGORITHM_MAP[resume_request.algorithm], runner_seed,
+                )
             forged = dict(checkpoint.to_dict())
             forged["stop_reason"] = "forged"
             archive.resolve(checkpoint_artifact).unlink()

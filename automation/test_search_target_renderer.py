@@ -275,6 +275,34 @@ class TargetQueryTests(unittest.TestCase):
         )
 
 
+    def test_or_immediate_preserves_overlapping_bits(self) -> None:
+        source = deterministic_local_draft(
+            "ori $v0, $a0, 1\njr $ra\nnop\n",
+            symbol="flags",
+            declarations={
+                "return_type": "unsigned int",
+                "parameters": [{"type": "unsigned int", "name": "value"}],
+            },
+        )
+        self.assertEqual(
+            source,
+            "unsigned int flags(unsigned int value) {\n    return value | 1;\n}\n",
+        )
+        # At value=1 addition would produce 2; OR must preserve the set bit.
+        self.assertEqual(1 | 1, 1)
+
+    def test_stack_data_operations_are_not_silently_dropped(self) -> None:
+        for instruction in ("lw $v0, 16($sp)", "sw $a0, 16($sp)",
+                            "lw $a0, 16($sp)"):
+            with self.subTest(instruction=instruction):
+                source = deterministic_local_draft(
+                    "li $v0, 7\n" + instruction + "\njr $ra\nnop\n",
+                    symbol="stack_value",
+                    declarations={"return_type": "int"},
+                )
+                self.assertIsNone(source)
+
+
 class TargetRendererTests(unittest.TestCase):
     def test_rendering_is_deterministic_and_target_derived(self) -> None:
         temp, _archive, manifest, target_index = _target_fixture()

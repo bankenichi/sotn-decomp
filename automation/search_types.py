@@ -1027,7 +1027,7 @@ class EvaluationEvent(_Record):
             object.__setattr__(self, "deltas", ScoreDeltas.from_dict(self.deltas))  # type: ignore[arg-type]
         validate_hash(self.cache_key, "cache_key")
         if self.decision not in (
-            "scalar_elite", "pareto", "dominated", "compile_failed", "rejected", "zero_pending_oracle",
+            "scalar_elite", "pareto", "dominated", "compile_failed", "rejected", "zero_pending_oracle", "measured",
         ):
             raise SearchValidationError("invalid evaluation decision")
 
@@ -1221,6 +1221,7 @@ class ExhaustionReceipt(_Record):
         if self.completion_reason not in (
             "budget_exhausted", "search_space_exhausted", "inapplicable",
             "matched_pending_oracle", "operator_stop", "superseded_by_stronger_evidence",
+            "execution_failed",
         ):
             raise SearchValidationError("invalid completion_reason")
         if not isinstance(self.receipt_artifact, ArtifactRef):

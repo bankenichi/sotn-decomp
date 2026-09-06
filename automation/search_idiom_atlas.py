@@ -19,13 +19,14 @@ using only evidence the project already proved:
     compiler identities, and a corpus entry alone does not prove that this
     program's history observed the transformation.
 
-Per recipient the provider replays each applicable idiom's grouped patches
-over the archived draft source through the shared replay primitives, counts
-every nonapplication as a typed rejection class, charges the manifest lane
-budget per unique candidate, and returns the ordinary read-only lane callback
-shape used by :mod:`search_lanes`.  The factory performs every archive
-verification exactly once, freezes the results, and leaves a stateless
-callback that never reads the queue, a checkout, or the network.
+Per recipient the ordinary callback replays each applicable idiom's grouped
+patches over the archived draft source through the shared replay primitives,
+counts every nonapplication as a typed rejection class, charges the manifest
+lane budget per unique candidate, and returns the ordinary read-only lane
+callback shape used by :mod:`search_lanes`.  The factory performs every
+archive verification exactly once, freezes the execution inputs, and leaves a
+lazy callback that derives only its addressed recipient's result.  It never
+reads the queue, a checkout, or the network.
 """
 
 from __future__ import annotations
@@ -123,6 +124,26 @@ _RESULT_KEYS = frozenset(
 )
 _PROVIDER_SCHEMA_VERSION = 1
 _PROVIDER_KEYS = frozenset(
+    {
+        "protocol",
+        "schema_version",
+        "lane",
+        "manifest",
+        "manifest_identity",
+        "manifest_compiler_identity",
+        "config_identity",
+        "tool_identity",
+        "budget",
+        "budget_identity",
+        "provider_identity",
+        "target_inputs",
+        "idioms",
+        "lineage_contexts",
+        "results",
+        "state_identity",
+    }
+)
+_LEGACY_PROVIDER_KEYS = frozenset(
     {
         "protocol",
         "schema_version",
@@ -451,6 +472,12 @@ def _manifest_binding(manifest: RunManifest) -> tuple[str, str, str]:
     except (KeyError, TypeError) as exc:
         raise IdiomAtlasInputError(f"manifest has no tool identity for {IDIOM_LANE}") from exc
     return config_identity, _identity(tool_identity, IDIOM_LANE + " tool identity"), hash_canonical(manifest.to_dict())
+
+
+def _budget_identity(budget: Budget) -> str:
+    if not isinstance(budget, Budget):
+        raise IdiomAtlasBudgetError("idiom atlas budget must be typed")
+    return hash_canonical(budget.to_dict())
 
 
 # production-audit: pure-value
@@ -1369,7 +1396,7 @@ def _validate_result_bindings(
 # production-audit: pure-value
 @dataclass(frozen=True)
 class IdiomAtlasProvider:
-    """Frozen idiom-atlas results and an ordinary replay-safe callback."""
+    """Immutable idiom-atlas execution specification and lazy callback."""
 
     lane: str
     manifest_identity: str
@@ -1379,7 +1406,14 @@ class IdiomAtlasProvider:
     target_inputs: tuple[IdiomAtlasTargetInput, ...]
     idioms: tuple[CompilerIdiomObservation, ...]
     lineage_contexts: tuple[CompletedLineageContext, ...]
-    results: tuple[tuple[str, Mapping[str, Any]], ...]
+    results: tuple[tuple[str, Mapping[str, Any]], ...] = ()
+    manifest: Optional[RunManifest] = None
+    manifest_compiler_identity: Optional[str] = None
+    budget: Optional[Budget] = None
+    budget_identity: Optional[str] = None
+    # Old result-bearing records are accepted only as a read-only compatibility
+    # path. New production providers always carry a manifest and no results.
+    legacy_format: bool = False
 
     def __post_init__(self) -> None:
         if self.lane != IDIOM_LANE:
@@ -1388,6 +1422,62 @@ class IdiomAtlasProvider:
         _identity(self.config_identity, "provider config identity")
         _identity(self.tool_identity, "provider tool identity")
         _identity(self.provider_identity, "provider identity")
+        if type(self.legacy_format) is not bool:
+            raise IdiomAtlasInputError("provider legacy format flag must be boolean")
+
+        if self.manifest is not None:
+            if not isinstance(self.manifest, RunManifest):
+                raise IdiomAtlasInputError("lazy provider manifest must be typed")
+            expected_config, expected_tool, expected_manifest = _manifest_binding(
+                self.manifest
+            )
+            expected_budget = _manifest_lane_budget(self.manifest)
+            expected_budget_identity = _budget_identity(expected_budget)
+            if self.manifest_identity != expected_manifest:
+                raise IdiomAtlasInputError(
+                    "provider manifest identity differs from its exact manifest"
+                )
+            if self.config_identity != expected_config:
+                raise IdiomAtlasInputError(
+                    "provider config identity differs from its exact manifest"
+                )
+            if self.tool_identity != expected_tool:
+                raise IdiomAtlasInputError(
+                    "provider tool identity differs from its exact manifest"
+                )
+            if self.manifest_compiler_identity != self.manifest.compiler_identity:
+                raise IdiomAtlasInputError(
+                    "provider compiler identity differs from its exact manifest"
+                )
+            if not isinstance(self.budget, Budget) or self.budget != expected_budget:
+                raise IdiomAtlasBudgetError(
+                    "provider budget differs from its exact manifest"
+                )
+            if self.budget_identity != expected_budget_identity:
+                raise IdiomAtlasBudgetError(
+                    "provider budget identity differs from its exact manifest"
+                )
+            if self.results:
+                raise IdiomAtlasInputError(
+                    "lazy provider cannot carry completed callback results"
+                )
+        else:
+            if any(
+                item is not None
+                for item in (
+                    self.manifest_compiler_identity,
+                    self.budget,
+                    self.budget_identity,
+                )
+            ):
+                raise IdiomAtlasInputError(
+                    "legacy provider cannot carry lazy manifest bindings"
+                )
+            if not self.results:
+                raise IdiomAtlasInputError(
+                    "provider manifest is required for a lazy execution specification"
+                )
+
         if not isinstance(self.target_inputs, tuple):
             try:
                 object.__setattr__(self, "target_inputs", tuple(self.target_inputs))
@@ -1402,6 +1492,18 @@ class IdiomAtlasProvider:
             raise IdiomAtlasInputError("provider target inputs must be canonical")
         if not self.target_inputs:
             raise IdiomAtlasInputError("provider target inputs must be nonempty")
+        if self.manifest is not None:
+            expected_target_ids = tuple(self.manifest.queue_record_ids)
+            if target_ids != expected_target_ids:
+                raise IdiomAtlasSubsetViolation(
+                    "provider targets must equal the exact manifest subset"
+                )
+            for target in self.target_inputs:
+                if self.manifest.target_identities.get(target.recipient_id) != target.target_identity:
+                    raise IdiomAtlasArtifactError(
+                        "provider target identity differs from its exact manifest"
+                    )
+
         if not isinstance(self.idioms, tuple) or any(
             not isinstance(item, CompilerIdiomObservation) for item in self.idioms
         ):
@@ -1429,10 +1531,15 @@ class IdiomAtlasProvider:
         ledger_ids = [item.ledger_identity for item in self.lineage_contexts]
         if ledger_ids != sorted(set(ledger_ids)) or not ledger_ids:
             raise IdiomAtlasInputError("provider lineage contexts must be canonical")
+
         try:
             raw_results = tuple(self.results)
         except TypeError as exc:
             raise IdiomAtlasInputError("provider results must be a sequence") from exc
+        if self.manifest is not None and raw_results:
+            raise IdiomAtlasInputError(
+                "lazy provider cannot carry completed callback results"
+            )
         result_ids: list[str] = []
         normalized_results: list[tuple[str, Mapping[str, Any]]] = []
         for item in raw_results:
@@ -1452,9 +1559,10 @@ class IdiomAtlasProvider:
         result_ids_tuple = tuple(result_ids)
         if result_ids_tuple != tuple(sorted(result_ids_tuple)) or len(set(result_ids_tuple)) != len(result_ids_tuple):
             raise IdiomAtlasInputError("provider results must be unique and canonical")
-        if set(result_ids_tuple) != set(target_ids):
+        if raw_results and set(result_ids_tuple) != set(target_ids):
             raise IdiomAtlasSubsetViolation("provider results must cover the frozen target subset")
         object.__setattr__(self, "results", tuple(normalized_results))
+
         expected_provider_identity = _provider_identity(
             manifest_identity=self.manifest_identity,
             config_identity=self.config_identity,
@@ -1462,6 +1570,8 @@ class IdiomAtlasProvider:
             targets=self.target_inputs,
             idioms=self.idioms,
             lineage_contexts=self.lineage_contexts,
+            manifest_compiler_identity=self.manifest_compiler_identity,
+            budget_identity=self.budget_identity,
         )
         if self.provider_identity != expected_provider_identity:
             raise IdiomAtlasInputError("provider identity differs from immutable input evidence")
@@ -1482,14 +1592,41 @@ class IdiomAtlasProvider:
     def callback(self, recipient: Recipient) -> Mapping[str, Any]:
         if not isinstance(recipient, Recipient):
             raise IdiomAtlasInputError("idiom atlas callback needs a typed Recipient")
-        for recipient_id, result in self.results:
-            if recipient_id == recipient.recipient_id:
-                # Build a new outer mapping only.  All nested values are frozen
-                # candidates, tuples, and mapping proxies, so replay cannot
-                # mutate the provider's retained result.
-                return dict(result)
-        raise IdiomAtlasSubsetViolation(
-            f"recipient {recipient.recipient_id} is outside the provider subset"
+        target = next(
+            (item for item in self.target_inputs if item.recipient_id == recipient.recipient_id),
+            None,
+        )
+        if target is None:
+            raise IdiomAtlasSubsetViolation(
+                f"recipient {recipient.recipient_id} is outside the provider subset"
+            )
+        if self.results:
+            for recipient_id, result in self.results:
+                if recipient_id == recipient.recipient_id:
+                    # Legacy records return a fresh outer mapping only. Nested
+                    # state remains frozen and the compatibility path is read-only.
+                    return dict(result)
+            raise IdiomAtlasSubsetViolation(
+                f"recipient {recipient.recipient_id} has no legacy result"
+            )
+        if (
+            self.manifest_compiler_identity is None
+            or not isinstance(self.budget, Budget)
+            or self.budget_identity is None
+        ):
+            raise IdiomAtlasInputError("lazy provider execution bindings are incomplete")
+        return dict(
+            _result_for_target(
+                target=target,
+                idioms=self.idioms,
+                lineage_contexts=self.lineage_contexts,
+                manifest_compiler_identity=self.manifest_compiler_identity,
+                budget=self.budget,
+                provider_identity=self.provider_identity,
+                config_identity=self.config_identity,
+                tool_identity=self.tool_identity,
+                manifest_identity=self.manifest_identity,
+            )
         )
 
     def __call__(self, recipient: Recipient) -> Mapping[str, Any]:
@@ -1499,28 +1636,51 @@ class IdiomAtlasProvider:
         return {self.lane: self.callback}
 
     def _state_payload(self) -> dict[str, Any]:
+        if self.manifest is None:
+            # Preserve the historical result-bearing representation as a
+            # read-only compatibility format. It is never emitted by build.
+            return {
+                "protocol": IDIOM_PROVIDER_PROTOCOL,
+                "schema_version": _PROVIDER_SCHEMA_VERSION,
+                "lane": self.lane,
+                "manifest_identity": self.manifest_identity,
+                "config_identity": self.config_identity,
+                "tool_identity": self.tool_identity,
+                "provider_identity": self.provider_identity,
+                "target_inputs": [
+                    item.to_dict(include_bytes=True) for item in self.target_inputs
+                ],
+                "idioms": [item.to_dict() for item in self.idioms],
+                "lineage_contexts": [item.to_dict() for item in self.lineage_contexts],
+                "results": [
+                    _serialized_result(recipient_id, result)
+                    for recipient_id, result in self.results
+                ],
+            }
         return {
             "protocol": IDIOM_PROVIDER_PROTOCOL,
             "schema_version": _PROVIDER_SCHEMA_VERSION,
             "lane": self.lane,
+            "manifest": self.manifest.to_dict(),
             "manifest_identity": self.manifest_identity,
+            "manifest_compiler_identity": self.manifest_compiler_identity,
             "config_identity": self.config_identity,
             "tool_identity": self.tool_identity,
+            "budget": self.budget.to_dict(),
+            "budget_identity": self.budget_identity,
             "provider_identity": self.provider_identity,
             "target_inputs": [
                 item.to_dict(include_bytes=True) for item in self.target_inputs
             ],
             "idioms": [item.to_dict() for item in self.idioms],
             "lineage_contexts": [item.to_dict() for item in self.lineage_contexts],
-            "results": [
-                _serialized_result(recipient_id, result)
-                for recipient_id, result in self.results
-            ],
+            # A lazy spec deliberately does not retain completed candidates.
+            "results": [],
         }
 
     @property
     def state_identity(self) -> str:
-        """Identity of the complete callback state, including frozen results."""
+        """Identity of the immutable execution specification."""
 
         return hash_canonical(self._state_payload())
 
@@ -1536,17 +1696,20 @@ class IdiomAtlasProvider:
         *,
         archive: ContentAddressedArchive,
     ) -> "IdiomAtlasProvider":
-        """Reconstruct the frozen provider from complete archived state.
+        """Reconstruct a lazy spec with archive verification and no execution.
 
-        This path intentionally consumes the stored candidate results.  It
-        does not select corpus entries, invoke replay, consult a checkout, or
-        call an executable.  The supplied archive is used only to verify the
-        immutable target and corpus source artifacts that the stored state
-        names.
+        Legacy result-bearing records are accepted only when they use the
+        historical field set. Their stored results are validated and returned
+        read-only; they are never used as the initial production build path.
         """
 
         data = _strict_mapping(value, "idiom atlas provider")
-        if set(data) != _PROVIDER_KEYS:
+        fields = set(data)
+        if fields == _LEGACY_PROVIDER_KEYS:
+            legacy_format = True
+        elif fields == _PROVIDER_KEYS:
+            legacy_format = False
+        else:
             raise IdiomAtlasInputError(
                 "idiom atlas provider fields are incomplete or unknown"
             )
@@ -1572,6 +1735,51 @@ class IdiomAtlasProvider:
         provider_identity = _identity(
             data["provider_identity"], "provider identity"
         )
+        manifest: Optional[RunManifest] = None
+        manifest_compiler_identity: Optional[str] = None
+        budget: Optional[Budget] = None
+        budget_identity: Optional[str] = None
+        if not legacy_format:
+            manifest = _coerce_manifest(data["manifest"])
+            expected_config, expected_tool, expected_manifest = _manifest_binding(manifest)
+            if manifest_identity != expected_manifest:
+                raise IdiomAtlasInputError(
+                    "provider manifest identity differs from serialized manifest"
+                )
+            if config_identity != expected_config:
+                raise IdiomAtlasInputError(
+                    "provider config identity differs from serialized manifest"
+                )
+            if tool_identity != expected_tool:
+                raise IdiomAtlasInputError(
+                    "provider tool identity differs from serialized manifest"
+                )
+            manifest_compiler_identity = _identity(
+                data["manifest_compiler_identity"],
+                "provider compiler identity",
+            )
+            if manifest_compiler_identity != manifest.compiler_identity:
+                raise IdiomAtlasInputError(
+                    "provider compiler identity differs from serialized manifest"
+                )
+            try:
+                budget = Budget.from_dict(
+                    _strict_mapping(data["budget"], "provider budget")
+                )
+            except (SearchValidationError, TypeError, ValueError, KeyError) as exc:
+                raise IdiomAtlasBudgetError(
+                    "provider budget is invalid"
+                ) from exc
+            expected_budget = _manifest_lane_budget(manifest)
+            if budget != expected_budget:
+                raise IdiomAtlasBudgetError(
+                    "provider budget differs from serialized manifest"
+                )
+            budget_identity = _identity(data["budget_identity"], "provider budget identity")
+            if budget_identity != _budget_identity(budget):
+                raise IdiomAtlasBudgetError(
+                    "provider budget identity differs from serialized budget"
+                )
 
         raw_targets = _strict_list(data["target_inputs"], "provider target inputs")
         targets = tuple(
@@ -1590,6 +1798,10 @@ class IdiomAtlasProvider:
         contexts = _parse_lineage_contexts(data["lineage_contexts"])
 
         raw_results = _strict_list(data["results"], "provider results")
+        if not legacy_format and raw_results:
+            raise IdiomAtlasInputError(
+                "lazy provider reconstruction cannot consume completed results"
+            )
         parsed_results: list[tuple[str, Mapping[str, Any]]] = []
         result_fields = _PROVIDER_RESULT_KEYS
         for index, raw_result in enumerate(raw_results):
@@ -1665,6 +1877,11 @@ class IdiomAtlasProvider:
             idioms=idioms,
             lineage_contexts=contexts,
             results=tuple(parsed_results),
+            manifest=manifest,
+            manifest_compiler_identity=manifest_compiler_identity,
+            budget=budget,
+            budget_identity=budget_identity,
+            legacy_format=legacy_format,
         )
         declared_state_identity = _identity(
             data["state_identity"], "provider state identity"
@@ -1684,18 +1901,155 @@ def _provider_identity(
     targets: Sequence[IdiomAtlasTargetInput],
     idioms: Sequence[CompilerIdiomObservation],
     lineage_contexts: Sequence[CompletedLineageContext],
+    manifest_compiler_identity: Optional[str] = None,
+    budget_identity: Optional[str] = None,
 ) -> str:
-    return hash_canonical(
+    payload: dict[str, Any] = {
+        "protocol": IDIOM_PROVIDER_PROTOCOL,
+        "module_identity": MODULE_IDENTITY,
+        "manifest_identity": manifest_identity,
+        "config_identity": config_identity,
+        "tool_identity": tool_identity,
+        "targets": [item.to_dict(include_bytes=True) for item in targets],
+        "idioms": [item.to_dict() for item in idioms],
+        "lineage_contexts": [item.to_dict() for item in lineage_contexts],
+    }
+    if (manifest_compiler_identity is None) != (budget_identity is None):
+        raise IdiomAtlasInputError(
+            "lazy provider identity requires compiler and budget bindings together"
+        )
+    if manifest_compiler_identity is not None:
+        payload["manifest_compiler_identity"] = _identity(
+            manifest_compiler_identity, "provider compiler identity"
+        )
+        payload["budget_identity"] = _identity(
+            budget_identity, "provider budget identity"
+        )
+    return hash_canonical(payload)
+
+
+def _result_for_target(
+    *,
+    target: IdiomAtlasTargetInput,
+    idioms: Sequence[CompilerIdiomObservation],
+    lineage_contexts: tuple[CompletedLineageContext, ...],
+    manifest_compiler_identity: str,
+    budget: Budget,
+    provider_identity: str,
+    config_identity: str,
+    tool_identity: str,
+    manifest_identity: str,
+) -> Mapping[str, Any]:
+    limit = budget.limit
+    draft_text = target.draft_bytes.decode("utf-8")
+    draft_hash = target.draft_identity
+    candidates: list[LaneCandidate] = []
+    seen_candidate_ids: set[str] = set()
+    unique_candidate_ids: list[str] = []
+    rejection_counts: dict[str, int] = {}
+    applicable = 0
+    overflow = 0
+    compiler_mismatch = 0
+    unsupported = 0
+    for observation in idioms:
+        if observation.compiler_identity != manifest_compiler_identity:
+            compiler_mismatch += 1
+            continue
+        ledgers = _lineage_support(lineage_contexts, observation)
+        if not ledgers:
+            unsupported += 1
+            continue
+        applied_text, mode = _apply_observation(draft_text, observation)
+        if applied_text is None:
+            rejection_counts[mode] = rejection_counts.get(mode, 0) + 1
+            continue
+        applicable += 1
+        candidate_id = hash_bytes(applied_text.encode("utf-8"))
+        if candidate_id in seen_candidate_ids:
+            rejection_counts["duplicate_candidate"] = (
+                rejection_counts.get("duplicate_candidate", 0) + 1
+            )
+            continue
+        seen_candidate_ids.add(candidate_id)
+        unique_candidate_ids.append(candidate_id)
+        if len(candidates) >= limit:
+            overflow += 1
+            continue
+        provenance = _base_provenance(
+            provider_identity=provider_identity,
+            manifest_identity=manifest_identity,
+            config_identity=config_identity,
+            tool_identity=tool_identity,
+            recipient=target,
+        )
+        candidates.append(
+            _candidate(
+                recipient=target,
+                source=applied_text,
+                base_source_identity=draft_hash,
+                observation=observation,
+                replay_modes=mode.split("+"),
+                lineage_ledgers=ledgers,
+                provenance=provenance,
+            )
+        )
+    if compiler_mismatch:
+        rejection_counts["compiler_mismatch"] = compiler_mismatch
+    if unsupported:
+        rejection_counts["no_lineage_support"] = unsupported
+    if overflow:
+        rejection_counts["budget_exhausted"] = overflow
+    summary = _base_provenance(
+        provider_identity=provider_identity,
+        manifest_identity=manifest_identity,
+        config_identity=config_identity,
+        tool_identity=tool_identity,
+        recipient=target,
+    )
+    summary.update(
         {
-            "protocol": IDIOM_PROVIDER_PROTOCOL,
-            "module_identity": MODULE_IDENTITY,
-            "manifest_identity": manifest_identity,
-            "config_identity": config_identity,
-            "tool_identity": tool_identity,
-            "targets": [item.to_dict(include_bytes=True) for item in targets],
-            "idioms": [item.to_dict() for item in idioms],
-            "lineage_contexts": [item.to_dict() for item in lineage_contexts],
+            "kind": "idiom_atlas_summary",
+            "corpus_idiom_count": len(idioms),
+            "applicable_idiom_count": applicable,
+            "lineage_ledger_identities": [
+                item.ledger_identity for item in lineage_contexts
+            ],
         }
+    )
+    if candidates:
+        completion = "budget_exhausted" if overflow else "matched_pending_oracle"
+        refusal = None
+        reason = "idiom atlas produced deterministic measured rewrites of the archived draft"
+    elif overflow:
+        completion = "budget_exhausted"
+        refusal = "idiom_atlas_budget_exhausted"
+        reason = "idiom atlas candidate budget was exhausted before a candidate could be returned"
+    elif applicable:
+        completion = "inapplicable"
+        refusal = "idiom_atlas_no_candidate"
+        reason = "applicable idioms produced no distinct candidate"
+    elif idioms:
+        completion = "inapplicable"
+        refusal = "idiom_atlas_no_applicable_idiom"
+        reason = "no deduplicated idiom is applicable to this draft under the run compiler"
+    else:
+        completion = "inapplicable"
+        refusal = "idiom_atlas_corpus_empty"
+        reason = "the corpus supplied no accepted draft-landed idiom"
+    return _result(
+        recipient=target,
+        candidates=candidates,
+        candidate_identities=tuple(unique_candidate_ids),
+        attempts=applicable,
+        rejection_counts=rejection_counts,
+        refusal_code=refusal,
+        reason=reason,
+        completion_reason=completion,
+        provider_identity=provider_identity,
+        manifest_identity=manifest_identity,
+        config_identity=config_identity,
+        tool_identity=tool_identity,
+        summary_provenance=summary,
     )
 
 
@@ -1711,125 +2065,23 @@ def _results(
     tool_identity: str,
     manifest_identity: str,
 ) -> tuple[tuple[str, Mapping[str, Any]], ...]:
-    limit = budget.limit
-    results: list[tuple[str, Mapping[str, Any]]] = []
-    for target in targets:
-        draft_text = target.draft_bytes.decode("utf-8")
-        draft_hash = target.draft_identity
-        candidates: list[LaneCandidate] = []
-        seen_candidate_ids: set[str] = set()
-        unique_candidate_ids: list[str] = []
-        rejection_counts: dict[str, int] = {}
-        applicable = 0
-        overflow = 0
-        compiler_mismatch = 0
-        unsupported = 0
-        for observation in idioms:
-            if observation.compiler_identity != manifest_compiler_identity:
-                compiler_mismatch += 1
-                continue
-            ledgers = _lineage_support(lineage_contexts, observation)
-            if not ledgers:
-                unsupported += 1
-                continue
-            applied_text, mode = _apply_observation(draft_text, observation)
-            if applied_text is None:
-                rejection_counts[mode] = rejection_counts.get(mode, 0) + 1
-                continue
-            applicable += 1
-            candidate_id = hash_bytes(applied_text.encode("utf-8"))
-            if candidate_id in seen_candidate_ids:
-                rejection_counts["duplicate_candidate"] = (
-                    rejection_counts.get("duplicate_candidate", 0) + 1
-                )
-                continue
-            seen_candidate_ids.add(candidate_id)
-            unique_candidate_ids.append(candidate_id)
-            if len(candidates) >= limit:
-                overflow += 1
-                continue
-            provenance = _base_provenance(
+    return tuple(
+        (
+            target.recipient_id,
+            _result_for_target(
+                target=target,
+                idioms=idioms,
+                lineage_contexts=lineage_contexts,
+                manifest_compiler_identity=manifest_compiler_identity,
+                budget=budget,
                 provider_identity=provider_identity,
-                manifest_identity=manifest_identity,
                 config_identity=config_identity,
                 tool_identity=tool_identity,
-                recipient=target,
-            )
-            candidates.append(
-                _candidate(
-                    recipient=target,
-                    source=applied_text,
-                    base_source_identity=draft_hash,
-                    observation=observation,
-                    replay_modes=mode.split("+"),
-                    lineage_ledgers=ledgers,
-                    provenance=provenance,
-                )
-            )
-        if compiler_mismatch:
-            rejection_counts["compiler_mismatch"] = compiler_mismatch
-        if unsupported:
-            rejection_counts["no_lineage_support"] = unsupported
-        if overflow:
-            rejection_counts["budget_exhausted"] = overflow
-        summary = _base_provenance(
-            provider_identity=provider_identity,
-            manifest_identity=manifest_identity,
-            config_identity=config_identity,
-            tool_identity=tool_identity,
-            recipient=target,
+                manifest_identity=manifest_identity,
+            ),
         )
-        summary.update(
-            {
-                "kind": "idiom_atlas_summary",
-                "corpus_idiom_count": len(idioms),
-                "applicable_idiom_count": applicable,
-                "lineage_ledger_identities": [
-                    item.ledger_identity for item in lineage_contexts
-                ],
-            }
-        )
-        if candidates:
-            completion = "budget_exhausted" if overflow else "matched_pending_oracle"
-            refusal = None
-            reason = "idiom atlas produced deterministic measured rewrites of the archived draft"
-        elif overflow:
-            completion = "budget_exhausted"
-            refusal = "idiom_atlas_budget_exhausted"
-            reason = "idiom atlas candidate budget was exhausted before a candidate could be returned"
-        elif applicable:
-            completion = "inapplicable"
-            refusal = "idiom_atlas_no_candidate"
-            reason = "applicable idioms produced no distinct candidate"
-        elif idioms:
-            completion = "inapplicable"
-            refusal = "idiom_atlas_no_applicable_idiom"
-            reason = "no deduplicated idiom is applicable to this draft under the run compiler"
-        else:
-            completion = "inapplicable"
-            refusal = "idiom_atlas_corpus_empty"
-            reason = "the corpus supplied no accepted draft-landed idiom"
-        results.append(
-            (
-                target.recipient_id,
-                _result(
-                    recipient=target,
-                    candidates=candidates,
-                    candidate_identities=tuple(unique_candidate_ids),
-                    attempts=applicable,
-                    rejection_counts=rejection_counts,
-                    refusal_code=refusal,
-                    reason=reason,
-                    completion_reason=completion,
-                    provider_identity=provider_identity,
-                    manifest_identity=manifest_identity,
-                    config_identity=config_identity,
-                    tool_identity=tool_identity,
-                    summary_provenance=summary,
-                ),
-            )
-        )
-    return tuple(results)
+        for target in targets
+    )
 
 
 def build_idiom_atlas_provider(
@@ -1848,6 +2100,7 @@ def build_idiom_atlas_provider(
     targets = _ordered_targets(typed_manifest, target_inputs, archive=archive)
     idioms = _select_idioms(corpus_entries, archive=archive)
     contexts = _bind_lineage_contexts(lineage_contexts)
+    budget_identity = _budget_identity(budget)
     provider_identity = _provider_identity(
         manifest_identity=manifest_identity,
         config_identity=config_identity,
@@ -1855,17 +2108,8 @@ def build_idiom_atlas_provider(
         targets=targets,
         idioms=idioms,
         lineage_contexts=contexts,
-    )
-    results = _results(
-        targets=targets,
-        idioms=idioms,
-        lineage_contexts=contexts,
         manifest_compiler_identity=typed_manifest.compiler_identity,
-        budget=budget,
-        provider_identity=provider_identity,
-        config_identity=config_identity,
-        tool_identity=tool_identity,
-        manifest_identity=manifest_identity,
+        budget_identity=budget_identity,
     )
     return IdiomAtlasProvider(
         lane=IDIOM_LANE,
@@ -1876,7 +2120,11 @@ def build_idiom_atlas_provider(
         target_inputs=targets,
         idioms=idioms,
         lineage_contexts=contexts,
-        results=results,
+        manifest=typed_manifest,
+        manifest_compiler_identity=typed_manifest.compiler_identity,
+        budget=budget,
+        budget_identity=budget_identity,
+        results=(),
     )
 
 

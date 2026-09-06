@@ -87,6 +87,7 @@ _COMPLETION_REASONS = frozenset(
         "matched_pending_oracle",
         "operator_stop",
         "superseded_by_stronger_evidence",
+        "execution_failed",
     }
 )
 
@@ -2051,6 +2052,15 @@ def _preserved_discovery(
         )
         if not marker:
             continue
+        from automation.search_source_context import candidate_belongs_to_recipient
+        if not candidate_belongs_to_recipient(text, Path(relative), recipient.recipient_id):
+            result.rejection_counts["foreign_recipient_candidate"] += 1
+            result.provenance.append(_provenance(
+                lane="preserved_candidate", recipient=recipient,
+                kind="foreign_recipient_candidate", source=relative,
+                details={"reason": "preserved translation unit belongs to a different recipient"}, root=root,
+            ))
+            continue
         evidence = _provenance(
             lane="preserved_candidate",
             recipient=recipient,
@@ -2229,6 +2239,32 @@ def _twin_discovery(
     # it changes the lane identity.
     lane = "transplant"
     result = _Discovery()
+    transplant = _load_module("transplant")
+    prepare = getattr(transplant, "instrumented_draft", None)
+    if callable(prepare):
+        ok, source, path, detail = prepare(recipient.function, recipient.overlay)
+        result.attempts = 1
+        evidence = _provenance(
+            lane=lane, recipient=recipient, kind="prepared_transplant",
+            source=path or recipient.recipient_id,
+            details={"preflight": detail, "destination": path, "prepared": ok},
+            source_identity=hash_bytes((source or detail).encode("utf-8")),
+            input_identity=hash_bytes(detail.encode("utf-8")),
+        )
+        result.provenance.append(evidence)
+        result.input_identities.append(evidence["input_identity"])
+        if ok:
+            result.candidates.append(_source_candidate(
+                lane=lane, recipient=recipient, source=source, provenance=(evidence,),
+            ))
+            result.completion_reason = "matched_pending_oracle"
+            result.reason = "configured donor adapted into the destination translation unit"
+        else:
+            result.completion_reason = "inapplicable"
+            result.refusal_code = "transplant_preflight_rejected"
+            result.rejection_counts[result.refusal_code] += 1
+            result.reason = detail
+        return result
     rows = _twin_rows(recipient)
     symbols: list[tuple[int, str, str, Mapping[str, Any]]] = []
     rank = {"name": 0, "shape": 1, "token": 2}
@@ -3590,7 +3626,7 @@ def _receipt(
         discovery.refusal_code
         and not candidates
         and discovery.completion_reason
-        not in {"budget_exhausted", "search_space_exhausted"}
+        not in {"budget_exhausted", "search_space_exhausted", "execution_failed"}
     ):
         discovery.completion_reason = "inapplicable"
     if isinstance(discovery.attempts, bool) or not isinstance(discovery.attempts, int) or discovery.attempts < 0:

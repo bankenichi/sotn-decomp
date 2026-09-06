@@ -824,6 +824,8 @@ def status_run(value: str | os.PathLike[str]) -> dict[str, Any]:
     _verify_factory_archive_only(root, state.manifest)
     _require_selected_lanes(state.manifest)
     stopped = state.stopped.to_dict() if state.stopped is not None else None
+    from automation.search_evaluator import search_funnel
+    from automation.search_archive import ContentAddressedArchive
     return {
         "command": "status",
         "ok": True,
@@ -835,6 +837,7 @@ def status_run(value: str | os.PathLike[str]) -> dict[str, Any]:
         "last_sequence": state.last_sequence,
         "last_event_hash": state.last_event_hash,
         "stopped": stopped,
+        "funnel": search_funnel(state.manifest, state.events, ContentAddressedArchive(root)),
     }
 
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 import sys
 import tempfile
 import unittest
+from dataclasses import replace
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -17,6 +18,7 @@ from automation.search_permuter_lanes import (
     PERMUTER_RECOMBINE_LANE,
     PERMUTER_TARGETED_LANE,
     PermuterLaneConfig,
+    PermuterHandoffStore,
     PermuterProviderHandoffError,
     PermuterProviderInputError,
     PermuterProviderInvalidResponse,
@@ -37,6 +39,7 @@ from automation.search_types import (
     RunManifest,
     canonical_subset_identity,
     hash_bytes,
+    hash_canonical,
 )
 
 
@@ -165,6 +168,53 @@ def provider_fixture(
 
 
 class PermuterLaneTests(unittest.TestCase):
+    def test_binding_boolean_is_exact_and_handoff_lookup_is_typed(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            archive, _manifest, item, binding, provider = provider_fixture(
+                directory,
+                callback=lambda request: {
+                    "iterations": 1,
+                    "candidates": [{"source": "int f(void) { return 1; }\n"}],
+                },
+            )
+            with self.assertRaises(PermuterProviderInputError):
+                replace(binding, available="false")
+            recipient = Recipient(item.recipient_id, "ST", "func_permuter_test")
+            provider.run(recipient)
+            store = PermuterHandoffStore(archive)
+            request = provider._request(item, "start")
+            archive.put_json(
+                {"request_identity": request.request_identity},
+                category="permuter-requests",
+                suffix=".json",
+            )
+            with self.assertRaises(PermuterProviderHandoffError):
+                store.find_request(request.request_identity)
+
+    def test_ambiguous_typed_stop_records_are_refused(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            archive, _manifest, item, _binding, provider = provider_fixture(
+                directory,
+                callback=lambda request: {
+                    "iterations": 1,
+                    "candidates": [],
+                },
+            )
+            recipient = Recipient(item.recipient_id, "ST", "func_permuter_test")
+            provider.stop(recipient, reason="first stop")
+            store = PermuterHandoffStore(archive)
+            request = provider._request(item, "start")
+            first = store.find_stop(request.session_identity, "start")
+            self.assertIsNotNone(first)
+            second = dict(first[0])
+            second["reason"] = "second stop"
+            second["stop_identity"] = hash_canonical(
+                {key: value for key, value in second.items() if key != "stop_identity"}
+            )
+            store.put_stop(second)
+            with self.assertRaises(PermuterProviderHandoffError):
+                store.find_stop(request.session_identity, "start")
+
     def test_all_four_factories_bind_distinct_algorithms(self) -> None:
         for lane, builder in (
             (PERMUTER_RANDOM_LANE, build_permuter_random_provider),

@@ -2082,9 +2082,9 @@ def _preflight_candidate_children(
             )
         validated.append(lane_candidate)
 
-    # Candidate IDs are already the canonical order used by the lane receipt.
-    # Keep validating the complete outcome above, but spend coordinator budget
-    # only on the bounded best prefix.
+    # Validate the complete outcome, then take a deterministic bounded sample.
+    # Hash order is not a quality ranking. The evaluator records every omitted
+    # candidate and derives best-measured selection from actual scores.
     selected = tuple(
         sorted(validated, key=lambda item: item.candidate_id)
         [:MAX_CHILD_TASKS_PER_BASE]
@@ -2127,6 +2127,7 @@ def _fan_out_candidates(
     *,
     child_base: int,
     coordinator_limit: int,
+    evaluator: Any = None,
 ) -> int:
     """Materialize bounded candidates through deterministic single-result tasks."""
     candidates = tuple(outcome.candidates)
@@ -2151,6 +2152,12 @@ def _fan_out_candidates(
         child = coordinator.schedule_task(child)
         if _task_is_terminal(coordinator, child.task_id):
             continue
+        if evaluator is not None:
+            coordinator.start_task(child.task_id)
+            child_result = replace(
+                child_result, candidate=coordinator._materialize_candidate(child_result),
+            )
+            child_result = evaluator.evaluate(coordinator, child_result)
         coordinator.commit_epoch((child_result,))
     return len(children)
 
@@ -2304,6 +2311,8 @@ def _completed_run_result(
     if _factory_bound_manifest(manifest):
         receipt = archive_integration_gate(root, archive=coordinator.archive)
         result["integration_gate"] = receipt.to_dict()
+        from .search_evaluator import search_funnel
+        result["funnel"] = search_funnel(manifest, coordinator.events, coordinator.archive)
     return result
 
 
@@ -2363,6 +2372,10 @@ def _run_instrumented_locked(
             "recovered_task_ids": [],
             "state": state,
         }
+    evaluator = None
+    if _factory_bound_manifest(manifest) and EVALUATOR_TOOL_KEY in manifest.tool_identities:
+        from .search_evaluator import IsolatedEvaluator
+        evaluator = IsolatedEvaluator._from_verified_factory(manifest, coordinator.archive)
     durable_state_changed = not had_prior_events
     executed = []
     resumed = []
@@ -2427,6 +2440,7 @@ def _run_instrumented_locked(
                     reference,
                     child_base=task_count + child_offset,
                     coordinator_limit=manifest.coordinator_budget.limit,
+                    evaluator=evaluator,
                 )
                 if not _task_is_terminal(coordinator, task.task_id):
                     coordinator.commit_epoch(
@@ -2437,6 +2451,9 @@ def _run_instrumented_locked(
                         "lane task did not reach a terminal state after fan-out"
                     )
                 proposal = outcome.receipt
+            if evaluator is not None:
+                from .search_evaluator import measured_lane_proposal
+                proposal = measured_lane_proposal(coordinator, task, outcome)
             child_offset += child_count
             before_receipt = coordinator.events
             coordinator.record_exhaustion(
@@ -2567,6 +2584,15 @@ def _run_instrumented_entry(
                 "factory runtime evidence differs from the immutable run"
             ) from exc
         if "search_run_factory_marker" in manifest.tool_identities:
+            if lane_executor is not execute_task:
+                raise SupervisorIntegrationError("factory runs reject caller lane executors")
+            canonical_repo = root.parents[3]
+            supplied_options = dict(options or {})
+            if set(supplied_options).difference({"repo_root"}):
+                raise SupervisorIntegrationError("factory runs reject unbound execution options")
+            if "repo_root" in supplied_options and Path(supplied_options["repo_root"]).resolve() != canonical_repo:
+                raise SupervisorIntegrationError("factory execution repository differs from archive")
+            options = {"repo_root": str(canonical_repo)}
             try:
                 try:
                     from .search_provider_lanes import reconstruct_lane_adapters

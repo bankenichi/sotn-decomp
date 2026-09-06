@@ -2280,7 +2280,8 @@
             "dominated",
             "compile_failed",
             "rejected",
-            "zero_pending_oracle"
+            "zero_pending_oracle",
+            "measured"
           ]
         }
       }
@@ -2492,7 +2493,8 @@
             "inapplicable",
             "matched_pending_oracle",
             "operator_stop",
-            "superseded_by_stronger_evidence"
+            "superseded_by_stronger_evidence",
+            "execution_failed"
           ]
         },
         "receipt_artifact": {

@@ -114,6 +114,16 @@ class TestSearchFrontier(unittest.TestCase):
         with self.assertRaises(Exception):
             graph.add(replace(first, recipient_id="record-2"))
 
+    def test_convergent_lanes_share_source_and_retain_both_origins(self):
+        first = candidate(9, (0, 0, 0, 0, 0), 0, "first")
+        graph = CandidateGraph()
+        graph.add(first)
+        second = replace(first, lane="permuter_random")
+        graph.add(second)
+        self.assertEqual(graph.get(first.candidate_id), first)
+        self.assertEqual({edge.lane for edge in graph.provenance(first.candidate_id)},
+                         {first.lane, second.lane})
+
 
 if __name__ == "__main__":
     unittest.main()

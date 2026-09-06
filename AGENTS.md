@@ -112,6 +112,13 @@ These are absolute. Each exists because breaking it cost real work.
 
 ## 3. Where everything is
 
+The owner's 2026-09-05 sequencing correction is binding: finish systemic,
+programmatic matching and its end-to-end evidence before expanding model or
+fleet features. Model telemetry and prior implementations remain evidence,
+but provider wiring alone does not satisfy this boundary. Production factory
+creation of model lanes stays deferred until a measured programmatic
+qualification gate is implemented and explicitly accepted.
+
 | you want | read |
 |---|---|
 | the current plan, and every task ever opened | `ROADMAP.md` |

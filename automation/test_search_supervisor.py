@@ -1290,7 +1290,7 @@ class SearchSupervisorIntegrationTests(unittest.TestCase):
         tools["search_run_factory_marker"] = hash_bytes(b"factory-marker")
         value = replace(value, tool_identities=tools)
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory) / "run"
+            root = Path(directory) / "nonmatchings/f/search-runs/run"
             self.write_manifest(root, value)
             reconstructed = _search_supervisor.LaneAdapters(
                 upstream_current=lambda _recipient: None
@@ -1315,7 +1315,7 @@ class SearchSupervisorIntegrationTests(unittest.TestCase):
         tools["search_run_factory_marker"] = hash_bytes(b"factory-marker")
         value = replace(value, tool_identities=tools)
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory) / "run"
+            root = Path(directory) / "nonmatchings/f/search-runs/run"
             self.write_manifest(root, value)
             with patch(
                 "automation.search_run_factory.verify_factory_runtime",

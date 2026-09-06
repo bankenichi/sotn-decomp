@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import os
 from pathlib import Path
 import shlex
@@ -360,7 +361,7 @@ def _sanitize(text: str, temporary_root: Path) -> str:
 
 def _is_source_rejection(stage: Sequence[str], diagnostic: str) -> bool:
     """Accept only diagnostics tied to the source stream as source failures."""
-    if not Path(stage[0]).name.startswith("cc1-psx"):
+    if not (Path(stage[0]).name.startswith("cc1-psx") or Path(stage[0]).name.endswith("cpp")):
         return False
     lowered = diagnostic.casefold()
     if any(
@@ -380,7 +381,16 @@ def _is_source_rejection(stage: Sequence[str], diagnostic: str) -> bool:
         marker in lowered
         for marker in ("<stdin>:", "<command-line>:", "<built-in>:")
     )
-    return has_source_location and "error" in lowered
+    # GCC 2.6 reports an undeclared identifier without the word "error".
+    # Require a diagnosed source location, but do not confuse that old wording
+    # with a crashed compiler. Ignore generated assembly when classifying it.
+    source_diagnostics = [line for line in lowered.splitlines()
+                          if re.search(r"<(?:stdin|command-line|built-in)>:", line)]
+    return has_source_location and any(re.search(
+        r"error|undeclared|invalid|conflicting types|incompatible|too (?:few|many)|"
+        r"unterminated|expected|storage size|lvalue required|redefinition|has no member",
+        line,
+    ) for line in source_diagnostics)
 
 
 def _run_stage(
@@ -404,7 +414,10 @@ def _run_stage(
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             check=False,
+            timeout=60,
         )
+    except subprocess.TimeoutExpired as exc:
+        raise _PipelineFailure(label, "compiler stage exceeded 60 seconds", source_name=source_name) from exc
     except FileNotFoundError as exc:
         raise _PipelineFailure(
             label,
@@ -448,6 +461,7 @@ def _compile_source(
     temporary_root: Path,
     *,
     name: str,
+    recipient_id: str | None = None,
 ) -> tuple[Path, str, int]:
     source_bytes = source.encode("utf-8")
     source_path = temporary_root / f"{name}.c"
@@ -456,6 +470,9 @@ def _compile_source(
     started = time.monotonic()
 
     for index, stage in enumerate(pipeline.stages):
+        if index == 0 and recipient_id is not None:
+            from automation.search_source_context import overlay_include_arguments
+            stage = (*stage, *overlay_include_arguments(ROOT, recipient_id))
         label = f"stage-{index}-{Path(stage[0]).name}"
         if index == len(pipeline.stages) - 1:
             object_path = temporary_root / f"{name}.o"
@@ -496,6 +513,7 @@ def _normalized_disassembly(
     object_path: Path,
     *,
     stack_differences: bool = True,
+    symbol: Optional[str] = None,
 ) -> tuple[str, int]:
     vendor_root = ROOT / "tools" / "decomp-permuter"
     if str(vendor_root) not in sys.path:
@@ -506,6 +524,7 @@ def _normalized_disassembly(
             str(object_path),
             MIPS_SETTINGS,
             stack_differences=stack_differences,
+            symbol=symbol,
         )
     except Exception as exc:  # noqa: BLE001
         raise CompilerCorpusError("cannot disassemble corpus object") from exc
@@ -519,6 +538,8 @@ def _score_objects(
     pipeline: _Pipeline,
     candidate_disassembly: str,
     target_disassembly: str,
+    *,
+    symbol: Optional[str] = None,
 ) -> dict[str, object]:
     vendor_root = ROOT / "tools" / "decomp-permuter"
     if str(vendor_root) not in sys.path:
@@ -530,6 +551,7 @@ def _score_objects(
             stack_differences=True,
             algorithm="difflib",
             debug_mode=False,
+            symbol=symbol,
             compiler_command=pipeline.identity.executable,
             compiler_args=pipeline.identity.arguments,
             compiler_config={"pipeline_identity": pipeline.identity.identity},
@@ -662,6 +684,69 @@ def compile_snippet(
             )
 
 
+@dataclass(frozen=True)
+class ObjectEvaluation:
+    """An isolated observation whose bytes can be archived by the caller."""
+
+    score: Mapping[str, object]
+    object_bytes: Optional[bytes]
+    disassembly: Optional[str]
+    diagnostic: Optional[str]
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "score", MappingProxyType(dict(self.score)))
+
+
+def compile_against_object(
+    source: str,
+    target_object: bytes,
+    *,
+    expected_pipeline_identity: str,
+    symbol: Optional[str] = None,
+    config_path: Path | str = DEFAULT_CONFIG_PATH,
+    recipient_id: str | None = None,
+) -> ObjectEvaluation:
+    """Evaluate against the archived target, never against the candidate itself.
+
+    Pipeline drift and corrupt targets are instrument failures, including when
+    the candidate also fails to compile. Only a diagnosed source rejection
+    becomes a failed score. Callers own artifact publication and oracle handoff.
+    """
+    if not isinstance(source, str):
+        raise TypeError("source must be a string")
+    if not isinstance(target_object, bytes) or not target_object:
+        raise CompilerCorpusError("target object bytes are required")
+    pipeline = _pipeline(config_path=config_path)
+    if pipeline.identity.identity != expected_pipeline_identity:
+        raise CompilerCorpusError("compiler pipeline identity differs from manifest")
+    with tempfile.TemporaryDirectory(prefix="search-evaluation-") as raw_root:
+        temporary_root = Path(raw_root)
+        target_path = temporary_root / "target.o"
+        _materialize(target_path, target_object)
+        target_disassembly, target_count = _normalized_disassembly(target_path, symbol=symbol)
+        if target_count == 0:
+            raise CompilerCorpusError("target object has no instructions")
+        try:
+            candidate_path, _, _ = _compile_source(
+                source, pipeline, temporary_root, name="candidate", recipient_id=recipient_id,
+            )
+        except _PipelineFailure as exc:
+            if not exc.source_rejection or exc.source_name != "candidate":
+                raise
+            return ObjectEvaluation(
+                _failure_score(pipeline), None, None,
+                _sanitize(str(exc), temporary_root),
+            )
+        disassembly, candidate_count = _normalized_disassembly(candidate_path, symbol=symbol)
+        if candidate_count == 0:
+            raise CompilerCorpusError("candidate object has no instructions")
+        score = _score_objects(
+            candidate_path, target_path, pipeline,
+            disassembly, target_disassembly, symbol=symbol,
+        )
+        return ObjectEvaluation(score, candidate_path.read_bytes(), disassembly, None)
+
+
 # Explicit aliases make the identity and compiler entry points discoverable to
 # callers without introducing a second implementation.
 build_pipeline_identity = pipeline_identity
@@ -672,6 +757,8 @@ __all__ = [
     "CompilerCorpusError",
     "CompilerPipelineIdentity",
     "CorpusObservation",
+    "ObjectEvaluation",
+    "compile_against_object",
     "DEFAULT_CONFIG_PATH",
     "DEFAULT_WEIGHTS",
     "build_pipeline_identity",

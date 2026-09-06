@@ -14,6 +14,7 @@ import json
 import os
 import socket
 import ssl
+import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
@@ -195,6 +196,8 @@ class TrustedModelExecutor:
             raise ModelExecutorError("max_tokens is outside the safe bound")
         if not isinstance(self.api_key_env, str) or not self.api_key_env.isidentifier():
             raise ModelExecutorError("api_key_env must be a safe environment name")
+        if type(self.selected) is not bool or type(self.paid) is not bool:
+            raise ModelExecutorError("selected and paid must be exact booleans")
         if self.paid and self.provider == TRUSTED_ZEN_PROVIDER and self.model_name.endswith("-free"):
             raise ModelExecutorError("a free Zen model cannot be marked paid")
 
@@ -216,6 +219,9 @@ class TrustedModelExecutor:
             "tool_identity": self.tool_identity,
             "selected": self.selected,
             "paid": self.paid,
+            "timeout_seconds": self.timeout_seconds,
+            "max_tokens": self.max_tokens,
+            "api_key_env": self.api_key_env,
         }
 
     @property
@@ -244,6 +250,9 @@ class TrustedModelExecutor:
             "tool_identity": self.tool_identity,
             "selected": self.selected,
             "paid": self.paid,
+            "timeout_seconds": self.timeout_seconds,
+            "max_tokens": self.max_tokens,
+            "api_key_env": self.api_key_env,
         }
 
     @property
@@ -268,6 +277,7 @@ class TrustedModelExecutor:
         paid: bool = False,
         timeout_seconds: float = 60.0,
         max_tokens: int = 4096,
+        api_key_env: str = "MODEL_API_KEY",
     ) -> "TrustedModelExecutor":
         if not isinstance(binding, ModelBinding):
             raise ModelExecutorBindingError("from_binding requires a typed ModelBinding")
@@ -299,6 +309,7 @@ class TrustedModelExecutor:
             paid=paid,
             timeout_seconds=timeout_seconds,
             max_tokens=max_tokens,
+            api_key_env=api_key_env,
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -475,6 +486,46 @@ class TrustedModelExecutor:
             raise ModelInvalidResponse("model response exceeds the immutable bound")
         return content
 
+    def _telemetry(
+        self, decoded: Mapping[str, Any], *, http_status: Optional[int],
+        transport_outcome: str, request_header: Optional[str] = None,
+    ) -> dict[str, Any]:
+        def text(value):
+            if not isinstance(value, str) or not value.strip():
+                return None
+            return "".join(char for char in value if char.isprintable())[:512] or None
+
+        def tokens(value):
+            return value if type(value) is int and value >= 0 else None
+
+        usage = decoded.get("usage")
+        usage = usage if isinstance(usage, Mapping) else {}
+        details = usage.get("completion_tokens_details")
+        details = details if isinstance(details, Mapping) else {}
+        prompt_details = usage.get("prompt_tokens_details")
+        prompt_details = prompt_details if isinstance(prompt_details, Mapping) else {}
+        choices = decoded.get("choices")
+        choice = choices[0] if isinstance(choices, list) and choices and isinstance(choices[0], Mapping) else {}
+        message = choice.get("message")
+        message = message if isinstance(message, Mapping) else {}
+        return {
+            "protocol": "sotn-model-telemetry-v1",
+            "provider": self.provider, "endpoint_identity": self.endpoint_identity,
+            "requested_model": self.model_name, "returned_model": text(decoded.get("model")),
+            "provider_request_id": text(request_header),
+            "provider_response_id": text(decoded.get("id")),
+            "finish_reason": text(choice.get("finish_reason")),
+            "usage": {
+                "prompt_tokens": tokens(usage.get("prompt_tokens")),
+                "completion_tokens": tokens(usage.get("completion_tokens")),
+                "total_tokens": tokens(usage.get("total_tokens")),
+                "reasoning_tokens": tokens(details.get("reasoning_tokens")),
+                "cached_tokens": tokens(prompt_details.get("cached_tokens")),
+            },
+            "has_reasoning": bool(message.get("reasoning_content") or message.get("reasoning")),
+            "http_status": http_status, "transport_outcome": transport_outcome,
+        }
+
     def invoke(
         self,
         request: Any,
@@ -497,29 +548,72 @@ class TrustedModelExecutor:
             headers=dict(self._headers()),
             method="POST",
         )
+        started = time.monotonic()
+        status = None
+        request_header = None
+
+        def failure(kind, response_status, code, detail, decoded=None):
+            response = ModelResponse(
+                request_id=request.request_id, status=response_status,
+                error_code=code, detail=detail,
+                telemetry=self._telemetry(
+                    decoded or {}, http_status=status, transport_outcome=code,
+                    request_header=request_header,
+                ),
+                elapsed_ms=max(0, int((time.monotonic() - started) * 1000)),
+            )
+            return kind(detail, response=response)
+
         try:
             with urllib.request.urlopen(req, timeout=self.timeout_seconds) as response:
+                status = getattr(response, "status", None)
+                headers = getattr(response, "headers", {})
+                request_header = headers.get("x-request-id") or headers.get("request-id")
                 raw = response.read(_MAX_RESPONSE_BYTES + 1)
         except urllib.error.HTTPError as exc:
-            if exc.code in {408, 429, 500, 502, 503, 504}:
-                raise ModelTimeout(f"model endpoint returned HTTP {exc.code}") from exc
+            status = exc.code
+            detail = f"model endpoint returned HTTP {exc.code}"
+            if exc.code in {408, 504}:
+                raise failure(ModelTimeout, "timeout", "http_timeout", detail) from exc
+            if exc.code == 429:
+                raise failure(ModelUnavailable, "unavailable", "rate_limited", detail) from exc
             if exc.code in {401, 403}:
-                raise ModelRefused(f"model endpoint returned HTTP {exc.code}") from exc
-            raise ModelUnavailable(f"model endpoint returned HTTP {exc.code}") from exc
-        except (urllib.error.URLError, socket.timeout, TimeoutError, ssl.SSLError, OSError) as exc:
-            raise ModelUnavailable(f"model endpoint is unavailable: {type(exc).__name__}") from exc
+                raise failure(ModelRefused, "refused", "authentication_error", detail) from exc
+            if 500 <= exc.code <= 599:
+                raise failure(ModelUnavailable, "unavailable", "http_server_error", detail) from exc
+            raise failure(ModelRefused, "refused", "http_client_error", detail) from exc
+        except (socket.timeout, TimeoutError) as exc:
+            raise failure(ModelTimeout, "timeout", "socket_timeout", "model request timed out") from exc
+        except urllib.error.URLError as exc:
+            if isinstance(exc.reason, (socket.timeout, TimeoutError)):
+                raise failure(ModelTimeout, "timeout", "socket_timeout", "model request timed out") from exc
+            raise failure(ModelUnavailable, "unavailable", "connection_error", "model connection failed") from exc
+        except ssl.SSLError as exc:
+            raise failure(ModelUnavailable, "unavailable", "tls_error", "model TLS connection failed") from exc
+        except OSError as exc:
+            raise failure(ModelUnavailable, "unavailable", "connection_error", "model connection failed") from exc
         if len(raw) > _MAX_RESPONSE_BYTES:
-            raise ModelInvalidResponse("model response exceeds the immutable bound")
+            raise failure(ModelInvalidResponse, "invalid", "response_too_large", "model response exceeds the immutable bound")
         try:
             decoded = json.loads(raw.decode("utf-8"))
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-            raise ModelInvalidResponse("model endpoint returned non-JSON data") from exc
+            raise failure(ModelInvalidResponse, "invalid", "invalid_json", "model endpoint returned non-JSON data") from exc
         if not isinstance(decoded, Mapping):
-            raise ModelInvalidResponse("model endpoint returned a non-object")
+            raise failure(ModelInvalidResponse, "invalid", "invalid_envelope", "model endpoint returned a non-object")
         if decoded.get("error"):
-            raise ModelRefused("model endpoint returned an error envelope")
-        content = self._content(decoded)
-        return ModelResponse(request_id=request.request_id, status="ok", response_text=content)
+            raise failure(ModelRefused, "refused", "provider_error", "model endpoint returned an error envelope", decoded)
+        try:
+            content = self._content(decoded)
+        except ModelInvalidResponse as exc:
+            raise failure(ModelInvalidResponse, "invalid", "invalid_content", str(exc), decoded) from exc
+        return ModelResponse(
+            request_id=request.request_id, status="ok", response_text=content,
+            telemetry=self._telemetry(
+                decoded, http_status=status, transport_outcome="completed",
+                request_header=request_header,
+            ),
+            elapsed_ms=max(0, int((time.monotonic() - started) * 1000)),
+        )
 
 
 TrustedModelProvider = TrustedModelExecutor
@@ -538,6 +632,7 @@ def make_trusted_model_executor(
     paid: bool = False,
     timeout_seconds: float = 60.0,
     max_tokens: int = 4096,
+    api_key_env: str = "MODEL_API_KEY",
 ) -> TrustedModelExecutor:
     return TrustedModelExecutor.from_binding(
         binding,
@@ -550,6 +645,7 @@ def make_trusted_model_executor(
         paid=paid,
         timeout_seconds=timeout_seconds,
         max_tokens=max_tokens,
+        api_key_env=api_key_env,
     )
 
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import re
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -31,6 +32,129 @@ FIXTURE = (
 
 
 class TestCompilerCorpus(unittest.TestCase):
+    def test_archived_translation_unit_uses_its_recipient_overlay_header(self):
+        pipeline = compiler_corpus._pipeline()
+        with tempfile.TemporaryDirectory() as directory:
+            target, _, _ = compiler_corpus._compile_source(
+                "int f(void) { return 7; }", pipeline, Path(directory), name="target",
+            )
+            measured = compiler_corpus.compile_against_object(
+                '#include "rnz1.h"\nint f(void) { return 7; }', target.read_bytes(),
+                expected_pipeline_identity=pipeline.identity.identity,
+                recipient_id="us:ST/RNZ1:f", symbol="f",
+            )
+            rejected = compiler_corpus.compile_against_object(
+                '#include "nonexistent-candidate-header.h"\nint f(void) { return 7; }', target.read_bytes(),
+                expected_pipeline_identity=pipeline.identity.identity,
+                recipient_id="us:ST/RNZ1:f", symbol="f",
+            )
+        self.assertEqual(measured.score["total"], 0)
+        self.assertEqual(rejected.score["compile_status"], "failed")
+        self.assertIn("nonexistent-candidate-header.h", rejected.diagnostic)
+
+    def test_archived_target_evaluation_uses_real_psx_objects(self) -> None:
+        pipeline = compiler_corpus._pipeline()
+        with tempfile.TemporaryDirectory() as directory:
+            target, _, _ = compiler_corpus._compile_source(
+                "int f(int x) { return x + 1; }", pipeline, Path(directory), name="target"
+            )
+            target_bytes = target.read_bytes()
+        exact = compiler_corpus.compile_against_object(
+            "int f(int x) { return x + 1; }", target_bytes,
+            expected_pipeline_identity=pipeline.identity.identity,
+        )
+        changed = compiler_corpus.compile_against_object(
+            "int f(int x) { return x + 2; }", target_bytes,
+            expected_pipeline_identity=pipeline.identity.identity,
+        )
+        self.assertEqual(exact.score["total"], 0)
+        self.assertGreater(changed.score["total"], 0)
+        self.assertTrue(exact.object_bytes.startswith(bytes.fromhex("7f454c46")))
+        self.assertEqual(exact.score["compiler_identity"], pipeline.identity.identity)
+        ScoreVector.from_dict(exact.score)
+
+    def test_selected_function_rebases_internal_branch_destinations(self) -> None:
+        pipeline = compiler_corpus._pipeline()
+        source = "int f(int x) { if (x > 10) return x * 7; return x + 3; }"
+        with tempfile.TemporaryDirectory() as directory:
+            target, _, _ = compiler_corpus._compile_source(
+                "int neighbor(int x) { return x * 7; } " + source,
+                pipeline, Path(directory), name="target",
+            )
+            result = compiler_corpus.compile_against_object(
+                source, target.read_bytes(), symbol="f",
+                expected_pipeline_identity=pipeline.identity.identity,
+            )
+        self.assertEqual(result.score["total"], 0)
+
+    def test_selected_function_rebases_unconditional_join_branch(self) -> None:
+        pipeline = compiler_corpus._pipeline()
+        source = ("extern void consume(int); int f(int x) { "
+                  "if (x > 10) { consume(x); x *= 7; } "
+                  "else { consume(x + 1); x += 3; } consume(x); return x; }")
+        with tempfile.TemporaryDirectory() as directory:
+            target, _, _ = compiler_corpus._compile_source(
+                "int neighbor(int x) { return x * 7; } " + source,
+                pipeline, Path(directory), name="target",
+            )
+            normalized, _ = compiler_corpus._normalized_disassembly(target, symbol="f")
+            self.assertRegex(normalized, r"(?m)^j\t\.text\+0x[0-9a-f]+$")
+            result = compiler_corpus.compile_against_object(
+                source, target.read_bytes(), symbol="f",
+                expected_pipeline_identity=pipeline.identity.identity,
+            )
+        self.assertEqual(result.score["total"], 0)
+
+    def test_target_function_is_scored_without_neighbor_functions(self) -> None:
+        pipeline = compiler_corpus._pipeline()
+        with tempfile.TemporaryDirectory() as directory:
+            target, _, _ = compiler_corpus._compile_source(
+                "int neighbor(int x) { return x * 7; } int f(int x) { return x + 1; }",
+                pipeline, Path(directory), name="target",
+            )
+            result = compiler_corpus.compile_against_object(
+                "int f(int x) { return x + 1; }", target.read_bytes(),
+                expected_pipeline_identity=pipeline.identity.identity, symbol="f",
+            )
+            self.assertEqual(result.score["total"], 0)
+            with self.assertRaises(CompilerCorpusError):
+                compiler_corpus.compile_against_object(
+                    "int f(int x) { return x + 1; }", target.read_bytes(),
+                    expected_pipeline_identity=pipeline.identity.identity, symbol="absent",
+                )
+
+    def test_archived_target_rejects_compiler_drift_before_execution(self) -> None:
+        with patch.object(compiler_corpus, "_compile_source") as compile_source:
+            with self.assertRaisesRegex(CompilerCorpusError, "identity"):
+                compiler_corpus.compile_against_object(
+                    "int f(void) { return 1; }", b"target",
+                    expected_pipeline_identity="sha256:" + "0" * 64,
+                )
+            compile_source.assert_not_called()
+
+    def test_archived_target_is_validated_even_when_candidate_is_invalid(self) -> None:
+        with self.assertRaises(CompilerCorpusError):
+            compiler_corpus.compile_against_object(
+                "int f(void) { return + ; }", b"invalid target",
+                expected_pipeline_identity=pipeline_identity().identity,
+            )
+
+    def test_archived_target_keeps_source_rejection_diagnostics(self) -> None:
+        pipeline = compiler_corpus._pipeline()
+        with tempfile.TemporaryDirectory() as directory:
+            target, _, _ = compiler_corpus._compile_source(
+                "int f(void) { return 1; }", pipeline, Path(directory), name="target"
+            )
+            result = compiler_corpus.compile_against_object(
+                "int f(void) { return + ; }", target.read_bytes(),
+                expected_pipeline_identity=pipeline.identity.identity,
+            )
+        self.assertEqual(result.score["compile_status"], "failed")
+        self.assertIsNone(result.score["total"])
+        self.assertIsNone(result.object_bytes)
+        self.assertTrue(result.diagnostic)
+        self.assertNotIn(directory, result.diagnostic)
+
     def test_identity_records_real_pipeline_inputs(self) -> None:
         identity = pipeline_identity()
         self.assertIn("cc1-psx", Path(identity.executable).name)

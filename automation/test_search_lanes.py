@@ -55,6 +55,32 @@ from automation.search_types import (
 BODY = "int func_lane(void) { return 7; }\n"
 
 
+class PreparedTransplantTests(unittest.TestCase):
+    def test_prepared_draft_keeps_exact_span_and_support_declarations(self):
+        from automation.transplant import split_prepared_draft
+        function = 'static int func_lane(void) {  \n    return LIMIT; \n}'
+        for suffix in ("", "\n"):
+            exact, support = split_prepared_draft(
+                "#define LIMIT 7\nextern int helper(void);\n\n" + function + suffix,
+                "func_lane",
+            )
+            self.assertEqual(exact, function.removeprefix("static "))
+            self.assertEqual(support, ["#define LIMIT 7", "extern int helper(void);"])
+
+    def test_builtin_transplant_uses_prepared_translation_unit(self):
+        from types import SimpleNamespace
+        calls = []
+        source = '#include "no0.h"\n' + BODY
+        def prepare(function, overlay):
+            calls.append((function, overlay))
+            return True, source, "src/st/no0/unit.c", "compiled donor configuration and operand maps"
+        with patch("automation.search_lanes._load_module", return_value=SimpleNamespace(instrumented_draft=prepare)):
+            result = run_lane(make_manifest("record-1"), "transplant", [recipient()]).outcomes[0]
+        self.assertEqual(calls, [("func_lane", "no0")])
+        self.assertEqual(result.candidates[0].source, source)
+        self.assertEqual(result.provenance[0]["kind"], "prepared_transplant")
+
+
 def digest(label: str) -> str:
     return hash_bytes(label.encode("utf-8"))
 

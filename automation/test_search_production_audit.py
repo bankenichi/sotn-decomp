@@ -481,7 +481,7 @@ class ProductionAuditTests(unittest.TestCase):
             self.assertEqual(first.identity, second.identity)
             self.assertEqual(first.to_dict(), second.to_dict())
 
-    def test_current_lane_surface_reports_the_nine_unclosed_lanes(self) -> None:
+    def test_current_lane_surface_retains_missing_m2c_and_deferred_model_admission(self) -> None:
         root = Path(__file__).resolve().parent.parent
         report = audit_production_exports(root)
         self.assertFalse(report.passed)
@@ -493,13 +493,13 @@ class ProductionAuditTests(unittest.TestCase):
         )
         for lane in EXPECTED_LANE_CLOSURE_GAPS:
             finding = findings[lane]
-            self.assertTrue(finding.missing_dispatcher)
+            self.assertFalse(finding.missing_dispatcher)
             self.assertTrue(finding.missing_factory_tool_binding)
             self.assertTrue(finding.missing_provider_input)
             self.assertTrue(finding.missing_supervisor_reachability)
             self.assertTrue(finding.missing_recovery_reachability)
-            # Generic CLI/connector lane selection is already registered.  The
-            # missing core dispatch is the closure defect being surfaced.
+            # Generic selection and dispatch exist. Factory admission still
+            # refuses these lanes, so their production chain remains open.
             self.assertFalse(finding.missing_cli_connector_reachability)
             self.assertFalse(finding.missing_cli_reachability)
             self.assertFalse(finding.missing_connector_reachability)
@@ -508,7 +508,6 @@ class ProductionAuditTests(unittest.TestCase):
             self.assertEqual(
                 finding.categories,
                 (
-                    "dispatcher",
                     "factory_tool_binding",
                     "provider_input",
                     "supervisor_reachability",

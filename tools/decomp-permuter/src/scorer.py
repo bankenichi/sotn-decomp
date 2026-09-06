@@ -205,10 +205,12 @@ class Scorer:
         algorithm: str,
         debug_mode: bool,
         symbol_map: Optional[str] = None,
+        symbol: Optional[str] = None,
         compiler_command: Optional[Union[str, os.PathLike[str]]] = None,
         compiler_args: Sequence[str] = (),
         compiler_config: Optional[Mapping[str, object]] = None,
     ):
+        self.symbol = symbol
         self.target_o = target_o
         self.arch = get_arch(target_o)
         self.stack_differences = stack_differences
@@ -259,7 +261,7 @@ class Scorer:
         return "sha256:" + hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
     def _objdump(self, o_file: str) -> Tuple[str, List[Line]]:
-        lines = objdump(o_file, self.arch, stack_differences=self.stack_differences)
+        lines = objdump(o_file, self.arch, stack_differences=self.stack_differences, symbol=self.symbol)
         if self.symbol_addresses:
             lines = [
                 Line(
