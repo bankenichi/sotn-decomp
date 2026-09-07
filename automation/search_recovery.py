@@ -356,6 +356,9 @@ def recover_run(
     _validate_artifacts(events, archive)
     from .search_evaluator import validate_evaluation_receipts
     validate_evaluation_receipts(manifest, archive)
+    if factory_created and "full_oracle" in manifest.tool_identities:
+        from .search_full_oracle import validate_landing_artifacts
+        validate_landing_artifacts(manifest, archive, events)
     try:
         # Keep restart validation identical to coordinator reopen.  The
         # generic artifact pass above handles all ordinary references; this

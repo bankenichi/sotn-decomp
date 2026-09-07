@@ -31,7 +31,25 @@ INCLUDE_ASM("st/rnz1/nonmatchings/e_spikes", EntitySpikesParts);
 
 INCLUDE_ASM("st/rnz1/nonmatchings/e_spikes", SpikesBreak);
 
-INCLUDE_ASM("st/rnz1/nonmatchings/e_spikes", SpikesApplyDamage);
+/* Declarations injected by the worker: used by the candidate
+   below and absent from this file. Copied verbatim from the
+   tree, same overlay or a shared header, never another
+   overlay's. */
+extern Tilemap g_Tilemap;
+extern Entity* g_CurrentEntity;
+
+void SpikesApplyDamage(u32 tileIdx) {
+    Entity* spikesDamage;
+    s16 tilePosX, tilePosY;
+    tilePosX = ((tileIdx % 16) * 16) + 8;
+    tilePosY = ((tileIdx / 16) * 16) + 8;
+    tilePosX -= g_Tilemap.scrollX.i.hi;
+    tilePosY -= g_Tilemap.scrollY.i.hi;
+    spikesDamage = &g_CurrentEntity[1];
+    spikesDamage->posX.i.hi = tilePosX;
+    spikesDamage->posY.i.hi = tilePosY;
+}
+
 
 INCLUDE_ASM("st/rnz1/nonmatchings/e_spikes", EntitySpikes);
 

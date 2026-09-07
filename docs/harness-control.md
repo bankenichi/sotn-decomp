@@ -79,9 +79,12 @@ wrapper. Use the typed `search_plan`, `search_create_instrumented`,
 `search_status` and `search_verify_ledger` connector tools so record IDs, lanes
 and run IDs cross a validated boundary and manifest paths never do.
 
-Its workers cannot claim from the ordinary queue. Creation freezes only the
-explicit live `todo` subset; start and resume execute only that manifest under
-one lease. See `docs/TOOLING.md` for the operator lifecycle and
+Discovery workers cannot claim from the ordinary queue. Creation freezes only
+the explicit live `todo` subset; start and resume execute only that manifest
+under one lease. With the immutable `land_matches=True` creation policy, the
+supervisor reserves the first score-zero recipient and invokes the full
+checksum landing gate. It records source recovery evidence and preserves queue
+method notes, then ends the run after that one landing attempt. See `docs/TOOLING.md` for the operator lifecycle and
 `docs/HARNESS-ARCHITECTURE.md` for the identity and recovery design.
 
 ---

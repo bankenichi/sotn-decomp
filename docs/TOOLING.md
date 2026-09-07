@@ -13,10 +13,10 @@ For the mechanisms that land matches, read `automation/README.md`.
 | live authority | current value |
 |---|---|
 | Build oracle | **113/113** from the artifacts on disk |
-| Decompiled | **94.1%**, 8180/8730 functions; 550 US `INCLUDE_ASM` stubs remain |
-| Queue | 983 records: 433 matched, 380 todo, 123 escalated, 41 deferred, 6 near |
-| Provenance | upstream-harvest 55, shim-segment 9, shim-header 55, transplant 135, twin-port 31, permuter 18, claude-manual 6, model-fleet 58, unknown 66 |
-| Automation | 167 modules, 69 suites plus 36 module self-tests, 99 tools, 108 diagnostics |
+| Decompiled | **94.1%**, 8181/8730 functions; 549 US `INCLUDE_ASM` stubs remain |
+| Queue | 983 records: 434 matched, 379 todo, 123 escalated, 41 deferred, 6 near |
+| Provenance | upstream-harvest 55, shim-segment 9, shim-header 55, transplant 136, twin-port 31, permuter 18, claude-manual 6, model-fleet 58, unknown 66 |
+| Automation | 168 modules, 69 suites plus 36 module self-tests, 99 tools, 108 diagnostics |
 
 This block is regenerated from the same queue, checksum manifest, linker maps, provenance classifier, and connector inventory as `README.md`.
 <!-- LIVE-STATUS:END -->
@@ -435,6 +435,33 @@ the separate mutating boundary: every requested record must exist in live
 queue records plus source, target assembly and object, compiler, configuration,
 schema, search-tool and dynamic lane-input identities. It never reports to or
 claims from the queue.
+
+Automatic landing is an explicit creation policy: pass `land_matches=True`
+(or `search_cli.py create --land-matches`). It binds the landing implementation,
+build rules and checksum configuration in `full_oracle`; the default remains a
+proposal run. Retrying a name with a different landing policy is refused.
+Creation still leaves source and queue unchanged. On the first measured zero,
+the supervisor reconstructs the bound landing service, archives the candidate,
+original file and exact proposed file, reserves only that recipient through the
+scheduler, and runs the existing journaled apply/build/checksum gate under
+BuildLock. Support declarations pass through the existing source writer;
+unrelated translation-unit edits are refused.
+
+The oracle service persists its terminal result before reporting the queue.
+Queue reports retain prior method notes and include the run, candidate and
+oracle request identities. An interrupted pending application can restore only
+its exact archived proposed bytes. A persisted result completes queue reporting
+without another build. Both a verified match and a restored nonmatch end the
+run (`oracle_matched` or `oracle_not_matched`); further lanes require a fresh
+manifest because landing changes frozen source or build inputs. These early
+stops do not earn a full-subset integration gate. The ledger uses the existing
+`oracle_candidate_found` stop reason; the public result distinguishes matched
+from not matched. Inventing a new stop enum caused the first live landing to
+fail only at final closure, after its verified source and queue report were
+already durable. Recovery can close that fully reported historical attempt
+without executing landing tools, even after a harness update. Pending apply or
+queue work still requires unchanged live landing inputs. Historical status
+remains read-only.
 
 Creation is a background job because source and provider capture can exceed
 the connector transport timeout. Poll its returned job id before starting the

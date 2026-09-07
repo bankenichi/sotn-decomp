@@ -621,6 +621,7 @@ def create_instrumented_run(
     lanes: Sequence[str],
     *,
     runtime_id: Optional[str] = None,
+    land_matches: bool = False,
 ) -> dict[str, Any]:
     """Create one bounded canonical instrumented run from exact todo IDs."""
 
@@ -629,7 +630,7 @@ def create_instrumented_run(
     except ImportError:  # direct invocation from the automation directory
         from automation.search_run_factory import create_instrumented_run as create_run  # type: ignore
     try:
-        return create_run(name, record_ids, lanes, runtime_id=runtime_id)
+        return create_run(name, record_ids, lanes, runtime_id=runtime_id, land_matches=land_matches)
     except RuntimeError as exc:
         raise RunInputError(str(exc) or "run creation refused") from exc
 
@@ -1010,6 +1011,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     create = commands.add_parser("create", help="create one canonical instrumented run")
+    create.add_argument("--land-matches", action="store_true",
+                        help="apply the first isolated zero through the full checksum oracle")
     create.add_argument("--name", required=True)
     create.add_argument("--records", action="append", nargs="+", required=True)
     create.add_argument("--lanes", action="append", nargs="+", required=True)
@@ -1076,6 +1079,7 @@ def _dispatch(args: argparse.Namespace) -> dict[str, Any]:
             records,
             lanes,
             runtime_id=args.runtime_id,
+            land_matches=args.land_matches,
         )
     if args.command == "run":
         return run_manifest(args.manifest)

@@ -188,6 +188,7 @@ class FactoryFixture(unittest.TestCase):
         queue_reader=None,
         compiler_identity_resolver=None,
         runtime_id=None,
+        land_matches=False,
         now=None,
         fault_hook=None,
     ):
@@ -203,9 +204,35 @@ class FactoryFixture(unittest.TestCase):
                 or (lambda _path: hash_bytes(b"compiler-v1"))
             ),
             runtime_id=runtime_id,
+            land_matches=land_matches,
             now=now or (lambda: "2026-08-28T00:00:00Z"),
             fault_hook=fault_hook,
         )
+
+    def test_automatic_landing_is_immutable_and_explicit(self):
+        from automation.search_full_oracle import TOOL_FILES, capture_binding
+        from automation.search_types import hash_canonical
+        for relative in TOOL_FILES:
+            path = self.repo / relative
+            if not path.exists():
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text("landing tool\n")
+        (self.repo / "config").mkdir()
+        (self.repo / "config/check.us.sha").write_text("checksum authority\n")
+        (self.repo / "tools/builds").mkdir()
+        (self.repo / "tools/builds/gen.py").write_text("build rules\n")
+        result = self.create("auto-land", land_matches=True)
+        value = RunManifest.from_dict(result["manifest"])
+        self.assertEqual(value.tool_identities["full_oracle"], hash_canonical(capture_binding(self.repo)))
+        _factory.verify_factory_archive(result["run_root"], value)
+        self.assertTrue(self.create("auto-land", land_matches=True)["idempotent"])
+        with self.assertRaisesRegex(RunNameCollision, "landing policy"):
+            self.create("auto-land")
+        argv = cc._search_create_argv("auto-land", IDS, [LANES[0]], land_matches=True)
+        self.assertIn("--land-matches", argv)
+        with self.assertRaises(cc.Rejected):
+            cc._search_create_argv("auto-land", IDS, [LANES[0]], land_matches="yes")
+        self.assertEqual(self.records, self.before_records)
 
     def test_indexed_runtime_is_required_only_for_indexed_lanes(self) -> None:
         runtime_id = hash_bytes(b"runtime")

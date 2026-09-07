@@ -1548,5 +1548,107 @@ class IntegrationGateReceiptTests(unittest.TestCase):
         )
 
 
+class FactoryLandingRecoveryTests(unittest.TestCase):
+    def test_applied_source_and_terminal_queue_failure_are_recoverable(self):
+        from contextlib import ExitStack, nullcontext
+        from types import SimpleNamespace
+        from unittest.mock import Mock
+        from automation import search_full_oracle as full
+        value = SearchSupervisorIntegrationTests().instrumented_manifest(with_oracle=True)
+        from automation.search_types import canonical_subset_identity
+        recipient = "us:ST/RDAI:func_test"
+        value = replace(value, queue_record_ids=(recipient,), function_ids=("func_test",),
+                        subset_identity=canonical_subset_identity((recipient,)),
+                        target_identities={recipient: next(iter(value.target_identities.values()))})
+        before, after = b"original stub\n", b"applied function\n"
+        with tempfile.TemporaryDirectory() as directory, ExitStack() as patches:
+            repo = Path(directory)
+            root = repo / "nonmatchings/func_test/search-runs/auto"
+            root.mkdir(parents=True)
+            path = repo / "src/test.c"
+            path.parent.mkdir()
+            path.write_bytes(before)
+            oracle = full.FactoryLandingOracle(value, root)
+            ref = oracle.archive.put_source(after.decode())
+            request = SimpleNamespace(request_id=hash_bytes(b"request"), recipient_id=recipient,
+                                      candidate_id=ref.content_hash,
+                                      candidate=SimpleNamespace(source_artifact=ref))
+            ctx = {"src_rel": "src/test.c", "asm_rel": "st/rdai/nonmatchings/test"}
+            worker = Mock()
+            worker.restore.side_effect = lambda _ctx, text: path.write_text(text)
+            patches.enter_context(patch.object(full, "_worker", return_value=worker))
+            patches.enter_context(patch.object(full, "verify_landing_runtime"))
+            patches.enter_context(patch.object(full, "prepare_source", return_value=(
+                ctx, after.decode(), [], before, after)))
+            patches.enter_context(patch.object(_permuter_supervisor, "_build_lock", return_value=nullcontext))
+            from automation import scheduler
+            patches.enter_context(patch.object(scheduler, "_require_queue_owner"))
+            records = [{"id": recipient, "status": "todo", "notes": "original method"}]
+            queue = Mock(_read=Mock(return_value=records))
+            queue.transaction.side_effect = lambda fn: fn(records)[1]
+            patches.enter_context(patch.object(scheduler, "Queue", return_value=queue))
+            attempts = []
+            def gate(*_args, **kwargs):
+                attempts.append(path.read_bytes())
+                path.write_bytes(after)
+                if len(attempts) == 1:
+                    raise KeyboardInterrupt("lost process after apply")
+                kwargs["on_verified"]("GREEN: complete checksum authority verified")
+                return True, "GREEN: complete checksum authority verified"
+            patches.enter_context(patch.object(_permuter_supervisor, "land_match", side_effect=gate))
+            with self.assertRaises(KeyboardInterrupt):
+                oracle.execute(request)
+            self.assertEqual(path.read_bytes(), after)
+            self.assertFalse(oracle.store.exists())
+            # A restart restores only the exact applied bytes and rebuilds.
+            oracle = full.FactoryLandingOracle(value, root)
+            with patch.object(oracle, "_report_queue", side_effect=RuntimeError("queue unavailable")):
+                with self.assertRaisesRegex(RuntimeError, "queue unavailable"):
+                    oracle.execute(request)
+            self.assertEqual(attempts, [before, before])
+            self.assertEqual(path.read_bytes(), after)
+            with patch.object(oracle, "_report_queue") as report:
+                self.assertEqual(oracle.execute(request)["outcome"], "matched")
+                report.assert_called_once()
+            self.assertEqual(len(attempts), 2)
+            worker.restore.assert_called_once()
+            self.assertEqual(records[0]["claims"], 1)
+            self.assertEqual(records[0]["claimed_by"], oracle.owner)
+            self.assertEqual(records[0]["notes"], "original method")
+            self.assertEqual(records[0]["claimed_from"], "todo")
+
+    def test_automatic_terminal_uses_a_schema_supported_stop(self):
+        from types import SimpleNamespace
+        from unittest.mock import Mock
+        from automation.search_full_oracle import terminal_result
+        value = SearchSupervisorIntegrationTests().instrumented_manifest(with_oracle=True)
+        for outcome in ("matched", "not_matched"):
+            coordinator = Mock(manifest=value, events=[SimpleNamespace(
+                event_type="oracle_result_recorded", payload=SimpleNamespace(outcome=outcome))])
+            coordinator.archive.run_root = Path("recorded-run")
+            coordinator.stop.side_effect = lambda **kw: RunStop(
+                kw["reason"], None, (), hash_bytes(b"budget"), kw["resumable"])
+            with patch("automation.search_evaluator.search_funnel", return_value={}):
+                result = terminal_result(coordinator)
+            self.assertEqual(result["reason"], "oracle_" + outcome)
+            coordinator.stop.assert_called_once_with(reason="oracle_candidate_found", resumable=False)
+
+    def test_source_preparation_rejects_unrelated_edits(self):
+        from unittest.mock import Mock
+        from automation import search_full_oracle as full
+        with tempfile.TemporaryDirectory() as directory:
+            repo = Path(directory)
+            path = repo / "src/test.c"
+            path.parent.mkdir()
+            path.write_text("int unrelated = 1;\nSTUB\n")
+            proposed = "int unrelated = 1;\nvoid target(void) { return; }\n"
+            worker = Mock()
+            worker.virtual_apply.return_value = proposed
+            with patch.object(_permuter_supervisor, "find_stub", return_value=(path, "st/x/nonmatchings/test", None)), patch.object(full, "_worker", return_value=worker):
+                full.prepare_source(repo, "us:ST/X:target", proposed)
+                with self.assertRaisesRegex(full.DurableOracleError, "unrelated"):
+                    full.prepare_source(repo, "us:ST/X:target", proposed.replace("unrelated = 1", "unrelated = 2"))
+
+
 if __name__ == "__main__":
     unittest.main()

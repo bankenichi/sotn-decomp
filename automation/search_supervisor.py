@@ -2159,6 +2159,10 @@ def _fan_out_candidates(
             )
             child_result = evaluator.evaluate(coordinator, child_result)
         coordinator.commit_epoch((child_result,))
+        if _factory_bound_manifest(coordinator.manifest) and "full_oracle" in coordinator.manifest.tool_identities:
+            if any(e.event_type == "oracle_result_recorded" for e in coordinator.events):
+                from .search_full_oracle import AutomaticLandingComplete
+                raise AutomaticLandingComplete()
     return len(children)
 
 
@@ -2550,7 +2554,11 @@ def _run_instrumented_entry(
 
     oracle = None
     oracle_identity = manifest.tool_identities.get("full_oracle")
-    if oracle_identity is not None and landing is not None:
+    automatic = oracle_identity is not None and _factory_bound_manifest(manifest)
+    if automatic:
+        from .search_full_oracle import FactoryLandingOracle
+        oracle = FactoryLandingOracle(manifest, root)
+    elif oracle_identity is not None and landing is not None:
         oracle = InstrumentedLandingOracle(root, oracle_identity, landing)
 
     ledger_path = root / "ledger.jsonl"
@@ -2576,6 +2584,17 @@ def _run_instrumented_entry(
                 from .search_run_factory import verify_factory_runtime
             except ImportError:  # pragma: no cover - direct script compatibility
                 from search_run_factory import verify_factory_runtime  # type: ignore
+            if automatic and oracle.intents():
+                from .search_full_oracle import verify_landing_runtime, recover_landing, finalize_recorded_landing
+                if adapters is not None or lane_executor is not execute_task or options:
+                    raise SupervisorIntegrationError("landing recovery rejects caller execution overrides")
+                recover_run(root)
+                coordinator = SearchCoordinator(root, manifest, oracle=oracle)
+                historical = finalize_recorded_landing(coordinator)
+                if historical is not None:
+                    return historical
+                verify_landing_runtime(manifest, root)
+                return recover_landing(coordinator)
             verify_factory_runtime(root, manifest)
         except SupervisorIntegrationError:
             raise
@@ -2626,18 +2645,16 @@ def _run_instrumented_entry(
                     coordinator=coordinator,
                 )
             _resume_stop_request(coordinator, root, manifest)
-        return _run_instrumented_locked(
-            root=root,
-            manifest=manifest,
-            recipients=recipients,
-            lanes=lanes,
-            task_count=task_count,
-            coordinator=coordinator,
-            had_prior_events=had_prior_events,
-            adapters=adapters,
-            options=options,
-            lane_executor=lane_executor,
-        )
+        from .search_full_oracle import AutomaticLandingComplete, terminal_result
+        try:
+            return _run_instrumented_locked(
+                root=root, manifest=manifest, recipients=recipients, lanes=lanes,
+                task_count=task_count, coordinator=coordinator,
+                had_prior_events=had_prior_events, adapters=adapters,
+                options=options, lane_executor=lane_executor,
+            )
+        except AutomaticLandingComplete:
+            return terminal_result(coordinator)
 
 
 def run_instrumented(

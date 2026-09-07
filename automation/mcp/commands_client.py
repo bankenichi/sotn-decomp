@@ -344,14 +344,17 @@ def _search_create_argv(
     record_ids,
     lanes,
     runtime_id: str | None = None,
+    land_matches: bool = False,
 ) -> list[str]:
     """Build the bounded production run-creation argv.
 
-    Creation is deliberately a foreground operation.  It receives only the
+    Creation runs as a background job. It receives only the
     logical name and typed values, while the CLI factory resolves queue,
     target and tool evidence from the repository itself.
     """
 
+    if not isinstance(land_matches, bool):
+        raise Rejected("land_matches must be a boolean")
     _search_component(name, "name")
     records = _search_record_ids(record_ids)
     if not records:
@@ -368,6 +371,8 @@ def _search_create_argv(
         "--lanes",
         *selected,
     ]
+    if land_matches:
+        argv.append("--land-matches")
     if runtime_id is not None:
         argv.extend(
             ["--runtime-id", _search_identity(runtime_id, "runtime_id")]
@@ -1481,8 +1486,8 @@ REGISTRY = {
     # never caller-controlled here.
     "search_plan": lambda name, record_ids, lanes: _search_plan_argv(
         name, record_ids, lanes),
-    "search_create_instrumented": lambda name, record_ids, lanes, runtime_id=None: _search_create_argv(
-        name, record_ids, lanes, runtime_id),
+    "search_create_instrumented": lambda name, record_ids, lanes, runtime_id=None, land_matches=False: _search_create_argv(
+        name, record_ids, lanes, runtime_id, land_matches),
     "search_start_instrumented": lambda run_id: _search_supervisor_argv(
         run_id, "--run"),
     "search_resume_instrumented": lambda run_id: _search_supervisor_argv(

@@ -18,10 +18,10 @@ Coordination is files and git only, no app puppeting.
 | live authority | current value |
 |---|---|
 | Build oracle | **113/113** from the artifacts on disk |
-| Decompiled | **94.1%**, 8180/8730 functions; 550 US `INCLUDE_ASM` stubs remain |
-| Queue | 983 records: 433 matched, 380 todo, 123 escalated, 41 deferred, 6 near |
-| Provenance | upstream-harvest 55, shim-segment 9, shim-header 55, transplant 135, twin-port 31, permuter 18, claude-manual 6, model-fleet 58, unknown 66 |
-| Automation | 167 modules, 69 suites plus 36 module self-tests, 99 tools, 108 diagnostics |
+| Decompiled | **94.1%**, 8181/8730 functions; 549 US `INCLUDE_ASM` stubs remain |
+| Queue | 983 records: 434 matched, 379 todo, 123 escalated, 41 deferred, 6 near |
+| Provenance | upstream-harvest 55, shim-segment 9, shim-header 55, transplant 136, twin-port 31, permuter 18, claude-manual 6, model-fleet 58, unknown 66 |
+| Automation | 168 modules, 69 suites plus 36 module self-tests, 99 tools, 108 diagnostics |
 
 This block is regenerated from the same queue, checksum manifest, linker maps, provenance classifier, and connector inventory as `README.md`.
 <!-- LIVE-STATUS:END -->
@@ -134,6 +134,15 @@ stop without creating another coordinator, and `search_resume_instrumented`
 continues the same manifest, task identities and ledger. Status and ledger
 verification use archived evidence and remain available even when live inputs
 have drifted.
+
+Create with `land_matches=True` to let the first measured zero reach the
+full checksum oracle. This policy is immutable and defaults to false. The
+supervisor archives the exact source change, reserves that recipient, and uses
+the existing BuildLock and journaled landing gate. It persists the outcome
+before preserving the method note and reporting the queue. Restart can finish
+that handoff; a terminal result is not rebuilt. Every landing attempt ends the
+run, so later searching starts from a newly captured manifest. An isolated zero
+alone is still not a verified match or a completed integration gate.
 
 Do not substitute `run_automation(search_cli.py ...)` for this lifecycle. The
 dedicated connector surface is the authority boundary: typed lists in, no

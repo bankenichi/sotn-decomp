@@ -1139,6 +1139,7 @@ def _tool_identities(
     config_path: Optional[Path] = None,
     schema_path: Optional[Path] = None,
     indexed_runtime: Any = None,
+    land_matches: bool = False,
 ) -> tuple[dict[str, str], dict[str, Any]]:
     core_modules: dict[str, dict[str, Any]] = {}
     core_hashes: dict[str, str] = {}
@@ -1235,6 +1236,10 @@ def _tool_identities(
         "selected_lanes": list(lanes),
         "supervisor_module": core_modules["automation/search_supervisor.py"],
     }
+    if land_matches:
+        from .search_full_oracle import capture_binding
+        evidence["full_oracle"] = capture_binding(repo)
+        identities["full_oracle"] = hash_canonical(evidence["full_oracle"])
     return identities, evidence
 
 
@@ -1762,7 +1767,7 @@ def _verify_existing_artifacts(
                 "artifact_type", "core_modules", "factory", "lane_inputs",
                 "lane_modules", "lane_module", "mode", "config", "schema",
                 "schema_version", "selected_lanes", "supervisor_module"
-            }
+            } | ({"full_oracle"} if "full_oracle" in (expected_tool_identities or {}) else set())
             or tools_document.get("artifact_type") != "sotn-search-tool-evidence"
             or tools_document.get("schema_version") != "1.0.0"
             or tools_document.get("selected_lanes") != list(selected_tool_lanes)
@@ -1793,6 +1798,9 @@ def _verify_existing_artifacts(
             or schema_document.get("path") != "automation/search-ledger.schema.json"
         ):
             raise PartialRunRefusal("tool evidence binding is invalid")
+        if "full_oracle" in tools_document:
+            from .search_full_oracle import validate_binding
+            validate_binding(tools_document["full_oracle"], expected_tool_identities["full_oracle"])
         expected_core_paths = {path for path, _key in _CORE_MODULES}
         if set(core_modules) != expected_core_paths:
             raise PartialRunRefusal("core tool evidence coverage is invalid")
@@ -2045,6 +2053,7 @@ def verify_factory_runtime(
         config_path=config_path,
         schema_path=schema_path,
         indexed_runtime=indexed_runtime,
+        land_matches="full_oracle" in manifest.tool_identities,
     )
     if current_tools != dict(manifest.tool_identities):
         raise EvidenceRefusal("current search tools or bound lane inputs differ from the frozen run")
@@ -2104,6 +2113,7 @@ def _create_instrumented_run_locked(
     compiler_identity_resolver: Optional[IdentityResolver] = None,
     config_path: Optional[Path | str] = None,
     runtime_id: Optional[str] = None,
+    land_matches: bool = False,
     now: Optional[Clock] = None,
     fault_hook: Optional[FactoryFaultHook] = None,
 ) -> dict[str, Any]:
@@ -2113,6 +2123,8 @@ def _create_instrumented_run_locked(
     manifest before the live queue is read.  Only a new name may consult live
     todo eligibility.
     """
+    if not isinstance(land_matches, bool):
+        raise InputRefusal("land_matches must be a boolean")
     run_id, normalized_ids, selected_lanes = _normalize_inputs(name, record_ids, lanes)
     normalized_runtime_id = _normalize_indexed_runtime_id(
         runtime_id,
@@ -2166,6 +2178,8 @@ def _create_instrumented_run_locked(
             raise RunNameCollision(
                 "run name already binds a different indexed runtime"
             )
+        if ("full_oracle" in existing_manifest.tool_identities) != land_matches:
+            raise RunNameCollision("run name already binds a different landing policy")
         if canonical_anchor_function(existing_manifest.function_ids) != anchor:
             raise RunNameCollision("run name already binds a different canonical anchor")
         verify_factory_archive(run_root, existing_manifest)
@@ -2265,6 +2279,7 @@ def _create_instrumented_run_locked(
         config_path=resolved_config,
         schema_path=resolved_schema,
         indexed_runtime=indexed_runtime,
+        land_matches=land_matches,
     )
 
     target_payloads: dict[str, dict[str, Any]] = {}
@@ -2533,6 +2548,7 @@ def create_instrumented_run(
     compiler_identity_resolver: Optional[IdentityResolver] = None,
     config_path: Optional[Path | str] = None,
     runtime_id: Optional[str] = None,
+    land_matches: bool = False,
     now: Optional[Clock] = None,
     fault_hook: Optional[FactoryFaultHook] = None,
 ) -> dict[str, Any]:
@@ -2544,6 +2560,8 @@ def create_instrumented_run(
     different canonical function anchors.
     """
 
+    if not isinstance(land_matches, bool):
+        raise InputRefusal("land_matches must be a boolean")
     run_id, normalized_ids, selected_lanes = _normalize_inputs(name, record_ids, lanes)
     _normalize_indexed_runtime_id(runtime_id, selected_lanes)
     if len(normalized_ids) * len(selected_lanes) > _MAX_TASKS:
@@ -2566,6 +2584,7 @@ def create_instrumented_run(
                 compiler_identity_resolver=compiler_identity_resolver,
                 config_path=config_path,
                 runtime_id=runtime_id,
+                land_matches=land_matches,
                 now=now,
                 fault_hook=fault_hook,
             )

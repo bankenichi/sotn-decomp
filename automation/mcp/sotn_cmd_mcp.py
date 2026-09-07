@@ -746,6 +746,7 @@ def search_create_instrumented(
     record_ids: list[str],
     lanes: list[str],
     runtime_id: str | None = None,
+    land_matches: bool = False,
 ) -> dict:
     """Create one immutable canonical instrumented search run as a background job.
 
@@ -760,6 +761,7 @@ def search_create_instrumented(
         record_ids=record_ids,
         lanes=lanes,
         runtime_id=runtime_id,
+        land_matches=land_matches,
     )
     result["name"] = name
     return result
