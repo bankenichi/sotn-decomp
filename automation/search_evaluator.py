@@ -49,7 +49,7 @@ def evaluation_receipts(archive: ContentAddressedArchive):
         document = json.loads(raw)
         if canonical_bytes(document) != raw:
             raise EvaluationError("evaluation receipt is not canonical")
-        if set(document).difference({"binding", "score", "object", "disassembly", "diagnostic", "reused_from"}) or not {"binding", "score", "object", "disassembly", "diagnostic"}.issubset(document):
+        if set(document).difference({"binding", "score", "object", "disassembly", "diagnostic", "reused_from", "preprocessed_source"}) or not {"binding", "score", "object", "disassembly", "diagnostic"}.issubset(document):
             raise EvaluationError("evaluation receipt fields differ")
         for artifact in iter_artifact_refs(document):
             archive.verify(artifact)
@@ -71,6 +71,8 @@ class IsolatedEvaluator:
         self.targets = dict(targets)
         self.symbols = dict(symbols)
         self.config_path = config_path
+        from .weight_tuner import weights_for_run
+        self.weights = weights_for_run(manifest, archive)
 
     @classmethod
     def from_factory(cls, manifest: RunManifest, archive: ContentAddressedArchive):
@@ -120,6 +122,8 @@ class IsolatedEvaluator:
             "symbol": self.symbols[candidate.recipient_id],
             "compiler_identity": self.manifest.compiler_identity,
             "evaluator_identity": self.manifest.tool_identities[TOOL_KEY],
+            **({"scorer_weights": self.manifest.tool_identities["scorer_weights"]}
+               if "scorer_weights" in self.manifest.tool_identities else {}),
         }
 
     def measure(self, result: TaskResult):
@@ -153,6 +157,7 @@ class IsolatedEvaluator:
                 expected_pipeline_identity=self.manifest.compiler_identity,
                 symbol=binding["symbol"], config_path=self.config_path,
                 recipient_id=candidate.recipient_id if candidate.recipient_id.count(":") == 2 else None,
+                weights=self.weights,
             )
             obj = self.archive.put_object(observation.object_bytes) if observation.object_bytes is not None else None
             disassembly = self.archive.put_text(
@@ -169,6 +174,8 @@ class IsolatedEvaluator:
                 "disassembly": disassembly.to_dict() if disassembly else None,
                 "diagnostic": diagnostic.to_dict() if diagnostic else None,
             }
+            if observation.preprocessed_source is not None:
+                document["preprocessed_source"] = self.archive.put_source(observation.preprocessed_source).to_dict()
             reference = self.archive.put_json(document, category="evaluations")
         score = ScoreVector.from_dict(document["score"])
         if score.compiler_identity != self.manifest.compiler_identity:
@@ -206,6 +213,8 @@ def validate_evaluation_receipts(manifest: RunManifest, archive: ContentAddresse
     """Verify transitive measurement artifacts without executing the compiler."""
     if TOOL_KEY not in manifest.tool_identities:
         return
+    from .weight_tuner import weights_for_run
+    weights = weights_for_run(manifest, archive)
     for _, document in evaluation_receipts(archive):
         binding = document["binding"]
         if (
@@ -218,6 +227,8 @@ def validate_evaluation_receipts(manifest: RunManifest, archive: ContentAddresse
         ):
             raise EvaluationError("archived evaluation is not manifest-bound")
         score = ScoreVector.from_dict(document["score"])
+        if score.weights.to_dict() != weights or binding.get("scorer_weights") != manifest.tool_identities.get("scorer_weights"):
+            raise EvaluationError("archived score weights differ from manifest")
         if score.compiler_identity != manifest.compiler_identity:
             raise EvaluationError("archived score compiler differs")
         source = ArtifactRef.from_dict(binding["source"])

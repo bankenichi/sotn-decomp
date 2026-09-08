@@ -189,6 +189,7 @@ class FactoryFixture(unittest.TestCase):
         compiler_identity_resolver=None,
         runtime_id=None,
         land_matches=False,
+        weight_tuning_run=None,
         now=None,
         fault_hook=None,
     ):
@@ -205,9 +206,35 @@ class FactoryFixture(unittest.TestCase):
             ),
             runtime_id=runtime_id,
             land_matches=land_matches,
+            weight_tuning_run=weight_tuning_run,
             now=now or (lambda: "2026-08-28T00:00:00Z"),
             fault_hook=fault_hook,
         )
+
+    def test_verified_weights_are_frozen_and_read_by_runtime(self):
+        from automation.weight_tuner import PROTOCOL, weights_for_run
+        from automation.search_archive import ContentAddressedArchive
+        from automation.compiler_corpus import DEFAULT_WEIGHTS
+        baseline = self.create("weight-baseline")
+        original = RunManifest.from_dict(baseline["manifest"])
+        (self.repo / "automation/weight_tuner.py").write_bytes(
+            (Path(__file__).parent / "weight_tuner.py").read_bytes())
+        weights = {key: value * 2 for key, value in DEFAULT_WEIGHTS.items()}
+        document = {"protocol": PROTOCOL, "dataset_id": hash_bytes(b"corpus"),
+                    "selected_trial_id": hash_bytes(b"trial"), "weights": weights,
+                    "compiler_identity": original.compiler_identity,
+                    "config_identity": original.config_identity}
+        with mock.patch("automation.weight_tuner.load_weights", return_value=document) as load:
+            created = self.create("weighted", weight_tuning_run="qualified")
+            load.assert_called_once_with(self.repo, "qualified")
+        manifest = RunManifest.from_dict(created["manifest"])
+        archive = ContentAddressedArchive(created["run_root"])
+        self.assertEqual(weights_for_run(manifest, archive), weights)
+        _factory.verify_factory_archive(created["run_root"], manifest)
+        self.assertTrue(self.create("weighted", weight_tuning_run="qualified")["idempotent"])
+        with self.assertRaises(RunNameCollision):
+            self.create("weighted")
+        self.assertEqual(weights_for_run(original, ContentAddressedArchive(baseline["run_root"])), DEFAULT_WEIGHTS)
 
     def test_automatic_landing_is_immutable_and_explicit(self):
         from automation.search_full_oracle import TOOL_FILES, capture_binding

@@ -1140,6 +1140,7 @@ def _tool_identities(
     schema_path: Optional[Path] = None,
     indexed_runtime: Any = None,
     land_matches: bool = False,
+    weight_spec: Any = None,
 ) -> tuple[dict[str, str], dict[str, Any]]:
     core_modules: dict[str, dict[str, Any]] = {}
     core_hashes: dict[str, str] = {}
@@ -1240,6 +1241,14 @@ def _tool_identities(
         from .search_full_oracle import capture_binding
         evidence["full_oracle"] = capture_binding(repo)
         identities["full_oracle"] = hash_canonical(evidence["full_oracle"])
+    if weight_spec is not None:
+        path = _safe_repo_file(repo, str(repo / "automation/weight_tuner.py"), "scorer weight runtime")
+        raw = path.read_bytes()
+        evidence["scorer_weights"] = {"tuning_run": weight_spec["tuning_run"],
+                                      "document": weight_spec["document"],
+                                      "runtime_identity": hash_bytes(raw)}
+        identities["scorer_weights"] = hash_canonical(weight_spec["document"])
+        identities["weight_tuner_runtime"] = hash_bytes(raw)
     return identities, evidence
 
 
@@ -1768,6 +1777,7 @@ def _verify_existing_artifacts(
                 "lane_modules", "lane_module", "mode", "config", "schema",
                 "schema_version", "selected_lanes", "supervisor_module"
             } | ({"full_oracle"} if "full_oracle" in (expected_tool_identities or {}) else set())
+              | ({"scorer_weights"} if "scorer_weights" in (expected_tool_identities or {}) else set())
             or tools_document.get("artifact_type") != "sotn-search-tool-evidence"
             or tools_document.get("schema_version") != "1.0.0"
             or tools_document.get("selected_lanes") != list(selected_tool_lanes)
@@ -1801,6 +1811,15 @@ def _verify_existing_artifacts(
         if "full_oracle" in tools_document:
             from .search_full_oracle import validate_binding
             validate_binding(tools_document["full_oracle"], expected_tool_identities["full_oracle"])
+        if "scorer_weights" in tools_document:
+            from .weight_tuner import checked_weights
+            spec = tools_document["scorer_weights"]
+            if (set(spec) != {"tuning_run", "document", "runtime_identity"}
+                    or hash_canonical(spec["document"]) != expected_tool_identities["scorer_weights"]
+                    or spec["runtime_identity"] != expected_tool_identities.get("weight_tuner_runtime")):
+                raise PartialRunRefusal("scorer weight evidence differs from manifest")
+            _component(spec["tuning_run"], "tuning run")
+            checked_weights(spec["document"]["weights"])
         expected_core_paths = {path for path, _key in _CORE_MODULES}
         if set(core_modules) != expected_core_paths:
             raise PartialRunRefusal("core tool evidence coverage is invalid")
@@ -1911,6 +1930,9 @@ def verify_factory_archive(
         raise PartialRunRefusal("factory archive requires a typed manifest")
     if not _factory_manifest_marker(manifest):
         return manifest
+    if "scorer_weights" in manifest.tool_identities:
+        from .weight_tuner import weights_for_run
+        weights_for_run(manifest, ContentAddressedArchive(root))
     index, index_path = _load_index(root)
     if (
         index.get("run_id") != manifest.run_id
@@ -2054,6 +2076,7 @@ def verify_factory_runtime(
         schema_path=schema_path,
         indexed_runtime=indexed_runtime,
         land_matches="full_oracle" in manifest.tool_identities,
+        weight_spec=tools_document.get("scorer_weights"),
     )
     if current_tools != dict(manifest.tool_identities):
         raise EvidenceRefusal("current search tools or bound lane inputs differ from the frozen run")
@@ -2114,6 +2137,7 @@ def _create_instrumented_run_locked(
     config_path: Optional[Path | str] = None,
     runtime_id: Optional[str] = None,
     land_matches: bool = False,
+    weight_tuning_run: Optional[str] = None,
     now: Optional[Clock] = None,
     fault_hook: Optional[FactoryFaultHook] = None,
 ) -> dict[str, Any]:
@@ -2180,6 +2204,10 @@ def _create_instrumented_run_locked(
             )
         if ("full_oracle" in existing_manifest.tool_identities) != land_matches:
             raise RunNameCollision("run name already binds a different landing policy")
+        old_index, _ = _load_index(run_root)
+        old_tools = _archive_json(ContentAddressedArchive(run_root), old_index["tools"], "tools")
+        if old_tools.get("scorer_weights", {}).get("tuning_run") != weight_tuning_run:
+            raise RunNameCollision("run name already binds a different scorer tuning run")
         if canonical_anchor_function(existing_manifest.function_ids) != anchor:
             raise RunNameCollision("run name already binds a different canonical anchor")
         verify_factory_archive(run_root, existing_manifest)
@@ -2273,6 +2301,15 @@ def _create_instrumented_run_locked(
         raise EvidenceRefusal(
             "indexed runtime compiler or configuration differs from the new run"
         )
+    weight_spec = None
+    if weight_tuning_run is not None:
+        from .weight_tuner import load_weights
+        _component(weight_tuning_run, "tuning run")
+        weight_document = load_weights(root_repo, weight_tuning_run)
+        if (weight_document["compiler_identity"] != compiler_identity
+                or weight_document["config_identity"] != config_identity):
+            raise EvidenceRefusal("tuned weights use a different compiler or config")
+        weight_spec = {"tuning_run": weight_tuning_run, "document": weight_document}
     tool_identities, tool_payload = _tool_identities(
         root_repo,
         selected_lanes,
@@ -2280,6 +2317,7 @@ def _create_instrumented_run_locked(
         schema_path=resolved_schema,
         indexed_runtime=indexed_runtime,
         land_matches=land_matches,
+        weight_spec=weight_spec,
     )
 
     target_payloads: dict[str, dict[str, Any]] = {}
@@ -2347,6 +2385,8 @@ def _create_instrumented_run_locked(
     }
     if normalized_runtime_id is not None:
         seed_payload["indexed_runtime_id"] = normalized_runtime_id
+    if weight_spec is not None:
+        seed_payload["scorer_weights"] = tool_identities["scorer_weights"]
     run_seed = int(
         hash_canonical(seed_payload)[7:23],
         16,
@@ -2378,6 +2418,8 @@ def _create_instrumented_run_locked(
     )
 
     archive = ContentAddressedArchive(run_root)
+    if weight_spec is not None:
+        archive.put_json(weight_spec["document"], category="scorer-weights")
     subset_ref = archive.put_json(
         {
             **canonical_subset_payload(normalized_ids),
@@ -2549,6 +2591,7 @@ def create_instrumented_run(
     config_path: Optional[Path | str] = None,
     runtime_id: Optional[str] = None,
     land_matches: bool = False,
+    weight_tuning_run: Optional[str] = None,
     now: Optional[Clock] = None,
     fault_hook: Optional[FactoryFaultHook] = None,
 ) -> dict[str, Any]:
@@ -2585,6 +2628,7 @@ def create_instrumented_run(
                 config_path=config_path,
                 runtime_id=runtime_id,
                 land_matches=land_matches,
+                weight_tuning_run=weight_tuning_run,
                 now=now,
                 fault_hook=fault_hook,
             )

@@ -540,6 +540,7 @@ def _score_objects(
     target_disassembly: str,
     *,
     symbol: Optional[str] = None,
+    weights: Optional[Mapping[str, int]] = None,
 ) -> dict[str, object]:
     vendor_root = ROOT / "tools" / "decomp-permuter"
     if str(vendor_root) not in sys.path:
@@ -556,6 +557,15 @@ def _score_objects(
             compiler_args=pipeline.identity.arguments,
             compiler_config={"pipeline_identity": pipeline.identity.identity},
         )
+        active_weights = dict(DEFAULT_WEIGHTS if weights is None else weights)
+        if set(active_weights) != set(DEFAULT_WEIGHTS) or any(
+            type(value) is not int or value <= 0 for value in active_weights.values()
+        ):
+            raise CompilerCorpusError("scorer weights require five positive integer components")
+        for key, attr in {"stack": "PENALTY_STACKDIFF", "regalloc": "PENALTY_REGALLOC",
+                          "reordering": "PENALTY_REORDERING", "insertion": "PENALTY_INSERTION",
+                          "deletion": "PENALTY_DELETION"}.items():
+            setattr(scorer, attr, active_weights[key])
         result = scorer.score(str(candidate_path))
         if hasattr(result, "to_dict"):
             score = dict(result.to_dict())
@@ -579,7 +589,7 @@ def _score_objects(
         raise CompilerCorpusError(f"cannot score corpus object: {type(exc).__name__}: {exc}") from exc
 
     score["compiler_identity"] = pipeline.identity.identity
-    score["weights"] = dict(DEFAULT_WEIGHTS)
+    score["weights"] = active_weights
     # The scorer's elapsed field is intentionally normalized.  Wall time is not
     # an identity and recording it would make retries non-deterministic.
     score["elapsed_ms"] = 0
@@ -692,6 +702,7 @@ class ObjectEvaluation:
     object_bytes: Optional[bytes]
     disassembly: Optional[str]
     diagnostic: Optional[str]
+    preprocessed_source: Optional[str] = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "score", MappingProxyType(dict(self.score)))
@@ -705,6 +716,7 @@ def compile_against_object(
     symbol: Optional[str] = None,
     config_path: Path | str = DEFAULT_CONFIG_PATH,
     recipient_id: str | None = None,
+    weights: Optional[Mapping[str, int]] = None,
 ) -> ObjectEvaluation:
     """Evaluate against the archived target, never against the candidate itself.
 
@@ -716,6 +728,10 @@ def compile_against_object(
         raise TypeError("source must be a string")
     if not isinstance(target_object, bytes) or not target_object:
         raise CompilerCorpusError("target object bytes are required")
+    if weights is not None and (set(weights) != set(DEFAULT_WEIGHTS) or any(
+        type(value) is not int or not 1 <= value <= 10000 for value in weights.values()
+    )):
+        raise CompilerCorpusError("scorer weights require five positive bounded integer components")
     pipeline = _pipeline(config_path=config_path)
     if pipeline.identity.identity != expected_pipeline_identity:
         raise CompilerCorpusError("compiler pipeline identity differs from manifest")
@@ -733,8 +749,11 @@ def compile_against_object(
         except _PipelineFailure as exc:
             if not exc.source_rejection or exc.source_name != "candidate":
                 raise
+            failure = _failure_score(pipeline)
+            if weights is not None:
+                failure["weights"] = dict(weights)
             return ObjectEvaluation(
-                _failure_score(pipeline), None, None,
+                failure, None, None,
                 _sanitize(str(exc), temporary_root),
             )
         disassembly, candidate_count = _normalized_disassembly(candidate_path, symbol=symbol)
@@ -742,9 +761,13 @@ def compile_against_object(
             raise CompilerCorpusError("candidate object has no instructions")
         score = _score_objects(
             candidate_path, target_path, pipeline,
-            disassembly, target_disassembly, symbol=symbol,
+            disassembly, target_disassembly, symbol=symbol, weights=weights,
         )
-        return ObjectEvaluation(score, candidate_path.read_bytes(), disassembly, None)
+        preprocessed = (temporary_root / f"00-{Path(pipeline.stages[0][0]).name}.out").read_text()
+        # Preserve the exact compiler input with line markers removed. The
+        # standalone archive must not resolve headers against a later checkout.
+        preprocessed = re.sub(r"^\s*#.*$", "", preprocessed, flags=re.M)
+        return ObjectEvaluation(score, candidate_path.read_bytes(), disassembly, None, preprocessed)
 
 
 # Explicit aliases make the identity and compiler entry points discoverable to

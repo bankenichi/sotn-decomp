@@ -16,7 +16,7 @@ For the mechanisms that land matches, read `automation/README.md`.
 | Decompiled | **94.1%**, 8181/8730 functions; 549 US `INCLUDE_ASM` stubs remain |
 | Queue | 983 records: 434 matched, 379 todo, 123 escalated, 41 deferred, 6 near |
 | Provenance | upstream-harvest 55, shim-segment 9, shim-header 55, transplant 136, twin-port 31, permuter 18, claude-manual 6, model-fleet 58, unknown 66 |
-| Automation | 168 modules, 69 suites plus 36 module self-tests, 99 tools, 108 diagnostics |
+| Automation | 174 modules, 71 suites plus 36 module self-tests, 99 tools, 112 diagnostics |
 
 This block is regenerated from the same queue, checksum manifest, linker maps, provenance classifier, and connector inventory as `README.md`.
 <!-- LIVE-STATUS:END -->
@@ -608,6 +608,8 @@ script supports `--help` and most support `--self-test`.
 | script | answers |
 |---|---|
 | `run_selftests.py` | runs every `test_*.py` and module self-test through one longest-first worker queue, streams completion progress, and prints one table; the timing cache lives outside Git at `~/sotn-work/selftest-timings.json` |
+| `data_search.py` | frozen configured data/rodata search, byte scores and ownership; `--prepare` derives US stage shared-header dependencies, `--land` runs the journaled full checksum oracle, and `--verify` replays discovery |
+| `weight_tuner.py` | completed-run compiler corpus, fixed family split and real bounded weighted mutation trials; `--verify` replays archived results without compiling; later search creation opts in with `weight_tuning_run` |
 | `artifact_store.py` | public immutable-generation and atomic stable-view store shared by candidate, rejection, transplant, migration, and seed-repair writers |
 | `fix_seed_declarations.py` | repair missing or stale writer-owned declarations across complete candidate translation units; exact repository prototypes win, externally visible definitions supply their exact signature when no prototype exists, and static definitions are never exported; `--apply` publishes an immutable version and prints its exact `seed=` path |
 | `permuter_supervisor.py` | the auto-queueing permuter driver, legacy-seed migrator and focused importer. **Use `job_start`** for searches |

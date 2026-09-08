@@ -104,6 +104,12 @@ def run(work: Path, run_root: Path) -> dict:
     request = marker["request"]
     session = request["session_identity"]
     archive = ContentAddressedArchive(run_root)
+    from automation.weight_tuner import weights_for_run
+    from automation.search_types import RunManifest
+    from automation.compiler_corpus import DEFAULT_WEIGHTS
+    manifest_path = run_root / "manifest.json"
+    score_weights = (weights_for_run(RunManifest.from_dict(json.loads(manifest_path.read_text())), archive)
+                     if manifest_path.exists() else dict(DEFAULT_WEIGHTS))
     events = load_events(archive, session)
     if len(events) < request["start_iteration"]:
         raise ValueError("resume is missing durable evaluation events")
@@ -164,6 +170,7 @@ def run(work: Path, run_root: Path) -> dict:
             source, (work / "target.o").read_bytes(),
             expected_pipeline_identity=request["evaluator_identity"], symbol=function,
             recipient_id=request["recipient_id"],
+            weights=score_weights,
         )
         source_ref = archive.put_source(source)
         obj = archive.put_object(observation.object_bytes) if observation.object_bytes is not None else None

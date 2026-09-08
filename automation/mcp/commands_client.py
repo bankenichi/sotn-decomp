@@ -345,6 +345,7 @@ def _search_create_argv(
     lanes,
     runtime_id: str | None = None,
     land_matches: bool = False,
+    weight_tuning_run: str | None = None,
 ) -> list[str]:
     """Build the bounded production run-creation argv.
 
@@ -373,6 +374,8 @@ def _search_create_argv(
     ]
     if land_matches:
         argv.append("--land-matches")
+    if weight_tuning_run is not None:
+        argv.extend(["--weight-tuning-run", _search_component(weight_tuning_run, "weight_tuning_run")])
     if runtime_id is not None:
         argv.extend(
             ["--runtime-id", _search_identity(runtime_id, "runtime_id")]
@@ -948,6 +951,10 @@ AUTOMATION_SCRIPTS = {
     "test_shim_gate.py",
     "relocation_check.py",
     "find_data_segment.py",
+    "data_search.py",
+    "test_data_search.py",
+    "weight_tuner.py",
+    "test_weight_tuner.py",
     "test_journal_replay.py",
     # A cancelled job must not be indistinguishable from a crashed one.
     "test_job_cancel.py",
@@ -1065,6 +1072,8 @@ ANALYSIS_SCRIPTS = AUTOMATION_SCRIPTS
 # report file or cache. This is documentation with executable coverage: the
 # connector test pins the known privileged surfaces and public descriptions.
 AUTOMATION_MUTATORS = {
+    "weight_tuner.py": "immutable corpus and trial evidence; isolated compiler executions",
+    "data_search.py": "immutable data evidence; config, src, queue and build with --land",
     "artifact_store.py": "immutable candidate history",
     "asm_twin_finder.py": "recorded twin corpus",
     "codebase_index.py": "shared codebase index",
@@ -1486,8 +1495,8 @@ REGISTRY = {
     # never caller-controlled here.
     "search_plan": lambda name, record_ids, lanes: _search_plan_argv(
         name, record_ids, lanes),
-    "search_create_instrumented": lambda name, record_ids, lanes, runtime_id=None, land_matches=False: _search_create_argv(
-        name, record_ids, lanes, runtime_id, land_matches),
+    "search_create_instrumented": lambda name, record_ids, lanes, runtime_id=None, land_matches=False, weight_tuning_run=None: _search_create_argv(
+        name, record_ids, lanes, runtime_id, land_matches, weight_tuning_run),
     "search_start_instrumented": lambda run_id: _search_supervisor_argv(
         run_id, "--run"),
     "search_resume_instrumented": lambda run_id: _search_supervisor_argv(

@@ -1462,6 +1462,14 @@ Root-only commit boundary: root may commit only the implementation and test path
 
 ## Verification and Handoff
 
+September 7 amendment: the owner promoted scorer tuning to immediate work and
+delegated design to root. The implementation decisions in
+`2026-09-07-data-search-and-tuning.md` supersede this plan's schema 1.1 adoption
+requirement and holdout-based weight selection. The original proposal remains
+here as evidence. New runs bind an archived weight document through the existing
+manifest tool identity map; training selects weights with a common score, and
+holdout remains independent. No model-lane qualification is implied.
+
 The worker implementing this plan reports the exact focused command, pass count, refusal cases exercised, archive identities, and any unresolved contract question. The worker leaves the tree uncommitted. Root then performs the repository-level automation checks, reviews the coordinator and schema diff, stages explicit paths, and handles any required build or oracle gate. The worker does not claim a matched result from a score, a benchmark report, or a tuner report.
 
 ## Plan Self-Review

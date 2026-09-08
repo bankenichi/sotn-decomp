@@ -26,7 +26,7 @@ under any MCP client.
 | Decompiled | **94.1%**, 8181/8730 functions; 549 US `INCLUDE_ASM` stubs remain |
 | Queue | 983 records: 434 matched, 379 todo, 123 escalated, 41 deferred, 6 near |
 | Provenance | upstream-harvest 55, shim-segment 9, shim-header 55, transplant 136, twin-port 31, permuter 18, claude-manual 6, model-fleet 58, unknown 66 |
-| Automation | 168 modules, 69 suites plus 36 module self-tests, 99 tools, 108 diagnostics |
+| Automation | 174 modules, 71 suites plus 36 module self-tests, 99 tools, 112 diagnostics |
 
 This block is regenerated from the same queue, checksum manifest, linker maps, provenance classifier, and connector inventory as `README.md`.
 <!-- LIVE-STATUS:END -->
@@ -201,6 +201,13 @@ caller-controlled paths and arbitrary argv out of the boundary:
 | `search_status` | Read-only. Recovers status from the archived manifest and ledger without consulting current queue eligibility. |
 | `search_stop` | Mutating. Publishes an atomic stop request; the lease-owning coordinator records the stop at a task boundary. |
 | `search_verify_ledger` | Read-only. Validates the exact manifest, archive and hash-chained ledger. |
+
+`search_create_instrumented` also accepts `weight_tuning_run` for explicit
+later-run scorer adoption. The factory verifies the complete archived tuning
+report, checks compiler/config compatibility, and freezes the exact weight
+document. It cannot change an existing run's weights. `data_search.py` and
+`weight_tuner.py` are available through `job_start(action="run_automation")`;
+their operational arguments and limits are documented in `automation/README.md`.
 
 Run IDs are single path-safe components. The connector resolves them only
 below `nonmatchings/<function>/search-runs/`; it never accepts a manifest path.

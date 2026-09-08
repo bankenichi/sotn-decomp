@@ -21,7 +21,7 @@ Coordination is files and git only, no app puppeting.
 | Decompiled | **94.1%**, 8181/8730 functions; 549 US `INCLUDE_ASM` stubs remain |
 | Queue | 983 records: 434 matched, 379 todo, 123 escalated, 41 deferred, 6 near |
 | Provenance | upstream-harvest 55, shim-segment 9, shim-header 55, transplant 136, twin-port 31, permuter 18, claude-manual 6, model-fleet 58, unknown 66 |
-| Automation | 168 modules, 69 suites plus 36 module self-tests, 99 tools, 108 diagnostics |
+| Automation | 174 modules, 71 suites plus 36 module self-tests, 99 tools, 112 diagnostics |
 
 This block is regenerated from the same queue, checksum manifest, linker maps, provenance classifier, and connector inventory as `README.md`.
 <!-- LIVE-STATUS:END -->
@@ -566,3 +566,33 @@ is roughly 2200 subprocess spawns and takes minutes on a mounted filesystem;
 batched it is about a second. The prefetch filter deliberately matches the
 builders' own filters rather than pulling every `.c`/`.h`/`.txt`/`.yaml`, so its
 cost does not grow when upstream adds a platform we do not index.
+# Data search and scorer tuning
+
+Run these through `sotn-cmd` background jobs with `action="run_automation"`.
+`data_search.py --run-id NAME --version us --target strno1 --stem e_red_door`
+freezes configured binaries and searches calibrated peer data spans.
+`--run-id NAME --verify` replays the frozen discovery. `--prepare` archives
+source/config changes and derives shared-header dependencies; `--land` runs
+the journaled build/checksum attempt and restores failed candidates. Initial
+landing support is US stage shared headers. Unsupported formats, ambiguous
+owners and insufficient calibration remain explicit refusals.
+
+`weight_tuner.py --run-id NAME --gate-run COMPLETED_MULTI_RECORD_RUN
+--source-run COMPLETED_RUN --iterations 8 --seed 0` captures verified compiler
+observations and executes three bounded mutation trials. Repeat `--source-run`
+for additional compatible runs. `--run-id NAME --verify` verifies the corpus,
+replays archived mutation/evaluation receipts and recomputes selection without
+compiling. Trial ranking uses training families and a common score; the report
+keeps holdout measurements separate. A small or tied experiment does not prove
+better weights.
+
+Create a later search with `search_cli.py create --name NAME --records ID ...
+--lanes preserved_candidate ... --weight-tuning-run TUNING_RUN` to adopt its
+verified artifact. The `search_create_instrumented` connector accepts the same
+`weight_tuning_run` field. Both the evaluator and permuter worker consume the
+manifest's archived weights. Existing runs retain their original weights.
+
+Evidence lives under `nonmatchings/search-evidence/data-runs/` and
+`nonmatchings/search-evidence/weight-tuning/`; it is local runtime evidence,
+not generated build output to add wholesale to Git. An unfinished external
+compiler or landing attempt refuses a blind retry and requires recovery.
