@@ -443,14 +443,14 @@ class DonorSemanticClaim:
         }
 
     @classmethod
-    def from_evidence(cls, evidence: DonorEvidence) -> "DonorSemanticClaim":
+    def from_evidence(cls, evidence: DonorEvidence, *, recipient_id: Optional[str] = None) -> "DonorSemanticClaim":
         if not isinstance(evidence, DonorEvidence):
             raise DonorQueryInputError("semantic claims require typed donor evidence")
         canonical_differences = _structural_differences(
             evidence.structural_differences
         )
         payload = {
-            "recipient_id": evidence.recipient_id,
+            "recipient_id": recipient_id or evidence.recipient_id,
             "symbol": evidence.symbol,
             "signature": evidence.signature,
             "instruction_signature": evidence.instruction_signature,
@@ -827,7 +827,9 @@ class DonorQueryResult:
                 raise DonorQueryIdentityMismatch(
                     "matched results cannot contain incompatible donor evidence"
                 )
-            if len({hit.claim_identity for hit in hits}) != 1:
+            if len({DonorSemanticClaim.from_evidence(
+                hit.entry.evidence, recipient_id=checked_query.recipient_id,
+            ).claim_identity for hit in hits}) != 1:
                 raise DonorQueryIdentityMismatch(
                     "matched results must share one semantic claim"
                 )
@@ -889,7 +891,12 @@ class DonorQueryResult:
                 raise DonorQueryIdentityMismatch(
                     "query hit semantic claim differs from its claim identity"
                 )
-            claims.setdefault(claim.claim_identity, claim)
+            # Donor identity belongs to provenance. The renderer consumes a
+            # claim explicitly bound to the already verified target query.
+            target_claim = DonorSemanticClaim.from_evidence(
+                hit.entry.evidence, recipient_id=self.query.recipient_id,
+            )
+            claims.setdefault(target_claim.claim_identity, target_claim)
         return tuple(claims[identity] for identity in sorted(claims))
 
     @classmethod
@@ -974,8 +981,8 @@ def _verify_generation(
 
 def _rank_entry(entry: DonorIndexEntry, query: DonorQuery) -> Optional[Tuple[int, str]]:
     evidence = entry.evidence
-    if evidence.recipient_id != query.recipient_id:
-        return None
+    # recipient_id identifies the target, never a donor filter. Requiring
+    # equality here made both cross-platform and cross-overlay search empty.
     if query.version is not None and evidence.version != query.version:
         return None
     selectors = (
@@ -1134,7 +1141,11 @@ def bind_donor_query(
                 receipt=receipt,
                 provenance_artifact=index.artifact,
             )
-        claim_ids = {DonorSemanticClaim.from_evidence(item[2].evidence).claim_identity for item in compatible}
+        claim_ids = {
+            DonorSemanticClaim.from_evidence(
+                item[2].evidence, recipient_id=checked.recipient_id,
+            ).claim_identity for item in compatible
+        }
         if len(claim_ids) > 1:
             receipt = _ambiguity(checked, generation_id, [item[2] for item in compatible])
             return DonorQueryResult(

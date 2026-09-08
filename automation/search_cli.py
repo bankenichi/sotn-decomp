@@ -45,6 +45,7 @@ try:  # package import when called as ``python -m automation.search_cli``
         hash_bytes,
         validate_hash,
         validate_id,
+        validate_run_id,
         validate_lane,
     )
 except ImportError:  # direct invocation from the automation directory
@@ -64,8 +65,10 @@ except ImportError:  # direct invocation from the automation directory
         canonical_subset_identity,
         canonical_subset_payload,
         hash_canonical,
+        hash_bytes,
         validate_hash,
         validate_id,
+        validate_run_id,
         validate_lane,
     )
 
@@ -241,7 +244,7 @@ def _revision_source_references(
                 continue
             if not isinstance(document, Mapping):
                 continue
-            if document.get("protocol") != DONOR_SNAPSHOT_MANIFEST_PROTOCOL:
+            if document.get("protocol") not in {DONOR_SNAPSHOT_MANIFEST_PROTOCOL, "sotn-donor-source-snapshot-v1"}:
                 continue
             version = document.get("version")
             revision = document.get("revision")
@@ -263,6 +266,13 @@ def _revision_source_references(
             matches[version].append((root, reference))
 
     missing = [version for version in _DONOR_VERSIONS if not matches[version]]
+    if missing and all(
+        json.loads(owner.verify(reference))["protocol"] == "sotn-donor-source-snapshot-v1"
+        for values in matches.values() for root, reference in values
+        for owner in (ContentAddressedArchive(root),)
+    ):
+        from automation.search_donor_capture import capture_pinned_donor_sources
+        return capture_pinned_donor_sources(pairs, repo=repo)
     if missing:
         raise RunInputError(
             "no immutable donor source manifest is available for: "
@@ -285,6 +295,30 @@ def _revision_source_references(
     return revisions
 
 
+def _runtime_summary(document: Mapping[str, Any]) -> dict[str, Any]:
+    """Keep the operator response bounded; full donor data stays in its archive."""
+    counts = {version: 0 for version in _DONOR_VERSIONS}
+    assembly_counts = dict(counts)
+    coverage = {}
+    for entry in document.get("donor_index", {}).get("entries", ()):
+        evidence = entry["evidence"]
+        version = evidence["version"]
+        counts[version] += 1
+        metadata = evidence.get("metadata", {})
+        if metadata.get("compatibility", {}).get("assembly_available"):
+            assembly_counts[version] += 1
+        reference = metadata.get("source_coverage")
+        if reference:
+            coverage[reference["content_hash"]] = reference
+    return {
+        "protocol": "sotn-indexed-runtime-summary-v1",
+        "artifact": document.get("artifact"),
+        "donors_by_version": counts,
+        "donors_with_assembly_by_version": assembly_counts,
+        "source_coverage": [coverage[key] for key in sorted(coverage)],
+    }
+
+
 def publish_indexed_runtime(
     gate_run_id: str,
     revisions: Sequence[str] | Sequence[Sequence[str]],
@@ -304,7 +338,7 @@ def publish_indexed_runtime(
     try:
         generation = publish(gate_run_id, typed_revisions, repo=_REPO)
     except (OSError, RuntimeError, SearchValidationError, TypeError, ValueError) as exc:
-        raise RunInputError("indexed runtime publication was refused") from exc
+        raise RunInputError("indexed runtime publication was refused: " + str(exc)) from exc
     try:
         runtime_id = validate_hash(generation.runtime_id, "runtime_id")
         document = generation.to_dict()
@@ -316,7 +350,7 @@ def publish_indexed_runtime(
         "gate_run_id": gate_run_id,
         "revisions": [f"{version}={revision}" for version, revision in pairs],
         "runtime_id": runtime_id,
-        "runtime": document,
+        "runtime_summary": _runtime_summary(document),
     }
 
 
@@ -345,7 +379,7 @@ def verify_indexed_runtime(runtime_id: str) -> dict[str, Any]:
         "command": "verify-indexed-runtime",
         "ok": True,
         "runtime_id": runtime_id,
-        "runtime": document,
+        "runtime_summary": _runtime_summary(document),
         "verdict": "valid",
     }
 

@@ -92,6 +92,27 @@ def _index_fixture(builder=None):
 
 
 class DonorQueryBindingTests(unittest.TestCase):
+    def test_real_platform_donor_ids_are_rebound_only_after_query(self) -> None:
+        def native_ids(revision, evidence):
+            return replace(evidence, recipient_id=f"{revision.version}:ST:fn")
+
+        with _index_fixture(native_ids) as (index, archive, gate_archive, _gate, calls, _sources):
+            result = query_donor_index(
+                index, _query(recipient_id="us:BOSS:fn"),
+                expected_binding=index.binding, index_archive=archive,
+                integration_archive=gate_archive,
+            )
+            self.assertEqual(result.status, "matched")
+            self.assertEqual({donor.version for donor in result.donors}, {"us", "hd", "pspeu", "saturn"})
+            self.assertEqual({claim.recipient_id for claim in result.semantic_claims}, {"us:BOSS:fn"})
+            self.assertTrue(all(donor.recipient_id != "us:BOSS:fn" for donor in result.donors))
+            self.assertEqual(sum(calls.values()), 4)
+            replayed = replay_donor_query_result(
+                index, result.to_dict(), expected_binding=index.binding,
+                index_archive=archive, integration_archive=gate_archive,
+            )
+            self.assertEqual(result.to_dict(), replayed.to_dict())
+
     def test_bound_query_is_read_only_ranked_and_preserves_original_evidence(self) -> None:
         with _index_fixture() as (index, archive, gate_archive, _gate, calls, _sources):
             query = _query()

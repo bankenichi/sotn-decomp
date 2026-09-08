@@ -109,6 +109,12 @@ These are absolute. Each exists because breaking it cost real work.
     live CLI or connector reachability independently. A typed unavailable or
     inapplicable result is acceptable only when it is the real executed
     platform-specific outcome, not a substitute for a missing provider.
+23. **Implementation precedes matching execution.** The owner's September 8
+    instruction limits current work to implementation, wiring and testing.
+    Do not create or start matching runs against live queue records or attempt
+    candidate landing yet. Fixture tests, index publication, archive validation
+    and required build/checksum checks remain in scope. End-to-end matching is
+    deferred until implementation is complete and the owner resumes that phase.
 
 ## 3. Where everything is
 

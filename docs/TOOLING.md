@@ -16,7 +16,7 @@ For the mechanisms that land matches, read `automation/README.md`.
 | Decompiled | **94.1%**, 8181/8730 functions; 549 US `INCLUDE_ASM` stubs remain |
 | Queue | 983 records: 434 matched, 379 todo, 123 escalated, 41 deferred, 6 near |
 | Provenance | upstream-harvest 55, shim-segment 9, shim-header 55, transplant 136, twin-port 31, permuter 18, claude-manual 6, model-fleet 58, unknown 66 |
-| Automation | 174 modules, 71 suites plus 36 module self-tests, 99 tools, 112 diagnostics |
+| Automation | 176 modules, 71 suites plus 36 module self-tests, 99 tools, 112 diagnostics |
 
 This block is regenerated from the same queue, checksum manifest, linker maps, provenance classifier, and connector inventory as `README.md`.
 <!-- LIVE-STATUS:END -->
@@ -435,6 +435,51 @@ the separate mutating boundary: every requested record must exist in live
 queue records plus source, target assembly and object, compiler, configuration,
 schema, search-tool and dynamic lane-input identities. It never reports to or
 claims from the queue.
+
+For cross-platform donor search, call
+`search_publish_indexed_runtime(gate_run_id, revisions)` as a background job,
+with one explicit full-commit pair for each of `us`, `hd`, `pspeu`, and `saturn`.
+When no complete snapshot set is present, publication captures committed
+source/configuration bytes through the connector's binary Git archive reader.
+It never labels generated checkout assembly as committed revision evidence.
+The source-only snapshot protocol records absent assembly explicitly; legacy
+complete snapshots still require all three file families. Interrupted
+source-only capture can reuse already published immutable objects.
+
+Source-only indexing follows configured C translation units and their quoted
+include closure. Files with unresolved preprocessing conditionals are retained
+in the snapshot and listed as exclusions in `donor-scan-coverage` artifacts.
+Directory membership is insufficient to attribute a shared source to a
+platform. These exclusions and missing assembly remain qualification gaps.
+
+The first real publication exposed parser failures that small fixtures missed:
+apostrophes and braces in line comments confused function extents, and nested
+control blocks were misread as functions named `f`, `e`, or `h`, producing
+duplicate donor entries. Function parsing now preserves comment offsets and
+quoted literals, requires a complete identifier, and skips an accepted body's
+nested blocks. The duplicate-index refusal was correct; suppressing duplicate
+records would have preserved false semantic evidence. Conditional C remains
+excluded pending preprocessing, rather than forcing unmatched branch braces
+through this parser.
+
+Publication manifests must sort complete POSIX path strings, not native `Path`
+objects: component ordering puts `a/entry` before `a.c`, and Windows also folds
+case. The first real native publication failed this ordering check after the
+scan completed. Its original intent remains in the ignored publication-failure
+archive; only its artifact-list order was repaired before resuming normal
+hash-verified publication from the intact stage. No donor bytes were rescanned
+or silently replaced.
+
+Pass the returned `runtime_id` when creating `multi_donor` or `cfg_dataflow`
+runs. Production queries search donor platforms independently of the target
+queue ID. Original donor IDs stay in query provenance; only verified semantic
+claims are rebound to the target for rendering. Real conflicting claims still
+produce an ambiguity refusal. Run creation, evaluation receipts, and recovery
+remain ordinary instrumented-search operations.
+`search_verify_indexed_runtime(runtime_id)` also returns a background job:
+full archive verification can exceed the transport timeout. Publication and
+verification return bounded counts and artifact references; the full index
+remains in its content-addressed archive.
 
 Automatic landing is an explicit creation policy: pass `land_matches=True`
 (or `search_cli.py create --land-matches`). It binds the landing implementation,

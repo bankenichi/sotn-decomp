@@ -101,11 +101,35 @@ SEARCH_JOB_ACTIONS = frozenset({
     "search_start_instrumented",
     "search_resume_instrumented",
     "search_publish_indexed_runtime",
+    "search_verify_indexed_runtime",
 })
 
 
 class Rejected(ValueError):
     """Raised when an argument fails validation. Never executes anything."""
+
+
+def read_pinned_donor_tree(revision: str) -> bytes:
+    """Read committed source/config bytes without checkout or text truncation.
+
+    Git remains connector-owned. The caller extracts validated regular files
+    into private scratch, never into the worktree.
+    """
+    if not isinstance(revision, str) or re.fullmatch(r"[0-9a-f]{40}(?:[0-9a-f]{24})?", revision) is None:
+        raise Rejected("donor capture requires a full commit identity")
+    if DRYRUN:
+        raise Rejected("donor capture is unavailable in connector dry-run mode")
+    commit = subprocess.run(
+        ["git", "cat-file", "-t", revision], cwd=str(REPO),
+        capture_output=True, timeout=30, check=True,
+    )
+    if commit.stdout != b"commit\n":
+        raise Rejected("donor revision must identify a commit")
+    result = subprocess.run(
+        ["git", "archive", "--format=tar", revision, "--", "src", "config"],
+        cwd=str(REPO), capture_output=True, timeout=120, check=True,
+    )
+    return result.stdout
 
 
 def _search_component(value: str, label: str) -> str:

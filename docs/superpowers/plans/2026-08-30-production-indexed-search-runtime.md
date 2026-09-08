@@ -12,6 +12,44 @@
 
 ## Global Constraints
 
+### September 7 implementation continuation, ROADMAP #302
+
+The earlier interface checklist does not establish production qualification.
+The owner selected cross-platform function matching as the next implementation
+priority. This continuation captures committed C/configuration bytes through
+the connector, publishes the real four-platform index, and executes indexed
+lanes through the ordinary factory and supervisor. Assembly coverage is
+explicit: only US has extracted assembly on this machine, and generated
+checkout files cannot be attributed to a Git revision. Source-only evidence
+uses a distinct immutable snapshot protocol. Model and fleet work stays deferred.
+
+Acceptance requires measured donor counts and exclusions for each platform,
+cross-platform query results with original donor provenance, target-bound
+rendering and ordinary compiler receipts, and archive verification/replay.
+Any remaining unsupported shapes or missing platform assembly stay open.
+
+### September 8 execution amendment and implementation outcome
+
+The owner's latest instruction supersedes immediate live execution above:
+implement, wire and test first. No matching run against live queue records or
+candidate landing belongs to this batch. End-to-end matching is a later phase.
+
+Pinned source publication now exists: runtime
+`1097fb7a8a2fa36f5d8da2afa121a37f6ca6be3440278ca7c690d82cb0f11fec`
+contains 1,750 US, 99 HD, 1,440 PSPEU and 345 Saturn donor functions, all pinned
+to `eb178335006be58f274d0c8157addae1461325bc`. Configured translation-unit
+membership, explicit conditional exclusions, cross-platform target query
+binding, original donor provenance, canonical gate recovery paths and public
+publication/verification jobs are implemented. The real source parser and
+host-independent publication ordering were corrected during this batch.
+
+Implementation remains open for version-aware preprocessing of conditional
+sources, assembly-backed structural signatures, and target rendering beyond
+the small return/arithmetic subset. These are implementation gaps, not merely
+missing live qualification. Keep this distinction when resuming the historical
+checklist below; passing fixtures and publishing the index do not close #302.
+
+
 - Todo records are the only live queue scope until todo reaches zero.
 - Production indexed search is read-only with respect to queue, source, builds, and checksum oracle.
 - The manifest is the only recipient scope authority.

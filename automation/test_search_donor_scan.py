@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import json
+import io
+import tarfile
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 from dataclasses import replace
 from pathlib import Path
 
@@ -583,6 +586,73 @@ class DonorScanTests(unittest.TestCase):
                 "bounded real-config smoke unavailable for materialized roots: "
                 + ", ".join(unavailable)
             )
+
+
+class PinnedSourceCaptureTests(unittest.TestCase):
+    def test_nested_control_blocks_are_not_donor_functions(self):
+        from automation.search_donor_scan import _parse_c_file
+        root = Path("/fixture")
+        source = '''int donor(int n) {
+    if (n) { return 1; }
+    if (n) { return 1; }
+    while (n) { n--; }
+    switch (n) { default: break; }
+    return 0;
+}
+int next(void) { const char* url = "https://example/"; return 2; }
+'''
+        records = _parse_c_file(root / "donor.c", repo=root, text=source)
+        self.assertEqual([item.name for item in records], ["donor", "next"])
+
+    def test_function_extent_ignores_quotes_and_braces_in_line_comments(self):
+        from automation.search_donor_scan import _parse_c_file
+        root = Path("/fixture")
+        body = "{\n// Player's state { is not a brace\n return 1; // }\n}"
+        records = _parse_c_file(root / "donor.c", repo=root, text="int donor(void) " + body + "\nint next(void) {return 2;}\n")
+        self.assertEqual([item.name for item in records], ["donor", "next"])
+        self.assertEqual(records[0].body, body)
+
+    def test_source_membership_follows_config_not_shared_directory(self):
+        from automation.search_donor_sources import configured_source_texts
+        with tempfile.TemporaryDirectory() as temporary:
+            fixture = DonorScanFixture(Path(temporary))
+            source = fixture.source_roots["hd"]
+            (source / "wrong_platform.c").write_text("int excluded() { return 0; }")
+            roots = discover_platform_roots("hd", repo=fixture.repo, source_only=True)
+            texts = {path: path.read_text() for path in fixture.repo.rglob("*") if path.is_file()}
+            selected, coverage = configured_source_texts(roots, root=fixture.repo, texts=texts)
+            self.assertIn(source / "entry.c", selected)
+            self.assertNotIn(source / "wrong_platform.c", selected)
+            self.assertEqual(coverage["translation_units"], ["src/hd/mini/entry.c"])
+            texts[source / "entry.c"] = "#if UNKNOWN\nint entry() {return 1;}\n#else\nint entry() {return 2;}\n#endif\n"
+            selected, coverage = configured_source_texts(roots, root=fixture.repo, texts=texts)
+            self.assertNotIn(source / "entry.c", selected)
+            self.assertEqual(coverage["excluded_source_files"][0]["reason"], "conditional_source_requires_preprocessing")
+
+    def test_source_capture_uses_commit_bytes_without_checkout_assembly(self):
+        from automation.search_donor_capture import capture_pinned_donor_sources
+        from automation.search_indexed_runtime import DONOR_SNAPSHOT_ARCHIVE_ROOT
+        with tempfile.TemporaryDirectory() as temporary:
+            fixture = DonorScanFixture(Path(temporary))
+            stream = io.BytesIO()
+            with tarfile.open(fileobj=stream, mode="w") as bundle:
+                for path in sorted(fixture.repo.rglob("*")):
+                    if path.is_file() and path.relative_to(fixture.repo).parts[0] in {"src", "config"}:
+                        bundle.add(path, arcname=path.relative_to(fixture.repo).as_posix())
+            pairs = [(version, "a" * 40) for version in DONOR_VERSIONS]
+            # Checkout drift is not a source input, even after acquisition.
+            (fixture.source_roots["hd"] / "entry.c").write_text("int forged() { return 999; }")
+            with patch("automation.search_donor_capture.commands_client.REPO", fixture.repo), patch(
+                "automation.search_donor_capture.commands_client.read_pinned_donor_tree", return_value=stream.getvalue(),
+            ) as read_tree:
+                revisions = capture_pinned_donor_sources(pairs, repo=fixture.repo)
+                self.assertEqual(read_tree.call_count, 1)
+            archive = ContentAddressedArchive(fixture.repo / DONOR_SNAPSHOT_ARCHIVE_ROOT)
+            evidence = scan_pinned_revisions(revisions, repo=fixture.repo, archive=archive)
+            self.assertEqual({item.version for item in evidence}, set(DONOR_VERSIONS))
+            self.assertTrue(all(item.symbol != "forged" for item in evidence))
+            self.assertTrue(all("assembly_missing" in item.structural_differences for item in evidence))
+            self.assertTrue(all(item.metadata["assembly_path"] is None for item in evidence))
 
 
 if __name__ == "__main__":

@@ -151,7 +151,7 @@ class TargetQueryTests(unittest.TestCase):
             query = query_for_recipient(manifest, target_index, _recipient())
             self.assertEqual(query.recipient_id, RECIPIENT_ID)
             self.assertIsNone(query.version)
-            self.assertEqual(query.source_path, "asm/us/st/fn.s")
+            self.assertIsNone(query.source_path)
             self.assertEqual(query.symbol, "fn")
             context = target_index.records[0]
             self.assertEqual(query.instruction_signature, context.instruction_signature)
@@ -244,6 +244,14 @@ class TargetQueryTests(unittest.TestCase):
             "int one(int count) {\n    return count + 1;\n}\n",
         )
         self.assertNotIn("a0", one or "")
+        extracted = deterministic_local_draft(
+            ".set noat\n.set noreorder\nglabel one\naddiu $v0, $a0, 1\njr $ra\nnop\n",
+            symbol="one", declarations={"return_type": "int", "parameters": [{"type": "int", "name": "count"}]},
+        )
+        self.assertEqual(extracted, one)
+        self.assertIsNone(deterministic_local_draft(
+            ".word 1\naddiu $v0, $zero, 1\njr $ra\nnop\n", symbol="embedded_data",
+        ))
 
         many = deterministic_local_draft(
             "addu $v0, $a0, $a1\njr $ra\nnop\n",

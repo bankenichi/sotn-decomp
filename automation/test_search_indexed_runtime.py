@@ -71,6 +71,7 @@ def _runtime_fixture(base: Path):
     # verified bytes to the immutable per-version snapshot root.
     for module in (
         "search_donor_scan.py",
+        "search_donor_sources.py",
         "search_target_renderer.py",
         "search_donor_index.py",
         "search_types.py",
@@ -233,6 +234,17 @@ def _staging_dirs(repo: Path) -> tuple[Path, ...]:
 
 
 class IndexedRuntimePublicationTests(unittest.TestCase):
+    def test_artifact_manifest_orders_posix_strings_not_native_paths(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            for name in ("a/entry", "a.c", "Z", "lower"):
+                path = root / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(b"evidence")
+            records = runtime_module._artifact_manifest(root)
+            self.assertEqual([item["path"] for item in records], ["Z", "a.c", "a/entry", "lower"])
+            runtime_module._verify_file_manifest(root, records)
+
     def test_real_gate_corpus_index_and_complete_binding_round_trip(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             repo, gate, revisions, sources = _runtime_fixture(Path(directory))

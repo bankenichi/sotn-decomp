@@ -155,6 +155,7 @@ SCANNER_INTERFACE = "automation.search_donor_scan.scan_repository_revision"
 # runtime is only the publication boundary; it must not invent a second
 # snapshot format that the scanner cannot validate.
 DONOR_SNAPSHOT_MANIFEST_PROTOCOL = "sotn-donor-snapshot-manifest-v1"
+DONOR_SOURCE_SNAPSHOT_PROTOCOL = "sotn-donor-source-snapshot-v1"
 DONOR_SNAPSHOT_MANIFEST_FILENAME = ".sotn-donor-snapshot.json"
 DONOR_SNAPSHOT_FILE_KINDS = ("assembly", "config", "source")
 _STAGING_PREFIX = ".indexed-runtime-stage-"
@@ -220,6 +221,7 @@ class DonorSnapshot:
     version: str
     revision: str
     files: tuple[DonorSnapshotFile, ...]
+    source_only: bool = False
 
     def __post_init__(self) -> None:
         if self.version not in DONOR_VERSIONS:
@@ -242,7 +244,10 @@ class DonorSnapshot:
             raise IndexedRuntimeInputError(
                 "donor snapshot files must be sorted and unique"
             )
-        if {item.kind for item in files} != set(DONOR_SNAPSHOT_FILE_KINDS):
+        if not isinstance(self.source_only, bool):
+            raise IndexedRuntimeInputError("source_only must be a boolean")
+        expected_kinds = {"config", "source"} if self.source_only else set(DONOR_SNAPSHOT_FILE_KINDS)
+        if {item.kind for item in files} != expected_kinds:
             raise IndexedRuntimeInputError(
                 "donor snapshot must bind config, source, and assembly files"
             )
@@ -641,8 +646,19 @@ def _copy_tree(source: Path, destination: Path, *, label: str) -> None:
             raise IndexedRuntimeArtifactError(label + " contains an unsupported entry")
 
 
+def snapshot_gate_root(container: Path) -> Path:
+    """Locate the archived gate while retaining canonical provider recovery paths."""
+    gate = container / "gate"
+    if (gate / "manifest.json").is_file():
+        return gate  # Existing generations retain their original archive layout.
+    matches = tuple(gate.glob("nonmatchings/*/search-runs/*/manifest.json"))
+    if len(matches) != 1:
+        raise IndexedRuntimeArtifactError("runtime must contain exactly one archived gate")
+    return _contained(matches[0].parent, gate, "archived gate")
+
+
 def _copy_gate_snapshot(source: Path, stage: Path) -> None:
-    gate_destination = stage / "gate"
+    gate_destination = stage / "gate" / "nonmatchings" / source.parent.parent.name / "search-runs" / source.name
     gate_destination.mkdir(parents=True, exist_ok=True)
     _copy_tree(source, gate_destination, label="integration gate snapshot")
     artifacts = gate_destination / "artifacts"
@@ -766,7 +782,7 @@ def _validate_snapshot_manifest(
         raise IndexedRuntimeIdentityMismatch(
             "donor snapshot manifest is not canonical JSON"
         )
-    if manifest["protocol"] != DONOR_SNAPSHOT_MANIFEST_PROTOCOL:
+    if manifest["protocol"] not in {DONOR_SNAPSHOT_MANIFEST_PROTOCOL, DONOR_SOURCE_SNAPSHOT_PROTOCOL}:
         raise IndexedRuntimeInputError("unsupported donor snapshot manifest protocol")
     if manifest["version"] != revision.version:
         raise IndexedRuntimeIdentityMismatch(
@@ -857,6 +873,10 @@ def _validate_snapshot_manifest(
             "donor snapshot manifest files must be sorted and unique"
         )
     missing_kinds = {name for name, present in families.items() if not present}
+    if manifest["protocol"] == DONOR_SOURCE_SNAPSHOT_PROTOCOL:
+        if families["assembly"]:
+            raise IndexedRuntimeInputError("source-only snapshot cannot claim assembly coverage")
+        missing_kinds.discard("assembly")
     if missing_kinds:
         raise IndexedRuntimeInputError(
             "donor snapshot manifest does not bind every scanned file family: "
@@ -1172,7 +1192,7 @@ def publish_donor_snapshots(
                 }
             )
         payload = {
-            "protocol": DONOR_SNAPSHOT_MANIFEST_PROTOCOL,
+            "protocol": DONOR_SOURCE_SNAPSHOT_PROTOCOL if snapshot.source_only else DONOR_SNAPSHOT_MANIFEST_PROTOCOL,
             "version": snapshot.version,
             "revision": snapshot.revision,
             "files": entries,
@@ -1847,7 +1867,7 @@ def _build_generation(
     renderer_source_identity: str,
 ) -> IndexedRuntimeGeneration:
     _copy_gate_snapshot(gate_root, stage)
-    gate_snapshot_root = stage / "gate"
+    gate_snapshot_root = snapshot_gate_root(stage)
     gate_archive = ContentAddressedArchive(gate_snapshot_root)
     runtime_archive = ContentAddressedArchive(stage)
     snapshot_roots = _materialize_revision_sources(
@@ -2010,7 +2030,9 @@ def _build_generation(
 
 def _artifact_manifest(root: Path) -> tuple[dict[str, Any], ...]:
     records: list[dict[str, Any]] = []
-    for path in sorted(root.rglob("*")):
+    # Path ordering compares components, and Windows also folds case. The
+    # protocol orders complete POSIX strings identically on every host.
+    for path in sorted(root.rglob("*"), key=lambda item: item.relative_to(root).as_posix()):
         _reject_symlink(path, "runtime publication")
         if not path.is_file():
             continue
@@ -2413,7 +2435,10 @@ def publish_indexed_runtime(
     gate_root, gate_archive, gate, manifest = _load_gate(repo_root, gate_run_id)
     ordered = _normalize_revisions(revisions)
     source_archive = _resolve_revision_archive(repo_root, ordered, gate_archive)
-    scanner_identity = _module_identity(repo_root, "search_donor_scan.py")
+    scanner_identity = hash_canonical({
+        name: _module_identity(repo_root, name)
+        for name in ("search_donor_scan.py", "search_donor_sources.py")
+    })
     scanner_source_identity = scanner_identity
     # Canonical hashing and identity validation are the runtime's signature
     # authority.  Require the production module itself, instead of deriving a
@@ -2666,7 +2691,7 @@ def verify_indexed_runtime(
             raise IndexedRuntimeArtifactError(
                 "runtime referenced artifact is missing or corrupt: " + reference.path
             ) from exc
-    gate_root = runtime_directory / "gate"
+    gate_root = snapshot_gate_root(runtime_directory)
     gate_archive = ContentAddressedArchive(gate_root)
     try:
         manifest = validate_integration_gate(

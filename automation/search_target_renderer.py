@@ -799,6 +799,11 @@ def _parse_assembly(text: str) -> tuple[_Instruction, ...]:
         line = _strip_assembly_comment(raw_line).strip()
         if not line:
             continue
+        # Splat puts these scheduling directives at the top of every real
+        # function. They describe the assembler, not target instructions or
+        # embedded data. Unknown directives still refuse rendering below.
+        if re.fullmatch(r"\.set\s+(?:noat|noreorder|nomacro)", line):
+            continue
         if _ASM_DATA_DIRECTIVE.match(line) or _ASM_RELOCATION.search(line):
             # Preserve a deterministic query shape while marking the target
             # context as non-renderable.  The renderer will turn this typed
@@ -964,8 +969,11 @@ def query_for_recipient(
     )
     return make_donor_query(
         recipient_id=recipient.recipient_id,
-        version=_version_for(recipient, context),
-        source_path=context.assembly_path,
+        version=None,
+        # Target assembly paths and donor C paths are different namespaces.
+        # Exact symbol search spans all donor paths; conflicting definitions
+        # retain the query's ordinary ambiguity refusal.
+        source_path=None,
         symbol=context.symbol or recipient.function,
         instruction_signature=derived_instruction,
         cfg_signature=derived_cfg,

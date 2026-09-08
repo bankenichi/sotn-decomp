@@ -8,6 +8,8 @@ import json
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
+from types import SimpleNamespace
 from dataclasses import replace
 from pathlib import Path
 
@@ -314,6 +316,37 @@ class TestSearchSubsetLifecycle(unittest.TestCase):
             resumed = resume_run(root)
             self.assertEqual(resumed["reissued_tasks"], [])
             self.assertEqual(resumed["pending_task_ids"], [])
+
+
+class IndexedPublicationCliTests(unittest.TestCase):
+    def test_runtime_operator_summary_omits_donor_payload(self):
+        from automation.search_cli import _runtime_summary
+        document = {"donor_index": {"entries": [{"evidence": {
+            "version": "hd", "metadata": {"compatibility": {"assembly_available": False}},
+            "declarations": {"large_payload": "x" * 1000000},
+        }}]}}
+        summary = _runtime_summary(document)
+        self.assertEqual(summary["donors_by_version"]["hd"], 1)
+        self.assertEqual(summary["donors_with_assembly_by_version"]["hd"], 0)
+        self.assertLess(len(json.dumps(summary)), 1000)
+
+    def test_direct_script_loads_publication_dependencies(self):
+        import runpy
+        namespace = runpy.run_path(str(Path(__file__).with_name("search_cli.py")))
+        for name in ("hash_bytes", "validate_run_id", "ArtifactRef"):
+            self.assertTrue(callable(namespace[name]))
+
+    def test_publication_calls_real_cli_boundary_with_valid_run_id(self):
+        from automation import search_cli
+        runtime_id = "sha256:" + "b" * 64
+        generation = SimpleNamespace(runtime_id=runtime_id, to_dict=lambda: {"runtime_id": runtime_id})
+        with patch.object(search_cli, "_revision_source_references", return_value=()) as resolve, patch(
+            "automation.search_indexed_runtime.publish_indexed_runtime", return_value=generation,
+        ) as publish:
+            result = search_cli.publish_indexed_runtime("real-gate", [f"{version}=" + "a" * 40 for version in ("us", "hd", "pspeu", "saturn")])
+        self.assertEqual(result["runtime_id"], runtime_id)
+        self.assertEqual(resolve.call_count, 1)
+        self.assertEqual(publish.call_count, 1)
 
 
 if __name__ == "__main__":

@@ -73,6 +73,7 @@ DONOR_SIGNATURE_PROTOCOL = "sotn-search-semantic-signature-v1"
 # This is shared with search_indexed_runtime.  The manifest is an archive
 # object, not a claim that mutable checkout bytes were measured previously.
 DONOR_SNAPSHOT_MANIFEST_PROTOCOL = "sotn-donor-snapshot-manifest-v1"
+DONOR_SOURCE_SNAPSHOT_PROTOCOL = "sotn-donor-source-snapshot-v1"
 DONOR_SNAPSHOT_PROTOCOL = DONOR_SNAPSHOT_MANIFEST_PROTOCOL
 DONOR_SNAPSHOT_MANIFEST_FILENAME = ".sotn-donor-snapshot.json"
 DONOR_SNAPSHOT_FILE_KINDS = ("assembly", "config", "source")
@@ -102,7 +103,7 @@ _C_FUNCTION_RE = re.compile(
     r"(?m)^\s*(?:(?:static|inline|extern|__inline__|__forceinline)\s+)*"
     r"(?:[A-Za-z_]\w*|\*)[\w\s*]*?"
     r"(?:OVL_EXPORT\(\s*(?P<export>[A-Za-z_]\w*)\s*\)|"
-    r"(?P<name>[A-Za-z_]\w*))\s*\([^;{}]*\)\s*\{"
+    r"\b(?P<name>[A-Za-z_]\w*))\s*\([^;{}]*\)\s*\{"
 )
 _INCLUDE_RE = re.compile(r"^\s*#\s*include\s*[<\"]([^>\"]+)[>\"]", re.M)
 _TYPEDEF_RE = re.compile(
@@ -114,7 +115,7 @@ _NUMBER_RE = re.compile(r"(?<![A-Za-z_])-?(?:0[xX][0-9A-Fa-f]+|[0-9]+)(?![A-Za-z
 _C_TOKEN_RE = re.compile(
     r"0[xX][0-9A-Fa-f]+|[0-9]+|[A-Za-z_]\w*|==|!=|<=|>=|&&|\|\||->|."
 )
-_C_COMMENT_RE = re.compile(r"/\*.*?\*/|//[^\n]*", re.S)
+_C_COMMENT_RE = re.compile(r'''"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|/\*.*?\*/|//[^\n]*''', re.S)
 _C_STRING_RE = re.compile(r'"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'')
 
 _ASM_COMMON_COMMENT_RE = re.compile(r"/\*.*?\*/|//[^\n]*", re.S)
@@ -317,6 +318,7 @@ def discover_platform_roots(
     *,
     repo: Path | str,
     verified_texts: Optional[Mapping[Path, str]] = None,
+    source_only: bool = False,
 ) -> PlatformRoots:
     """Resolve only the explicit configuration for ``version``.
 
@@ -421,6 +423,10 @@ def discover_platform_roots(
         raise DonorScanConfigurationError(f"no source root configured for {version}")
     if not assembly_paths:
         raise DonorScanConfigurationError(f"no assembly root configured for {version}")
+    if source_only:
+        # Absence is explicit in the immutable protocol, never a missing-root
+        # fallback for ordinary complete snapshots.
+        assembly_paths = []
     for path in source_paths:
         _safe_repo_path(root, path, "src_path", directory=True)
     for path in assembly_paths:
@@ -513,7 +519,7 @@ def _load_snapshot_manifest(
             raise DonorScanInputError("source snapshot manifest is not canonical JSON")
     except (TypeError, ValueError) as exc:
         raise DonorScanInputError("source snapshot manifest cannot be canonicalized") from exc
-    if value.get("protocol") != DONOR_SNAPSHOT_MANIFEST_PROTOCOL:
+    if value.get("protocol") not in {DONOR_SNAPSHOT_MANIFEST_PROTOCOL, DONOR_SOURCE_SNAPSHOT_PROTOCOL}:
         raise DonorScanInputError("source snapshot manifest protocol is unsupported")
     if value.get("version") != revision.version:
         raise DonorScanInputError(
@@ -601,6 +607,10 @@ def _load_snapshot_manifest(
         )
     kinds = {item.kind for item in result.values()}
     missing_kinds = set(DONOR_SNAPSHOT_FILE_KINDS).difference(kinds)
+    if value["protocol"] == DONOR_SOURCE_SNAPSHOT_PROTOCOL:
+        if "assembly" in kinds:
+            raise DonorScanInputError("source-only snapshot cannot claim assembly coverage")
+        missing_kinds.discard("assembly")
     if missing_kinds:
         raise DonorScanInputError(
             "source snapshot manifest does not bind every file family: "
@@ -718,6 +728,8 @@ def _strip_c_comments(text: str) -> str:
     # with one space would make the scrubbed function opening point at the
     # wrong byte in the original source.
     def blank(match: re.Match[str]) -> str:
+        if not match.group(0).startswith(("//", "/*")):
+            return match.group(0)
         return "".join("\n" if char == "\n" else " " for char in match.group(0))
 
     return _C_COMMENT_RE.sub(blank, text)
@@ -752,6 +764,13 @@ def _matching_brace(text: str, opening: int) -> int:
             in_block_comment = True
             i += 2
             continue
+        if char == "/" and nxt == "/":
+            # Apostrophes and braces in prose are not C tokens. The opening
+            # offset was found in comment-scrubbed text, but this walk retains
+            # original offsets so its closing brace must also skip // comments.
+            newline = text.find("\n", i + 2)
+            i = len(text) if newline < 0 else newline + 1
+            continue
         if char in "\"'":
             in_string = char
             i += 1
@@ -778,7 +797,12 @@ def _parse_c_file(
     includes = tuple(sorted(set(_INCLUDE_RE.findall(scrubbed))))
     types = tuple(sorted(set(_TYPEDEF_RE.findall(scrubbed)) | set(_STRUCT_RE.findall(scrubbed))))
     functions: list[_CFunction] = []
+    previous_end = -1
     for match in _C_FUNCTION_RE.finditer(scrubbed):
+        # A function's nested control blocks are never additional functions.
+        # Besides false evidence, repeated blocks produced duplicate donor IDs.
+        if match.start() <= previous_end:
+            continue
         name = match.group("export") or match.group("name")
         if not name or name in _CONTROL_IDENTIFIERS:
             continue
@@ -786,6 +810,7 @@ def _parse_c_file(
         if opening < 0:
             continue
         closing = _matching_brace(text, opening)
+        previous_end = closing
         rel = path.relative_to(repo).as_posix()
         functions.append(
             _CFunction(
@@ -1233,7 +1258,8 @@ def _scan_materialized_revision(
     # Configuration is parsed from the materialized snapshot itself.  The
     # caller has already verified every archive object, so this is the only
     # discovery pass and no mutable checkout path is consulted.
-    roots = discover_platform_roots(typed_revision.version, repo=root)
+    source_only = json.loads((root / DONOR_SNAPSHOT_MANIFEST_FILENAME).read_bytes())["protocol"] == DONOR_SOURCE_SNAPSHOT_PROTOCOL
+    roots = discover_platform_roots(typed_revision.version, repo=root, source_only=source_only)
     snapshot_texts, _raw_snapshot_files = _verify_snapshot_inputs(
         snapshot_manifest,
         root=root,
@@ -1309,9 +1335,17 @@ def _scan_materialized_revision(
     )
 
     parsed_sources: list[_CFunction] = []
-    for path in source_files:
+    scan_texts = {path: snapshot_texts[path] for path in source_files}
+    coverage_ref = None
+    if source_only:
+        from automation.search_donor_sources import configured_source_texts
+        scan_texts, coverage = configured_source_texts(roots, root=root, texts=snapshot_texts)
+        coverage["revision"] = typed_revision.revision
+        coverage["snapshot_identity"] = snapshot_identity
+        coverage_ref = archive.put_json(coverage, category="donor-scan-coverage")
+    for path in sorted(scan_texts):
         parsed_sources.extend(
-            _parse_c_file(path, repo=root, text=snapshot_texts[path])
+            _parse_c_file(path, repo=root, text=scan_texts[path])
         )
     parsed_asm: list[_AsmFunction] = []
     for path in asm_files:
@@ -1331,6 +1365,7 @@ def _scan_materialized_revision(
 
     evidence: list[DonorEvidence] = []
     matched_assembly: set[_AsmFunction] = set()
+    declaration_cache: dict[Path, dict[str, Any]] = {}
     for function in parsed_sources:
         asm = _assembly_candidates(
             function,
@@ -1342,12 +1377,12 @@ def _scan_materialized_revision(
             version=typed_revision.version,
         )
         c_tokens = _normalise_c_tokens(function.body)
-        declarations = _declaration_closure(
-            function,
-            repo=root,
-            source_roots=source_root_paths,
-            snapshot_texts=snapshot_texts,
-        )
+        if function.path not in declaration_cache:
+            declaration_cache[function.path] = _declaration_closure(
+                function, repo=root, source_roots=source_root_paths,
+                snapshot_texts=snapshot_texts,
+            )
+        declarations = dict(declaration_cache[function.path])
         callees = _called_identifiers(function.body, own_name=function.name)
         declarations["callees"] = callees
         constants = {
@@ -1402,6 +1437,8 @@ def _scan_materialized_revision(
                 "source_revision": typed_revision.revision,
             },
         }
+        if coverage_ref is not None:
+            metadata["source_coverage"] = coverage_ref.to_dict()
         # A malformed or future unsafe semantic extension invalidates only
         # this donor record.  The platform scan must retain its other safe
         # records rather than turning one refusal into a platform-wide abort.
@@ -1416,7 +1453,7 @@ def _scan_materialized_revision(
                 version=typed_revision.version,
                 source=typed_revision.source_artifact,
                 match_kind="exact_symbol_path",
-                signature=hash_canonical(semantic_payload),
+                signature=hash_canonical({key: value for key, value in semantic_payload.items() if key != "config"}),
                 body=None,
                 symbol=function.name,
                 instruction_signature=instruction_signature,

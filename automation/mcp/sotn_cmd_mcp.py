@@ -815,8 +815,10 @@ def search_publish_indexed_runtime(
     """Publish one immutable indexed runtime as an observable background job.
 
     The gate run id and exactly four platform=full-revision pairs are the only
-    inputs. The child CLI resolves immutable donor manifests from the repository;
-    callers cannot supply a path or arbitrary argv.
+    inputs. The child CLI resolves immutable donor manifests, or captures a
+    missing source-only set from committed C/config bytes through the connector.
+    Generated checkout assembly is never attributed to a commit. Callers cannot
+    supply a path or arbitrary argv.
     """
     return cc.start_job(
         "search_publish_indexed_runtime",
@@ -827,8 +829,12 @@ def search_publish_indexed_runtime(
 
 @mcp.tool()
 def search_verify_indexed_runtime(runtime_id: str) -> dict:
-    """Verify one immutable indexed runtime without rescanning or mutation."""
-    return cc.run("search_verify_indexed_runtime", runtime_id=runtime_id)
+    """Verify one immutable indexed runtime as a read-only background job.
+
+    Verification reads the complete archive and can outlive a tool transport
+    timeout. It never rescans source or mutates the indexed generation.
+    """
+    return cc.start_job("search_verify_indexed_runtime", runtime_id=runtime_id)
 
 
 @mcp.tool()

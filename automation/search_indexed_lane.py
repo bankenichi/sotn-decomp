@@ -909,7 +909,8 @@ def production_indexed_adapters(
     runtime = loaded_runtime
     index = runtime.donor_index
     index_archive = ContentAddressedArchive(runtime_root)
-    integration_archive = ContentAddressedArchive(runtime_root / "gate")
+    from automation.search_indexed_runtime import snapshot_gate_root
+    integration_archive = ContentAddressedArchive(snapshot_gate_root(runtime_root))
     _validate_runtime_binding(
         runtime,
         index,

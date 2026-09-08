@@ -22,7 +22,7 @@ mistake impossible twice.
 | Decompiled | **94.1%**, 8181/8730 functions; 549 US `INCLUDE_ASM` stubs remain |
 | Queue | 983 records: 434 matched, 379 todo, 123 escalated, 41 deferred, 6 near |
 | Provenance | upstream-harvest 55, shim-segment 9, shim-header 55, transplant 136, twin-port 31, permuter 18, claude-manual 6, model-fleet 58, unknown 66 |
-| Automation | 174 modules, 71 suites plus 36 module self-tests, 99 tools, 112 diagnostics |
+| Automation | 176 modules, 71 suites plus 36 module self-tests, 99 tools, 112 diagnostics |
 
 This block is regenerated from the same queue, checksum manifest, linker maps, provenance classifier, and connector inventory as `README.md`.
 <!-- LIVE-STATUS:END -->
@@ -64,6 +64,19 @@ This table is generated from the checksum manifest, required config policy, live
 <!-- WORK-SCOPE:END -->
 
 ### Current execution order
+
+Owner priority amendment, 2026-09-08: cross-platform function matching (#302)
+is the current implementation focus after the data-search and tuner batch.
+Completion requires real donor publication, measured cross-platform retrieval,
+and usable target-context candidates through ordinary evaluation. Index
+publication and typed renderer refusals alone do not close this task.
+
+Owner execution correction, 2026-09-08: implement, wire and test first. Live
+matching runs and candidate landing are deferred until implementation is
+complete and the owner resumes end-to-end matching. Index publication and
+archive verification remain implementation checks. This supersedes the lead's
+announced plan to immediately execute indexed lanes against current todo records;
+no such run had started when the owner corrected the scope.
 
 Owner priority amendment, 2026-09-07: reconcile historical completion records,
 then implement substantive programmatic matching. Data-segment search (#277)
@@ -1351,7 +1364,7 @@ Status: **done**, **open**, **partial**, **void** (turned out unnecessary),
 | 300 | **done** | Fixed the live transplant preparation failure from `programmatic-transplant-20260906-b`: canonical function extraction added a newline before exact receipt-span subtraction and rejected surrounding declarations. Preparation now splits the raw function span and support declarations first, changes only target linkage, and passes them separately to destination substitution. Successor `programmatic-transplant-20260906-c` produced candidate `75c87e90a981bd5fed9c1fa4b9ad67a1345cccf58af7f4e428a3a4693ec2dca1`; its real PSX evaluation scored 0 across 17 instructions in receipt `6d1f91ec848499fae99210a5579297352c3e888d48c4684bd4b3f6464c5951d5`. Execution then correctly stopped with OracleRequired, proving the remaining #296 production gap; no checksum match or queue transition is claimed. Consolidated proof passed 105/105 in `run_automation-091857-62`, with the final span correction passing both focused suites in `run_automation-092541-62`. |
 | 301 | **done** | Corrected selected-function scoring of internal unconditional jumps. Final review found the numeric branch matcher used a literal backslash/t character class; the real compiler regression then showed GCC emits its join as `j .text+offset` with R_MIPS_26, which had also escaped rebasing. The scorer now adjusts only destinations proven inside the selected function, preserving named and external targets. The compiler, real permuter executor and evaluator suites passed `run_automation-093558-62` (3/3). Repository build `make_build-093125-62` independently verified 113/113; this scorer-only correction changes no game source. |
 
-| 302 | **open** | Cross-platform function matching remains unqualified in production. On September 6, neither the canonical donor-snapshot store nor the indexed-runtime store existed. The four-platform scanner, immutable donor index, query and indexed adapter implementations therefore do not establish actual US/HD/PSPEU/Saturn matching coverage. Publish real pinned snapshots and a complete function index, measure cross-platform query results, and execute their target-context candidates through the ordinary matching path. This implements the existing production-indexed-runtime plan; queue indexing and the legacy US twin snapshot are not acceptance evidence. |
+| 302 | **in progress** | Cross-platform function matching remains unqualified in production. On September 6, neither the canonical donor-snapshot store nor the indexed-runtime store existed. The four-platform scanner, immutable donor index, query and indexed adapter implementations therefore do not establish actual US/HD/PSPEU/Saturn matching coverage. Publish real pinned snapshots and a complete function index, measure cross-platform query results, and execute their target-context candidates through the ordinary matching path. This implements the existing production-indexed-runtime plan; queue indexing and the legacy US twin snapshot are not acceptance evidence. [September 8 implementation: published pinned source/configuration snapshots and runtime 1097fb7a8a2fa36f5d8da2afa121a37f6ca6be3440278ca7c690d82cb0f11fec with 3,634 donor functions: US 1,750, HD 99, PSPEU 1,440, Saturn 345. Fixed target-ID/platform/path filtering, target-bound semantic claims, canonical gate recovery paths, real C parser failures and host-dependent publication ordering. Publication completed in search_publish_indexed_runtime-134710-4693. Conditional-source preprocessing, assembly-backed structural coverage and broader target rendering remain implementation gaps. No new matching run or candidate landing was started; end-to-end execution is deferred by the owner.] |
 | 303 | **done** | September 7 owner priority and record reconciliation: preserved every historical entry, closed stale #284/#286/#294/#295 against the subsequent #296/#300 implementation and validation evidence, narrowed #283 to remaining qualification/wiring, and appended the coordination-ledger handback reconciliation. Data search #277 and scorer tuning #304 are immediate priorities with #302/#299; their prerequisite evidence work precedes whole-queue exhaustion. Models remain deferred. |
 | 304 | **done** | Implement and operationalize the existing Task 9.6 scorer weight tuner: immutable real archived cases, lineage-safe fixed train/holdout split, bounded equal-budget trials, exact-object rediscovery before score and cost ranking, immutable reports/weights, and opt-in adoption by later manifests only. The owner promoted this from a follow-on plan to immediate priority on September 7. A fixture-only tuner or retrospective scalar reweighting alone is not production completion. [September 7 outcome: implemented and exercised through connector jobs. tuning-isolated-context-20260907 archived a real two-family corpus and 48 compiler evaluations, replayed without compilation, and published weights 513fb8281679c11663bd7aaeee880173a413d3b6c390115f0d012ee58103554d. programmatic-weight-adoption-20260907 completed four ordinary measurements with those weights; programmatic-weight-permuter-20260907 completed eight worker evaluations with the same binding. Training selects using common default-weight scores, holdout is reported separately, and active runs retain their weights. The trials tied and found no exact object, so improved weights are not claimed. Consolidated 105/107 plus the two corrected maintenance suites passed; broader calibration remains #305.] |
 

@@ -21,7 +21,7 @@ Coordination is files and git only, no app puppeting.
 | Decompiled | **94.1%**, 8181/8730 functions; 549 US `INCLUDE_ASM` stubs remain |
 | Queue | 983 records: 434 matched, 379 todo, 123 escalated, 41 deferred, 6 near |
 | Provenance | upstream-harvest 55, shim-segment 9, shim-header 55, transplant 136, twin-port 31, permuter 18, claude-manual 6, model-fleet 58, unknown 66 |
-| Automation | 174 modules, 71 suites plus 36 module self-tests, 99 tools, 112 diagnostics |
+| Automation | 176 modules, 71 suites plus 36 module self-tests, 99 tools, 112 diagnostics |
 
 This block is regenerated from the same queue, checksum manifest, linker maps, provenance classifier, and connector inventory as `README.md`.
 <!-- LIVE-STATUS:END -->
@@ -187,6 +187,8 @@ caller-supplied paths or arbitrary argv, canonical run resolution out. See
       search_patterns.py                completed-lineage grouping and pattern reports
       search_evidence_corpus.py         typed corpus evidence, refusals and generations
       search_donor_index.py             pinned cross-version donor generations
+      search_donor_capture.py           connector-owned pinned C/config capture
+      search_donor_sources.py           configured source membership and exclusions
       search_donor_query.py             archive-verified deterministic donor queries
       search_indexed_lane.py            semantic-only donor-to-lane adapter boundary
       search_run_factory.py             frozen todo-subset and evidence-manifest creator
