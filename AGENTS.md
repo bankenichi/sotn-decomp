@@ -115,6 +115,11 @@ These are absolute. Each exists because breaking it cost real work.
     candidate landing yet. Fixture tests, index publication, archive validation
     and required build/checksum checks remain in scope. End-to-end matching is
     deferred until implementation is complete and the owner resumes that phase.
+24. **US is the only decompilation target.** HD, PSPEU, Saturn and other
+    versions are read-only donor/reference corpora for improving US results.
+    Do not expand target admission, source preparation or landing to them.
+    Cross-platform work means harvesting and adapting donor evidence for US,
+    not decompiling every platform represented in the donor index.
 
 ## 3. Where everything is
 

@@ -39,6 +39,31 @@ class DataSearchTests(unittest.TestCase):
     def run_search(self, run="test"):
         return ds.search(self.repo, run, version="us", target="sttarget", stem="thing")
 
+    def test_foreign_donor_bytes_feed_us_target_and_cannot_become_targets(self):
+        for name, version in (("sta", "hd"), ("stb", "pspeu")):
+            path = self.repo / "config" / f"splat.us.{name}.yaml"
+            path.rename(path.with_name(f"splat.{version}.{name}.yaml"))
+        result = self.run_search()
+        self.assertEqual(result["funnel"]["eligible"], 1)
+        origins = result["candidates"][0]["origins"]
+        self.assertEqual({o["config_path"].split(".")[1] for o in origins}, {"hd", "pspeu"})
+        for version in ("hd", "pspeu", "saturn"):
+            with self.assertRaisesRegex(ds.DataSearchError, "targets must be US"):
+                ds.search(self.repo, "foreign-" + version, version=version, target="sta", stem="thing")
+            self.assertFalse((self.repo / ds.STORE / ("foreign-" + version)).exists())
+
+    def test_saturn_config_discovery_retains_unverified_donor_exclusion(self):
+        directory = self.repo / "config" / "saturn"
+        directory.mkdir()
+        path = self.config("satdonor", b"S" * 8 + self.pattern + b"s" * 8, 8, "thing")
+        path.rename(directory / "donor.prg.yaml")
+        (directory / "unverified.prg.yaml").write_text("options: {target_path: missing.prg}\nsegments: []\n")
+        result = self.run_search()
+        self.assertIn("config/saturn/donor.prg.yaml", {o["config_path"] for o in result["candidates"][0]["origins"]})
+        request = ds._load_single(ContentAddressedArchive(self.repo / ds.STORE / "test"), "requests")
+        self.assertEqual(request["excluded"][0]["config_path"], "config/saturn/unverified.prg.yaml")
+        self.assertIn("no exact binary SHA-1", request["excluded"][0]["detail"])
+
     def test_real_bytes_calibrate_and_frozen_retry_does_not_read_live_inputs(self):
         result = self.run_search()
         self.assertEqual(result["funnel"]["eligible"], 1)

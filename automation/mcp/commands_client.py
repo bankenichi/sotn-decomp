@@ -207,7 +207,10 @@ def _search_record_ids(values) -> tuple[str, ...]:
         # would let the planner represent a record the scheduler can never
         # claim.  `_queue_id` is defined later in this module, but name lookup
         # occurs when this function is called, after module initialization.
-        normalized.append(_queue_id(value))
+        record_id = _queue_id(value)
+        if not record_id.startswith("us:"):
+            raise Rejected("search targets must be US; other versions are donor corpora")
+        normalized.append(record_id)
     if len(set(normalized)) != len(normalized):
         raise Rejected("record_ids must not contain duplicates")
     return tuple(sorted(normalized))

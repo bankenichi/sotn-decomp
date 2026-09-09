@@ -12,6 +12,31 @@
 
 ## Global Constraints
 
+### September 8 US-target scope correction and donor processing work
+
+US is the only recipient platform. HD, PSPEU and Saturn remain read-only donor
+corpora. The former ROADMAP #277 non-US preparation item is explicitly retracted.
+The lead owns implementation directly; no live matching or landing is authorized.
+
+- Reject non-US target IDs at connector and factory creation before side effects.
+- Keep data-search recipients US while admitting checksum-bound foreign donor
+  snapshots through existing byte calibration, provenance and replay.
+- Resolve known platform conditional branches during donor-source scanning,
+  preserving original snapshot bytes and recording the projection policy. Keep
+  unknown or malformed preprocessing conditions as explicit exclusions.
+- Test wrong-target refusal, foreign-donor consumption, conditional branch
+  selection and archive-bound scanner integration with fixtures. Run required
+  consolidated checks and the existing pre-push build/oracle gate.
+
+Implemented in the September 8 continuation: new function/data requests enforce
+US recipients, foreign data discovery retains verification exclusions, and
+source-only scanning projects known platform conditions before include and
+declaration closure. Fixture capture proves pinned source bytes drive projection
+despite checkout drift. General preprocessing, assembly-backed coverage and
+broader US rendering remain open. The existing published generation is unchanged;
+projection takes effect in the next explicit index publication.
+
+
 ### September 7 implementation continuation, ROADMAP #302
 
 The earlier interface checklist does not establish production qualification.

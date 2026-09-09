@@ -447,7 +447,12 @@ complete snapshots still require all three file families. Interrupted
 source-only capture can reuse already published immutable objects.
 
 Source-only indexing follows configured C translation units and their quoted
-include closure. Files with unresolved preprocessing conditionals are retained
+include closure. Known US, HD and PSP `defined(VERSION_*)` branches are projected
+before following includes or collecting declarations. Projection retains source
+offsets and records the platform facts in coverage evidence. Unknown active
+conditions, platform-macro redefinitions and comment-hidden line splices are
+refused; Saturn does not inherit PSX platform macros. Files with unresolved
+preprocessing conditionals are retained
 in the snapshot and listed as exclusions in `donor-scan-coverage` artifacts.
 Directory membership is insufficient to attribute a shared source to a
 platform. These exclusions and missing assembly remain qualification gaps.
@@ -458,9 +463,18 @@ control blocks were misread as functions named `f`, `e`, or `h`, producing
 duplicate donor entries. Function parsing now preserves comment offsets and
 quoted literals, requires a complete identifier, and skips an accepted body's
 nested blocks. The duplicate-index refusal was correct; suppressing duplicate
-records would have preserved false semantic evidence. Conditional C remains
-excluded pending preprocessing, rather than forcing unmatched branch braces
-through this parser.
+records would have preserved false semantic evidence. The initial publication
+excluded all conditional C. Known platform-branch projection now narrows that
+exclusion; general consumer-aware preprocessing remains unimplemented.
+
+US is the only recipient for new function and data search requests. Both the
+connector record validator and production function-run factory reject foreign
+targets before creating a run. Data search captures checksum-verified donor
+bytes from US/HD/PSPEU splat configs and the Saturn config directory, preserving
+missing binaries, absent checksums and unsupported layouts as exclusions.
+Saturn's current configs commonly lack the required SHA-1, so discovery does
+not imply admitted Saturn data coverage. Existing archives remain replayable;
+none of these donor paths prepares or lands a non-US target.
 
 Publication manifests must sort complete POSIX path strings, not native `Path`
 objects: component ordering puts `a/entry` before `a.c`, and Windows also folds

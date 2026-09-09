@@ -48,6 +48,17 @@ IDS = (
 
 
 class FactoryFixture(unittest.TestCase):
+    def test_foreign_targets_are_refused_before_queue_or_archive_access(self):
+        for version in ("hd", "pspeu", "saturn"):
+            record_id = f"{version}:ST/RNO0:func_a"
+            with self.assertRaisesRegex(InputRefusal, "targets must be US"):
+                create_instrumented_run("foreign-target", [record_id], ["upstream_current"],
+                    repo=self.repo, queue_reader=lambda: self.fail("queue read"))
+            with self.assertRaisesRegex(cc.Rejected, "targets must be US"):
+                cc.build_argv("search_create_instrumented", name="foreign-target",
+                              record_ids=[record_id], lanes=["upstream_current"])
+        self.assertFalse((self.repo / "nonmatchings").exists())
+
     def setUp(self) -> None:
         self.temp = tempfile.TemporaryDirectory(prefix="search-run-factory-")
         self.repo = Path(self.temp.name)

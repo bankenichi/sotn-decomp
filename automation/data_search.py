@@ -275,6 +275,8 @@ def verify(root):
 
 
 def search(repo, run_id, *, version, target, stem, section="data"):
+    if version != "us":
+        raise DataSearchError("data search targets must be US; other versions are donor corpora")
     from automation.search_supervisor import SupervisorLease
     _name(run_id, "run id")
     root = _file(repo, (STORE / run_id).as_posix())
@@ -287,7 +289,7 @@ def _search_held(repo, run_id, *, version, target, stem, section="data"):
     _name(run_id, "run id")
     _name(target, "target")
     _name(stem, "stem")
-    if version not in VERSIONS or section not in ("data", "rodata"):
+    if version != "us" or section not in ("data", "rodata"):
         raise DataSearchError("unsupported version or section")
     root = _file(repo, (STORE / run_id).as_posix())
     archive = ContentAddressedArchive(root)
@@ -299,7 +301,12 @@ def _search_held(repo, run_id, *, version, target, stem, section="data"):
     else:
         snapshots, excluded = [], []
         target_path = f"config/splat.{version}.{target}.yaml"
-        for path in sorted((repo / "config").glob(f"splat.{version}.*.yaml")):
+        # The recipient stays US. Other configured versions only contribute
+        # checksum-bound donor bytes; missing donor binaries are exclusions.
+        configs = [path for path in (repo / "config").glob("splat.*.*.yaml")
+                   if path.name.split(".")[1] in VERSIONS]
+        configs.extend((repo / "config" / "saturn").glob("*.yaml"))
+        for path in sorted(configs, key=lambda item: item.relative_to(repo).as_posix()):
             try:
                 snapshots.append(_snapshot(repo, _file(repo, path.relative_to(repo).as_posix()), archive))
             except (DataSearchError, OSError, yaml.YAMLError) as exc:

@@ -1380,7 +1380,7 @@ def _scan_materialized_revision(
         if function.path not in declaration_cache:
             declaration_cache[function.path] = _declaration_closure(
                 function, repo=root, source_roots=source_root_paths,
-                snapshot_texts=snapshot_texts,
+                snapshot_texts=scan_texts if source_only else snapshot_texts,
             )
         declarations = dict(declaration_cache[function.path])
         callees = _called_identifiers(function.body, own_name=function.name)

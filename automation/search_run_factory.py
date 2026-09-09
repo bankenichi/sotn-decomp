@@ -271,6 +271,8 @@ def _normalize_inputs(
     if not raw_ids:
         raise InputRefusal("record_ids must not be empty")
     normalized_ids = tuple(sorted(_queue_id(value) for value in raw_ids))
+    if any(not record_id.startswith("us:") for record_id in normalized_ids):
+        raise InputRefusal("search targets must be US; other versions are donor corpora")
     if len(set(normalized_ids)) != len(normalized_ids):
         raise InputRefusal("record_ids must not contain duplicates")
 

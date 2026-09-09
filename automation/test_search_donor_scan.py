@@ -589,6 +589,60 @@ class DonorScanTests(unittest.TestCase):
 
 
 class PinnedSourceCaptureTests(unittest.TestCase):
+    def test_platform_projection_selects_donor_branch_and_preserves_offsets(self):
+        from automation.search_donor_sources import project_platform_source
+        source = '''#if defined(VERSION_US)
+int donor(void) {return 1;}
+#elif defined VERSION_HD
+int donor(void) {return 2;}
+#else
+int donor(void) {return 3;}
+#endif
+'''
+        for version, result in (("us", 1), ("hd", 2), ("pspeu", 3)):
+            projected = project_platform_source(source, version)
+            self.assertEqual(len(projected), len(source))
+            self.assertEqual(projected.count("\n"), source.count("\n"))
+            self.assertIn(f"return {result};", projected)
+            self.assertEqual(projected.count("int donor"), 1)
+            self.assertEqual(projected.index("int donor"), source.index(f"int donor(void) {{return {result};}}"))
+        self.assertIsNone(project_platform_source(source, "saturn"))
+
+    def test_platform_projection_refuses_unknown_active_conditions_and_bad_groups(self):
+        from automation.search_donor_sources import project_platform_source as project
+        for source in (
+            "#ifdef UNKNOWN\nint f() {return 1;}\n#endif\n",
+            "#if VERSION_US\n#endif\n",
+            "#if 0 or 1\n#endif\n",
+            "#if defined(VERSION_US)\n#else\n#else\n#endif\n",
+            "#if 1\n#else\n#elif 0\n#endif\n",
+            "#if 1\n", "#endif\n", "#define VERSION_US 0\n",
+            "// continued comment " + "\\" + "\nint hidden() {return 1;}\n",
+        ):
+            self.assertIsNone(project(source, "us"), source)
+        source = "#if 0\n#ifdef UNKNOWN\nwrong\n#endif\n#elif defined(VERSION_US)\nright\n#elif UNKNOWN\nwrong\n#endif\n"
+        self.assertIn("right", project(source, "us"))
+        self.assertNotIn("wrong", project(source, "us"))
+        self.assertIsNone(project(source, "hd"))
+        source = "#if !defined(VERSION_PSP) && \\\n (defined(VERSION_US) || defined(VERSION_HD)) // player's branch\nright\n#endif\n"
+        self.assertIn("right", project(source, "us"))
+        self.assertNotIn("right", project(source, "pspeu"))
+
+    def test_source_membership_uses_only_active_donor_include_closure(self):
+        from automation.search_donor_sources import configured_source_texts
+        with tempfile.TemporaryDirectory() as temporary:
+            fixture = DonorScanFixture(Path(temporary))
+            source = fixture.source_roots["hd"]
+            (source / "us_only.h").write_text("int wrong() {return 1;}")
+            (source / "hd_only.h").write_text("int donor() {return 2;}")
+            (source / "entry.c").write_text('/*\n#include "us_only.h"\n*/\n#if defined(VERSION_US)\n#include "us_only.h"\n#else\n#include "hd_only.h"\n#endif\n')
+            roots = discover_platform_roots("hd", repo=fixture.repo, source_only=True)
+            texts = {path: path.read_text() for path in fixture.repo.rglob("*") if path.is_file()}
+            selected, coverage = configured_source_texts(roots, root=fixture.repo, texts=texts)
+            self.assertIn(source / "hd_only.h", selected)
+            self.assertNotIn(source / "us_only.h", selected)
+            self.assertTrue(coverage["projection"]["defined_macros"]["VERSION_HD"])
+
     def test_nested_control_blocks_are_not_donor_functions(self):
         from automation.search_donor_scan import _parse_c_file
         root = Path("/fixture")
@@ -634,6 +688,10 @@ int next(void) { const char* url = "https://example/"; return 2; }
         from automation.search_indexed_runtime import DONOR_SNAPSHOT_ARCHIVE_ROOT
         with tempfile.TemporaryDirectory() as temporary:
             fixture = DonorScanFixture(Path(temporary))
+            hd_path = fixture.source_roots["hd"] / "entry.c"
+            hd_text = hd_path.read_text()
+            hd_path.write_text("#if defined(VERSION_HD)\n" + hd_text +
+                               "#else\nint wrong_platform() { return 999; }\n#endif\n")
             stream = io.BytesIO()
             with tarfile.open(fileobj=stream, mode="w") as bundle:
                 for path in sorted(fixture.repo.rglob("*")):
@@ -651,6 +709,8 @@ int next(void) { const char* url = "https://example/"; return 2; }
             evidence = scan_pinned_revisions(revisions, repo=fixture.repo, archive=archive)
             self.assertEqual({item.version for item in evidence}, set(DONOR_VERSIONS))
             self.assertTrue(all(item.symbol != "forged" for item in evidence))
+            self.assertTrue(all(item.symbol != "wrong_platform" for item in evidence))
+            self.assertTrue(any(item.version == "hd" and item.symbol == "entry" for item in evidence))
             self.assertTrue(all("assembly_missing" in item.structural_differences for item in evidence))
             self.assertTrue(all(item.metadata["assembly_path"] is None for item in evidence))
 
