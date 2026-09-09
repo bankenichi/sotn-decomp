@@ -101,9 +101,9 @@ _CONTROL_IDENTIFIERS = frozenset(
 )
 _C_FUNCTION_RE = re.compile(
     r"(?m)^\s*(?:(?:static|inline|extern|__inline__|__forceinline)\s+)*"
-    r"(?:[A-Za-z_]\w*|\*)[\w\s*]*?"
+    r"(?P<return_type>(?:[A-Za-z_]\w*|\*)[\w\s*]*?)"
     r"(?:OVL_EXPORT\(\s*(?P<export>[A-Za-z_]\w*)\s*\)|"
-    r"\b(?P<name>[A-Za-z_]\w*))\s*\([^;{}]*\)\s*\{"
+    r"\b(?P<name>[A-Za-z_]\w*))\s*\((?P<parameters>[^;{}]*)\)\s*\{"
 )
 _INCLUDE_RE = re.compile(r"^\s*#\s*include\s*[<\"]([^>\"]+)[>\"]", re.M)
 _TYPEDEF_RE = re.compile(
@@ -204,6 +204,7 @@ class _CFunction:
     body: str
     includes: tuple[str, ...]
     types: tuple[str, ...]
+    scalar_declaration: Optional[Mapping[str, Any]] = None
 
 
 @dataclass(frozen=True)
@@ -785,6 +786,30 @@ def _matching_brace(text: str, opening: int) -> int:
     raise DonorScanInputError("unterminated C function body")
 
 
+def _scalar_declaration(match):
+    # These fixed-width scalar facts are portable hints, never donor source.
+    # Pointer, aggregate, macro and old-style declarations need target context.
+    types = {"int": "int", "signed int": "int", "s32": "int",
+             "unsigned int": "unsigned int", "u32": "unsigned int", "void": "void"}
+    result_type = types.get(" ".join(match.group("return_type").split()))
+    raw = match.group("parameters").strip()
+    if result_type is None or not raw:
+        return None
+    parameters = []
+    if raw != "void":
+        for entry in raw.split(","):
+            param = re.fullmatch(r"\s*(.*?)\s+([A-Za-z_]\w*)\s*", entry)
+            if not param:
+                return None
+            kind = types.get(" ".join(param[1].split()))
+            if kind is None or kind == "void":
+                return None
+            parameters.append({"type": kind, "name": param[2]})
+    if len(parameters) > 4 or len({p["name"] for p in parameters}) != len(parameters):
+        return None
+    return {"return_type": result_type, "parameters": parameters}
+
+
 def _parse_c_file(
     path: Path,
     *,
@@ -820,6 +845,7 @@ def _parse_c_file(
                 body=text[opening : closing + 1],
                 includes=includes,
                 types=types,
+                scalar_declaration=_scalar_declaration(match),
             )
         )
     return tuple(functions)
@@ -1383,6 +1409,9 @@ def _scan_materialized_revision(
                 snapshot_texts=scan_texts if source_only else snapshot_texts,
             )
         declarations = dict(declaration_cache[function.path])
+        # A file shares includes and types, but each function owns its ABI.
+        if function.scalar_declaration is not None:
+            declarations.update(function.scalar_declaration)
         callees = _called_identifiers(function.body, own_name=function.name)
         declarations["callees"] = callees
         constants = {

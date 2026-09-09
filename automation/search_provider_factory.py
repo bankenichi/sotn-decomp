@@ -84,10 +84,9 @@ def prepare_provider_inputs(repo, lanes, targets, lane_inputs, *, indexed_runtim
                     break
         if seed_lanes and seed is None:
             raise ValueError("programmatic rewriting requires a preserved seed or supported target draft for " + recipient)
-        # The renderer supports a single complete return expression. Only that
-        # proven fragment becomes synthesis input; unsupported targets stay
-        # explicitly inapplicable through the ordinary generated provider.
-        expression = re.search(r"\breturn\s+([^;]+);", draft) if draft else None
+        # A branch-local return is not the whole function. Only a complete
+        # single-return draft may supply the synthesis expression provider.
+        expression = re.fullmatch(r"[^{}]+\{\s*return\s+([^;{}]+);\s*\}\s*", draft) if draft else None
         prepared[recipient] = {
             "seed": seed, "seed_origin": seed_origin,
             "expressions": (expression.group(1),) if expression else (),

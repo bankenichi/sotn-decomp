@@ -822,6 +822,8 @@ def _parse_assembly(text: str) -> tuple[_Instruction, ...]:
         )
         label_match = re.match(r"^(?P<label>[A-Za-z_.$][A-Za-z0-9_.$]*):(?:\s*(?P<tail>.*))$", line)
         if label_match:
+            if pending_label is not None:
+                instructions.append(_Instruction("unsupported", "", pending_label, True))
             pending_label = label_match.group("label")
             line = (label_match.group("tail") or "").strip()
             if not line:
@@ -836,6 +838,8 @@ def _parse_assembly(text: str) -> tuple[_Instruction, ...]:
                 line,
             )
         if not objdump:
+            instructions.append(_Instruction("unsupported", "", pending_label, True))
+            pending_label = None
             continue
         mnemonic = objdump.group("mn").lower()
         operands = objdump.group("ops").strip()
@@ -870,6 +874,8 @@ def _parse_assembly(text: str) -> tuple[_Instruction, ...]:
         else:
             instructions.append(_Instruction(mnemonic, operands, pending_label))
         pending_label = None
+    if pending_label is not None:
+        instructions.append(_Instruction("unsupported", "", pending_label, True))
     return tuple(instructions)
 
 
@@ -1126,7 +1132,7 @@ def _declaration_context(
                 )
                 break
     for claim in claims:
-        if "return_type" not in target_declarations and "result_type" not in target_declarations:
+        if prototype is None and "return_type" not in target_declarations and "result_type" not in target_declarations:
             candidate_type = dict(claim.declarations).get(
                 "return_type", dict(claim.declarations).get("result_type")
             )
@@ -1171,86 +1177,192 @@ def _literal_operand(operands: str) -> Optional[int]:
         return None
 
 
+def _leaf_body(instructions, parameters, return_type):
+    """Lower bounded MIPS leaf paths without losing delay-slot dataflow.
+
+    Values are unsigned 32-bit C expressions. Signed comparisons explicitly
+    reinterpret them as signed words; arithmetic therefore cannot acquire C
+    signed-overflow undefined behavior. Forward paths are expanded separately,
+    with a shared budget to bound joins and nested branches.
+    """
+    scalar_types = {"int", "signed int", "unsigned int", "s32", "u32"}
+    if (return_type not in scalar_types | {"void"} or len(parameters) > 4
+            or any(kind not in scalar_types for kind, _ in parameters)
+            or len({name for _, name in parameters}) != len(parameters)
+            or not 0 < len(instructions) <= 64
+            or any(item.unsupported for item in instructions)):
+        return None
+    aliases = {"0": "zero", "r0": "zero", "2": "v0", "r2": "v0",
+               "3": "v1", "r3": "v1", "31": "ra", "r31": "ra"}
+    aliases.update({str(4 + i): "a" + str(i) for i in range(4)})
+    aliases.update({"r" + str(4 + i): "a" + str(i) for i in range(4)})
+    writable = {"v0", "v1", "at", *("a" + str(i) for i in range(4)),
+                *("t" + str(i) for i in range(10))}
+    labels = {}
+    for index, item in enumerate(instructions):
+        if item.label:
+            if item.label in labels:
+                return None
+            labels[item.label] = index
+    conditional = {"beq", "bne", "beqz", "bnez", "bltz", "bgez", "bgtz", "blez"}
+    controls = conditional | {"b", "j", "jr"}
+    slots = {i + 1 for i, item in enumerate(instructions) if item.mnemonic in controls}
+    state = {"zero": "0"}
+    state.update({"a" + str(i): "(unsigned int)" + name for i, (_, name) in enumerate(parameters)})
+    visited, budget = set(), [256]
+
+    def register(value):
+        value = value.strip().removeprefix("$").lower()
+        return aliases.get(value, value)
+
+    def immediate(value, low, high):
+        if not re.fullmatch(r"-?(?:0[xX][0-9a-fA-F]+|[0-9]+)", value):
+            raise ValueError("not an immediate")
+        number = int(value, 0)
+        if not low <= number <= high:
+            raise ValueError("immediate out of range")
+        return number
+
+    def literal(value):
+        value &= 0xFFFFFFFF
+        return str(value) + ("U" if value > 0x7FFFFFFF else "")
+
+    def operands(item):
+        return tuple(part.strip() for part in item.operands.split(",")) if item.operands else ()
+
+    def step(index, values):
+        item = instructions[index]
+        op, args = item.mnemonic, operands(item)
+        visited.add(index)
+        if op == "nop" and not args:
+            return
+        if op == "sll" and len(args) == 3 and register(args[0]) == register(args[1]) == "zero" and args[2] == "0":
+            return
+        if not args or register(args[0]) not in writable:
+            raise ValueError("not a scratch-register assignment")
+        destination = register(args[0])
+        if op == "li" and len(args) == 2:
+            value = literal(immediate(args[1], -0x80000000, 0xFFFFFFFF))
+        elif op == "lui" and len(args) == 2:
+            value = literal(immediate(args[1], 0, 0xFFFF) << 16)
+        elif op == "move" and len(args) == 2:
+            value = values[register(args[1])]
+        elif op in {"addiu", "andi", "ori", "xori", "slti", "sltiu", "sll", "srl", "sra"} and len(args) == 3:
+            left = values[register(args[1])]
+            if op in {"sll", "srl", "sra"}:
+                right = str(immediate(args[2], 0, 31))
+                operator = "<<" if op == "sll" else ">>"
+                if op == "sra":
+                    left = "(int)(" + left + ")"
+            else:
+                signed = op in {"addiu", "slti", "sltiu"}
+                number = immediate(args[2], -0x8000 if signed else 0, 0xFFFF)
+                if signed and number >= 0x8000:
+                    number -= 0x10000
+                right = literal(number)
+                operator = {"addiu": "+", "andi": "&", "ori": "|", "xori": "^", "slti": "<", "sltiu": "<"}[op]
+                if op == "slti":
+                    left, right = "(int)(" + left + ")", str(number)
+            if op not in {"sra", "slti"}:
+                left = "(unsigned int)(" + left + ")"
+            value = "(unsigned int)((" + left + ") " + operator + " (" + right + "))"
+            if register(args[1]) == "zero" and op in {"addiu", "ori"}:
+                value = right
+        elif op in {"addu", "subu", "and", "or", "xor", "nor", "slt", "sltu"} and len(args) == 3:
+            left, right = (values[register(arg)] for arg in args[1:])
+            operator = {"addu": "+", "subu": "-", "and": "&", "or": "|", "xor": "^", "nor": "|", "slt": "<", "sltu": "<"}[op]
+            if op == "slt":
+                left, right = "(int)(" + left + ")", "(int)(" + right + ")"
+            else:
+                left = "(unsigned int)(" + left + ")"
+            value = "((" + left + ") " + operator + " (" + right + "))"
+            if op == "nor":
+                value = "~" + value
+            value = "(unsigned int)(" + value + ")"
+        else:
+            raise ValueError("unsupported leaf instruction")
+        if len(value) > 4096:
+            raise ValueError("expression expansion limit")
+        values[destination] = value
+
+    def path(index, values, indent):
+        lines = []
+        while index < len(instructions):
+            budget[0] -= 1
+            if budget[0] < 0:
+                raise ValueError("path expansion limit")
+            item = instructions[index]
+            if item.mnemonic not in controls:
+                step(index, values)
+                index += 1
+                continue
+            visited.add(index)
+            op, args = item.mnemonic, operands(item)
+            if index + 1 >= len(instructions):
+                raise ValueError("missing delay slot")
+            if op == "jr":
+                if len(args) != 1 or register(args[0]) != "ra":
+                    raise ValueError("indirect jump")
+                step(index + 1, values)
+                if return_type == "void":
+                    result = "return;"
+                else:
+                    value = values["v0"]
+                    if not re.fullmatch(r"[0-9]+", value) and return_type in {"int", "signed int", "s32"}:
+                        value = "(int)(" + value + ")"
+                    result = "return " + value + ";"
+                return lines + [indent + result]
+            expected = 3 if op in {"beq", "bne"} else 1 if op in {"b", "j"} else 2
+            if len(args) != expected or args[-1] not in labels:
+                raise ValueError("unbound branch target")
+            target = labels[args[-1]]
+            if target <= index + 1 or target in slots:
+                raise ValueError("loop or delay-slot entry")
+            condition = None
+            if op in conditional:
+                left = values[register(args[0])]
+                right = values[register(args[1])] if expected == 3 else "0"
+                operator = {"beq": "==", "bne": "!=", "beqz": "==", "bnez": "!=",
+                            "bltz": "<", "bgez": ">=", "bgtz": ">", "blez": "<="}[op]
+                if op in {"bltz", "bgez", "bgtz", "blez"}:
+                    left = "(int)(" + left + ")"
+                condition = "(" + left + ") " + operator + " (" + right + ")"
+            # Capture the predicate from the old state, then execute the slot
+            # once on both outgoing paths. A slot can overwrite its operands.
+            step(index + 1, values)
+            if condition is None:
+                index = target
+                continue
+            taken = path(target, dict(values), indent + "    ")
+            other = path(index + 2, dict(values), indent + "    ")
+            return lines + [indent + "if (" + condition + ") {"] + taken + [indent + "} else {"] + other + [indent + "}"]
+        raise ValueError("path does not return")
+
+    try:
+        body = path(0, state, "    ")
+        # Extra definitions or unexplained dead code cannot be silently merged
+        # into this function. Padding nops after its final return are harmless.
+        if any(i not in visited and (item.mnemonic != "nop" or item.operands)
+               for i, item in enumerate(instructions)):
+            return None
+        result = "\n".join(body)
+        return result if len(result) <= 65536 else None
+    except (ValueError, KeyError, RecursionError):
+        return None
+
+
 def _deterministic_local_draft(
     context: _TargetContext,
     claims: Sequence[DonorSemanticClaim],
 ) -> Optional[str]:
-    """Render the small, structurally complete subset supported locally.
-
-    The generator intentionally refuses branches, calls, and unresolved
-    memory accesses.  A plausible generic function is less useful than a
-    typed refusal when the target context cannot be represented safely.
-    """
-
     try:
         text = context.assembly_bytes.decode("utf-8")
     except UnicodeDecodeError:
         return None
-    instructions = _parse_assembly(text)
-    if not instructions:
-        return None
     return_type, parameters = _declaration_context(context, claims)
-    expression: Optional[str] = None
-    returned = False
-    for instruction in instructions:
-        if instruction.unsupported:
-            return None
-        mnemonic = instruction.mnemonic
-        operands = instruction.operands
-        registers = _register_operands(operands)
-        if mnemonic in {"nop", "sll"} and (mnemonic == "nop" or operands.replace("$", "").replace(" ", "") in {"$zero,$zero,0", "zero,zero,0"}):
-            continue
-        if mnemonic in {"addiu", "addi", "ori", "li"} and registers:
-            if registers[0] != "v0":
-                if registers[0] == "sp" and len(registers) > 1 and registers[1] == "sp":
-                    continue
-                return None
-            literal = _literal_operand(operands)
-            if literal is None:
-                return None
-            if mnemonic in {"addiu", "addi", "ori"} and len(registers) >= 2 and registers[1] != "zero":
-                source = _target_parameter_for_register(registers[1], parameters)
-                if source is None:
-                    return None
-                operator = "|" if mnemonic == "ori" else "+"
-                expression = f"{source} {operator} {literal}"
-            else:
-                expression = str(literal)
-            continue
-        if mnemonic == "move" and len(registers) >= 2 and registers[0] == "v0":
-            source = _target_parameter_for_register(registers[1], parameters)
-            if source is None:
-                return None
-            expression = source
-            continue
-        if mnemonic in {"addu", "add", "subu", "sub"} and len(registers) >= 3 and registers[0] == "v0":
-            left = _target_parameter_for_register(registers[1], parameters)
-            right = _target_parameter_for_register(registers[2], parameters)
-            if left is None or right is None:
-                return None
-            op = "-" if mnemonic in {"subu", "sub"} else "+"
-            expression = f"{left} {op} {right}"
-            continue
-        if mnemonic in _RETURN_MNEMONICS:
-            if mnemonic in {"rts", "ret"} or (registers and registers[0] == "ra"):
-                returned = True
-                continue
-            return None
-        # A stack address does not prove callee-save traffic. Loads can define
-        # the return value and stores can affect caller-owned arguments. Until
-        # stack slots have proven ownership and register liveness, refuse every
-        # memory operation rather than silently dropping target semantics.
+    body = _leaf_body(_parse_assembly(text), parameters, return_type)
+    if body is None:
         return None
-    if not returned:
-        return None
-    if return_type == "void":
-        if expression is not None:
-            return None
-        body = "    return;"
-    else:
-        if expression is None:
-            return None
-        body = "    return " + expression + ";"
     parameter_text = "void" if not parameters else ", ".join(
         type_name + " " + name for type_name, name in parameters
     )

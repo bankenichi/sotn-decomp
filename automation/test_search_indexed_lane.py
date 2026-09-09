@@ -48,6 +48,7 @@ from automation.search_target_renderer import (
     TARGET_RENDERER_IDENTITY,
     _assembly_signatures,
     _parse_assembly,
+    load_target_index,
     TargetContextUnsupported,
 )
 from automation.test_search_target_renderer import TARGET_ASM
@@ -89,6 +90,44 @@ def target_candidate(item: Recipient, lane: str) -> LaneCandidate:
 
 
 class IndexedLaneAdapterTests(unittest.TestCase):
+    def test_scalar_donor_facts_reach_branch_renderer_and_ordinary_receipt(self):
+        from automation.search_donor_scan import _parse_c_file
+        root = Path.cwd()
+        declaration = _parse_c_file(root / "donor.c", repo=root, text="int fn(int value) { return value; }\n")[0].scalar_declaration
+
+        def scalar_donor(revision, evidence):
+            return replace(evidence, recipient_id=f"{revision.version}:ST:fn", declarations=declaration)
+
+        assembly = b"bltz $a0, .Lnegative\naddiu $v0, $a0, 1\njr $ra\nnop\n.Lnegative:\njr $ra\nsubu $v0, $zero, $v0\n"
+        with _index_fixture(scalar_donor) as (index, archive, gate_archive, _gate, _calls, _sources):
+            temp, run_archive, manifest, target_index = _target_fixture(assembly)
+            try:
+                manifest = replace(manifest, compiler_identity=index.binding.compiler_identity, config_identity=index.binding.config_identity)
+                query_for, render = _target_context_callbacks(manifest, target_index, lane="multi_donor")
+                adapter = indexed_lane_adapter(index, lane="multi_donor", expected_binding=index.binding,
+                    index_archive=archive, integration_archive=gate_archive,
+                    query_for=query_for, render_target_context=render)
+                first = adapter(recipient())
+                self.assertEqual(len(first["candidates"]), 1)
+                self.assertIn("int fn(int value)", first["candidates"][0].source)
+                self.assertIn("if (", first["candidates"][0].source)
+                self.assertTrue(first["provenance"][0]["claim_identities"])
+                # Reconstruct callbacks from the archived target and repeat the
+                # ordinary adapter operation, with no donor source callback.
+                query_again, render_again = _target_context_callbacks(manifest, load_target_index(run_archive, manifest), lane="multi_donor")
+                replay = indexed_lane_adapter(index, lane="multi_donor", expected_binding=index.binding,
+                    index_archive=archive, integration_archive=gate_archive,
+                    query_for=query_again, render_target_context=render_again)
+                self.assertEqual(first, replay(recipient()))
+                batch = run_lane(manifest, "multi_donor", {recipient().recipient_id: recipient()},
+                    adapters=LaneAdapters.from_mapping({"multi_donor": replay}),
+                    repo_root=run_archive.run_root.parent)
+                self.assertEqual(len(batch.candidates), 1)
+                self.assertEqual(batch.candidates[0].source, first["candidates"][0].source)
+                self.assertTrue(batch[0].provenance)
+            finally:
+                temp.cleanup()
+
     def test_adapter_binds_once_and_renders_only_semantic_claims(self) -> None:
         with _index_fixture() as (index, archive, gate_archive, _gate, _calls, _sources):
             item = recipient()

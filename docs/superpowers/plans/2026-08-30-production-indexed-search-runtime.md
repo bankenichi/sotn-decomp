@@ -12,6 +12,41 @@
 
 ## Global Constraints
 
+### September 8 bounded US leaf rendering continuation
+
+The next implementation extends the production target renderer with bounded
+32-bit scalar register dataflow and forward control flow. Branch predicates
+are captured before delay-slot execution; both paths must reach a complete
+return. Calls, memory, loops, unknown registers, ambiguous labels and excessive
+expansion remain explicit refusals. Generated arithmetic preserves 32-bit wrap
+and signed comparison behavior. No source from a donor is copied.
+
+- Capture conservative scalar function declaration facts in the pinned donor
+  scanner so indexed semantic claims can supply missing argument declarations.
+  Keep per-function facts separate from shared file declaration caches.
+- Extend the existing renderer module so its current source-identity binding,
+  adapter registration and supervisor reconstruction cover the implementation.
+- Restrict synthesis expression extraction to a whole single-return draft;
+  a return inside a branch is not a standalone function expression.
+- Verify compiled fixture behavior over both branch paths, delay-slot writes,
+  joins and 32-bit boundaries, plus real PSX compilation and indexed receipts.
+- Run focused checks, the consolidated suite and the mandatory landing gate.
+  Keep live queue matching and candidate landing deferred.
+
+September 9 outcome: scalar donor facts, bounded leaf control/dataflow, delay-slot
+semantics and whole-body synthesis extraction are implemented through the
+existing renderer source binding. Host behavior fixtures, actual PSX compilation
+and reconstructed indexed lane results passed. Consolidated
+`run_automation-000027-67` passed 107/107 suites. Calls, memory, loops, richer
+target declaration capture and assembly-backed donor coverage remain open.
+
+Successor runtime `e00ea6151374973f5a3f85a9f1abc45e4803e7cb7379b72996e3ed9672ed9922`
+was published and verified by `search_publish_indexed_runtime-000334-3464`. It
+contains 6,798 source donors: US 3,046, HD 595, PSPEU 2,812 and Saturn 345. The
+previous generation remains archived; its renderer binding is superseded by
+this generation. Assembly-backed donor counts remain zero.
+
+
 ### September 8 US-target scope correction and donor processing work
 
 US is the only recipient platform. HD, PSPEU and Saturn remain read-only donor

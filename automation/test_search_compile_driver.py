@@ -12,6 +12,28 @@ from automation.search_permuter_executor import REPOSITORY_COMPILE_WRAPPER_BYTES
 
 
 class CompileDriverTests(unittest.TestCase):
+    def test_generated_leaf_branch_compiles_with_actual_psx_toolchain(self):
+        from automation.search_target_renderer import deterministic_local_draft
+        draft = deterministic_local_draft(
+            "bltz $a0, .Lnegative\naddiu $v0, $a0, 1\njr $ra\nnop\n.Lnegative:\njr $ra\nsubu $v0, $zero, $v0\n",
+            symbol="leaf_branch", declarations={"return_type": "int", "parameters": [{"type": "int", "name": "value"}]},
+        )
+        self.assertIsNotNone(draft)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            wrapper, source, output = root / "compile.sh", root / "leaf.c", root / "leaf.o"
+            wrapper.write_bytes(REPOSITORY_COMPILE_WRAPPER_BYTES)
+            wrapper.chmod(0o700)
+            source.write_text(draft)
+            result = subprocess.run([str(wrapper), str(source), "-o", str(output)], env={
+                **os.environ, "SOTN_REPO_ROOT": str(ROOT),
+                "SOTN_COMPILER_IDENTITY": pipeline_identity().identity, "TMPDIR": directory,
+            }, capture_output=True, timeout=60)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            rows, count = _normalized_disassembly(output, symbol="leaf_branch")
+            self.assertGreater(count, 0)
+            self.assertIn("jr", rows)
+
     def test_fixed_wrapper_compiles_psx_object_and_refuses_compiler_drift(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

@@ -476,6 +476,24 @@ Saturn's current configs commonly lack the required SHA-1, so discovery does
 not imply admitted Saturn data coverage. Existing archives remain replayable;
 none of these donor paths prepares or lands a non-US target.
 
+The US target renderer supports bounded scalar leaf functions with scratch
+register calculations, bit operations, signed/unsigned comparisons, forward
+branches and joins. It captures branch predicates before executing delay slots
+and applies return delay slots before reading the result. Unsigned word
+arithmetic preserves MIPS wrap; signed comparisons use explicit signed casts.
+Uninitialized values, calls, memory, loops, ambiguous labels, missing slots and
+excessive expansion produce the ordinary unsupported-context result. This is
+candidate generation; compilation and the full checksum oracle still decide
+whether a later candidate can be used.
+
+Pinned donor scans now retain each function's conservative scalar return and
+parameter facts separately from the shared include/type cache. Those semantic
+facts can fill missing target declarations through the indexed adapter; pointer,
+aggregate, macro and old-style declarations remain unsupported. Target
+prototypes take precedence over donor return-type hints. Synthesis accepts a
+return expression only when it is the entire generated body, so a branch-local
+return cannot become an unconditional synthesis seed.
+
 Publication manifests must sort complete POSIX path strings, not native `Path`
 objects: component ordering puts `a/entry` before `a.c`, and Windows also folds
 case. The first real native publication failed this ordering check after the

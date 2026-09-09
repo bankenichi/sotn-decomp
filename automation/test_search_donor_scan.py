@@ -589,6 +589,22 @@ class DonorScanTests(unittest.TestCase):
 
 
 class PinnedSourceCaptureTests(unittest.TestCase):
+    def test_scalar_declarations_are_per_function_and_exclude_unbound_abis(self):
+        from automation.search_donor_scan import _parse_c_file
+        root = Path.cwd()
+        functions = _parse_c_file(root / "donor.c", repo=root, text=(
+            "static s32 first(u32 flags) { return flags; }\n"
+            "void second(void) { }\n"
+            "int third(int left, unsigned int right) { return left; }\n"
+            "int pointer(int* ptr) { return *ptr; }\n"
+            "int oldstyle() { return 1; }\n"
+        ))
+        self.assertEqual(functions[0].scalar_declaration, {"return_type": "int", "parameters": [{"type": "unsigned int", "name": "flags"}]})
+        self.assertEqual(functions[1].scalar_declaration, {"return_type": "void", "parameters": []})
+        self.assertEqual(len(functions[2].scalar_declaration["parameters"]), 2)
+        self.assertIsNone(functions[3].scalar_declaration)
+        self.assertIsNone(functions[4].scalar_declaration)
+
     def test_platform_projection_selects_donor_branch_and_preserves_offsets(self):
         from automation.search_donor_sources import project_platform_source
         source = '''#if defined(VERSION_US)
@@ -690,6 +706,7 @@ int next(void) { const char* url = "https://example/"; return 2; }
             fixture = DonorScanFixture(Path(temporary))
             hd_path = fixture.source_roots["hd"] / "entry.c"
             hd_text = hd_path.read_text()
+            hd_text += "\nunsigned int distinct(unsigned int flags, int count) { return flags + count; }\n"
             hd_path.write_text("#if defined(VERSION_HD)\n" + hd_text +
                                "#else\nint wrong_platform() { return 999; }\n#endif\n")
             stream = io.BytesIO()
@@ -711,6 +728,9 @@ int next(void) { const char* url = "https://example/"; return 2; }
             self.assertTrue(all(item.symbol != "forged" for item in evidence))
             self.assertTrue(all(item.symbol != "wrong_platform" for item in evidence))
             self.assertTrue(any(item.version == "hd" and item.symbol == "entry" for item in evidence))
+            distinct = next(item for item in evidence if item.version == "hd" and item.symbol == "distinct")
+            self.assertEqual(distinct.declarations["return_type"], "unsigned int")
+            self.assertEqual([p["name"] for p in distinct.declarations["parameters"]], ["flags", "count"])
             self.assertTrue(all("assembly_missing" in item.structural_differences for item in evidence))
             self.assertTrue(all(item.metadata["assembly_path"] is None for item in evidence))
 

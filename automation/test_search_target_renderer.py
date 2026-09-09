@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import sys
+import ctypes
+import shutil
+import subprocess
 import tempfile
 import unittest
 from dataclasses import replace
@@ -239,10 +242,9 @@ class TargetQueryTests(unittest.TestCase):
                 "parameters": [{"type": "int", "name": "count"}],
             },
         )
-        self.assertEqual(
-            one,
-            "int one(int count) {\n    return count + 1;\n}\n",
-        )
+        self.assertIsNotNone(one)
+        self.assertIn("int one(int count)", one)
+        self.assertIn("(unsigned int)count", one)
         self.assertNotIn("a0", one or "")
         extracted = deterministic_local_draft(
             ".set noat\n.set noreorder\nglabel one\naddiu $v0, $a0, 1\njr $ra\nnop\n",
@@ -264,12 +266,10 @@ class TargetQueryTests(unittest.TestCase):
                 ],
             },
         )
-        self.assertEqual(
-            many,
-            "int many(int left_value, int right_value) {\n"
-            "    return left_value + right_value;\n"
-            "}\n",
-        )
+        self.assertIsNotNone(many)
+        self.assertIn("int many(int left_value, int right_value)", many)
+        self.assertIn("(unsigned int)left_value", many)
+        self.assertIn("(unsigned int)right_value", many)
         self.assertNotIn("a0", many or "")
         self.assertNotIn("a1", many or "")
 
@@ -292,10 +292,9 @@ class TargetQueryTests(unittest.TestCase):
                 "parameters": [{"type": "unsigned int", "name": "value"}],
             },
         )
-        self.assertEqual(
-            source,
-            "unsigned int flags(unsigned int value) {\n    return value | 1;\n}\n",
-        )
+        self.assertIsNotNone(source)
+        self.assertIn("unsigned int flags(unsigned int value)", source)
+        self.assertIn(" | ", source)
         # At value=1 addition would produce 2; OR must preserve the set bit.
         self.assertEqual(1 | 1, 1)
 
@@ -309,6 +308,82 @@ class TargetQueryTests(unittest.TestCase):
                     declarations={"return_type": "int"},
                 )
                 self.assertIsNone(source)
+
+
+class LeafControlFlowTests(unittest.TestCase):
+    def test_compiled_leaf_behavior_includes_delay_slots_and_word_boundaries(self):
+        compiler = shutil.which("gcc")
+        if compiler is None:
+            self.skipTest("host fixture compiler unavailable")
+        cases = {
+            "select_value": (
+                "bne $a0, $zero, .Lnonzero\naddiu $v0, $a1, 1\njr $ra\nnop\n.Lnonzero:\njr $ra\nsubu $v0, $zero, $v0\n",
+                lambda x, y: -(y + 1) if x else y + 1),
+            "old_predicate": (
+                "beq $a0, $zero, .Lzero\naddiu $a0, $a0, 1\nmove $v0, $a0\njr $ra\nnop\n.Lzero:\njr $ra\naddiu $v0, $a0, 7\n",
+                lambda x, y: 8 if x == 0 else x + 1),
+            "absolute_word": (
+                "slti $t0, $a0, 0\nbeqz $t0, .Lpositive\nnop\nsubu $v0, $zero, $a0\nb .Ljoin\nnop\n.Lpositive:\nmove $v0, $a0\n.Ljoin:\njr $ra\nnop\n",
+                lambda x, y: -x if x & 0x80000000 else x),
+            "shift_word": (
+                "sra $t0, $a0, 3\nxori $t0, $t0, 170\nsll $v0, $t0, 1\njr $ra\naddiu $v0, $v0, -1\n",
+                lambda x, y: (((ctypes.c_int32(x).value >> 3) ^ 170) << 1) - 1),
+            "unsigned_compare": (
+                "sltiu $v0, $a0, -1\njr $ra\nnop\n",
+                lambda x, y: int(x < 0xFFFFFFFF)),
+            "constant_wrap": (
+                "li $t0, 2147483647\naddiu $t0, $t0, 1\nsll $v0, $t0, 1\njr $ra\naddiu $v0, $v0, -1\n",
+                lambda x, y: 0xFFFFFFFF),
+        }
+        declarations = {"return_type": "unsigned int", "parameters": [
+            {"type": "unsigned int", "name": "value"}, {"type": "unsigned int", "name": "other"}]}
+        sources = []
+        for name, (assembly, _) in cases.items():
+            draft = deterministic_local_draft(assembly, symbol=name, declarations=declarations)
+            self.assertIsNotNone(draft, name)
+            self.assertNotIn("$", draft)
+            self.assertNotIn(".L", draft)
+            sources.append(draft)
+        with tempfile.TemporaryDirectory() as directory:
+            source, library = Path(directory) / "leaf.c", Path(directory) / "leaf.so"
+            source.write_text("\n".join(sources))
+            result = subprocess.run([compiler, "-std=c89", "-O2", "-Wall", "-Werror", "-shared", "-fPIC", str(source), "-o", str(library)], capture_output=True, timeout=30)
+            self.assertEqual(result.returncode, 0, result.stderr.decode())
+            compiled = ctypes.CDLL(str(library))
+            for name, (_, expected) in cases.items():
+                function = getattr(compiled, name)
+                function.argtypes, function.restype = [ctypes.c_uint32, ctypes.c_uint32], ctypes.c_uint32
+                for x in (0, 1, 7, 0x7FFFFFFF, 0x80000000, 0xFFFFFFFF):
+                    for y in (0, 1, 0x7FFFFFFF, 0xFFFFFFFF):
+                        self.assertEqual(function(x, y), expected(x, y) & 0xFFFFFFFF, (name, x, y))
+
+    def test_refuses_incomplete_or_unsafe_leaf_control_flow(self):
+        invalid = (
+            "li $v0, 1\njr $ra",  # missing slot
+            "li $v0, 1\njr $ra\nnop\nli $v0, 2",  # code after return
+            ".Lloop:\nb .Lloop\nnop",  # loop
+            "b .Lmissing\nnop\nli $v0, 1\njr $ra\nnop",  # absent label
+            "b .Lslot\n.Lslot:\nli $v0, 1\njr $ra\nnop",  # slot entry
+            "b .Ldone\njr $ra\n.Ldone:\njr $ra\nnop",  # branch in slot
+            "li $v0, 1\njal helper\nnop\njr $ra\nnop",
+            "lw $v0, 0($a0)\njr $ra\nnop",
+            "move $v0, $t0\njr $ra\nnop",  # undefined value
+            "li $v0, 1\n.Lsame:\nnop\n.Lsame:\njr $ra\nnop",
+            "li $v0, 1\n.Lalias:\n.Lother:\njr $ra\nnop",
+            "li $v0, 1\nnop\n",  # missing return
+            "li $v0, 1\nsll $v0, $v0, 32\njr $ra\nnop",
+        )
+        for assembly in invalid:
+            with self.subTest(assembly=assembly):
+                self.assertIsNone(deterministic_local_draft(assembly, symbol="bad"))
+        self.assertIsNone(deterministic_local_draft("move $v0, $a0\njr $ra\nnop", symbol="wide", declarations={"parameters": [{"type": "double", "name": "value"}]}))
+
+    def test_branch_draft_is_not_reduced_to_one_synthesis_expression(self):
+        from automation.search_provider_factory import prepare_provider_inputs
+        assembly = b"li $t0, 1\nbeqz $t0, .Lzero\nnop\nli $v0, 7\njr $ra\nnop\n.Lzero:\nli $v0, 9\njr $ra\nnop\n"
+        prepared = prepare_provider_inputs(Path.cwd(), ("bounded_synthesis",), {RECIPIENT_ID: (assembly, b"obj")}, {})
+        self.assertIn("if (", prepared[RECIPIENT_ID]["seed"])
+        self.assertEqual(prepared[RECIPIENT_ID]["expressions"], ())
 
 
 class TargetRendererTests(unittest.TestCase):
