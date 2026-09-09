@@ -494,6 +494,18 @@ prototypes take precedence over donor return-type hints. Synthesis accepts a
 return expression only when it is the entire generated body, so a branch-local
 return cannot become an unconditional synthesis seed.
 
+New US run creation captures the exact source translation unit selected by the
+assembly's unit directory and preprocesses it with the bound US compiler's CPP
+stage in private scratch. Raw and preprocessed bytes are immutable target-context
+artifacts. Source and header drift during capture is refused. Named top-level
+function declarations are rederived from those bytes during archive recovery
+and target-index loading; ambiguous, unnamed, old-style or absent declarations
+retain explicit status instead of fabricated types. Recovery reads no live
+source, while dispatch still checks the frozen source identity. These US facts
+feed indexed rendering, deterministic programmatic seeds and bounded synthesis,
+including reconstructed providers. Captured pointer declarations are evidence
+for later memory/call rendering; the scalar leaf renderer still refuses them.
+
 Publication manifests must sort complete POSIX path strings, not native `Path`
 objects: component ordering puts `a/entry` before `a.c`, and Windows also folds
 case. The first real native publication failed this ordering check after the

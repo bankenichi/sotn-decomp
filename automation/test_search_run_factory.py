@@ -222,6 +222,105 @@ class FactoryFixture(unittest.TestCase):
             fault_hook=fault_hook,
         )
 
+    def test_target_context_is_archived_used_and_verified_without_live_source(self):
+        from automation.search_archive import ContentAddressedArchive
+        from automation.search_target_renderer import load_target_index, TargetEvidenceError
+        from automation.search_source_context import target_declaration
+        from automation.search_provider_factory import prepare_provider_inputs
+        source = self.repo / "src/st/rno0/unit_a.c"
+        source.parent.mkdir(parents=True)
+        source.write_text('#include "header.h"\nint func_a(int value);\n')
+        context = b"int func_a(int value);\n"
+        asm = self.repo / "asm/us/st/rno0/nonmatchings/unit_a/func_a.s"
+        asm.write_text("func_a:\naddiu $v0, $a0, 1\njr $ra\nnop\n")
+        with mock.patch("automation.search_source_context.preprocess_target_context", return_value=context) as cpp:
+            result = self.create("target-context", ids=[IDS[0]], lanes=["bounded_synthesis"])
+        cpp.assert_called_once()
+        root = Path(result["run_root"])
+        archive = ContentAddressedArchive(root)
+        index = json.loads((root / result["evidence_index"]["path"]).read_text())
+        target = json.loads(archive.verify(ArtifactRef.from_dict(index["target_evidence"][IDS[0]])))
+        declarations = target["declarations"]
+        self.assertEqual(declarations["parameters"], [{"type": "int", "name": "value"}])
+        self.assertEqual(declarations["context_evidence"]["status"], "declared")
+        prepared = prepare_provider_inputs(self.repo, ["bounded_synthesis"],
+            {IDS[0]: (asm.read_bytes(), b"object")}, {}, target_declarations={IDS[0]: declarations})
+        self.assertIn("int value", prepared[IDS[0]]["seed"])
+        self.assertTrue(prepared[IDS[0]]["expressions"])
+        provider = json.loads(archive.verify(ArtifactRef.from_dict(index["provider_state"])))
+        self.assertIn('"name": "value"', json.dumps(provider))
+        manifest = RunManifest.from_dict(result["manifest"])
+        with mock.patch.object(_factory, "_compiler_identity", return_value=(manifest.compiler_identity, {"identity": manifest.compiler_identity})):
+            _factory.verify_factory_runtime(root, manifest, repo=self.repo)
+            source.write_text("int func_a(unsigned int changed);\n")
+            with self.assertRaisesRegex(EvidenceRefusal, "source"):
+                _factory.verify_factory_runtime(root, manifest, repo=self.repo)
+        source.unlink()
+        with mock.patch("automation.search_source_context.preprocess_target_context", side_effect=AssertionError("live preprocessing")):
+            load_target_index(archive=archive, manifest=manifest)
+            from automation.search_provider_lanes import reconstruct_lane_adapters
+            from automation.search_lanes import Recipient
+            callback = reconstruct_lane_adapters(manifest, root).bounded_synthesis
+            replay = callback(Recipient(IDS[0], "ST/RNO0", "func_a"))
+            self.assertTrue(replay["candidates"])
+            self.assertTrue(all("int value" in item.source for item in replay["candidates"]))
+            self.assertTrue(self.create("target-context", ids=[IDS[0]], lanes=["bounded_synthesis"])["idempotent"])
+        for key in ("input", "preprocessed"):
+            path = root / declarations["context_evidence"][key]["path"]
+            original = path.read_bytes()
+            path.write_bytes(b"corrupt")
+            with self.assertRaises(TargetEvidenceError):
+                load_target_index(archive=archive, manifest=manifest)
+            with self.assertRaises(PartialRunRefusal):
+                self.create("target-context", ids=[IDS[0]], lanes=["bounded_synthesis"])
+            path.write_bytes(original)
+
+    def test_target_context_capture_rejects_source_race(self):
+        source = self.repo / "src/st/rno0/unit_a.c"
+        source.parent.mkdir(parents=True)
+        source.write_text("int func_a(int x);\n")
+        original = _factory._source_identity
+        def race(repo):
+            result = original(repo)
+            source.write_text("int func_a(unsigned int y);\n")
+            return result
+        with mock.patch.object(_factory, "_source_identity", side_effect=race), mock.patch(
+                "automation.search_source_context.preprocess_target_context", return_value=b"int func_a(unsigned int y);"):
+            with self.assertRaisesRegex(EvidenceRefusal, "frozen source"):
+                self.create("context-race", ids=[IDS[0]])
+        self.assertFalse(list((self.repo / "nonmatchings").rglob("manifest.json")))
+        self.assertFalse(list((self.repo / "nonmatchings").rglob("target-context/*.c")))
+
+    def test_target_context_capture_rejects_header_race(self):
+        source = self.repo / "src/st/rno0/unit_a.c"
+        source.parent.mkdir(parents=True)
+        source.write_text('#include "header.h"\nint func_a(int x);\n')
+        def race(*args):
+            (self.repo / "include/header.h").write_text("#define X 2\n")
+            return b"int func_a(int x);"
+        with mock.patch("automation.search_source_context.preprocess_target_context", side_effect=race):
+            with self.assertRaisesRegex(EvidenceRefusal, "headers changed"):
+                self.create("header-race", ids=[IDS[0]])
+        self.assertFalse(list((self.repo / "nonmatchings").rglob("manifest.json")))
+
+    def test_target_declaration_refuses_guesses_and_prefers_definition_names(self):
+        from automation.search_source_context import target_declaration
+        cases = [
+            ("int f(void);", "declared"),
+            ("int f(unsigned int);", "unsupported_declaration"),
+            ("int f();", "unsupported_declaration"),
+            ("typedef int f(int x);", "unsupported_declaration"),
+            ("int f(int x);\nint f(unsigned int x);", "ambiguous_declaration"),
+            ("int f(int x); int f(unsigned int x);", "ambiguous_declaration"),
+            ("void outer(void) {\nint f(int local);\n}", "declaration_missing"),
+            ("int f(Entity *self);", "declared"),
+        ]
+        for text, expected in cases:
+            with self.subTest(text=text):
+                self.assertEqual(target_declaration(text, "f")[1], expected)
+        facts, status = target_declaration("extern int f(int old);\nint f(int current) { return current; }", "f")
+        self.assertEqual(facts["parameters"][0]["name"], "current")
+
     def test_verified_weights_are_frozen_and_read_by_runtime(self):
         from automation.weight_tuner import PROTOCOL, weights_for_run
         from automation.search_archive import ContentAddressedArchive

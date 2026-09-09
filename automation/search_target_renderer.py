@@ -1784,6 +1784,14 @@ def load_target_index(
         obj = target_doc.get("object")
         if not isinstance(assembly, Mapping) or not isinstance(obj, Mapping):
             raise TargetEvidenceError("target evidence assembly/object fields are missing")
+        try:
+            from .search_source_context import verify_target_context
+            declarations = target_doc.get("declarations", {})
+            compiler_identity = (manifest.compiler_identity if manifest is not None else
+                                 declarations.get("context_evidence", {}).get("compiler_identity"))
+            verify_target_context(declarations, archive, record_id, compiler_identity, assembly["path"])
+        except Exception as exc:
+            raise TargetEvidenceError("target declaration context is missing or corrupt") from exc
         assembly_ref = _artifact(assembly.get("artifact"), "target assembly artifact")
         object_ref = _artifact(obj.get("artifact"), "target object artifact")
         _validate_archived_ref(

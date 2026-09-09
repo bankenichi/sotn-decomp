@@ -1578,6 +1578,10 @@ def _verify_existing_artifacts(
                     raise PartialRunRefusal(
                         "target assembly/object media types are invalid"
                     )
+                from .search_source_context import verify_target_context
+                verify_target_context(target_document.get("declarations", {}), archive,
+                                      target_record_id, expected_compiler_identity,
+                                      target_document["assembly"]["path"])
                 assembly_data = archive.verify(assembly)
                 object_data = archive.verify(target_object)
                 if (
@@ -1671,6 +1675,11 @@ def _verify_existing_artifacts(
             or hash_canonical(source_document) != expected_source_identity
         ):
             raise PartialRunRefusal("source evidence binding is invalid")
+
+        from .search_source_context import verify_target_context_source
+        for record_id in expected_target_identities or {}:
+            target_document = _archive_json(archive, index["target_evidence"][record_id], "target context")
+            verify_target_context_source(target_document.get("declarations", {}), source_document)
 
         config_ref = _artifact_ref_from_dict(index["config"], "config")
         schema_ref = _artifact_ref_from_dict(index["schema"], "schema")
@@ -2028,6 +2037,9 @@ def verify_factory_runtime(
                     "artifact": object_ref.to_dict(),
                 },
             }
+            archived_target = _archive_json(archive, index["target_evidence"][record_id], "target context")
+            if "declarations" in archived_target:
+                payload["declarations"] = archived_target["declarations"]
             identity = hash_canonical(payload)
         except SearchRunFactoryError:
             raise
@@ -2322,6 +2334,8 @@ def _create_instrumented_run_locked(
         weight_spec=weight_spec,
     )
 
+    from .search_source_context import capture_target_context, verify_target_context_source
+    target_context_artifacts = {}
     target_payloads: dict[str, dict[str, Any]] = {}
     target_identities: dict[str, str] = {}
     target_bytes: dict[str, tuple[bytes, bytes]] = {}
@@ -2329,8 +2343,21 @@ def _create_instrumented_run_locked(
         _identity, payload, assembly_bytes, object_bytes = _target_measurement(
             root_repo, record_id, record
         )
+        try:
+            declarations, context_artifacts = capture_target_context(
+                root_repo, record_id, payload["assembly"]["path"], compiler_identity, resolved_config)
+            verify_target_context_source(declarations, source_payload)
+        except Exception as exc:
+            raise EvidenceRefusal("US target context capture failed: " + str(exc)) from exc
+        payload["declarations"] = declarations
+        target_context_artifacts[record_id] = context_artifacts
         target_payloads[record_id] = payload
         target_bytes[record_id] = (assembly_bytes, object_bytes)
+
+    # The preprocessor also reads US headers. Refuse edits during capture so
+    # archived context cannot claim an earlier, different source snapshot.
+    if any(target_context_artifacts.values()) and _source_identity(root_repo)[0] != source_identity:
+        raise EvidenceRefusal("US target context source or headers changed during capture")
 
     # Planned references make target evidence identities deterministic before
     # any archive path is materialized.
@@ -2368,6 +2395,7 @@ def _create_instrumented_run_locked(
         provider_inputs = prepare_provider_inputs(
             root_repo, selected_lanes, target_bytes, tool_payload["lane_inputs"],
             indexed_runtime=indexed_runtime,
+            target_declarations={key: value["declarations"] for key, value in target_payloads.items()},
         )
     except ValueError as exc:
         raise EvidenceRefusal(str(exc)) from exc
@@ -2451,6 +2479,10 @@ def _create_instrumented_run_locked(
         )
         if assembly_actual != assembly_ref or object_actual != object_ref:
             raise SearchRunFactoryError("archive path is not deterministic")
+        for category, expected, data in target_context_artifacts[record_id]:
+            actual = archive.put_bytes(data, category=category, suffix=".c", media_type="text/x-c")
+            if actual != expected:
+                raise SearchRunFactoryError("target context archive path is not deterministic")
         target_ref_map[record_id] = archive.put_json(
             target_payloads[record_id], category="target-evidence", suffix=".json"
         )
@@ -2549,6 +2581,7 @@ def _create_instrumented_run_locked(
         *((provider_state_ref,) if provider_state_ref is not None else ()),
         index_ref,
         *target_ref_map.values(),
+        *(ref for artifacts in target_context_artifacts.values() for _, ref, _ in artifacts),
     ):
         try:
             archive.verify(reference)

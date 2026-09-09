@@ -12,6 +12,36 @@
 
 ## Global Constraints
 
+### September 9 US target declaration context
+
+Capture the canonical US translation unit and preprocess it with the existing
+identity-bound US compiler stage in private scratch. Archive the original and
+preprocessed bytes before provider publication. Derive only unambiguous named
+function declarations from top-level C; retain missing or unsupported declaration
+outcomes explicitly. Preserve complete context for later call/member-aware work.
+
+- Bind context artifacts, source path, recipient and compiler to target evidence.
+- Verify context bytes and rederive declaration facts during factory recovery
+  and archived target loading, without reading live source or invoking tools.
+- Supply captured declarations to deterministic provider seeds and synthesis.
+- Test US branch selection, pointer declarations, ambiguity, corruption, source
+  drift, provider consumption and actual US preprocessing using fixtures only.
+- Publish the updated renderer-bound runtime and complete consolidated and
+  mandatory pre-push checks. Calls and memory lowering remain separate work.
+
+
+September 9 context outcome: capture, source/header race refusal, immutable
+context verification, offline declaration reconstruction and provider consumption
+are implemented. Fixture callbacks retain captured scalar parameter names after
+live source removal, and actual US preprocessing resolves header types. The
+consolidated `run_automation-080048-67` passed 107/107 suites. Calls, memory and
+loops remain separate renderer work; no live matching was run.
+
+Runtime `b3bc0c140edd24376ac2f706f4634ef3812aa4757fd88e6c4a5807752017ce0c`
+completed normal archive verification in `search_publish_indexed_runtime-080352-3309`
+and binds the context-aware renderer. It retains the same 6,798 source donors
+and zero assembly-backed donors; prior generations remain archived.
+
 ### September 8 bounded US leaf rendering continuation
 
 The next implementation extends the production target renderer with bounded

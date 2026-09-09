@@ -12,6 +12,17 @@ from automation.search_permuter_executor import REPOSITORY_COMPILE_WRAPPER_BYTES
 
 
 class CompileDriverTests(unittest.TestCase):
+    def test_real_us_preprocessor_captures_header_types_in_private_context(self):
+        from automation.compiler_corpus import DEFAULT_CONFIG_PATH
+        from automation.search_source_context import preprocess_target_context, target_declaration
+        source = b'#include "common.h"\n#ifdef VERSION_PSP\n#error foreign target\n#endif\nint fixture_context(Entity* self) { return self->posX.i.hi; }\n'
+        identity = pipeline_identity().identity
+        context = preprocess_target_context(ROOT, source, ROOT / "src/st/no0", identity, DEFAULT_CONFIG_PATH)
+        facts, status = target_declaration(context.decode(), "fixture_context")
+        self.assertEqual(status, "declared")
+        self.assertEqual(facts, {"return_type": "int", "parameters": [{"type": "Entity*", "name": "self"}]})
+        self.assertNotIn(b'#include', context)
+
     def test_generated_leaf_branch_compiles_with_actual_psx_toolchain(self):
         from automation.search_target_renderer import deterministic_local_draft
         draft = deterministic_local_draft(

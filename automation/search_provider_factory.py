@@ -49,7 +49,7 @@ def model_input_state(repo, lane):
     return {"kind": "explicit_model_profile", "profile": profile, "settings_identity": hash_bytes(path.read_bytes())}
 
 
-def prepare_provider_inputs(repo, lanes, targets, lane_inputs, *, indexed_runtime=None):
+def prepare_provider_inputs(repo, lanes, targets, lane_inputs, *, indexed_runtime=None, target_declarations=None):
     """Resolve missing-input refusals before the factory writes any artifacts."""
     external = set(lanes).intersection(EXTERNAL_LANES)
     unsupported = external.difference(IMPLEMENTED_LANES)
@@ -64,7 +64,9 @@ def prepare_provider_inputs(repo, lanes, targets, lane_inputs, *, indexed_runtim
     prepared = {}
     for recipient, (assembly, _) in targets.items():
         symbol = recipient.split(":", 2)[2]
-        draft = deterministic_local_draft(assembly, symbol=symbol)
+        declarations = {key: value for key, value in (target_declarations or {}).get(recipient, {}).items()
+                        if key != "context_evidence"}
+        draft = deterministic_local_draft(assembly, symbol=symbol, declarations=declarations)
         seed, seed_origin = draft, "deterministic_target_renderer"
         for lane in sorted(seed_lanes):
             if seed is not None:
@@ -88,7 +90,7 @@ def prepare_provider_inputs(repo, lanes, targets, lane_inputs, *, indexed_runtim
         # single-return draft may supply the synthesis expression provider.
         expression = re.fullmatch(r"[^{}]+\{\s*return\s+([^;{}]+);\s*\}\s*", draft) if draft else None
         prepared[recipient] = {
-            "seed": seed, "seed_origin": seed_origin,
+            "seed": seed, "seed_origin": seed_origin, "declarations": declarations,
             "expressions": (expression.group(1),) if expression else (),
         }
     return prepared
@@ -126,6 +128,7 @@ def publish_provider_state(manifest, archive, repo, targets, target_refs, prepar
             recipient, manifest.target_identities[recipient], target_refs[recipient][0],
             targets[recipient][0], recipient.split(":", 2)[2],
             expressions=prepared[recipient]["expressions"],
+            declarations=prepared[recipient]["declarations"],
         ) for recipient in manifest.queue_record_ids]
         providers["bounded_synthesis"] = build_bounded_synthesis_provider(manifest, inputs, archive=archive)
     for lane in sorted(external.intersection(MODEL_LANES)):
