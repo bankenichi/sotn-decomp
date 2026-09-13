@@ -12,6 +12,54 @@
 
 ## Global Constraints
 
+### September 12 US pointer and named member accesses
+
+Use the vendored C type parser on exact archived US preprocessed context to
+resolve bounded integral pointer/member layouts. Bind its concrete dependencies
+in factory and indexed-runtime identities. Preserve the target archive format;
+fresh factory seeds and offline reconstruction derive the same layout view.
+
+- Add a bounded layout projection in `search_target_layout.py`, using exact US
+  declarations, no implicit built-in typedefs, live index or donor offsets.
+  Resolve integral widths, signedness, named nested members and fixed arrays.
+  Refuse ambiguous union members, bitfields, unsupported types and unaligned
+  accesses. Preserve const/volatile qualifiers through typedef resolution.
+- Extend `search_target_renderer.py` with typed pointer register values, named
+  scalar loads/stores, ordered memory temporaries, pointer moves and compatible
+  direct-call arguments. Keep scalar arithmetic and unsafe memory refusals.
+- Wire the projection through existing factory seed and archived indexed paths;
+  include parser dependencies in immutable tool and runtime drift checks.
+- Verify host fixture behavior including aliasing, narrow signed loads, stores,
+  call ordering and branches; verify real US layouts and compilation. Exercise
+  factory recovery, seed reconstruction and ordinary indexed receipts offline.
+- Run focused tests, full self-tests and the required build/checksum gate;
+  publish and verify the successor runtime, record evidence and land explicit
+  paths. No live matching, game source changes or model/fleet work.
+
+The existing layout parser avoids a second incomplete C layout implementation.
+Its decompilation engine is not invoked. Ambiguous union alternatives remain an
+explicit boundary until US semantic evidence can select a named member.
+
+
+September 12-13 outcome: layout projection, typed pointer and ordered named
+memory rendering, compatible direct-call arguments, factory seed type context
+and archived indexed reconstruction are implemented. Real US compilation checks
+Entity size, pointer width and the named high-half member offset, using archived
+type declarations alone. Host fixtures cover aliasing, narrow signed/unsigned
+loads, stores, calls, pointer moves and null branches. Corrupt-context recovery
+and ordinary indexed receipts pass. Consolidated run_automation-213151-103
+passed 106/108; after registering the new focused suite and refreshing generated
+counts, both remaining checks passed in run_automation-085527-50. Runtime
+publication and the fresh pre-push gate follow. Broader memory shapes and donor
+preprocessing/assembly coverage remain open; no live matching was started.
+
+September 13 publication outcome: runtime `e4365ab897be363d0c9ba6f1c72bc9dbc38af45613d21d749f9500b67b5e7dd7`
+completed normal archive verification in search_publish_indexed_runtime-085705-964
+(609.1 seconds). The same pinned revisions retain 6,798 source donors: US 3,046,
+HD 595, PSPEU 2,812 and Saturn 345. All assembly-backed counts remain zero.
+This generation binds the US memory renderer and concrete parser dependencies;
+prior archives are preserved. The final commit/build/checksum gate follows.
+
 ### September 9 bounded US direct calls
 
 Extend the existing renderer interpreter, keeping its exact source binding,

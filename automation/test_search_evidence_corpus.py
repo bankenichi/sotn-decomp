@@ -162,6 +162,11 @@ def _factory_gate(archive: ContentAddressedArchive, *, multi_record: bool = Fals
         (repo / "automation" / module).write_text(
             f"{module.replace('.', '_')} = 1\n", encoding="utf-8"
         )
+    from automation.search_target_layout import LAYOUT_DEPENDENCIES
+    for relative in LAYOUT_DEPENDENCIES:
+        path = repo / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes((Path(__file__).resolve().parents[1] / relative).read_bytes())
     vendor = repo / "tools" / "decomp-permuter" / "src"
     vendor.mkdir(parents=True)
     for module in ("scorer.py", "objdump.py"):

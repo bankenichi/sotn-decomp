@@ -585,23 +585,12 @@ def _renderer_source_identity(repo_root: Path) -> str:
         raise LaneError("production renderer repository root cannot be resolved") from exc
     if not root.is_dir():
         raise LaneError("production renderer repository root is not a directory")
-    candidate = root / "automation" / "search_target_renderer.py"
-    current = root
+    from automation.search_indexed_runtime import _renderer_identities, IndexedRuntimeError
     try:
-        for component in ("automation", "search_target_renderer.py"):
-            current = current / component
-            if current.is_symlink():
-                raise LaneError("production target renderer source cannot be a symlink")
-        resolved = candidate.resolve(strict=True)
-        resolved.relative_to(root)
-        if not resolved.is_file():
-            raise LaneError("production target renderer source is not a file")
-        data = resolved.read_bytes()
-    except LaneError:
-        raise
-    except (OSError, RuntimeError, ValueError) as exc:
-        raise LaneError("production target renderer source cannot be read") from exc
-    return hash_bytes(data)
+        return _renderer_identities(root)[1]
+    except (IndexedRuntimeError, OSError, RuntimeError, ValueError) as exc:
+        raise LaneError("production target renderer dependencies cannot be verified") from exc
+
 
 
 def _reject_runtime_substitution(runtime: Any) -> None:

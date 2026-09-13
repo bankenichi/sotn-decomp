@@ -83,6 +83,12 @@ def _runtime_fixture(base: Path):
             f"fixture_{module.replace('.', '_')} = 1\n",
             encoding="utf-8",
         )
+    from automation.search_target_layout import RENDERER_DEPENDENCIES
+    for relative in RENDERER_DEPENDENCIES:
+        path = repo / relative
+        if not path.exists():
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes((Path(__file__).resolve().parents[1] / relative).read_bytes())
     revisions_with_snapshots = []
     sources = {}
     for revision in revisions:
@@ -289,9 +295,7 @@ class IndexedRuntimePublicationTests(unittest.TestCase):
                 generation.binding.scanner_identity,
                 generation.binding.scanner_source_identity,
             )
-            renderer_source_identity = hash_bytes(
-                (repo / "automation" / "search_target_renderer.py").read_bytes()
-            )
+            renderer_source_identity = runtime_module._renderer_identities(repo)[1]
             self.assertEqual(
                 generation.binding.renderer_identity,
                 TARGET_RENDERER_IDENTITY,
@@ -679,6 +683,17 @@ class IndexedRuntimePublicationTests(unittest.TestCase):
                     verify_indexed_runtime(generation, repo=repo)
             finally:
                 renderer_path.write_bytes(renderer_bytes)
+
+            from automation.search_target_layout import LAYOUT_DEPENDENCIES
+            for relative in ("automation/search_source_context.py", *LAYOUT_DEPENDENCIES):
+                path = repo / relative
+                original = path.read_bytes()
+                try:
+                    path.write_bytes(original + b"# dependency drift\n")
+                    with self.assertRaises(IndexedRuntimeIdentityMismatch):
+                        verify_indexed_runtime(generation, repo=repo)
+                finally:
+                    path.write_bytes(original)
 
             generation_path = _runtime_dir(repo, generation) / "generation.json"
             document = json.loads(generation_path.read_bytes().decode("utf-8"))

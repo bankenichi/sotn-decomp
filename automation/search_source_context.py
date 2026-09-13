@@ -209,6 +209,8 @@ def renderer_declarations(declarations, assembly_bytes, context_bytes):
 
     result = dict(declarations)
     result.pop("call_declarations", None)
+    result.pop("pointer_layouts", None)
+    result.pop("type_declarations", None)
     if context_bytes is None:
         return result
     instructions = _parse_assembly(assembly_bytes.decode("utf-8"))
@@ -223,4 +225,12 @@ def renderer_declarations(declarations, assembly_bytes, context_bytes):
             facts, status = target_declaration(text, symbol)
             callees[symbol] = {**facts, "status": status}
         result["call_declarations"] = callees
+    from .search_target_layout import pointer_layouts, renderer_type_declarations
+    scalar_types = {"int", "signed int", "unsigned int", "s32", "u32"}
+    kinds = {p["type"] for facts in (result, *result.get("call_declarations", {}).values())
+             for p in facts.get("parameters", ()) if p["type"] not in scalar_types}
+    if kinds:
+        result["pointer_layouts"] = pointer_layouts(context_bytes, kinds)
+        if result["pointer_layouts"]:
+            result["type_declarations"] = renderer_type_declarations(context_bytes)
     return result

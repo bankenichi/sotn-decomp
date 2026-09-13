@@ -486,7 +486,17 @@ def _module_identity(repo: Path, module_name: str) -> str:
 def _renderer_identities(repo: Path) -> tuple[str, str]:
     """Return the renderer protocol identity and exact source-byte identity."""
 
-    source_identity = _module_identity(repo, "search_target_renderer.py")
+    from automation.search_target_layout import RENDERER_DEPENDENCIES
+    dependencies = {}
+    for relative in RENDERER_DEPENDENCIES:
+        candidate = repo / relative
+        if candidate.is_symlink() or any(parent.is_symlink() for parent in candidate.parents if parent != repo and parent.is_relative_to(repo)):
+            raise IndexedRuntimeInputError("renderer dependency is a symlink: " + relative)
+        path = _contained(candidate, repo, "renderer dependency")
+        if not path.is_file():
+            raise IndexedRuntimeInputError("renderer dependency is unavailable: " + relative)
+        dependencies[relative] = hash_bytes(path.read_bytes())
+    source_identity = hash_bytes(json.dumps(dependencies, sort_keys=True, separators=(",", ":")).encode("utf-8"))
     try:
         try:
             from .search_target_renderer import (  # type: ignore

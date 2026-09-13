@@ -121,6 +121,12 @@ _CORE_MODULES = (
     ("tools/decomp-permuter/src/scorer.py", "evaluator_scorer"),
     ("tools/decomp-permuter/src/objdump.py", "evaluator_objdump"),
 )
+# The US memory view is reconstructed by both provider creation and recovery.
+try:
+    from .search_target_layout import LAYOUT_DEPENDENCIES
+except ImportError:
+    from automation.search_target_layout import LAYOUT_DEPENDENCIES
+_CORE_MODULES += tuple((path, "target_layout_" + str(index)) for index, path in enumerate(LAYOUT_DEPENDENCIES))
 _LANE_MODULES = {
     "idiom_atlas": (
         "automation/search_provider_factory.py", "automation/search_provider_lanes.py",
@@ -1831,11 +1837,17 @@ def _verify_existing_artifacts(
                 raise PartialRunRefusal("scorer weight evidence differs from manifest")
             _component(spec["tuning_run"], "tuning run")
             checked_weights(spec["document"]["weights"])
-        expected_core_paths = {path for path, _key in _CORE_MODULES}
+        # Pre-layout archives remain valid historical evidence. They cannot
+        # dispatch the new renderer: current runtime checks still require all
+        # concrete dependencies and exact module identities.
+        bound_core = _CORE_MODULES
+        if not any(key.startswith("target_layout_") for key in (expected_tool_identities or {})):
+            bound_core = tuple((path, key) for path, key in _CORE_MODULES if path not in LAYOUT_DEPENDENCIES)
+        expected_core_paths = {path for path, _key in bound_core}
         if set(core_modules) != expected_core_paths:
             raise PartialRunRefusal("core tool evidence coverage is invalid")
         core_hashes: dict[str, str] = {}
-        for relative, key in _CORE_MODULES:
+        for relative, key in bound_core:
             entry = core_modules.get(relative)
             if (
                 not isinstance(entry, Mapping)

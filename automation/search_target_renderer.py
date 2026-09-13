@@ -1177,7 +1177,13 @@ def _literal_operand(operands: str) -> Optional[int]:
         return None
 
 
-def _leaf_body(instructions, parameters, return_type, callees=None):
+@dataclass(frozen=True)
+class _PointerValue:
+    kind: str
+    expression: str
+
+
+def _leaf_body(instructions, parameters, return_type, callees=None, layouts=None):
     """Lower bounded MIPS scalar paths without losing delay-slot dataflow.
 
     Values are unsigned 32-bit C expressions. Signed comparisons explicitly
@@ -1186,8 +1192,9 @@ def _leaf_body(instructions, parameters, return_type, callees=None):
     with a shared budget to bound joins and nested branches.
     """
     scalar_types = {"int", "signed int", "unsigned int", "s32", "u32"}
+    layouts = layouts or {}
     if (return_type not in scalar_types | {"void"} or len(parameters) > 4
-            or any(kind not in scalar_types for kind, _ in parameters)
+            or any(kind not in scalar_types and kind not in layouts for kind, _ in parameters)
             or len({name for _, name in parameters}) != len(parameters)
             or not 0 < len(instructions) <= 64
             or any(item.unsupported for item in instructions)):
@@ -1218,7 +1225,8 @@ def _leaf_body(instructions, parameters, return_type, callees=None):
     slots = {i + 1 for i, item in enumerate(instructions) if item.mnemonic in controls}
     state = {"zero": "0", "ra": "@entry-ra", "stack_offset": 0, "frame_size": 0}
     state.update({name: "@entry-" + name for name in preserved})
-    state.update({"a" + str(i): "(unsigned int)" + name for i, (_, name) in enumerate(parameters)})
+    state.update({"a" + str(i): "(unsigned int)" + name if kind in scalar_types else _PointerValue(kind, name)
+                  for i, (kind, name) in enumerate(parameters)})
     visited, budget = set(), [256]
 
     def register(value):
@@ -1242,11 +1250,51 @@ def _leaf_body(instructions, parameters, return_type, callees=None):
 
     def value_for(values, operand):
         value = values[register(operand)]
-        if "@" in value:
+        if isinstance(value, _PointerValue) or "@" in value:
             raise ValueError("uninitialized preserved value")
         return value
 
-    def step(index, values):
+    def new_temporary(prefix):
+        name = prefix + str(len(temporaries))
+        while name in reserved_names:
+            name += "_"
+        reserved_names.add(name)
+        temporaries.append("    unsigned int " + name + ";")
+        return name
+
+    def check_load_delay(index, destination):
+        if destination == "zero" or index in slots:
+            raise ValueError("unsupported load delay slot")
+        if index + 1 < len(instructions) and destination in {
+                register(reg) for reg in re.split(r"[,()\s]+", instructions[index + 1].operands)}:
+            raise ValueError("load consumed before delay expires")
+
+    def memory_access(pointer, offset, width, signed, store):
+        layout = layouts[pointer.kind]
+        if offset % width or layout["align"] < width:
+            raise ValueError("unaligned pointer access")
+        members = layout["members"]
+        if layout["scalar"]:
+            if offset % layout["size"]:
+                raise ValueError("partial scalar pointer access")
+            matches = [m for m in members if m["width"] == width]
+            expression = "(" + pointer.expression + ")[" + str(offset // layout["size"]) + "]"
+        else:
+            matches = [m for m in members if m["offset"] == offset and m["width"] == width]
+            expression = None
+        if len(matches) != 1:
+            raise ValueError("memory access has no unique named member")
+        member = matches[0]
+        if store and not member["writable"]:
+            raise ValueError("store through const-qualified target")
+        # An unsigned load of a signed member (or conversely) needs an explicit
+        # width cast. This also fixes plain-char behavior on host fixture builds.
+        cast = ("signed" if signed else "unsigned") + " " + {1: "char", 2: "short", 4: "int"}[width]
+        if expression is None:
+            expression = "(*(" + pointer.expression + "))" + member["path"]
+        return expression, cast
+
+    def step(index, values, lines, indent):
         item = instructions[index]
         op, args = item.mnemonic, operands(item)
         visited.add(index)
@@ -1264,11 +1312,29 @@ def _leaf_body(instructions, parameters, return_type, callees=None):
             else:
                 raise ValueError("unsupported stack adjustment")
             return
-        if op in {"sw", "lw"} and len(args) == 2:
+        if op in {"sw", "sh", "sb", "lw", "lh", "lhu", "lb", "lbu"} and len(args) == 2:
             target_register = register(args[0])
             memory = re.fullmatch(r"(-?(?:0[xX][0-9A-Fa-f]+|[0-9]+))\(([^()]+)\)", args[1])
-            if not memory or register(memory[2]) != "sp" or target_register not in writable | {"ra", "zero"}:
+            if not memory or target_register not in writable | {"ra", "zero"}:
                 raise ValueError("unsupported memory access")
+            if register(memory[2]) != "sp":
+                pointer = values.get(register(memory[2]))
+                if not isinstance(pointer, _PointerValue) or target_register == "ra":
+                    raise ValueError("memory base has no US pointer type")
+                width = 4 if op in {"sw", "lw"} else 2 if op in {"sh", "lh", "lhu"} else 1
+                store = op.startswith("s")
+                offset = immediate(memory[1], -32768, 32767)
+                expression, cast = memory_access(pointer, offset, width, op in {"lb", "lh"}, store)
+                if store:
+                    lines.append(indent + expression + " = (" + cast + ")(" + value_for(values, args[0]) + ");")
+                else:
+                    check_load_delay(index, target_register)
+                    name = new_temporary("memory_result_")
+                    lines.append(indent + name + " = (unsigned int)(" + cast + ")(" + expression + ");")
+                    values[target_register] = name
+                return
+            if op not in {"sw", "lw"}:
+                raise ValueError("partial stack access")
             offset = values["stack_offset"] + immediate(memory[1], -4096, 4096)
             if values["stack_offset"] == 0 or offset % 4 or not -values["frame_size"] <= offset <= -4:
                 raise ValueError("stack access outside owned frame")
@@ -1276,11 +1342,7 @@ def _leaf_body(instructions, parameters, return_type, callees=None):
             if op == "sw":
                 values[slot] = values[target_register]
             else:
-                if target_register == "zero" or index in slots:
-                    raise ValueError("unsupported load delay slot")
-                if index + 1 < len(instructions) and target_register in {
-                        register(reg) for reg in re.split(r"[,()\s]+", instructions[index + 1].operands)}:
-                    raise ValueError("load consumed before delay expires")
+                check_load_delay(index, target_register)
                 values[target_register] = values[slot]
             return
         if not args or register(args[0]) not in writable:
@@ -1291,7 +1353,9 @@ def _leaf_body(instructions, parameters, return_type, callees=None):
         elif op == "lui" and len(args) == 2:
             value = literal(immediate(args[1], 0, 0xFFFF) << 16)
         elif op == "move" and len(args) == 2:
-            value = value_for(values, args[1])
+            value = values[register(args[1])]
+            if not isinstance(value, _PointerValue):
+                value = value_for(values, args[1])
         elif op in {"addiu", "andi", "ori", "xori", "slti", "sltiu", "sll", "srl", "sra"} and len(args) == 3:
             left = value_for(values, args[1])
             if op in {"sll", "srl", "sra"}:
@@ -1326,7 +1390,7 @@ def _leaf_body(instructions, parameters, return_type, callees=None):
             value = "(unsigned int)(" + value + ")"
         else:
             raise ValueError("unsupported leaf instruction")
-        if len(value) > 4096:
+        if not isinstance(value, _PointerValue) and len(value) > 4096:
             raise ValueError("expression expansion limit")
         values[destination] = value
 
@@ -1338,7 +1402,7 @@ def _leaf_body(instructions, parameters, return_type, callees=None):
                 raise ValueError("path expansion limit")
             item = instructions[index]
             if item.mnemonic not in controls:
-                step(index, values)
+                step(index, values, lines, indent)
                 index += 1
                 continue
             visited.add(index)
@@ -1355,18 +1419,25 @@ def _leaf_body(instructions, parameters, return_type, callees=None):
                 result_type = declaration.get("return_type")
                 call_parameters = _safe_parameters(declaration.get("parameters"), "callee parameters")
                 if (result_type not in scalar_types | {"void"} or call_parameters is None
-                        or len(call_parameters) > 4 or any(kind not in scalar_types for kind, _ in call_parameters)):
+                        or len(call_parameters) > 4 or any(kind not in scalar_types and kind not in layouts for kind, _ in call_parameters)):
                     raise ValueError("unsupported call ABI")
                 if values["stack_offset"] != -values["frame_size"] or values["frame_size"] < 16:
                     raise ValueError("call requires outgoing argument area")
                 # jal writes ra before its delay slot. Saving ra there saves
                 # the local continuation, not the caller's original return.
                 values["ra"] = "@call-return"
-                step(index + 1, values)
+                step(index + 1, values, lines, indent)
                 if values["stack_offset"] != -values["frame_size"]:
                     raise ValueError("call delay slot released its frame")
-                arguments = ["(" + kind + ")(" + value_for(values, "a" + str(i)) + ")"
-                             for i, (kind, _) in enumerate(call_parameters)]
+                arguments = []
+                for i, (kind, _) in enumerate(call_parameters):
+                    value = values["a" + str(i)]
+                    if kind in scalar_types:
+                        arguments.append("(" + kind + ")(" + value_for(values, "a" + str(i)) + ")")
+                    elif isinstance(value, _PointerValue) and value.kind == kind:
+                        arguments.append(value.expression)
+                    else:
+                        raise ValueError("call pointer type differs from US declaration")
                 parameter_text = ", ".join(kind for kind, _ in call_parameters) or "void"
                 prototypes[args[0]] = "    extern " + result_type + " " + args[0] + "(" + parameter_text + ");"
                 expression = args[0] + "(" + ", ".join(arguments) + ")"
@@ -1393,7 +1464,7 @@ def _leaf_body(instructions, parameters, return_type, callees=None):
                     raise ValueError("indirect jump")
                 if values["ra"] != "@entry-ra":
                     raise ValueError("return address not restored")
-                step(index + 1, values)
+                step(index + 1, values, lines, indent)
                 if values["stack_offset"] != 0 or any(values[name] != "@entry-" + name for name in preserved):
                     raise ValueError("callee-saved state not restored")
                 if return_type == "void":
@@ -1412,8 +1483,20 @@ def _leaf_body(instructions, parameters, return_type, callees=None):
                 raise ValueError("loop or delay-slot entry")
             condition = None
             if op in conditional:
-                left = value_for(values, args[0])
-                right = value_for(values, args[1]) if expected == 3 else "0"
+                left_value = values[register(args[0])]
+                right_value = values[register(args[1])] if expected == 3 else "0"
+                if isinstance(left_value, _PointerValue) or isinstance(right_value, _PointerValue):
+                    if op not in {"beq", "bne", "beqz", "bnez"} or not (
+                            isinstance(left_value, _PointerValue) and right_value == "0"
+                            or isinstance(right_value, _PointerValue) and left_value == "0"
+                            or isinstance(left_value, _PointerValue) and isinstance(right_value, _PointerValue)
+                            and left_value.kind == right_value.kind):
+                        raise ValueError("unsupported pointer comparison")
+                    left = left_value.expression if isinstance(left_value, _PointerValue) else left_value
+                    right = right_value.expression if isinstance(right_value, _PointerValue) else right_value
+                else:
+                    left = value_for(values, args[0])
+                    right = value_for(values, args[1]) if expected == 3 else "0"
                 operator = {"beq": "==", "bne": "!=", "beqz": "==", "bnez": "!=",
                             "bltz": "<", "bgez": ">=", "bgtz": ">", "blez": "<="}[op]
                 if op in {"bltz", "bgez", "bgtz", "blez"}:
@@ -1421,7 +1504,7 @@ def _leaf_body(instructions, parameters, return_type, callees=None):
                 condition = "(" + left + ") " + operator + " (" + right + ")"
             # Capture the predicate from the old state, then execute the slot
             # once on both outgoing paths. A slot can overwrite its operands.
-            step(index + 1, values)
+            step(index + 1, values, lines, indent)
             if condition is None:
                 index = target
                 continue
@@ -1444,7 +1527,7 @@ def _leaf_body(instructions, parameters, return_type, callees=None):
         for declaration in temporaries:
             name = declaration.removesuffix(";").split()[-1]
             if len(re.findall(r"\b" + re.escape(name) + r"\b", body_text)) == 1:
-                body_text = body_text.replace(name + " = (unsigned int)", "")
+                body_text = body_text.replace(name + " = (unsigned int)", "(void)" if name.startswith("memory_result_") else "")
             else:
                 used_temporaries.append(declaration)
         result = "\n".join([*prototypes.values(), *used_temporaries, body_text])
@@ -1462,7 +1545,7 @@ def _deterministic_local_draft(
     except UnicodeDecodeError:
         return None
     return_type, parameters = _declaration_context(context, claims)
-    body = _leaf_body(_parse_assembly(text), parameters, return_type, context.declarations.get("call_declarations"))
+    body = _leaf_body(_parse_assembly(text), parameters, return_type, context.declarations.get("call_declarations"), context.declarations.get("pointer_layouts"))
     if body is None:
         return None
     parameter_text = "void" if not parameters else ", ".join(

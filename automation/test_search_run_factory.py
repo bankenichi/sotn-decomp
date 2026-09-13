@@ -99,6 +99,10 @@ class FactoryFixture(unittest.TestCase):
         for module in ("scorer.py", "objdump.py"):
             (vendor / module).write_text("IMPLEMENTATION = 1\n", encoding="utf-8")
         actual_repo = Path(__file__).resolve().parents[1]
+        for relative in _factory.LAYOUT_DEPENDENCIES:
+            path = self.repo / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes((actual_repo / relative).read_bytes())
         for paths in _factory._LANE_MODULES.values():
             for relative in paths:
                 path = self.repo / relative
@@ -310,6 +314,42 @@ class FactoryFixture(unittest.TestCase):
             load_target_index(archive, manifest)
         with self.assertRaises(PartialRunRefusal):
             self.create("call-context", ids=[IDS[0]], lanes=["permuter_targeted", "bounded_synthesis"])
+
+    def test_member_seed_and_index_projection_reconstruct_from_us_archive(self):
+        from automation.search_archive import ContentAddressedArchive
+        from automation.search_provider_lanes import reconstruct_lane_adapters
+        from automation.search_target_renderer import load_target_index, deterministic_local_draft, TargetEvidenceError
+        from automation.search_lanes import Recipient
+        source = self.repo / "src/st/rno0/unit_a.c"
+        source.parent.mkdir(parents=True)
+        context = b"typedef struct { int value; } Item;\nint func_a(Item* value);\n"
+        source.write_bytes(context)
+        assembly = b"lw $v0, 0($a0)\nnop\njr $ra\nnop\n"
+        (self.repo / "asm/us/st/rno0/nonmatchings/unit_a/func_a.s").write_bytes(assembly)
+        with mock.patch("automation.search_source_context.preprocess_target_context", return_value=context):
+            result = self.create("member-context", ids=[IDS[0]], lanes=["permuter_targeted", "bounded_synthesis"])
+        root = Path(result["run_root"])
+        archive = ContentAddressedArchive(root)
+        manifest = RunManifest.from_dict(result["manifest"])
+        source.unlink()
+        with mock.patch("automation.search_source_context.preprocess_target_context", side_effect=AssertionError("live preprocessing")):
+            target = load_target_index(archive, manifest).records[0]
+            draft = deterministic_local_draft(assembly, symbol="func_a", declarations=target.declarations)
+            self.assertIn(".value", draft)
+            adapters = reconstruct_lane_adapters(manifest, root)
+            provider = adapters.permuter_targeted.__self__
+            item = provider._input_for(Recipient(IDS[0], "ST/RNO0", "func_a"))
+            self.assertEqual(item.seed_source, target.declarations["type_declarations"] + draft)
+            # Ordered memory loads cannot become pure synthesis expressions.
+            synthesis = adapters.bounded_synthesis(Recipient(IDS[0], "ST/RNO0", "func_a"))
+            self.assertFalse(synthesis["candidates"])
+            self.assertTrue(self.create("member-context", ids=[IDS[0]], lanes=["permuter_targeted", "bounded_synthesis"])["idempotent"])
+        path = root / target.declarations["context_evidence"]["preprocessed"]["path"]
+        path.write_bytes(b"int callee(void);")
+        with self.assertRaises(TargetEvidenceError):
+            load_target_index(archive, manifest)
+        with self.assertRaises(PartialRunRefusal):
+            self.create("member-context", ids=[IDS[0]], lanes=["permuter_targeted", "bounded_synthesis"])
 
     def test_target_context_capture_rejects_source_race(self):
         source = self.repo / "src/st/rno0/unit_a.c"

@@ -16,7 +16,7 @@ For the mechanisms that land matches, read `automation/README.md`.
 | Decompiled | **94.1%**, 8181/8730 functions; 549 US `INCLUDE_ASM` stubs remain |
 | Queue | 983 records: 434 matched, 379 todo, 123 escalated, 41 deferred, 6 near |
 | Provenance | upstream-harvest 55, shim-segment 9, shim-header 55, transplant 136, twin-port 31, permuter 18, claude-manual 6, model-fleet 58, unknown 66 |
-| Automation | 176 modules, 71 suites plus 36 module self-tests, 99 tools, 112 diagnostics |
+| Automation | 178 modules, 72 suites plus 36 module self-tests, 99 tools, 113 diagnostics |
 
 This block is regenerated from the same queue, checksum manifest, linker maps, provenance classifier, and connector inventory as `README.md`.
 <!-- LIVE-STATUS:END -->
@@ -481,8 +481,8 @@ register calculations, bit operations, signed/unsigned comparisons, forward
 branches and joins. It captures branch predicates before executing delay slots
 and applies return delay slots before reading the result. Unsigned word
 arithmetic preserves MIPS wrap; signed comparisons use explicit signed casts.
-Uninitialized values, indirect calls, heap/member memory, loops, ambiguous
-labels, missing slots and excessive expansion produce the ordinary
+Uninitialized values, indirect calls, unsupported memory layouts, loops,
+ambiguous labels, missing slots and excessive expansion produce the ordinary
 unsupported-context result. This is candidate generation; compilation and the
 full checksum oracle still decide
 whether a later candidate can be used.
@@ -496,10 +496,39 @@ argument-home words, and validates the owned stack frame, saved registers and
 return address. `jal` updates the return address before its delay slot. Word
 stack loads/stores are supported within a bounded aligned frame; immediate
 load-use hazards and loads in control delay slots are refused. Calls accept at
-most four 32-bit scalar arguments and scalar/void returns. Indirect/tail calls,
-pointer/aggregate/wide ABIs and arbitrary memory remain unsupported. Generated
+most four 32-bit scalar or exactly compatible US pointer arguments and
+scalar/void returns. Indirect/tail calls, pointer returns, aggregate/wide ABIs
+and untyped memory remain unsupported. Generated
 local prototypes and result temporaries are C89-compatible. The frame/register
 limits produce honest unsupported results, not reconstructed memory guesses.
+
+US pointer/member rendering derives integral layouts from archived preprocessed
+context with the vendored C type parser. It supports byte/halfword/word loads
+and stores, signed/unsigned extension, named nested members and bounded fixed
+arrays, scalar pointer indexing, pointer moves/saves and null/equality branches.
+Loads are ordered temporaries, so a later aliased store or direct call cannot
+change an earlier value. Stores in ordinary control delay slots retain order.
+Const aliases are resolved from original typedef nodes: the parser's resolved
+typedef table drops qualifiers and is not a store-permission authority. Volatile
+accesses remain explicit C reads/writes, including ignored load results.
+
+A memory access needs a unique member at its US offset and width. Ambiguous
+union alternatives, partial/unaligned accesses, named/partial bitfields,
+pointer-valued members, pointer arithmetic, dynamic indexing and loops remain
+unsupported. Entity's unnamed full-width padding bitfield is permitted; its
+extent is independent of bit ordering. Unsupported nested layouts do not erase
+separate proven struct fields. Oversized/ambiguous extension unions stay refused.
+Actual US compilation checks Entity size, pointer width and `posX.i.hi` offset.
+
+Factory seeds and offline indexed loads derive the same view from archived
+bytes. Standalone programmatic seeds include the archived US type declarations,
+excluding function bodies and game variable definitions; no live header is
+needed to supply their pointer types. The layout module, parser implementation
+and generated parser tables are bound into factory tools and the aggregate
+indexed renderer identity. Publication and supervisor reconstruction use the
+same dependency hash; dependency drift refuses dispatch. No decompiler/model
+engine or `.m2c` cache is invoked. Prior archives remain historical evidence;
+current dispatch requires the expanded dependency binding.
 
 Pinned donor scans now retain each function's conservative scalar return and
 parameter facts separately from the shared include/type cache. Those semantic

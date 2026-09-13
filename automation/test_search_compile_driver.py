@@ -23,6 +23,41 @@ class CompileDriverTests(unittest.TestCase):
         self.assertEqual(facts, {"return_type": "int", "parameters": [{"type": "Entity*", "name": "self"}]})
         self.assertNotIn(b'#include', context)
 
+    def test_named_entity_layout_and_draft_compile_with_actual_us_headers(self):
+        from automation.compiler_corpus import DEFAULT_CONFIG_PATH
+        from automation.search_source_context import preprocess_target_context, renderer_declarations, target_declaration
+        from automation.search_target_renderer import deterministic_local_draft
+        source = b'#include "game.h"\nint fixture_member(Entity* self);\n'
+        identity = pipeline_identity().identity
+        context = preprocess_target_context(ROOT, source, ROOT / "src/st/no0", identity, DEFAULT_CONFIG_PATH)
+        assembly = b"lh $v0, 2($a0)\nnop\njr $ra\nnop\n"
+        facts, _ = target_declaration(context.decode(), "fixture_member")
+        facts = renderer_declarations(facts, assembly, context)
+        self.assertIn("Entity*", facts["pointer_layouts"])
+        self.assertEqual(facts["pointer_layouts"]["Entity*"]["size"], 0xBC)
+        members = facts["pointer_layouts"]["Entity*"]["members"]
+        self.assertIn((".posX.i.hi", 2, 2), [(m["path"], m["offset"], m["width"]) for m in members])
+        draft = deterministic_local_draft(assembly, symbol="fixture_member", declarations=facts)
+        self.assertIsNotNone(draft)
+        self.assertIn(".posX.i.hi", draft)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            wrapper, candidate, output = root / "compile.sh", root / "member.c", root / "member.o"
+            wrapper.write_bytes(REPOSITORY_COMPILE_WRAPPER_BYTES)
+            wrapper.chmod(0o700)
+            # Compile-time assertions check both member offset and US pointer width.
+            candidate.write_text(facts["type_declarations"] +
+                'typedef char entity_size[(sizeof(Entity) == 0xBC) ? 1 : -1];\n'
+                'typedef char pointer_width[(sizeof(Entity*) == 4) ? 1 : -1];\n'
+                'typedef char member_offset[((unsigned int)&((Entity*)0)->posX.i.hi == 2) ? 1 : -1];\n' + draft)
+            result = subprocess.run([str(wrapper), str(candidate), "-o", str(output)], env={
+                **os.environ, "SOTN_REPO_ROOT": str(ROOT), "SOTN_COMPILER_IDENTITY": identity, "TMPDIR": directory,
+            }, capture_output=True, timeout=60)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            rows, count = _normalized_disassembly(output, symbol="fixture_member")
+            self.assertGreater(count, 0)
+            self.assertIn("lh", rows)
+
     def test_generated_direct_call_compiles_with_actual_psx_toolchain(self):
         from automation.search_target_renderer import deterministic_local_draft
         from automation.search_source_context import renderer_declarations

@@ -68,6 +68,8 @@ def prepare_provider_inputs(repo, lanes, targets, lane_inputs, *, indexed_runtim
                         if key != "context_evidence"}
         draft = deterministic_local_draft(assembly, symbol=symbol, declarations=declarations)
         seed, seed_origin = draft, "deterministic_target_renderer"
+        if seed is not None and declarations.get("type_declarations"):
+            seed = declarations["type_declarations"] + seed
         for lane in sorted(seed_lanes):
             if seed is not None:
                 break
@@ -90,7 +92,7 @@ def prepare_provider_inputs(repo, lanes, targets, lane_inputs, *, indexed_runtim
         # single-return draft may supply the synthesis expression provider.
         expression = re.fullmatch(r"[^{}]+\{\s*return\s+([^;{}]+);\s*\}\s*", draft) if draft else None
         prepared[recipient] = {
-            "seed": seed, "seed_origin": seed_origin, "declarations": {key: value for key, value in declarations.items() if key != "call_declarations"},
+            "seed": seed, "seed_origin": seed_origin, "declarations": {key: value for key, value in declarations.items() if key not in {"call_declarations", "pointer_layouts", "type_declarations"}},
             "expressions": (expression.group(1),) if expression else (),
         }
     return prepared
