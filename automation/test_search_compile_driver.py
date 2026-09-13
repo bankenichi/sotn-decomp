@@ -23,6 +23,29 @@ class CompileDriverTests(unittest.TestCase):
         self.assertEqual(facts, {"return_type": "int", "parameters": [{"type": "Entity*", "name": "self"}]})
         self.assertNotIn(b'#include', context)
 
+    def test_generated_direct_call_compiles_with_actual_psx_toolchain(self):
+        from automation.search_target_renderer import deterministic_local_draft
+        from automation.search_source_context import renderer_declarations
+        assembly = b"addiu $sp, $sp, -24\nsw $ra, 20($sp)\nsw $s0, 16($sp)\nmove $s0, $a0\njal callee\naddiu $a0, $a0, 1\naddu $v0, $v0, $s0\nlw $ra, 20($sp)\nlw $s0, 16($sp)\njr $ra\naddiu $sp, $sp, 24\n"
+        facts = renderer_declarations({"return_type": "int", "parameters": [{"type": "int", "name": "value"}]},
+                                      assembly, b"int callee(int value);")
+        draft = deterministic_local_draft(assembly, symbol="call_wrapper", declarations=facts)
+        self.assertIsNotNone(draft)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            wrapper, source, output = root / "compile.sh", root / "caller.c", root / "caller.o"
+            wrapper.write_bytes(REPOSITORY_COMPILE_WRAPPER_BYTES)
+            wrapper.chmod(0o700)
+            source.write_text(draft)
+            result = subprocess.run([str(wrapper), str(source), "-o", str(output)], env={
+                **os.environ, "SOTN_REPO_ROOT": str(ROOT),
+                "SOTN_COMPILER_IDENTITY": pipeline_identity().identity, "TMPDIR": directory,
+            }, capture_output=True, timeout=60)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            rows, count = _normalized_disassembly(output, symbol="call_wrapper")
+            self.assertGreater(count, 0)
+            self.assertIn("jal", rows)
+
     def test_generated_leaf_branch_compiles_with_actual_psx_toolchain(self):
         from automation.search_target_renderer import deterministic_local_draft
         draft = deterministic_local_draft(

@@ -12,6 +12,52 @@
 
 ## Global Constraints
 
+### September 9 bounded US direct calls
+
+Extend the existing renderer interpreter, keeping its exact source binding,
+with scalar direct calls and the stack frame needed for ABI-preserved values.
+Derive callee signatures from the archived preprocessed US context and target
+assembly; never obtain call ABI facts from donors. Preserve v1 target artifacts
+by deriving this projection on load and during factory provider preparation.
+
+- `search_source_context.py`: derive referenced direct-call declarations from
+  supplied assembly/context bytes, including missing/ambiguous status.
+- `search_run_factory.py`, `search_provider_factory.py`: feed the same projection
+  to deterministic seeds, keeping renderer-only facts out of synthesis schemas.
+- `search_target_renderer.py`: lower bounded word stack saves/restores, preserved
+  registers and direct scalar calls. Calls consume arguments after the delay
+  slot, execute once, clobber volatile registers and outgoing argument slots,
+  and require a restored return address, preserved registers and stack pointer.
+- Emit C89-compatible local call prototypes and result temporaries. Refuse
+  unsupported ABI, indirect calls, unsafe stack/load-delay shapes, heap/member
+  memory, loops, missing signatures and uninitialized/clobbered values.
+- Test compiled fixture behavior, side-effect count/order, argument delay slots,
+  branch paths, ABI restoration, corrupt context and offline reconstructed
+  providers. Compile a representative draft with the actual US toolchain.
+- Run focused checks and the consolidated suite, publish the successor runtime,
+  update the ledger, and complete the exact pre-push build/checksum gate.
+  No live matching, game source landing, model work or delegation.
+
+Alternatives considered: forwarding call expressions alone would duplicate side
+effects and miss frame preservation; a general memory/CFG rewrite is larger than
+this independently testable step. The bounded interpreter extension preserves
+current leaf behavior and provides real direct-call candidate generation.
+
+September 9 direct-call outcome: bounded call/frame lowering and US-context
+projection are implemented in the existing factory and indexed paths. Host
+fixtures verify side-effect count/order and results for four shapes across six
+word-boundary inputs. Actual US compilation, offline provider reconstruction,
+corrupt-context refusal and ordinary indexed lane results passed. Final focused
+`run_automation-131956-68` includes the jal-before-slot return-address regression;
+consolidated `run_automation-132141-68` passed 107/107 suites in 151.5 seconds.
+No live matching or candidate landing was run.
+
+September 12 publication confirmation: `search_publish_indexed_runtime-132436-3331`
+completed successfully, including normal archive verification. Runtime
+`fefddf5a3c55f371d3a934a18f46cc145bd9da10a3d8757d8f7fceb4f58dfb56` binds
+this renderer and retains 6,798 source donors and zero assembly-backed donors.
+Prior generations remain preserved; no live matching was executed.
+
 ### September 9 US target declaration context
 
 Capture the canonical US translation unit and preprocess it with the existing

@@ -275,6 +275,42 @@ class FactoryFixture(unittest.TestCase):
                 self.create("target-context", ids=[IDS[0]], lanes=["bounded_synthesis"])
             path.write_bytes(original)
 
+    def test_call_seed_and_index_projection_reconstruct_from_us_archive(self):
+        from automation.search_archive import ContentAddressedArchive
+        from automation.search_provider_lanes import reconstruct_lane_adapters
+        from automation.search_target_renderer import load_target_index, deterministic_local_draft, TargetEvidenceError
+        from automation.search_lanes import Recipient
+        source = self.repo / "src/st/rno0/unit_a.c"
+        source.parent.mkdir(parents=True)
+        context = b"int func_a(int value);\nint callee(int value);\n"
+        source.write_bytes(context)
+        assembly = b"addiu $sp, $sp, -24\nsw $ra, 20($sp)\njal callee\naddiu $a0, $a0, 1\nlw $ra, 20($sp)\nnop\njr $ra\naddiu $sp, $sp, 24\n"
+        (self.repo / "asm/us/st/rno0/nonmatchings/unit_a/func_a.s").write_bytes(assembly)
+        with mock.patch("automation.search_source_context.preprocess_target_context", return_value=context):
+            result = self.create("call-context", ids=[IDS[0]], lanes=["permuter_targeted", "bounded_synthesis"])
+        root = Path(result["run_root"])
+        archive = ContentAddressedArchive(root)
+        manifest = RunManifest.from_dict(result["manifest"])
+        source.unlink()
+        with mock.patch("automation.search_source_context.preprocess_target_context", side_effect=AssertionError("live preprocessing")):
+            target = load_target_index(archive, manifest).records[0]
+            draft = deterministic_local_draft(assembly, symbol="func_a", declarations=target.declarations)
+            self.assertIn("extern int callee(int);", draft)
+            adapters = reconstruct_lane_adapters(manifest, root)
+            provider = adapters.permuter_targeted.__self__
+            item = provider._input_for(Recipient(IDS[0], "ST/RNO0", "func_a"))
+            self.assertEqual(item.seed_source, draft)
+            # Calls cannot be stripped into branch-local/side-effect-free expressions.
+            synthesis = adapters.bounded_synthesis(Recipient(IDS[0], "ST/RNO0", "func_a"))
+            self.assertFalse(synthesis["candidates"])
+            self.assertTrue(self.create("call-context", ids=[IDS[0]], lanes=["permuter_targeted", "bounded_synthesis"])["idempotent"])
+        path = root / target.declarations["context_evidence"]["preprocessed"]["path"]
+        path.write_bytes(b"int callee(void);")
+        with self.assertRaises(TargetEvidenceError):
+            load_target_index(archive, manifest)
+        with self.assertRaises(PartialRunRefusal):
+            self.create("call-context", ids=[IDS[0]], lanes=["permuter_targeted", "bounded_synthesis"])
+
     def test_target_context_capture_rejects_source_race(self):
         source = self.repo / "src/st/rno0/unit_a.c"
         source.parent.mkdir(parents=True)

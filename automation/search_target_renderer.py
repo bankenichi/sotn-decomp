@@ -1177,8 +1177,8 @@ def _literal_operand(operands: str) -> Optional[int]:
         return None
 
 
-def _leaf_body(instructions, parameters, return_type):
-    """Lower bounded MIPS leaf paths without losing delay-slot dataflow.
+def _leaf_body(instructions, parameters, return_type, callees=None):
+    """Lower bounded MIPS scalar paths without losing delay-slot dataflow.
 
     Values are unsigned 32-bit C expressions. Signed comparisons explicitly
     reinterpret them as signed words; arithmetic therefore cannot acquire C
@@ -1198,6 +1198,15 @@ def _leaf_body(instructions, parameters, return_type):
     aliases.update({"r" + str(4 + i): "a" + str(i) for i in range(4)})
     writable = {"v0", "v1", "at", *("a" + str(i) for i in range(4)),
                 *("t" + str(i) for i in range(10))}
+    preserved = {"s" + str(i) for i in range(8)}
+    volatile = set(writable)
+    writable.update(preserved)
+    aliases.update({str(16 + i): "s" + str(i) for i in range(8)})
+    aliases.update({"r" + str(16 + i): "s" + str(i) for i in range(8)})
+    aliases.update({"29": "sp", "r29": "sp"})
+    callees = callees or {}
+    prototypes, temporaries = {}, []
+    reserved_names = {name for _, name in parameters} | set(callees)
     labels = {}
     for index, item in enumerate(instructions):
         if item.label:
@@ -1205,9 +1214,10 @@ def _leaf_body(instructions, parameters, return_type):
                 return None
             labels[item.label] = index
     conditional = {"beq", "bne", "beqz", "bnez", "bltz", "bgez", "bgtz", "blez"}
-    controls = conditional | {"b", "j", "jr"}
+    controls = conditional | {"b", "j", "jr", "jal"}
     slots = {i + 1 for i, item in enumerate(instructions) if item.mnemonic in controls}
-    state = {"zero": "0"}
+    state = {"zero": "0", "ra": "@entry-ra", "stack_offset": 0, "frame_size": 0}
+    state.update({name: "@entry-" + name for name in preserved})
     state.update({"a" + str(i): "(unsigned int)" + name for i, (_, name) in enumerate(parameters)})
     visited, budget = set(), [256]
 
@@ -1230,6 +1240,12 @@ def _leaf_body(instructions, parameters, return_type):
     def operands(item):
         return tuple(part.strip() for part in item.operands.split(",")) if item.operands else ()
 
+    def value_for(values, operand):
+        value = values[register(operand)]
+        if "@" in value:
+            raise ValueError("uninitialized preserved value")
+        return value
+
     def step(index, values):
         item = instructions[index]
         op, args = item.mnemonic, operands(item)
@@ -1237,6 +1253,35 @@ def _leaf_body(instructions, parameters, return_type):
         if op == "nop" and not args:
             return
         if op == "sll" and len(args) == 3 and register(args[0]) == register(args[1]) == "zero" and args[2] == "0":
+            return
+        if op == "addiu" and len(args) == 3 and register(args[0]) == register(args[1]) == "sp":
+            amount = immediate(args[2], -4096, 4096)
+            if amount < 0 and values["stack_offset"] == values["frame_size"] == 0 and amount % 8 == 0:
+                values["frame_size"] = -amount
+                values["stack_offset"] = amount
+            elif amount > 0 and amount == values["frame_size"] == -values["stack_offset"]:
+                values["stack_offset"] = 0
+            else:
+                raise ValueError("unsupported stack adjustment")
+            return
+        if op in {"sw", "lw"} and len(args) == 2:
+            target_register = register(args[0])
+            memory = re.fullmatch(r"(-?(?:0[xX][0-9A-Fa-f]+|[0-9]+))\(([^()]+)\)", args[1])
+            if not memory or register(memory[2]) != "sp" or target_register not in writable | {"ra", "zero"}:
+                raise ValueError("unsupported memory access")
+            offset = values["stack_offset"] + immediate(memory[1], -4096, 4096)
+            if values["stack_offset"] == 0 or offset % 4 or not -values["frame_size"] <= offset <= -4:
+                raise ValueError("stack access outside owned frame")
+            slot = "stack:" + str(offset)
+            if op == "sw":
+                values[slot] = values[target_register]
+            else:
+                if target_register == "zero" or index in slots:
+                    raise ValueError("unsupported load delay slot")
+                if index + 1 < len(instructions) and target_register in {
+                        register(reg) for reg in re.split(r"[,()\s]+", instructions[index + 1].operands)}:
+                    raise ValueError("load consumed before delay expires")
+                values[target_register] = values[slot]
             return
         if not args or register(args[0]) not in writable:
             raise ValueError("not a scratch-register assignment")
@@ -1246,9 +1291,9 @@ def _leaf_body(instructions, parameters, return_type):
         elif op == "lui" and len(args) == 2:
             value = literal(immediate(args[1], 0, 0xFFFF) << 16)
         elif op == "move" and len(args) == 2:
-            value = values[register(args[1])]
+            value = value_for(values, args[1])
         elif op in {"addiu", "andi", "ori", "xori", "slti", "sltiu", "sll", "srl", "sra"} and len(args) == 3:
-            left = values[register(args[1])]
+            left = value_for(values, args[1])
             if op in {"sll", "srl", "sra"}:
                 right = str(immediate(args[2], 0, 31))
                 operator = "<<" if op == "sll" else ">>"
@@ -1269,7 +1314,7 @@ def _leaf_body(instructions, parameters, return_type):
             if register(args[1]) == "zero" and op in {"addiu", "ori"}:
                 value = right
         elif op in {"addu", "subu", "and", "or", "xor", "nor", "slt", "sltu"} and len(args) == 3:
-            left, right = (values[register(arg)] for arg in args[1:])
+            left, right = (value_for(values, arg) for arg in args[1:])
             operator = {"addu": "+", "subu": "-", "and": "&", "or": "|", "xor": "^", "nor": "|", "slt": "<", "sltu": "<"}[op]
             if op == "slt":
                 left, right = "(int)(" + left + ")", "(int)(" + right + ")"
@@ -1300,14 +1345,61 @@ def _leaf_body(instructions, parameters, return_type):
             op, args = item.mnemonic, operands(item)
             if index + 1 >= len(instructions):
                 raise ValueError("missing delay slot")
+            if op == "jal":
+                if (len(args) != 1 or args[0] not in callees or args[0] in labels
+                        or args[0] in {name for _, name in parameters}):
+                    raise ValueError("call has no target-owned declaration")
+                declaration = callees[args[0]]
+                if declaration.get("status") != "declared":
+                    raise ValueError("call declaration is unavailable")
+                result_type = declaration.get("return_type")
+                call_parameters = _safe_parameters(declaration.get("parameters"), "callee parameters")
+                if (result_type not in scalar_types | {"void"} or call_parameters is None
+                        or len(call_parameters) > 4 or any(kind not in scalar_types for kind, _ in call_parameters)):
+                    raise ValueError("unsupported call ABI")
+                if values["stack_offset"] != -values["frame_size"] or values["frame_size"] < 16:
+                    raise ValueError("call requires outgoing argument area")
+                # jal writes ra before its delay slot. Saving ra there saves
+                # the local continuation, not the caller's original return.
+                values["ra"] = "@call-return"
+                step(index + 1, values)
+                if values["stack_offset"] != -values["frame_size"]:
+                    raise ValueError("call delay slot released its frame")
+                arguments = ["(" + kind + ")(" + value_for(values, "a" + str(i)) + ")"
+                             for i, (kind, _) in enumerate(call_parameters)]
+                parameter_text = ", ".join(kind for kind, _ in call_parameters) or "void"
+                prototypes[args[0]] = "    extern " + result_type + " " + args[0] + "(" + parameter_text + ");"
+                expression = args[0] + "(" + ", ".join(arguments) + ")"
+                for name in volatile:
+                    values.pop(name, None)
+                # A callee owns the four argument-home words even for zero args.
+                for offset in range(values["stack_offset"], values["stack_offset"] + 16, 4):
+                    values.pop("stack:" + str(offset), None)
+                if result_type == "void":
+                    lines.append(indent + expression + ";")
+                else:
+                    number = len(temporaries)
+                    name = "call_result_" + str(number)
+                    while name in reserved_names:
+                        name += "_"
+                    reserved_names.add(name)
+                    temporaries.append("    unsigned int " + name + ";")
+                    lines.append(indent + name + " = (unsigned int)" + expression + ";")
+                    values["v0"] = name
+                index += 2
+                continue
             if op == "jr":
                 if len(args) != 1 or register(args[0]) != "ra":
                     raise ValueError("indirect jump")
+                if values["ra"] != "@entry-ra":
+                    raise ValueError("return address not restored")
                 step(index + 1, values)
+                if values["stack_offset"] != 0 or any(values[name] != "@entry-" + name for name in preserved):
+                    raise ValueError("callee-saved state not restored")
                 if return_type == "void":
                     result = "return;"
                 else:
-                    value = values["v0"]
+                    value = value_for(values, "v0")
                     if not re.fullmatch(r"[0-9]+", value) and return_type in {"int", "signed int", "s32"}:
                         value = "(int)(" + value + ")"
                     result = "return " + value + ";"
@@ -1320,8 +1412,8 @@ def _leaf_body(instructions, parameters, return_type):
                 raise ValueError("loop or delay-slot entry")
             condition = None
             if op in conditional:
-                left = values[register(args[0])]
-                right = values[register(args[1])] if expected == 3 else "0"
+                left = value_for(values, args[0])
+                right = value_for(values, args[1]) if expected == 3 else "0"
                 operator = {"beq": "==", "bne": "!=", "beqz": "==", "bnez": "!=",
                             "bltz": "<", "bgez": ">=", "bgtz": ">", "blez": "<="}[op]
                 if op in {"bltz", "bgez", "bgtz", "blez"}:
@@ -1345,7 +1437,17 @@ def _leaf_body(instructions, parameters, return_type):
         if any(i not in visited and (item.mnemonic != "nop" or item.operands)
                for i, item in enumerate(instructions)):
             return None
-        result = "\n".join(body)
+        # An ignored return still calls the function exactly once, but needs
+        # no unused local. Keep declarations at block start for the US C89 compiler.
+        body_text = "\n".join(body)
+        used_temporaries = []
+        for declaration in temporaries:
+            name = declaration.removesuffix(";").split()[-1]
+            if len(re.findall(r"\b" + re.escape(name) + r"\b", body_text)) == 1:
+                body_text = body_text.replace(name + " = (unsigned int)", "")
+            else:
+                used_temporaries.append(declaration)
+        result = "\n".join([*prototypes.values(), *used_temporaries, body_text])
         return result if len(result) <= 65536 else None
     except (ValueError, KeyError, RecursionError):
         return None
@@ -1360,7 +1462,7 @@ def _deterministic_local_draft(
     except UnicodeDecodeError:
         return None
     return_type, parameters = _declaration_context(context, claims)
-    body = _leaf_body(_parse_assembly(text), parameters, return_type)
+    body = _leaf_body(_parse_assembly(text), parameters, return_type, context.declarations.get("call_declarations"))
     if body is None:
         return None
     parameter_text = "void" if not parameters else ", ".join(
@@ -1843,6 +1945,11 @@ def load_target_index(
                 "bytes": assembly_bytes,
             },
         }
+        from .search_source_context import renderer_declarations
+        context_evidence = target_doc.get("declarations", {}).get("context_evidence", {})
+        context_bytes = (archive.verify(ArtifactRef.from_dict(context_evidence["preprocessed"]))
+                         if "preprocessed" in context_evidence else None)
+        inline["declarations"] = renderer_declarations(target_doc.get("declarations", {}), assembly_bytes, context_bytes)
         context = _context_from_record(inline)
         contexts.append(context)
     index = TargetIndex(tuple(contexts), target_index_artifact)

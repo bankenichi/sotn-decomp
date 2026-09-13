@@ -476,15 +476,30 @@ Saturn's current configs commonly lack the required SHA-1, so discovery does
 not imply admitted Saturn data coverage. Existing archives remain replayable;
 none of these donor paths prepares or lands a non-US target.
 
-The US target renderer supports bounded scalar leaf functions with scratch
+The US target renderer supports bounded scalar functions with scratch
 register calculations, bit operations, signed/unsigned comparisons, forward
 branches and joins. It captures branch predicates before executing delay slots
 and applies return delay slots before reading the result. Unsigned word
 arithmetic preserves MIPS wrap; signed comparisons use explicit signed casts.
-Uninitialized values, calls, memory, loops, ambiguous labels, missing slots and
-excessive expansion produce the ordinary unsupported-context result. This is
-candidate generation; compilation and the full checksum oracle still decide
+Uninitialized values, indirect calls, heap/member memory, loops, ambiguous
+labels, missing slots and excessive expansion produce the ordinary
+unsupported-context result. This is candidate generation; compilation and the
+full checksum oracle still decide
 whether a later candidate can be used.
+
+Direct scalar calls use callee signatures projected from the archived US
+preprocessed context. The projection is reconstructed from those same bytes for
+indexed rendering and factory seeds; donor declarations cannot supply call ABI.
+The renderer preserves call order and single execution, captures arguments after
+the delay slot, invalidates caller-clobbered registers and the four outgoing
+argument-home words, and validates the owned stack frame, saved registers and
+return address. `jal` updates the return address before its delay slot. Word
+stack loads/stores are supported within a bounded aligned frame; immediate
+load-use hazards and loads in control delay slots are refused. Calls accept at
+most four 32-bit scalar arguments and scalar/void returns. Indirect/tail calls,
+pointer/aggregate/wide ABIs and arbitrary memory remain unsupported. Generated
+local prototypes and result temporaries are C89-compatible. The frame/register
+limits produce honest unsupported results, not reconstructed memory guesses.
 
 Pinned donor scans now retain each function's conservative scalar return and
 parameter facts separately from the shared include/type cache. Those semantic
@@ -504,7 +519,7 @@ retain explicit status instead of fabricated types. Recovery reads no live
 source, while dispatch still checks the frozen source identity. These US facts
 feed indexed rendering, deterministic programmatic seeds and bounded synthesis,
 including reconstructed providers. Captured pointer declarations are evidence
-for later memory/call rendering; the scalar leaf renderer still refuses them.
+for later pointer and member rendering; scalar call rendering still refuses them.
 
 Publication manifests must sort complete POSIX path strings, not native `Path`
 objects: component ordering puts `a/entry` before `a.c`, and Windows also folds

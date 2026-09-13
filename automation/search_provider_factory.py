@@ -90,7 +90,7 @@ def prepare_provider_inputs(repo, lanes, targets, lane_inputs, *, indexed_runtim
         # single-return draft may supply the synthesis expression provider.
         expression = re.fullmatch(r"[^{}]+\{\s*return\s+([^;{}]+);\s*\}\s*", draft) if draft else None
         prepared[recipient] = {
-            "seed": seed, "seed_origin": seed_origin, "declarations": declarations,
+            "seed": seed, "seed_origin": seed_origin, "declarations": {key: value for key, value in declarations.items() if key != "call_declarations"},
             "expressions": (expression.group(1),) if expression else (),
         }
     return prepared

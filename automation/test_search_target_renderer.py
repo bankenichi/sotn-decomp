@@ -52,6 +52,8 @@ def _recipient() -> Recipient:
 def _target_fixture(
     assembly: bytes = TARGET_ASM,
     *,
+    context_bytes: bytes | None = None,
+    compiler_identity: str | None = None,
     instruction_signature: str | None = None,
     cfg_signature: str | None = None,
     dataflow_signature: str | None = None,
@@ -99,10 +101,20 @@ def _target_fixture(
         ),
         "declarations": {"return_type": "int"},
     }
+    compiler_identity = compiler_identity or RunManifest.from_dict(make_manifest(RECIPIENT_ID)).compiler_identity
+    if context_bytes is not None:
+        from automation.search_source_context import target_declaration, TARGET_CONTEXT_PROTOCOL
+        facts, status = target_declaration(context_bytes.decode(), "fn")
+        context_refs = {key: archive.put_bytes(context_bytes, category=category, suffix=".c", media_type="text/x-c").to_dict()
+                        for key, category in (("input", "target-context-input"), ("preprocessed", "target-context"))}
+        target_doc["declarations"] = {**facts, "context_evidence": {
+            "protocol": TARGET_CONTEXT_PROTOCOL, "record_id": RECIPIENT_ID,
+            "compiler_identity": compiler_identity, "path": "src/st/st.c", "status": status, **context_refs}}
     target_identity = hash_canonical(target_doc)
     manifest = replace(
         RunManifest.from_dict(make_manifest(RECIPIENT_ID)),
         target_identities={RECIPIENT_ID: target_identity},
+        compiler_identity=compiler_identity,
     )
     target_evidence_ref = archive.put_json(
         target_doc,
@@ -308,6 +320,86 @@ class TargetQueryTests(unittest.TestCase):
                     declarations={"return_type": "int"},
                 )
                 self.assertIsNone(source)
+
+
+class DirectCallTests(unittest.TestCase):
+    PROLOGUE = "addiu $sp, $sp, -24\nsw $ra, 20($sp)\nsw $s0, 16($sp)\n"
+    EPILOGUE = "lw $ra, 20($sp)\nlw $s0, 16($sp)\njr $ra\naddiu $sp, $sp, 24\n"
+    CONTEXT = b"unsigned int add_value(unsigned int value);\nunsigned int subtract_value(unsigned int value);\nvoid record_value(unsigned int value);\n"
+
+    def declarations(self, assembly):
+        from automation.search_source_context import renderer_declarations
+        return renderer_declarations({"return_type": "unsigned int", "parameters": [
+            {"type": "unsigned int", "name": "value"}]}, assembly.encode(), self.CONTEXT)
+
+    def test_compiled_direct_calls_preserve_side_effects_arguments_and_saved_values(self):
+        compiler = shutil.which("gcc")
+        if compiler is None:
+            self.skipTest("host fixture compiler unavailable")
+        p, e = self.PROLOGUE, self.EPILOGUE
+        cases = {
+            "saved_argument": (p + "move $s0, $a0\njal add_value\naddiu $a0, $a0, 1\naddu $v0, $v0, $s0\n" + e,
+                               lambda x: (2*x+4, 1, x+1)),
+            "two_calls": (p + "jal add_value\naddiu $a0, $a0, 1\nmove $s0, $v0\nmove $a0, $v0\njal add_value\naddiu $a0, $a0, 1\naddu $v0, $v0, $s0\n" + e,
+                          lambda x: (2*x+12, 2, (x+1)*17+x+5)),
+            "branch_call": (p + "beqz $a0, .Lzero\nli $a0, 5\njal add_value\nnop\nb .Ljoin\nnop\n.Lzero:\njal subtract_value\nnop\n.Ljoin:\n" + e,
+                            lambda x: (8 if x else 2, 1, 5 if x else 1005)),
+            "ignored_and_void": (p + "jal add_value\nnop\njal record_value\nli $a0, 7\nli $v0, 5\n" + e,
+                                 lambda x: (5, 2, x*17+7)),
+        }
+        sources = ["unsigned int effects, trace;",
+            "unsigned int add_value(unsigned int x) { effects++; trace = trace*17U+x; return x+3U; }",
+            "unsigned int subtract_value(unsigned int x) { effects++; trace = trace*17U+x+1000U; return x-3U; }",
+            "void record_value(unsigned int x) { effects++; trace = trace*17U+x; }"]
+        for name, (assembly, _) in cases.items():
+            draft = deterministic_local_draft(assembly, symbol=name, declarations=self.declarations(assembly))
+            self.assertIsNotNone(draft, name)
+            self.assertNotIn("$", draft)
+            sources.append(draft)
+        with tempfile.TemporaryDirectory() as directory:
+            source, library = Path(directory) / "calls.c", Path(directory) / "calls.so"
+            source.write_text("\n".join(sources))
+            result = subprocess.run([compiler, "-std=c89", "-O2", "-Wall", "-Werror", "-shared", "-fPIC", str(source), "-o", str(library)], capture_output=True, timeout=30)
+            self.assertEqual(result.returncode, 0, result.stderr.decode())
+            compiled = ctypes.CDLL(str(library))
+            effects = ctypes.c_uint32.in_dll(compiled, "effects")
+            trace = ctypes.c_uint32.in_dll(compiled, "trace")
+            for name, (_, expected) in cases.items():
+                function = getattr(compiled, name)
+                function.argtypes, function.restype = [ctypes.c_uint32], ctypes.c_uint32
+                for x in (0, 1, 7, 0x7FFFFFFF, 0x80000000, 0xFFFFFFFF):
+                    effects.value = trace.value = 0
+                    value = function(x)
+                    wanted = tuple(item & 0xFFFFFFFF for item in expected(x))
+                    self.assertEqual((value, effects.value, trace.value), wanted, (name, x))
+
+    def test_call_abi_and_stack_refusals(self):
+        p, e = self.PROLOGUE, self.EPILOGUE
+        good = p + "jal add_value\nnop\n" + e
+        invalid = [
+            good.replace("add_value", "unknown"),
+            good.replace("jal add_value", "jalr $t9"),
+            good.replace("sw $ra, 20($sp)", "nop"),
+            good.replace("sw $ra, 20($sp)", "nop").replace("jal add_value\nnop", "jal add_value\nsw $ra, 20($sp)"),
+            good.replace("lw $ra, 20($sp)", "nop"),
+            good.replace("20($sp)", "12($sp)"),
+            good.replace("addiu $sp, $sp, 24", "nop"),
+            good.replace("jal add_value\nnop", "jal add_value\njal add_value"),
+            p + "jal add_value\nnop\naddu $v0, $v0, $a0\n" + e,
+            p + "move $s0, $a0\njal add_value\nnop\n" + e.replace("lw $s0, 16($sp)", "nop"),
+            p + "jal add_value\nlw $a0, 16($sp)\n" + e,
+            p + "lw $a0, 16($sp)\naddu $v0, $a0, $a0\n" + e,
+            (p + "lw $a0, 16($sp)\naddu $v0, $a0, $a0\n" + e).replace("$", ""),
+            p + "lw $v0, 0($a0)\nnop\n" + e,
+        ]
+        for assembly in invalid:
+            with self.subTest(assembly=assembly):
+                self.assertIsNone(deterministic_local_draft(assembly, symbol="caller", declarations=self.declarations(assembly)))
+        for text in (b"void add_value(unsigned int value);", b"int add_value(int);",
+                     b"int add_value(int x); int add_value(unsigned int x);", b"int add_value(void* p);"):
+            from automation.search_source_context import renderer_declarations
+            facts = renderer_declarations(self.declarations(good), good.encode(), text)
+            self.assertIsNone(deterministic_local_draft(good, symbol="caller", declarations=facts))
 
 
 class LeafControlFlowTests(unittest.TestCase):

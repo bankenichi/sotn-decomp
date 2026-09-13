@@ -2336,6 +2336,7 @@ def _create_instrumented_run_locked(
 
     from .search_source_context import capture_target_context, verify_target_context_source
     target_context_artifacts = {}
+    target_renderer_declarations = {}
     target_payloads: dict[str, dict[str, Any]] = {}
     target_identities: dict[str, str] = {}
     target_bytes: dict[str, tuple[bytes, bytes]] = {}
@@ -2351,6 +2352,9 @@ def _create_instrumented_run_locked(
             raise EvidenceRefusal("US target context capture failed: " + str(exc)) from exc
         payload["declarations"] = declarations
         target_context_artifacts[record_id] = context_artifacts
+        from .search_source_context import renderer_declarations
+        context_bytes = next((data for category, _, data in context_artifacts if category == "target-context"), None)
+        target_renderer_declarations[record_id] = renderer_declarations(declarations, assembly_bytes, context_bytes)
         target_payloads[record_id] = payload
         target_bytes[record_id] = (assembly_bytes, object_bytes)
 
@@ -2395,7 +2399,7 @@ def _create_instrumented_run_locked(
         provider_inputs = prepare_provider_inputs(
             root_repo, selected_lanes, target_bytes, tool_payload["lane_inputs"],
             indexed_runtime=indexed_runtime,
-            target_declarations={key: value["declarations"] for key, value in target_payloads.items()},
+            target_declarations=target_renderer_declarations,
         )
     except ValueError as exc:
         raise EvidenceRefusal(str(exc)) from exc

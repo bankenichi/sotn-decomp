@@ -197,3 +197,30 @@ def verify_target_context_source(declarations, source_document):
     elif (len(entries) != 1 or any(entries[0][key] != evidence["input"][key]
                                   for key in ("content_hash", "byte_size"))):
         raise ValueError("target context input differs from frozen source evidence")
+
+
+def renderer_declarations(declarations, assembly_bytes, context_bytes):
+    """Project direct callee ABI facts from exact US context, without donor input.
+
+    This is a derived view, not a new target-evidence format. The same immutable
+    assembly/context bytes drive factory seeds and later archived index loads.
+    """
+    from .search_target_renderer import _parse_assembly
+
+    result = dict(declarations)
+    result.pop("call_declarations", None)
+    if context_bytes is None:
+        return result
+    instructions = _parse_assembly(assembly_bytes.decode("utf-8"))
+    symbols = sorted({item.operands.strip() for item in instructions
+                      if item.mnemonic == "jal" and re.fullmatch(r"[A-Za-z_]\w*", item.operands.strip())})
+    if len(symbols) > 64:
+        raise ValueError("target call declaration limit exceeded")
+    text = context_bytes.decode("utf-8")
+    if symbols:
+        callees = {}
+        for symbol in symbols:
+            facts, status = target_declaration(text, symbol)
+            callees[symbol] = {**facts, "status": status}
+        result["call_declarations"] = callees
+    return result
