@@ -12,6 +12,50 @@
 
 ## Global Constraints
 
+### September 13 pointer-valued members and pointer results
+
+Extend the archived US layout graph to retain data-pointer fields and transitively
+resolve their pointee types. Canonical named types preserve qualifiers and alias
+compatibility; opaque/incomplete pointees permit copies and comparisons but not
+memory access or arithmetic. Function pointers remain unsupported.
+
+- `search_target_layout.py`: derive a bounded, cycle-safe graph of named data
+  pointers from exact typedefs, tagged structs and supported integral types.
+  Keep US pointer width separate from host fixture pointer width. Preserve all
+  alternatives at a union offset and refuse ambiguous accesses.
+- `search_source_context.py`: include target/callee pointer result types in the
+  same immutable projection used by factory seeds and archived reconstruction.
+- `search_target_renderer.py`: emit typed, ordered pointer loads/stores, null
+  values, compatible direct-call arguments/results and function returns. Keep
+  preserved-register and delay-slot rules; allow constant whole-element pointer
+  advances and zero-register copies. Refuse integer-address fabrication, partial
+  pointer accesses, incompatible types and arithmetic on opaque pointees.
+- Verify aliasing, cyclic structures, null paths, call mutation/order, const
+  pointers, pointer arrays and address strides with compiled host fixtures.
+  Compile a chained Entity access with the real US toolchain and archived types.
+  Exercise ordinary indexed receipts, factory seeds and offline reconstruction.
+- Run focused checks and the consolidated suite, publish the bound successor,
+  record results, then commit explicit paths and run the fresh build/oracle/push
+  gate. No live matching, queue claims, game source changes, models or delegation.
+
+Variable indexing, member-address derivation, loops and arbitrary casts remain
+separate work. A general byte-pointer cast would discard the US type authority;
+this batch uses typed fields and exact whole-element strides instead.
+
+
+September 13 pointer-value outcome: the graph, typed pointer operations,
+constant whole-element strides and factory/indexed reconstruction are implemented.
+Focused fixtures cover pointer aliasing, call order, arrays, nulls and refusal
+boundaries; the actual US compiler accepts chained Entity parent access and
+pointer returns from archived types. Consolidated run_automation-142725-50
+passed 108/108 suites. Publication search_publish_indexed_runtime-143035-14524
+completed normal archive verification in 579.7 seconds and published runtime
+e635bbebfe7f97e51fb416963fa755d2566badb21d4c4cb15ff5f99099d1ea19.
+The same pinned revisions retain 6,798 source donors and zero assembly-backed
+donors. Prior generations remain preserved. The final pre-push gate follows.
+The remaining broader renderer and donor coverage is still tracked by #302.
+
+
 ### September 12 US pointer and named member accesses
 
 Use the vendored C type parser on exact archived US preprocessed context to

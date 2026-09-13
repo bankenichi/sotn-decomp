@@ -58,6 +58,46 @@ class CompileDriverTests(unittest.TestCase):
             self.assertGreater(count, 0)
             self.assertIn("lh", rows)
 
+    def test_chained_entity_pointer_and_pointer_return_compile_from_us_archive(self):
+        from automation.compiler_corpus import DEFAULT_CONFIG_PATH
+        from automation.search_source_context import preprocess_target_context, renderer_declarations, target_declaration
+        from automation.search_target_renderer import deterministic_local_draft
+        source = b'#include "game.h"\nint parent_x(Entity* self);\nEntity* parent_pointer(Entity* self);\n'
+        identity = pipeline_identity().identity
+        context = preprocess_target_context(ROOT, source, ROOT / "src/st/no0", identity, DEFAULT_CONFIG_PATH)
+        cases = {
+            "parent_x": b"lw $t0, 92($a0)\nnop\nlh $v0, 2($t0)\nnop\njr $ra\nnop\n",
+            "parent_pointer": b"lw $v0, 92($a0)\nnop\njr $ra\nnop\n",
+        }
+        drafts = []
+        for symbol, assembly in cases.items():
+            facts, status = target_declaration(context.decode(), symbol)
+            self.assertEqual(status, "declared")
+            facts = renderer_declarations(facts, assembly, context)
+            parent = next(m for m in facts["pointer_layouts"]["Entity*"]["members"] if m["path"] == ".parent")
+            self.assertEqual((parent["offset"], parent["width"], parent["pointer_type"]), (0x5C, 4, "struct Entity*"))
+            draft = deterministic_local_draft(assembly, symbol=symbol, declarations=facts)
+            self.assertIsNotNone(draft)
+            self.assertIn(".parent", draft)
+            drafts.append(draft)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            wrapper, candidate, output = root / "compile.sh", root / "parent.c", root / "parent.o"
+            wrapper.write_bytes(REPOSITORY_COMPILE_WRAPPER_BYTES)
+            wrapper.chmod(0o700)
+            candidate.write_text(facts["type_declarations"] +
+                'typedef char parent_offset[((unsigned int)&((Entity*)0)->parent == 0x5C) ? 1 : -1];\n' + "\n".join(drafts))
+            result = subprocess.run([str(wrapper), str(candidate), "-o", str(output)], env={
+                **os.environ, "SOTN_REPO_ROOT": str(ROOT), "SOTN_COMPILER_IDENTITY": identity, "TMPDIR": directory,
+            }, capture_output=True, timeout=60)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            for symbol in cases:
+                rows, count = _normalized_disassembly(output, symbol=symbol)
+                self.assertGreater(count, 0)
+                self.assertIn("lw", rows)
+                if symbol == "parent_x":
+                    self.assertIn("lh", rows)
+
     def test_generated_direct_call_compiles_with_actual_psx_toolchain(self):
         from automation.search_target_renderer import deterministic_local_draft
         from automation.search_source_context import renderer_declarations

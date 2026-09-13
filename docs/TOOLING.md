@@ -497,8 +497,8 @@ return address. `jal` updates the return address before its delay slot. Word
 stack loads/stores are supported within a bounded aligned frame; immediate
 load-use hazards and loads in control delay slots are refused. Calls accept at
 most four 32-bit scalar or exactly compatible US pointer arguments and
-scalar/void returns. Indirect/tail calls, pointer returns, aggregate/wide ABIs
-and untyped memory remain unsupported. Generated
+scalar/void or compatible data-pointer returns. Indirect/tail calls,
+aggregate/wide ABIs and untyped memory remain unsupported. Generated
 local prototypes and result temporaries are C89-compatible. The frame/register
 limits produce honest unsupported results, not reconstructed memory guesses.
 
@@ -514,8 +514,8 @@ accesses remain explicit C reads/writes, including ignored load results.
 
 A memory access needs a unique member at its US offset and width. Ambiguous
 union alternatives, partial/unaligned accesses, named/partial bitfields,
-pointer-valued members, pointer arithmetic, dynamic indexing and loops remain
-unsupported. Entity's unnamed full-width padding bitfield is permitted; its
+function-pointer members, non-element pointer arithmetic, dynamic indexing
+and loops remain unsupported. Entity's unnamed full-width padding bitfield is permitted; its
 extent is independent of bit ordering. Unsupported nested layouts do not erase
 separate proven struct fields. Oversized/ambiguous extension unions stay refused.
 Actual US compilation checks Entity size, pointer width and `posX.i.hi` offset.
@@ -529,6 +529,32 @@ indexed renderer identity. Publication and supervisor reconstruction use the
 same dependency hash; dependency drift refuses dispatch. No decompiler/model
 engine or `.m2c` cache is invoked. Prior archives remain historical evidence;
 current dispatch requires the expanded dependency binding.
+
+The layout projection also follows a bounded graph of named US data-pointer
+fields, including self-references such as `Entity.parent` and `Entity.nextPart`.
+Pointer loads use typed temporaries; pointer stores, direct-call arguments and
+results, and function returns require compatible canonical pointee types or a
+known null value. Typedef aliases share a canonical type while pointed-to const
+and volatile qualifiers remain distinct. A const containing object prevents
+assignment to its pointer field without making that pointer's pointee const.
+Pointer arrays retain the US four-byte element stride, while emitted C indexing
+also executes correctly on a host with wider pointers.
+
+Known constant advances must be exact multiples of the pointee size and stay
+within the bounded displacement range. Copies through zero-register `addu` or
+`or` preserve the pointer type. Named opaque/incomplete pointers permit copying,
+null/equality tests, calls and returns, but forbid dereferences and arithmetic.
+Prototype-scope tags cannot complete file-scope opaque types. Partial pointer
+loads/stores, incompatible pointer assignments and integer-address fabrication
+are refused. Variable indexing, member-address derivation and loops remain open.
+
+Host fixture helpers use a `fixture_` prefix: the unprefixed `advance` helper
+collided with libc's versioned `advance@GLIBC_2.2.5` symbol and crashed a call
+fixture. Renaming the helpers fixed the fixture; the generated pointer code was
+unchanged. The host suite covers aliasing, call mutation and result ordering,
+null paths, pointer arrays, constant strides and cyclic structures. Actual US
+compilation checks a chained Entity parent access and a pointer return from
+archived type declarations alone.
 
 Pinned donor scans now retain each function's conservative scalar return and
 parameter facts separately from the shared include/type cache. Those semantic

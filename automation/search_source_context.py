@@ -229,6 +229,8 @@ def renderer_declarations(declarations, assembly_bytes, context_bytes):
     scalar_types = {"int", "signed int", "unsigned int", "s32", "u32"}
     kinds = {p["type"] for facts in (result, *result.get("call_declarations", {}).values())
              for p in facts.get("parameters", ()) if p["type"] not in scalar_types}
+    kinds.update(facts["return_type"] for facts in (result, *result.get("call_declarations", {}).values())
+                 if facts.get("return_type") and facts["return_type"] not in scalar_types | {"void"})
     if kinds:
         result["pointer_layouts"] = pointer_layouts(context_bytes, kinds)
         if result["pointer_layouts"]:
