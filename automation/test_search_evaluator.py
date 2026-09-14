@@ -13,7 +13,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from automation import compiler_corpus
 from automation.search_archive import ArtifactCorrupt, ContentAddressedArchive
 from automation.search_coordinator import SearchCoordinator, TaskResult, OracleRequired
-from automation.search_evaluator import IsolatedEvaluator, validate_evaluation_receipts
+from automation.search_evaluator import (
+    IsolatedEvaluator,
+    lineage_reuse_count,
+    measured_lane_report,
+    validate_evaluation_receipts,
+)
 from automation.search_run_factory import create_instrumented_run, _CORE_MODULES, _FACTORY_MODULE, _LANE_MODULES
 from automation.search_supervisor import run_instrumented, SupervisorIntegrationError
 from automation.search_types import CandidateRecord, hash_bytes
@@ -246,6 +251,86 @@ class EvaluatorTests(unittest.TestCase):
             with self.assertRaisesRegex(InputRefusal, "model lanes are deferred"):
                 self.factory_run(lanes)
             network.assert_not_called()
+
+    def test_lineage_reuse_count_exact(self):
+        lanes = {"a": "preserved_candidate", "b": "preserved_candidate", "c": "permuter_random"}
+        parents = {"a": (), "b": ("a",), "c": ("b",), "d": ("missing",), "e": ("e",)}
+        lanes["e"] = "permuter_random"
+        self.assertEqual(lineage_reuse_count([], "preserved_candidate", lanes, parents), [])
+        self.assertEqual(
+            lineage_reuse_count(["a", "b"], "preserved_candidate", lanes, parents), [])
+        self.assertEqual(
+            lineage_reuse_count(["b", "c", "d"], "permuter_random", lanes, parents),
+            ["b", "c"])
+        self.assertEqual(
+            lineage_reuse_count(["c", "c", "b"], "permuter_random", lanes, parents),
+            ["b", "c"])
+        self.assertEqual(
+            lineage_reuse_count(["e"], "preserved_candidate", lanes, parents), ["e"])
+
+    def test_funnel_without_cross_lane_parents_reports_no_lineage_reuse(self):
+        repo, created = self.factory_run()
+        path = Path(created["run_root"]) / "manifest.json"
+        result = run_instrumented(path, lease_path=self.root / "lease.json")
+        self.assertTrue(result["ok"])
+        funnel = result["funnel"]
+        self.assertEqual(funnel["totals"]["lineage_reused_across_lanes"], 0)
+        self.assertTrue(all(row["lineage_reused"] == 0 for row in funnel["rows"]))
+
+    def test_funnel_zero_pending_oracle_at_handoff(self):
+        from automation.search_coordinator import OracleRequired
+        from automation.search_evaluator import search_funnel
+        repo, created = self.factory_run(
+            preserved_source="int f(int x) { return x + 1; }")
+        path = Path(created["run_root"]) / "manifest.json"
+        manifest = type(self.manifest).from_dict(created["manifest"])
+        # Without land_matches the score-zero candidate stops the run at the
+        # oracle handoff before any request is recorded. The funnel read at
+        # that boundary must show the pending zero exactly once.
+        with self.assertRaises(OracleRequired):
+            run_instrumented(path, lease_path=self.root / "lease.json")
+        coordinator = SearchCoordinator(path.parent, manifest)
+        funnel = search_funnel(manifest, coordinator.events, coordinator.archive)
+        totals = funnel["totals"]
+        self.assertEqual(totals["oracle_requests"], 0)
+        self.assertEqual(totals["oracle_verified_matches"], 0)
+        self.assertEqual(totals["zero_pending_oracle"], 1)
+
+    def test_funnel_lineage_matches_materialized_ledger(self):
+        lanes = ("bounded_synthesis", "permuter_random", "permuter_targeted",
+                 "permuter_recombine", "permuter_ddmin")
+        repo, created = self.factory_run(lanes)
+        path = Path(created["run_root"]) / "manifest.json"
+        result = run_instrumented(path, lease_path=self.root / "lease.json")
+        self.assertTrue(result["ok"])
+        funnel = result["funnel"]
+        manifest = type(self.manifest).from_dict(created["manifest"])
+        events = SearchCoordinator(path.parent, manifest).events
+        lanes_of, parents_of = {}, {}
+        for event in events:
+            if event.event_type != "candidate_materialized":
+                continue
+            lanes_of.setdefault(event.payload.candidate_id, event.payload.lane)
+            parents_of[event.payload.candidate_id] = tuple(event.payload.parent_candidate_ids)
+        rows = {row["lane"]: row for row in funnel["rows"]}
+        lane_generated = {}
+        for event in events:
+            if event.event_type != "candidate_materialized":
+                continue
+            lane_generated.setdefault(event.payload.lane, set()).add(
+                event.payload.candidate_id)
+        for lane in lanes:
+            expected = sorted(
+                candidate_id for candidate_id in lane_generated.get(lane, set())
+                if any(lanes_of.get(parent) not in (None, lane)
+                       for parent in parents_of.get(candidate_id, ())))
+            self.assertEqual(rows[lane]["lineage_reused"], len(expected))
+            self.assertEqual(rows[lane]["lineage_reused_candidates"], expected)
+        self.assertEqual(
+            funnel["totals"]["lineage_reused_across_lanes"],
+            len({(lane, candidate_id)
+                 for lane in lanes
+                 for candidate_id in rows[lane]["lineage_reused_candidates"]}))
 
     def test_measured_selection_keeps_unexamined_candidates_explicit(self):
         from automation.search_evaluator import measured_lane_report

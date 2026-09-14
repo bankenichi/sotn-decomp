@@ -356,6 +356,37 @@ def permuter_measurements(manifest, archive):
     return measured
 
 
+def _materialized_lineage(events):
+    """Map every materialized candidate to its lane and parent identities.
+
+    Only ledger-committed materializations count; a parent that never
+    materialized in this run (another run's seed, an unrecorded draft)
+    resolves to no lane and is never attributed as reuse.
+    """
+    lanes, parents = {}, {}
+    for event in events:
+        if event.event_type != "candidate_materialized":
+            continue
+        lanes.setdefault(event.payload.candidate_id, event.payload.lane)
+        parents[event.payload.candidate_id] = tuple(event.payload.parent_candidate_ids)
+    return lanes, parents
+
+
+def lineage_reuse_count(candidate_ids, lane, lanes, parents):
+    """Candidates with a parent materialized by a different lane.
+
+    Same-lane ancestry is ordinary descent, not reuse; unknown parents are
+    ignored rather than guessed. Returns the sorted reused identities so
+    callers can attribute them without re-reading the ledger.
+    """
+    reused = sorted(
+        candidate_id for candidate_id in set(candidate_ids)
+        if any(lanes.get(parent) not in (None, lane)
+               for parent in parents.get(candidate_id, ()))
+    )
+    return reused
+
+
 def search_funnel(manifest, events, archive):
     """Project actual lane outputs and measurements from one verified prefix.
 
@@ -382,7 +413,9 @@ def search_funnel(manifest, events, archive):
                     if "reused_from" in document}
     receipts = {(event.payload.recipient_id, event.payload.lane): event.payload for event in events
                 if event.event_type == "exhaustion_recorded"}
+    lanes, parents = _materialized_lineage(events)
     rows, all_generated, all_evaluated = [], set(), set()
+    all_lineage_reused = set()
     for recipient in manifest.queue_record_ids:
         for lane in manifest.selected_lanes:
             base = [task for task in tasks.values() if task.recipient_id == recipient
@@ -412,6 +445,8 @@ def search_funnel(manifest, events, archive):
                         if key in oracle_results and oracle_results[key].outcome == "not_matched"}
             zero = {key for key, score in scores.items()
                     if score.compile_status == "success" and score.total == 0}
+            lineage = lineage_reuse_count(generated, lane, lanes, parents)
+            all_lineage_reused.update((recipient, key) for key in lineage)
             row = {
                 "recipient_id": recipient, "lane": lane,
                 "scheduled": bool(base), "started": bool(base and base[0].task_id in started),
@@ -433,6 +468,8 @@ def search_funnel(manifest, events, archive):
                 "idiom_candidates_generated": len(generated) if lane == "idiom_atlas" else 0,
                 "oracle_requests": len(matching_requests), "oracle_verified_matches": len(verified),
                 "oracle_rejected": len(rejected),
+                "lineage_reused": len(lineage),
+                "lineage_reused_candidates": lineage,
                 "zero_pending_oracle": len(zero.difference(verified | rejected)),
                 "rejections": dict(outcome.receipt.rejection_counts) if outcome else {},
             }
@@ -454,6 +491,7 @@ def search_funnel(manifest, events, archive):
             "unknown_applicability_pairs": sum(row["applicable"] is None for row in rows),
             "generated_unique_across_lanes": len(all_generated),
             "evaluated_unique_across_lanes": len(all_evaluated),
+            "lineage_reused_across_lanes": len(all_lineage_reused),
             "duplicate_candidates_across_lanes": sum(row["generated_unique"] for row in rows) - len(all_generated),
             **{key: sum(row[key] for row in rows) for key in (
                 "unexamined", "compile_failed", "score_reused", "improved", "idiom_candidates_generated",

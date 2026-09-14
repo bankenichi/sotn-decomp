@@ -706,6 +706,9 @@ merge their overlap. A terminal task, failed execution, isolated zero and
 checksum-verified match are distinct outcomes. Historical results are retained;
 the first September 6 run's five inapplicable lanes did not prove five methods
 were unavailable, because worker failures had hidden their measurements.
+Cross-lane lineage reuse counts candidates with a parent materialized by a
+different lane, with exact identities per row; a score zero awaiting its oracle
+handoff reads as zero-pending with no request yet recorded.
 
 The production `transplant` lane invokes the existing automatic preparation
 path, including assembly-derived maps, exact overlay ownership and destination
