@@ -245,5 +245,79 @@ class EventIntegrityTests(unittest.TestCase):
             events = load_events(archive, session)
             self.assertEqual(best_so_far_improvements(events), [])
 
+
+def _deterministic_total(source_text):
+    """Deterministic fake score, standing in for the real compiler."""
+    return sum(source_text.encode("utf-8")) % 101
+
+
+def _produce(archive, session, start_iteration, operations, cache, calls):
+    """Mirror run()'s resume loop: deterministic sources, cached scores.
+
+    Sources re-derive identically after a crash, so prefix operations hit
+    the reloaded cache instead of recompiling. Returns the published refs.
+    """
+    published = []
+    for operation in operations:
+        source_text = f"int resume_{operation}(void) {{ return {operation}; }}\n"
+        source_id = hash_bytes(source_text.encode("utf-8"))
+        if source_id in cache:
+            continue
+        calls.append(source_text)
+        _publish_event(
+            archive, session, start_iteration + len(published),
+            score(_deterministic_total(source_text)), source_text=source_text,
+        )
+        cache[source_id] = _deterministic_total(source_text)
+        published.append(source_text)
+    return published
+
+
+class ResumeSequenceTests(unittest.TestCase):
+    def test_interrupted_run_matches_uninterrupted_run(self):
+        operations = list(range(7))
+        with tempfile.TemporaryDirectory() as reference_dir:
+            reference_archive = ContentAddressedArchive(Path(reference_dir))
+            reference_session = hash_bytes(b"session-uninterrupted")
+            reference_calls: list = []
+            _produce(reference_archive, reference_session, 1, operations, {}, reference_calls)
+            reference_events = load_events(reference_archive, reference_session)
+        with tempfile.TemporaryDirectory() as directory:
+            archive = ContentAddressedArchive(Path(directory))
+            session = hash_bytes(b"session-interrupted")
+            first_calls: list = []
+            # Crash after three operations: only durable events survive.
+            _produce(archive, session, 1, operations[:3], {}, first_calls)
+            # Recovery reloads the durable prefix and rebuilds the cache
+            # from it, exactly as run() does before continuing.
+            recovered = load_events(archive, session)
+            cache = {
+                event["source"]["content_hash"]: event["score"]["total"]
+                for _, event in recovered
+            }
+            second_calls: list = []
+            _produce(archive, session, 4, operations, cache, second_calls)
+            resumed_events = load_events(archive, session)
+        reference_sequence = [
+            (event["iteration"], event["source"]["content_hash"], event["score"]["total"])
+            for _, event in reference_events
+        ]
+        resumed_sequence = [
+            (event["iteration"], event["source"]["content_hash"], event["score"]["total"])
+            for _, event in resumed_events
+        ]
+        self.assertEqual(resumed_sequence, reference_sequence)
+        # The prefix was reused from durable scores, never recompiled, and
+        # no iteration was evaluated twice across the interruption.
+        self.assertEqual(len(first_calls) + len(second_calls), len(operations))
+        self.assertEqual(len(reference_calls), len(operations))
+        # Attribution compares measurement identity, not archive paths: the
+        # two runs live in different directories, so their artifact refs
+        # differ while iterations, sources, and totals must agree exactly.
+        self.assertEqual(
+            [(entry["iteration"], entry["total"]) for entry in best_so_far_improvements(resumed_events)],
+            [(entry["iteration"], entry["total"]) for entry in best_so_far_improvements(reference_events)],
+        )
+
 if __name__ == "__main__":
     unittest.main()

@@ -1024,6 +1024,9 @@ AUTOMATION_SCRIPTS = {
     "test_search_model_lanes.py",
     "test_search_permuter_executor.py",
     "test_search_permuter_worker.py",
+    # The seed-handoff recovery suite: search_seed_handoff.py itself stays
+    # unlisted as a pure import library, like the other lane modules above.
+    "test_search_seed_handoff.py",
     "test_search_compile_driver.py",
     "test_search_evaluator.py",
     "test_search_model_provider.py",

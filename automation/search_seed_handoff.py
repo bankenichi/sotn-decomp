@@ -113,7 +113,9 @@ def bind_task_provider(provider, task, events):
         raise SeedHandoffError("seed handoff requires the concrete task provider")
     if TOOL_KEY not in provider.manifest.tool_identities:
         return provider
-    base = provider.inputs[task.recipient_id]
+    base = provider.inputs.get(task.recipient_id)
+    if base is None:
+        raise SeedHandoffError("seed handoff recipient is outside the frozen provider subset")
     document, item = _decision(provider.manifest, provider.archive, events, task, base,
                                provider.provider_identity)
     existing = [(ref, doc) for ref, doc in _documents(provider.archive)
