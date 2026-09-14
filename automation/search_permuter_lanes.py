@@ -2544,6 +2544,11 @@ class PermuterLaneProvider:
             raise PermuterProviderInputError(
                 f"recipient {recipient.recipient_id} is outside the frozen permuter subset"
             )
+        bound = getattr(self, "_task_input", None)
+        if bound is not None:
+            if bound.recipient_id != recipient.recipient_id:
+                raise PermuterProviderInputError("task seed belongs to another recipient")
+            return bound
         return item
 
     def _request(
@@ -2965,7 +2970,25 @@ class PermuterLaneProvider:
         return self._decode_result(request, store.put_request(request), found[0], found[1])
 
     def callback(self, recipient: Recipient) -> Mapping[str, Any]:
-        return self.run(recipient).to_discovery()
+        result = self.run(recipient).to_discovery()
+        reference = getattr(self, "_seed_handoff", None)
+        if reference is not None:
+            item = self._input_for(recipient)
+            decision = item.metadata["seed_handoff"]
+            selected = decision["selected"]
+            parent = selected["candidate_id"] if selected is not None else None
+            edge = {"kind": "evaluated_seed_handoff", "source": decision["task_id"],
+                    "source_identity": item.seed_identity, "input_identity": item.input_identity,
+                    "lane": self.config.lane, "recipient_id": recipient.recipient_id,
+                    "handoff": reference.to_dict()}
+            result["provenance"].append(edge)
+            result["input_identities"].append(reference.content_hash)
+            for candidate in result["candidates"]:
+                # Convergence to an existing source retains handoff provenance
+                # without adding a self-edge or an edge back to an ancestor.
+                known = getattr(self, "_seed_known_candidates", ())
+                candidate["parent_candidate_ids"] = [parent] if parent and hash_bytes(candidate["source"].encode("utf-8")) not in known else []
+        return result
 
     def __call__(self, recipient: Recipient) -> Mapping[str, Any]:
         return self.callback(recipient)

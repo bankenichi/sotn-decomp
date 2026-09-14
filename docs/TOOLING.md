@@ -16,7 +16,7 @@ For the mechanisms that land matches, read `automation/README.md`.
 | Decompiled | **94.1%**, 8181/8730 functions; 549 US `INCLUDE_ASM` stubs remain |
 | Queue | 983 records: 434 matched, 379 todo, 123 escalated, 41 deferred, 6 near |
 | Provenance | upstream-harvest 55, shim-segment 9, shim-header 55, transplant 136, twin-port 31, permuter 18, claude-manual 6, model-fleet 58, unknown 66 |
-| Automation | 179 modules, 72 suites plus 36 module self-tests, 99 tools, 113 diagnostics |
+| Automation | 180 modules, 72 suites plus 36 module self-tests, 99 tools, 113 diagnostics |
 
 This block is regenerated from the same queue, checksum manifest, linker maps, provenance classifier, and connector inventory as `README.md`.
 <!-- LIVE-STATUS:END -->
@@ -564,6 +564,25 @@ indexed renderer identity. Publication and supervisor reconstruction use the
 same dependency hash; dependency drift refuses dispatch. No decompiler/model
 engine or `.m2c` cache is invoked. Prior archives remain historical evidence;
 current dispatch requires the expanded dependency binding.
+
+New factory runs bind `search_seed_handoff.py`. Before each concrete permuter
+lane executes, the supervisor archives a task-local seed decision from the
+ledger prefix ending at that task's scheduled event. Eligible parents have an
+ordinary successful, nonzero compiler measurement for the same US recipient.
+Selection uses ascending score, candidate identity and evaluation task identity;
+unmeasured candidates and provider-reported scores do not qualify. The exact
+source and measurement receipt remain archived. With no eligible parent, the
+decision explicitly retains the frozen factory seed.
+
+The provider's immutable input map and factory serialization stay intact. Its
+task-local request binds the selected source and decision through input identity,
+and ordinary candidate provenance carries the handoff reference. New sources
+record the selected parent; convergence to an existing source keeps provenance
+without adding a self-edge or an edge back to an ancestor. Recovery rederives
+the decision from the original scheduled prefix and verifies request consumption,
+so later measurements cannot silently reseed a resumed worker. Missing,
+conflicting or corrupt decisions refuse recovery. Historical archives without
+this module binding remain evidence but cannot dispatch the current factory.
 
 The layout projection also follows a bounded graph of named US data-pointer
 fields, including self-references such as `Entity.parent` and `Entity.nextPart`.

@@ -2400,6 +2400,17 @@ def _run_instrumented_locked(
                 budget_ordinal=(lane_index * len(recipients)) + recipient_index,
             )
             task = coordinator.schedule_task(task)
+            task_adapters = adapters
+            if lane.startswith("permuter_") and "search_seed_handoff" in manifest.tool_identities:
+                from .search_permuter_lanes import PermuterLaneProvider
+                from .search_seed_handoff import bind_task_provider
+                adapter_set = adapters if isinstance(adapters, LaneAdapters) else LaneAdapters.from_mapping(adapters)
+                callback = adapter_set.for_lane(lane)
+                provider = getattr(callback, "__self__", callback)
+                if type(provider) is not PermuterLaneProvider:
+                    raise SupervisorIntegrationError("task seed requires a concrete permuter provider")
+                bound = bind_task_provider(provider, task, coordinator.events)
+                task_adapters = replace(adapter_set, **{lane: bound.callback})
             loaded = _load_task_outcome(coordinator, task)
             if _task_is_terminal(coordinator, task.task_id):
                 if loaded is None:
@@ -2423,7 +2434,7 @@ def _run_instrumented_locked(
                         started,
                         manifest,
                         recipients,
-                        adapters=adapters,
+                        adapters=task_adapters,
                         options=options,
                         read_only=True,
                     )

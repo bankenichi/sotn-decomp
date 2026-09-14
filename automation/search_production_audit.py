@@ -1589,6 +1589,35 @@ def _supervisor_adapter_reconstruction(
     return False
 
 
+def _adapter_alias_names(node: ast.AST) -> set[str]:
+    """Track adapter copies and dataclass updates, refusing unknown overwrites."""
+    assignments: dict[str, list[ast.AST]] = {}
+    for item in ast.walk(node):
+        if isinstance(item, (ast.Assign, ast.AnnAssign)) and item.value is not None:
+            for name in _assignment_names(item):
+                assignments.setdefault(name, []).append(item.value)
+    known = {"adapters"}
+
+    def bound(value: ast.AST) -> bool:
+        if isinstance(value, ast.Name):
+            return value.id in known
+        if isinstance(value, ast.IfExp):
+            return bound(value.body) and bound(value.orelse)
+        if isinstance(value, ast.Call) and len(value.args) == 1 and bound(value.args[0]):
+            return (_call_target_name(value.func) == "replace"
+                    or isinstance(value.func, ast.Attribute) and value.func.attr == "from_mapping"
+                    and isinstance(value.func.value, ast.Name) and value.func.value.id == "LaneAdapters")
+        return False
+
+    for _ in range(len(assignments)):
+        added = {name for name, values in assignments.items() if name not in known
+                 and all(bound(value) for value in values)}
+        if not added:
+            break
+        known.update(added)
+    return known
+
+
 def _supervisor_lane_reconstruction(
     module: Optional[_Module],
     lane: Optional[str] = None,
@@ -1640,13 +1669,14 @@ def _supervisor_lane_reconstruction(
             and _call_keyword_is_name(item, "lane", "lane")
             for item in ast.walk(node)
         )
+        adapter_names = _adapter_alias_names(node)
         executes_with_adapters = any(
             isinstance(item, ast.Call)
             and _call_target_name(item.func) == "lane_executor"
             and any(
                 keyword.arg == "adapters"
                 and isinstance(keyword.value, ast.Name)
-                and keyword.value.id == "adapters"
+                and keyword.value.id in adapter_names
                 for keyword in item.keywords
             )
             and (

@@ -163,7 +163,7 @@ def _factory_gate(archive: ContentAddressedArchive, *, multi_record: bool = Fals
             f"{module.replace('.', '_')} = 1\n", encoding="utf-8"
         )
     from automation.search_target_layout import LAYOUT_DEPENDENCIES
-    for relative in (*LAYOUT_DEPENDENCIES, "automation/search_mips_switch.py"):
+    for relative in (*LAYOUT_DEPENDENCIES, "automation/search_mips_switch.py", "automation/search_seed_handoff.py"):
         path = repo / relative
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes((Path(__file__).resolve().parents[1] / relative).read_bytes())

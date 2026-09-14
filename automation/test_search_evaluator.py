@@ -56,7 +56,7 @@ class EvaluatorTests(unittest.TestCase):
             ), source=source,
         )
 
-    def factory_run(self, lanes=("preserved_candidate",)):
+    def factory_run(self, lanes=("preserved_candidate",), preserved_source="int f(int x) { return x + 2; }", extra_candidates=()):
         repo = self.root / "repo"
         (repo / "src").mkdir(parents=True)
         (repo / "include").mkdir()
@@ -94,7 +94,9 @@ class EvaluatorTests(unittest.TestCase):
         obj.write_bytes(self.archive.verify(self.target))
         candidate = repo / "automation/candidates/f.c"
         candidate.parent.mkdir(parents=True)
-        candidate.write_text("int f(int x) { return x + 2; }")
+        candidate.write_text(preserved_source)
+        for index, source in enumerate(extra_candidates):
+            candidate.with_name("f_variant_" + str(index) + ".c").write_text(source)
         record = {
             "id": "us:ST/RNO0:f", "function": "f", "build": "us",
             "overlay": "ST/RNO0", "status": "todo", "claimed_by": "none",
@@ -152,6 +154,88 @@ class EvaluatorTests(unittest.TestCase):
         self.assertEqual(len(recovered.receipts), len(lanes))
         with patch("automation.search_evaluator.compile_against_object", side_effect=AssertionError("recompiled")):
             self.assertTrue(run_instrumented(path, lease_path=self.root / "lease.json")["ok"])
+
+    def test_measured_candidate_handoff_reaches_worker_and_survives_interruption(self):
+        from automation.search_seed_handoff import bind_task_provider, SeedHandoffError
+        from automation.search_recovery import recover_run
+        from automation.search_provider_lanes import reconstruct_lane_adapters
+        candidates = ["int f(int x) { return x * 19 + 37; }\n",
+                      "/* Same machine code, distinct source identity. */\nint f(int x) { return x * 19 + 37; }\n"]
+        source = min(candidates, key=lambda s: hash_bytes(s.encode()))
+        repo, created = self.factory_run(("preserved_candidate", "permuter_targeted"), candidates[0], candidates[1:])
+        root = Path(created["run_root"])
+        manifest = type(self.manifest).from_dict(created["manifest"])
+        frozen = reconstruct_lane_adapters(manifest, root).permuter_targeted.__self__
+        original = frozen.inputs["us:ST/RNO0:f"]
+        self.assertNotEqual(original.seed_source, source)
+
+        def interrupt(provider, task, events):
+            bound = bind_task_provider(provider, task, events)
+            self.assertEqual(bound._input_for(type_recipient).seed_source, source)
+            self.assertEqual(bound.to_dict(), provider.to_dict())
+            raise RuntimeError("fixture interruption after seed publication")
+
+        from automation.search_lanes import Recipient
+        type_recipient = Recipient("us:ST/RNO0:f", "ST/RNO0", "f")
+        with patch("automation.search_seed_handoff.bind_task_provider", side_effect=interrupt):
+            with self.assertRaisesRegex(RuntimeError, "fixture interruption"):
+                run_instrumented(root / "manifest.json", lease_path=self.root / "lease.json")
+        paths = list((root / "artifacts/seed-handoffs").glob("*.json"))
+        self.assertEqual(len(paths), 1)
+        decision = json.loads(paths[0].read_text())
+        scores = [json.loads(p.read_text())["score"]["total"] for p in (root / "artifacts/evaluations").glob("*.json")]
+        self.assertEqual(len(scores), 2)
+        self.assertEqual(scores[0], scores[1])
+        self.assertEqual(decision["selected"]["candidate_id"], hash_bytes(source.encode()))
+        self.assertEqual(decision["input"]["seed_source"], source)
+        # The prefix and decision survive process reconstruction. Previously
+        # measured source is not recompiled just to choose the next seed.
+        recover_run(root)
+        result = run_instrumented(root / "manifest.json", lease_path=self.root / "lease.json")
+        self.assertTrue(result["ok"])
+        requests = [json.loads(p.read_text()) for p in (root / "artifacts/permuter-requests").glob("*.json")]
+        self.assertTrue(requests)
+        self.assertTrue(all(r["seed_source"] == source and r["input_identity"] == decision["input"]["input_identity"] for r in requests))
+        worker_markers = list((root / "permuter-scratch").rglob("executor-request.json"))
+        self.assertTrue(worker_markers)
+        self.assertEqual((worker_markers[0].parent / "base.c").read_bytes(), source.encode())
+        events = SearchCoordinator(root, manifest).events
+        descendants = [e.payload for e in events if e.event_type == "candidate_materialized"
+                       and e.payload.lane == "permuter_targeted" and e.payload.candidate_id != hash_bytes(source.encode())]
+        self.assertTrue(descendants)
+        self.assertTrue(all(hash_bytes(source.encode()) in c.parent_candidate_ids for c in descendants))
+        self.assertEqual(len(list((root / "artifacts/seed-handoffs").glob("*.json"))), 1)
+        with patch("automation.search_evaluator.compile_against_object", side_effect=AssertionError("recompiled")):
+            self.assertTrue(run_instrumented(root / "manifest.json", lease_path=self.root / "lease.json")["ok"])
+        # A second canonical decision for the same task is also a refusal.
+        archive = ContentAddressedArchive(root)
+        archive.put_json({**decision, "selected": None}, category="seed-handoffs")
+        with self.assertRaises(SeedHandoffError):
+            recover_run(root)
+
+    def test_task_without_evaluated_parent_archives_frozen_seed_fallback(self):
+        from automation.search_seed_handoff import bind_task_provider
+        from automation.search_provider_lanes import reconstruct_lane_adapters
+        from automation.search_lanes import Recipient
+        from automation.search_recovery import recover_run
+        _, created = self.factory_run(("permuter_targeted",))
+        root = Path(created["run_root"])
+        manifest = type(self.manifest).from_dict(created["manifest"])
+        provider = reconstruct_lane_adapters(manifest, root).permuter_targeted.__self__
+        recipient = Recipient("us:ST/RNO0:f", "ST/RNO0", "f")
+        coordinator = SearchCoordinator(root, manifest)
+        task = coordinator.schedule_task(coordinator.create_task(
+            recipient_id=recipient.recipient_id, lane="permuter_targeted", operation="execute_lane", budget_ordinal=0))
+        bound = bind_task_provider(provider, task, coordinator.events)
+        item = bound._input_for(recipient)
+        self.assertEqual(item.seed_source, provider.inputs[recipient.recipient_id].seed_source)
+        self.assertIsNone(item.metadata["seed_handoff"]["selected"])
+        self.assertNotEqual(item.input_identity, provider.inputs[recipient.recipient_id].input_identity)
+        recover_run(root)
+        # A corrupt decision is refused before a worker can be called.
+        (root / bound._seed_handoff.path).write_bytes(b"{}")
+        with self.assertRaises(ArtifactCorrupt):
+            bind_task_provider(provider, task, coordinator.events)
 
     def test_public_model_factories_are_deferred_before_dispatch(self):
         # The earlier positive dispatch fixture was superseded by the owner's

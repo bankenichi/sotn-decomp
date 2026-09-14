@@ -99,7 +99,7 @@ class FactoryFixture(unittest.TestCase):
         for module in ("scorer.py", "objdump.py"):
             (vendor / module).write_text("IMPLEMENTATION = 1\n", encoding="utf-8")
         actual_repo = Path(__file__).resolve().parents[1]
-        for relative in (*_factory.LAYOUT_DEPENDENCIES, "automation/search_mips_switch.py"):
+        for relative in (*_factory.LAYOUT_DEPENDENCIES, "automation/search_mips_switch.py", "automation/search_seed_handoff.py"):
             path = self.repo / relative
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes((actual_repo / relative).read_bytes())
@@ -1158,6 +1158,22 @@ class FactoryFixture(unittest.TestCase):
         result = self.create("switch-reader-drift", ids=[IDS[0]], lanes=[LANES[0]])
         path = self.repo / "automation/search_mips_switch.py"
         path.write_bytes(path.read_bytes() + b"# changed switch interpretation\n")
+        self._runtime_refusal(result, lambda: None)
+
+    def test_pre_handoff_archive_remains_evidence_but_cannot_dispatch_current_code(self):
+        old_core = tuple((path, key) for path, key in _factory._CORE_MODULES if key != "search_seed_handoff")
+        with mock.patch.object(_factory, "_CORE_MODULES", old_core):
+            result = self.create("pre-handoff-archive", ids=[IDS[0]], lanes=[LANES[0]])
+        root = Path(result["run_root"])
+        manifest = RunManifest.from_dict(result["manifest"])
+        self.assertNotIn("search_seed_handoff", manifest.tool_identities)
+        _factory.verify_factory_archive(root, manifest)
+        self._runtime_refusal(result, lambda: None)
+
+    def test_seed_handoff_drift_is_refused_before_dispatch(self):
+        result = self.create("handoff-drift", ids=[IDS[0]], lanes=[LANES[0]])
+        path = self.repo / "automation/search_seed_handoff.py"
+        path.write_bytes(path.read_bytes() + b"# changed handoff selection\n")
         self._runtime_refusal(result, lambda: None)
 
     def test_target_drift_is_refused_before_adapter_or_task_start(self) -> None:

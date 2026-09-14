@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import sys
 import tempfile
 import unittest
@@ -10,12 +11,28 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from automation.search_production_audit import (
+    _adapter_alias_names,
     EXPECTED_LANE_CLOSURE_GAPS,
     audit_production_exports,
 )
 
 
 class ProductionAuditTests(unittest.TestCase):
+    def test_task_adapter_updates_retain_flow_but_unknown_overwrites_do_not(self):
+        source = '''
+for lane in lanes:
+    task_adapters = adapters
+    if enabled:
+        adapter_set = adapters if isinstance(adapters, LaneAdapters) else LaneAdapters.from_mapping(adapters)
+        task_adapters = replace(adapter_set, **{lane: bound.callback})
+'''
+        names = _adapter_alias_names(ast.parse(source))
+        self.assertEqual(names, {"adapters", "adapter_set", "task_adapters"})
+        for overwrite in ("None", "make_unbound_adapter(adapters)", "other_adapters"):
+            names = _adapter_alias_names(ast.parse(source + "    task_adapters = " + overwrite + "\n"))
+            self.assertNotIn("task_adapters", names)
+        self.assertEqual(_adapter_alias_names(ast.parse("a = b\nb = a\n")), {"adapters"})
+
     def _fixture(
         self,
         root: Path,

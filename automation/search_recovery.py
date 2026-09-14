@@ -373,6 +373,8 @@ def recover_run(
         raise RecoveryError("ledger prefix violates persisted search invariants") from exc
     if factory_created:
         _verify_factory_provider(manifest, root)
+    from .search_seed_handoff import validate_seed_handoffs
+    validate_seed_handoffs(manifest, archive, events)
 
     tasks: Dict[str, SearchTask] = {}
     terminal: Dict[str, TaskTerminal] = {}

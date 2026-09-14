@@ -127,6 +127,7 @@ try:
 except ImportError:
     from automation.search_target_layout import LAYOUT_DEPENDENCIES
 _CORE_MODULES += (("automation/search_mips_switch.py", "target_switch_source"),)
+_CORE_MODULES += (("automation/search_seed_handoff.py", "search_seed_handoff"),)
 _CORE_MODULES += tuple((path, "target_layout_" + str(index)) for index, path in enumerate(LAYOUT_DEPENDENCIES))
 _LANE_MODULES = {
     "idiom_atlas": (
@@ -1849,6 +1850,8 @@ def _verify_existing_artifacts(
         # refuses to execute an archive missing the switch reader binding.
         if "target_switch_source" not in (expected_tool_identities or {}):
             bound_core = tuple((path, key) for path, key in bound_core if key != "target_switch_source")
+        if "search_seed_handoff" not in (expected_tool_identities or {}):
+            bound_core = tuple((path, key) for path, key in bound_core if key != "search_seed_handoff")
         expected_core_paths = {path for path, _key in bound_core}
         if set(core_modules) != expected_core_paths:
             raise PartialRunRefusal("core tool evidence coverage is invalid")
