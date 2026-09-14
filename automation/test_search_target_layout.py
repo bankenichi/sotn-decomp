@@ -50,6 +50,121 @@ class LayoutTests(unittest.TestCase):
             with self.subTest(label=label):
                 self.assertIsNone(draft(assembly, **options))
 
+    def test_load_delay_hazards_have_otherwise_identical_accepted_controls(self):
+        # IDT R30xx Software Reference Manual rev 1.0, Appendix A, Load and
+        # Store: ordinary loads require an intervening instruction before use.
+        # Keep each supported control identical except for that one NOP.
+        declaration = "unsigned int fn(Item* p, Item* q, unsigned int value)"
+        consumers = {
+            "arithmetic": "addu $v0, $a2, $a2\njr $ra\nnop\n",
+            "store": "sw $a2, 4($a1)\njr $ra\nmove $v0, $a2\n",
+            "predicate": (
+                "beq $a2, $zero, .Lzero\nli $v0, 1\njr $ra\nnop\n"
+                ".Lzero:\njr $ra\nli $v0, 2\n"
+            ),
+        }
+        for opcode, offset in (("lb", 0), ("lbu", 1), ("lh", 2),
+                               ("lhu", 2), ("lw", 4)):
+            for name, consumer in consumers.items():
+                for spelling in ("$a2", "a2", "$6", "r6"):
+                    load = f"{opcode} {spelling}, {offset}($a0)\n"
+                    tail = consumer.replace("$a2", spelling)
+                    with self.subTest(opcode=opcode, consumer=name, register=spelling):
+                        self.assertIsNone(draft(load + tail, declaration))
+                        self.assertIsNotNone(draft(load + "nop\n" + tail, declaration))
+
+    def test_pointer_load_delay_and_unsupported_merge_loads_are_not_erased(self):
+        # The same dependency can be an address, not an arithmetic operand.
+        # Numeric aliases must not bypass the delay check.
+        load = "lw $a1, 4($a0)\n"
+        tail = "lw $v0, 0($5)\nnop\njr $ra\nnop\n"
+        self.assertIsNone(pointer_draft(load + tail, "unsigned int fn(Node* p)"))
+        self.assertIsNotNone(pointer_draft(load + "nop\n" + tail, "unsigned int fn(Node* p)"))
+
+        # LWL/LWR have a special same-register merge rule. That ISA exception
+        # does not authorize our renderer to omit these unsupported operations.
+        for pair in (
+            "lw $v0, 4($a0)\nlwl $v0, 7($a0)\n",
+            "lw $v0, 4($a0)\nlwr $v0, 4($a0)\n",
+            "lwl $v0, 7($a0)\nlwr $v0, 4($a0)\n",
+            "lwr $v0, 4($a0)\nlwl $v0, 7($a0)\n",
+        ):
+            with self.subTest(pair=pair):
+                self.assertIsNone(draft(pair + "nop\njr $ra\nnop\n"))
+        for opcode, offset in (("lb", 0), ("lbu", 1), ("lh", 2),
+                               ("lhu", 2), ("lw", 4)):
+            with self.subTest(control_slot=opcode):
+                self.assertIsNone(draft(f"jr $ra\n{opcode} $v0, {offset}($a0)\n"))
+                self.assertIsNotNone(draft(f"{opcode} $v0, {offset}($a0)\nnop\njr $ra\nnop\n"))
+
+    def test_compiled_load_branch_and_store_delay_slots_preserve_old_values(self):
+        compiler = shutil.which("gcc")
+        if compiler is None:
+            self.skipTest("host fixture compiler unavailable")
+        declaration = "unsigned int fn(Item* p, Item* q, unsigned int choice)"
+        cases = {
+            # The predicate and arithmetic consume the captured load, even
+            # when the branch slot overwrites that exact member.
+            "old_word_predicate": (
+                "lw $t0, 4($a0)\nnop\nbeq $t0, $a2, .Lequal\n"
+                "sw $a2, 4($a0)\naddiu $v0, $t0, 3\njr $ra\n"
+                "sw $v0, 4($a1)\n.Lequal:\naddiu $v0, $t0, 7\n"
+                "jr $ra\nsw $v0, 4($a1)\n"
+            ),
+            # An independent branch fills the load delay. Its own slot may
+            # use the load, and must execute on both paths.
+            "independent_branch": (
+                "lw $t0, 4($a0)\nbeq $a2, $zero, .Lzero\n"
+                "addiu $v0, $t0, 1\njr $ra\nsw $v0, 4($a1)\n"
+                ".Lzero:\nsubu $v0, $zero, $v0\njr $ra\nsw $v0, 4($a1)\n"
+            ),
+        }
+        sources = [HEADER]
+        for name, assembly in cases.items():
+            generated = draft(assembly, declaration)
+            self.assertIsNotNone(generated, name)
+            sources.append(generated.replace(" fn(", " " + name + "("))
+        with tempfile.TemporaryDirectory() as directory:
+            source, library = Path(directory) / "slots.c", Path(directory) / "slots.so"
+            source.write_text("\n".join(sources))
+            built = subprocess.run(
+                [compiler, "-std=c89", "-O2", "-Wall", "-Werror", "-shared",
+                 "-fPIC", str(source), "-o", str(library)],
+                capture_output=True, timeout=30,
+            )
+            self.assertEqual(built.returncode, 0, built.stderr.decode())
+            compiled = ctypes.CDLL(str(library))
+
+            class Item(ctypes.Structure):
+                _fields_ = [("byte", ctypes.c_int8), ("flag", ctypes.c_uint8),
+                            ("half", ctypes.c_int16), ("word", ctypes.c_uint32),
+                            ("array", ctypes.c_int16 * 2)]
+
+            for name in cases:
+                function = getattr(compiled, name)
+                function.argtypes = [ctypes.POINTER(Item), ctypes.POINTER(Item), ctypes.c_uint32]
+                function.restype = ctypes.c_uint32
+                for old in (0, 1, 0x7fffffff, 0x80000000, 0xffffffff):
+                    for choice in (0, old, old ^ 1):
+                        for alias in (False, True):
+                            with self.subTest(case=name, old=old, choice=choice, alias=alias):
+                                item, other = Item(word=old), Item(word=0x13579bdf)
+                                target = item if alias else other
+                                expected = (
+                                    old + (7 if old == choice else 3)
+                                    if name == "old_word_predicate"
+                                    else (old + 1 if choice else -(old + 1))
+                                ) & 0xffffffff
+                                self.assertEqual(
+                                    function(ctypes.byref(item), ctypes.byref(target), choice),
+                                    expected,
+                                )
+                                self.assertEqual(target.word, expected)
+                                self.assertEqual(
+                                    item.word,
+                                    expected if alias else choice if name == "old_word_predicate" else old,
+                                )
+
     def test_compiled_memory_operations_preserve_values_aliasing_and_call_order(self):
         compiler = shutil.which("gcc")
         if compiler is None:

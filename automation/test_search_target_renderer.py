@@ -610,6 +610,64 @@ class TargetRendererTests(unittest.TestCase):
         finally:
             temp.cleanup()
 
+    def test_mips_dispatch_and_delay_slot_entry_remain_typed_refusals(self):
+        # Bounds alone do not prove an indirect table's targets or supported C
+        # lowering. Entering a delay slot also bypasses ordinary branch rules.
+        cases = {
+            "bounded_indirect_dispatch": (
+                b"sltiu $t0, $a0, 2\nbeq $t0, $zero, .Ldefault\nnop\n"
+                b"sll $t1, $a0, 2\naddu $t1, $a1, $t1\n"
+                b"lw $t2, 0($t1)\nnop\njr $t2\nnop\n"
+                b".Ldefault:\njr $ra\nli $v0, 3\n"
+            ),
+            "delay_slot_entry": (
+                b"b .Lslot\nnop\nbeqz $a0, .Ldone\n"
+                b".Lslot:\nli $v0, 7\n.Ldone:\njr $ra\nnop\n"
+            ),
+            "merge_load_pair": (
+                b"lwl $v0, 3($a1)\nlwr $v0, 0($a1)\nnop\njr $ra\nnop\n"
+            ),
+        }
+        context = b"int fn(unsigned int index, unsigned int* table);\n"
+        for name, assembly in cases.items():
+            with self.subTest(case=name):
+                temp, _archive, manifest, target_index = _target_fixture(
+                    assembly, context_bytes=context,
+                )
+                try:
+                    result = render_target_candidate(
+                        manifest, target_index, _recipient(), (_claim(),),
+                        lane="cfg_dataflow",
+                    )
+                    self.assertIsInstance(result, TargetContextUnsupported)
+                    self.assertEqual(result.refusal_code, "target_context_unsupported")
+                    self.assertEqual(result.recipient_id, RECIPIENT_ID)
+                    self.assertIn(hash_bytes(assembly), result.input_identities)
+                    self.assertEqual(result.provenance[0]["lane"], "cfg_dataflow")
+                    self.assertEqual(result.provenance[0]["source_identity"], hash_bytes(assembly))
+                    self.assertEqual(result.provenance[0]["claim_identities"], [_claim().claim_identity])
+                finally:
+                    temp.cleanup()
+
+        # The same archive path must still emit an ordinary forward branch.
+        # Otherwise missing context could explain all the refusals above.
+        assembly = (
+            b"beqz $a0, .Lzero\nli $v0, 11\njr $ra\nnop\n"
+            b".Lzero:\njr $ra\nli $v0, 7\n"
+        )
+        temp, _archive, manifest, target_index = _target_fixture(
+            assembly, context_bytes=context,
+        )
+        try:
+            result = render_target_candidate(
+                manifest, target_index, _recipient(), (_claim(),), lane="cfg_dataflow",
+            )
+            self.assertIsInstance(result, LaneCandidate)
+            self.assertEqual(result.record.recipient_id, RECIPIENT_ID)
+            self.assertEqual(result.provenance[0]["source_identity"], hash_bytes(assembly))
+        finally:
+            temp.cleanup()
+
     def test_forbidden_branch_displacement_is_typed_unsupported_context(self) -> None:
         temp, _archive, manifest, target_index = _target_fixture(
             b"beq $a0, $zero, 4\n"
