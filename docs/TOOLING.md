@@ -16,7 +16,7 @@ For the mechanisms that land matches, read `automation/README.md`.
 | Decompiled | **94.1%**, 8181/8730 functions; 549 US `INCLUDE_ASM` stubs remain |
 | Queue | 983 records: 434 matched, 379 todo, 123 escalated, 41 deferred, 6 near |
 | Provenance | upstream-harvest 55, shim-segment 9, shim-header 55, transplant 136, twin-port 31, permuter 18, claude-manual 6, model-fleet 58, unknown 66 |
-| Automation | 178 modules, 72 suites plus 36 module self-tests, 99 tools, 113 diagnostics |
+| Automation | 179 modules, 72 suites plus 36 module self-tests, 99 tools, 113 diagnostics |
 
 This block is regenerated from the same queue, checksum manifest, linker maps, provenance classifier, and connector inventory as `README.md`.
 <!-- LIVE-STATUS:END -->
@@ -486,6 +486,41 @@ ambiguous labels, missing slots and excessive expansion produce the ordinary
 unsupported-context result. This is candidate generation; compilation and the
 full checksum oracle still decide
 whether a later candidate can be used.
+
+Local US jump tables embedded in the archived assembly now support bounded
+switch candidates. The reader accounts for complete named `.rodata` tables,
+then proves the unsigned guard, index shift in its delay slot, paired symbolic
+table-address load, load-delay NOP and indirect jump with an inert slot. Every
+case and the default must be a forward local instruction outside a delay slot.
+Repeated case destinations share a rendered body. One trailing zero word after
+an odd-sized table is accepted only when the guard excludes it; a reachable
+zero or external target is refused.
+
+The switch path uses the existing 64-instruction and expansion limits, US
+declarations, named memory views and ABI checks. It preserves the guard slot
+on every outcome and invalidates the machine table-address values on case paths.
+Unknown table data, additional entry labels inside dispatch, unsupported
+schedules, loops and escaping table-address values remain refusals. Recognition
+of a dispatch in a larger function does not establish support for the whole
+function or a checksum match.
+
+`automation/search_mips_switch.py` is independently written from local SOTN
+assembly and MIPS semantics. No PSXRecomp implementation or dependency is
+incorporated. Its source is bound into factory tools and the indexed renderer
+identity, and archive replay requires neither a live table file nor donor
+machine addresses. Existing published runtimes retain their old identities;
+the successor published by `search_publish_indexed_runtime-005237-30` is
+`sha256:99ded73daabda8e042761428d4318b98a2ed6312062478b17542c53ee8b8b935`
+and retains the same 6,798 donor functions. The
+derivation, prior external-source exposure and measured acceptance evidence are
+recorded in `docs/superpowers/plans/2026-09-13-independent-switch-recovery.md`.
+
+That publication took approximately 53 minutes 22 seconds, measured from start
+metadata to the completion marker. Sampled process state showed WSL filesystem
+wait and increasing I/O counters, with little CPU time. The current publisher
+rematerializes and copies all source files even for a renderer-only change;
+it has no phase timing report. Check the existing job before retrying, and use
+its completion marker rather than a later poll's elapsed field for duration.
 
 Direct scalar calls use callee signatures projected from the archived US
 preprocessed context. The projection is reconstructed from those same bytes for

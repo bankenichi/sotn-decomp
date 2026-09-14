@@ -19,6 +19,7 @@ from types import MappingProxyType
 from typing import Any, Optional
 
 try:  # package imports
+    from .search_mips_switch import recover_dispatches, split_local_tables
     from .search_archive import ArchiveError, ArtifactRef, ContentAddressedArchive
     from .search_donor_index import DONOR_VERSIONS
     from .search_donor_query import (
@@ -44,6 +45,7 @@ try:  # package imports
         validate_relative_path,
     )
 except ImportError:  # direct invocation from the automation directory
+    from search_mips_switch import recover_dispatches, split_local_tables  # type: ignore
     from search_archive import ArchiveError, ArtifactRef, ContentAddressedArchive  # type: ignore
     from search_donor_index import DONOR_VERSIONS  # type: ignore
     from search_donor_query import (  # type: ignore
@@ -790,7 +792,7 @@ def _strip_assembly_comment(line: str) -> str:
     return line
 
 
-def _parse_assembly(text: str) -> tuple[_Instruction, ...]:
+def _parse_assembly(text: str, *, retain_relocations: bool = False) -> tuple[_Instruction, ...]:
     if not isinstance(text, str):
         raise TargetEvidenceError("target assembly is not UTF-8 text")
     instructions: list[_Instruction] = []
@@ -804,7 +806,7 @@ def _parse_assembly(text: str) -> tuple[_Instruction, ...]:
         # embedded data. Unknown directives still refuse rendering below.
         if re.fullmatch(r"\.set\s+(?:noat|noreorder|nomacro)", line):
             continue
-        if _ASM_DATA_DIRECTIVE.match(line) or _ASM_RELOCATION.search(line):
+        if _ASM_DATA_DIRECTIVE.match(line) or (_ASM_RELOCATION.search(line) and not retain_relocations):
             # Preserve a deterministic query shape while marking the target
             # context as non-renderable.  The renderer will turn this typed
             # shape into target_context_unsupported, and the raw line never
@@ -828,7 +830,7 @@ def _parse_assembly(text: str) -> tuple[_Instruction, ...]:
             line = (label_match.group("tail") or "").strip()
             if not line:
                 continue
-            if _ASM_DATA_DIRECTIVE.match(line) or _ASM_RELOCATION.search(line):
+            if _ASM_DATA_DIRECTIVE.match(line) or (_ASM_RELOCATION.search(line) and not retain_relocations):
                 instructions.append(_Instruction("unsupported", "", pending_label, True))
                 pending_label = None
                 continue
@@ -869,7 +871,7 @@ def _parse_assembly(text: str) -> tuple[_Instruction, ...]:
         if not re.fullmatch(r"[a-z][a-z0-9.]*", mnemonic):
             pending_label = None
             continue
-        if has_numeric_branch_target(mnemonic, operands):
+        if has_numeric_branch_target(mnemonic, operands) or _ASM_RELOCATION.search(operands):
             instructions.append(_Instruction(mnemonic, operands, pending_label, True))
         else:
             instructions.append(_Instruction(mnemonic, operands, pending_label))
@@ -1183,7 +1185,7 @@ class _PointerValue:
     expression: str
 
 
-def _leaf_body(instructions, parameters, return_type, callees=None, layouts=None):
+def _leaf_body(instructions, parameters, return_type, callees=None, layouts=None, switches=None):
     """Lower bounded MIPS scalar paths without losing delay-slot dataflow.
 
     Values are unsigned 32-bit C expressions. Signed comparisons explicitly
@@ -1193,6 +1195,7 @@ def _leaf_body(instructions, parameters, return_type, callees=None, layouts=None
     """
     scalar_types = {"int", "signed int", "unsigned int", "s32", "u32"}
     layouts = layouts or {}
+    switches = switches or {}
     if (return_type not in scalar_types | {"void"} | set(layouts) or len(parameters) > 4
             or any(kind not in scalar_types and kind not in layouts for kind, _ in parameters)
             or len({name for _, name in parameters}) != len(parameters)
@@ -1210,7 +1213,9 @@ def _leaf_body(instructions, parameters, return_type, callees=None, layouts=None
     writable.update(preserved)
     aliases.update({str(16 + i): "s" + str(i) for i in range(8)})
     aliases.update({"r" + str(16 + i): "s" + str(i) for i in range(8)})
-    aliases.update({"29": "sp", "r29": "sp"})
+    aliases.update({"29": "sp", "r29": "sp", "1": "at", "r1": "at"})
+    for number, name in (*((8 + i, "t" + str(i)) for i in range(8)), (24, "t8"), (25, "t9")):
+        aliases.update({str(number): name, "r" + str(number): name})
     callees = callees or {}
     prototypes, temporaries = {}, []
     reserved_names = {name for _, name in parameters} | set(callees)
@@ -1452,6 +1457,30 @@ def _leaf_body(instructions, parameters, return_type, callees=None, layouts=None
             op, args = item.mnemonic, operands(item)
             if index + 1 >= len(instructions):
                 raise ValueError("missing delay slot")
+            if index in switches:
+                dispatch = switches[index]
+                selector = value_for(values, dispatch.selector)
+                # The guard slot runs on default and indexed paths. Capture
+                # the selector first because that slot may overwrite it.
+                step(index + 1, values, lines, indent)
+                default_values = dict(values)
+                case_values = dict(values)
+                # The skipped address calculation has no C data meaning.
+                # Refuse later reads until these scratch registers are written.
+                for name in (dispatch.address_register, dispatch.target_register):
+                    case_values[name] = "@jump-table-address"
+                visited.update(range(index + 2, dispatch.jump + 2))
+                lines.append(indent + "switch ((unsigned int)(" + selector + ")) {")
+                groups = {}
+                for case, label in enumerate(dispatch.targets):
+                    groups.setdefault(label, []).append(case)
+                for label, cases in groups.items():
+                    for case in cases:
+                        lines.append(indent + "case " + str(case) + ":")
+                    lines.extend(path(labels[label], dict(case_values), indent + "    "))
+                lines.append(indent + "default:")
+                lines.extend(path(labels[dispatch.default_label], default_values, indent + "    "))
+                return lines + [indent + "}"]
             if op == "jal":
                 if (len(args) != 1 or args[0] not in callees or args[0] in labels
                         or args[0] in {name for _, name in parameters}):
@@ -1592,7 +1621,17 @@ def _deterministic_local_draft(
     except UnicodeDecodeError:
         return None
     return_type, parameters = _declaration_context(context, claims)
-    body = _leaf_body(_parse_assembly(text), parameters, return_type, context.declarations.get("call_declarations"), context.declarations.get("pointer_layouts"))
+    try:
+        code, tables = split_local_tables(text, _strip_assembly_comment)
+        instructions = _parse_assembly(code, retain_relocations=bool(tables))
+        switches = recover_dispatches(instructions, tables)
+        proven_relocations = {branch + offset for branch in switches for offset in (2, 4)}
+        instructions = tuple(replace(item, unsupported=False) if i in proven_relocations else item
+                             for i, item in enumerate(instructions))
+    except ValueError:
+        return None
+    body = _leaf_body(instructions, parameters, return_type, context.declarations.get("call_declarations"),
+                      context.declarations.get("pointer_layouts"), switches)
     if body is None:
         return None
     parameter_text = "void" if not parameters else ", ".join(

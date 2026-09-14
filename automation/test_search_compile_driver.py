@@ -12,6 +12,27 @@ from automation.search_permuter_executor import REPOSITORY_COMPILE_WRAPPER_BYTES
 
 
 class CompileDriverTests(unittest.TestCase):
+    def test_recovered_switch_compiles_with_actual_psx_toolchain(self):
+        from automation.search_target_renderer import deterministic_local_draft
+        from automation.test_search_target_renderer import SWITCH_ASM, SWITCH_DECLARATIONS
+        draft = deterministic_local_draft(SWITCH_ASM, symbol="switch_fixture", declarations=SWITCH_DECLARATIONS)
+        self.assertIsNotNone(draft)
+        self.assertIn("switch (", draft)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            wrapper, source, output = root / "compile.sh", root / "switch.c", root / "switch.o"
+            wrapper.write_bytes(REPOSITORY_COMPILE_WRAPPER_BYTES)
+            wrapper.chmod(0o700)
+            source.write_text(draft, encoding="utf-8")
+            result = subprocess.run([str(wrapper), str(source), "-o", str(output)], env={
+                **os.environ, "SOTN_REPO_ROOT": str(ROOT),
+                "SOTN_COMPILER_IDENTITY": pipeline_identity().identity, "TMPDIR": directory,
+            }, capture_output=True, timeout=60)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            _rows, count = _normalized_disassembly(output, symbol="switch_fixture")
+            self.assertGreater(count, 0)
+
+
     def test_real_us_preprocessor_captures_header_types_in_private_context(self):
         from automation.compiler_corpus import DEFAULT_CONFIG_PATH
         from automation.search_source_context import preprocess_target_context, target_declaration

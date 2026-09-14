@@ -685,7 +685,7 @@ class IndexedRuntimePublicationTests(unittest.TestCase):
                 renderer_path.write_bytes(renderer_bytes)
 
             from automation.search_target_layout import LAYOUT_DEPENDENCIES
-            for relative in ("automation/search_source_context.py", *LAYOUT_DEPENDENCIES):
+            for relative in ("automation/search_source_context.py", "automation/search_mips_switch.py", *LAYOUT_DEPENDENCIES):
                 path = repo / relative
                 original = path.read_bytes()
                 try:

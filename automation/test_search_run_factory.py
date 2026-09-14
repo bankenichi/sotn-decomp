@@ -99,7 +99,7 @@ class FactoryFixture(unittest.TestCase):
         for module in ("scorer.py", "objdump.py"):
             (vendor / module).write_text("IMPLEMENTATION = 1\n", encoding="utf-8")
         actual_repo = Path(__file__).resolve().parents[1]
-        for relative in _factory.LAYOUT_DEPENDENCIES:
+        for relative in (*_factory.LAYOUT_DEPENDENCIES, "automation/search_mips_switch.py"):
             path = self.repo / relative
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes((actual_repo / relative).read_bytes())
@@ -314,6 +314,43 @@ class FactoryFixture(unittest.TestCase):
             load_target_index(archive, manifest)
         with self.assertRaises(PartialRunRefusal):
             self.create("call-context", ids=[IDS[0]], lanes=["permuter_targeted", "bounded_synthesis"])
+
+    def test_switch_seed_reconstructs_without_live_assembly_or_case_extraction(self):
+        from automation.search_archive import ContentAddressedArchive
+        from automation.search_provider_lanes import reconstruct_lane_adapters
+        from automation.search_target_renderer import load_target_index, deterministic_local_draft, TargetEvidenceError
+        from automation.search_lanes import Recipient
+        from automation.test_search_target_renderer import SWITCH_ASM
+        source = self.repo / "src/st/rno0/unit_a.c"
+        source.parent.mkdir(parents=True)
+        context = b"unsigned int func_a(unsigned int selector, unsigned int bias);\n"
+        source.write_bytes(context)
+        assembly = SWITCH_ASM.replace("glabel fn", "glabel func_a").replace(".size fn, . - fn", ".size func_a, . - func_a").encode()
+        asm = self.repo / "asm/us/st/rno0/nonmatchings/unit_a/func_a.s"
+        asm.write_bytes(assembly)
+        with mock.patch("automation.search_source_context.preprocess_target_context", return_value=context):
+            result = self.create("switch-context", ids=[IDS[0]], lanes=["permuter_targeted", "bounded_synthesis"])
+        root = Path(result["run_root"])
+        archive = ContentAddressedArchive(root)
+        manifest = RunManifest.from_dict(result["manifest"])
+        source.unlink()
+        asm.unlink()
+        with mock.patch("automation.search_source_context.preprocess_target_context", side_effect=AssertionError("live preprocessing")):
+            target = load_target_index(archive, manifest).records[0]
+            draft = deterministic_local_draft(target.assembly_bytes, symbol="func_a", declarations=target.declarations)
+            self.assertIn("switch (", draft)
+            adapters = reconstruct_lane_adapters(manifest, root)
+            recipient = Recipient(IDS[0], "ST/RNO0", "func_a")
+            item = adapters.permuter_targeted.__self__._input_for(recipient)
+            self.assertEqual(item.seed_source, draft)
+            # A branch-local return must never become an unconditional seed.
+            self.assertFalse(adapters.bounded_synthesis(recipient)["candidates"])
+            self.assertTrue(self.create("switch-context", ids=[IDS[0]],
+                                        lanes=["permuter_targeted", "bounded_synthesis"])["idempotent"])
+        table_path = root / target.assembly.path
+        table_path.write_bytes(assembly.replace(b".word .Lfirst", b".word .Lsecond", 1))
+        with self.assertRaises(TargetEvidenceError):
+            load_target_index(archive, manifest)
 
     def test_member_seed_and_index_projection_reconstruct_from_us_archive(self):
         from automation.search_archive import ContentAddressedArchive
@@ -1105,6 +1142,22 @@ class FactoryFixture(unittest.TestCase):
     def test_source_drift_is_refused_before_adapter_or_task_start(self) -> None:
         result = self.create("source-drift", ids=[IDS[0]], lanes=[LANES[0]])
         (self.repo / "src" / "source.c").write_text("int changed;\n", encoding="utf-8")
+        self._runtime_refusal(result, lambda: None)
+
+    def test_pre_switch_archive_remains_evidence_but_cannot_dispatch_current_code(self):
+        old_core = tuple((path, key) for path, key in _factory._CORE_MODULES if key != "target_switch_source")
+        with mock.patch.object(_factory, "_CORE_MODULES", old_core):
+            result = self.create("pre-switch-archive", ids=[IDS[0]], lanes=[LANES[0]])
+        root = Path(result["run_root"])
+        manifest = RunManifest.from_dict(result["manifest"])
+        self.assertNotIn("target_switch_source", manifest.tool_identities)
+        _factory.verify_factory_archive(root, manifest)
+        self._runtime_refusal(result, lambda: None)
+
+    def test_switch_reader_drift_is_refused_before_adapter_or_task_start(self) -> None:
+        result = self.create("switch-reader-drift", ids=[IDS[0]], lanes=[LANES[0]])
+        path = self.repo / "automation/search_mips_switch.py"
+        path.write_bytes(path.read_bytes() + b"# changed switch interpretation\n")
         self._runtime_refusal(result, lambda: None)
 
     def test_target_drift_is_refused_before_adapter_or_task_start(self) -> None:

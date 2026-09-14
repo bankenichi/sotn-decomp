@@ -159,6 +159,149 @@ def _claim() -> DonorSemanticClaim:
     return DonorSemanticClaim.from_evidence(evidence)
 
 
+
+# Authored from the local SOTN assembly format and MIPS instruction semantics.
+SWITCH_ASM = """.set noat
+.set noreorder
+.section .rodata
+.align 2
+glabel jtbl_fixture
+.word .Lfirst
+.word .Lsecond
+.word .Lfirst
+.size jtbl_fixture, . - jtbl_fixture
+.section .text
+glabel fn
+sltiu $v0, $a0, 3
+beqz $v0, .Ldefault
+sll $v0, $a0, 2
+lui $at, %hi(jtbl_fixture)
+addu $at, $at, $v0
+lw $v0, %lo(jtbl_fixture)($at)
+nop
+jr $v0
+nop
+.Lfirst:
+addiu $v0, $a1, 3
+jr $ra
+addiu $v0, $v0, 1
+.Lsecond:
+addiu $v0, $a1, -7
+jr $ra
+nop
+.Ldefault:
+addiu $v0, $a1, 100
+jr $ra
+nop
+.size fn, . - fn
+"""
+SWITCH_DECLARATIONS = {
+    "return_type": "unsigned int",
+    "parameters": [{"type": "unsigned int", "name": "selector"},
+                   {"type": "unsigned int", "name": "bias"}],
+}
+
+
+class IndependentSwitchTests(unittest.TestCase):
+    def test_local_table_produces_archived_candidate_and_replays(self):
+        context = b"unsigned int fn(unsigned int selector, unsigned int bias);"
+        temp, archive, manifest, index = _target_fixture(SWITCH_ASM.encode(), context_bytes=context)
+        try:
+            result = render_target_candidate(manifest, index, _recipient(), (_claim(),), lane="cfg_dataflow")
+            self.assertIsInstance(result, LaneCandidate)
+            self.assertIn("switch (", result.source)
+            self.assertIn("case 0:", result.source)
+            self.assertIn("case 2:", result.source)
+            self.assertNotIn("jtbl_fixture", result.source)
+            replay = render_target_candidate(manifest, load_target_index(archive, manifest),
+                                             _recipient(), (_claim(),), lane="cfg_dataflow")
+            self.assertEqual(result, replay)
+        finally:
+            temp.cleanup()
+
+    def test_real_us_dispatch_and_unreachable_alignment_word(self):
+        from automation.search_mips_switch import recover_dispatches, split_local_tables
+        from automation.search_target_renderer import _strip_assembly_comment
+        sample = Path(__file__).resolve().parents[1] / "asm/us/boss/bo0/nonmatchings/2D26C/func_us_801AE858.s"
+        if not sample.is_file():
+            self.skipTest("generated US assembly unavailable")
+        code, tables = split_local_tables(sample.read_text(), _strip_assembly_comment)
+        dispatches = recover_dispatches(_parse_assembly(code, retain_relocations=True), tables)
+        self.assertEqual(len(dispatches), 1)
+        dispatch = next(iter(dispatches.values()))
+        self.assertEqual(dispatch.targets, (".Lus_801AE8B4", ".Lus_801AEB90", ".Lus_801AEBE0",
+                                           ".Lus_801AEC64", ".Lus_801AEE48"))
+        # Recovering the dispatch does not make this large function renderable.
+        self.assertIsNone(deterministic_local_draft(sample.read_text(), symbol="fn",
+                                                   declarations=SWITCH_DECLARATIONS))
+
+    def test_register_spellings_and_guard_forms_preserve_switch(self):
+        variants = [
+            SWITCH_ASM.replace("beqz $v0, .Ldefault", "beq $zero, $v0, .Ldefault"),
+            SWITCH_ASM.replace("addu $at, $at, $v0", "addu $at, $v0, $at"),
+            SWITCH_ASM.replace(".size jtbl_fixture", ".word 0x00000000\n.size jtbl_fixture"),
+            SWITCH_ASM.replace("$at", "$1"),
+            SWITCH_ASM.replace("$a0", "r4").replace("$v0", "r2"),
+        ]
+        for assembly in variants:
+            self.assertIsNotNone(deterministic_local_draft(assembly, symbol="fn",
+                                                          declarations=SWITCH_DECLARATIONS))
+        for replacement in (".word 0", ".word 0x00000000"):
+            bad = SWITCH_ASM.replace(".word .Lsecond", replacement)
+            self.assertIsNone(deterministic_local_draft(bad, symbol="fn", declarations=SWITCH_DECLARATIONS))
+
+    def test_compiled_cases_default_and_selector_normalization(self):
+        compiler = shutil.which("gcc") or shutil.which("cc")
+        if not compiler:
+            self.skipTest("host C compiler unavailable")
+        with tempfile.TemporaryDirectory(prefix="switch-semantics-") as directory:
+            root = Path(directory)
+            sources = []
+            for name, assembly in (("direct", SWITCH_ASM),
+                                   ("normalized", SWITCH_ASM.replace(
+                                       "sltiu $v0, $a0, 3", "addiu $a0, $a0, -3\nsltiu $v0, $a0, 3"))):
+                source = deterministic_local_draft(assembly, symbol=name, declarations=SWITCH_DECLARATIONS)
+                self.assertIsNotNone(source)
+                sources.append(source)
+            (root / "cases.c").write_text("\n".join(sources), encoding="utf-8")
+            subprocess.run([compiler, "-std=c89", "-O2", "-Wall", "-Werror", "-shared", "-fPIC",
+                            str(root / "cases.c"), "-o", str(root / "cases.so")], check=True,
+                           capture_output=True, text=True)
+            library = ctypes.CDLL(str(root / "cases.so"))
+            for name, offset in (("direct", 0), ("normalized", 3)):
+                function = getattr(library, name)
+                function.argtypes = [ctypes.c_uint32, ctypes.c_uint32]
+                function.restype = ctypes.c_uint32
+                for selector in (0, 1, 2, 3, 4, 5, 6, 0x7fffffff, 0x80000000, 0xffffffff):
+                    index = (selector - offset) & 0xffffffff
+                    for bias in (0, 1, 0x7fffffff, 0x80000000, 0xffffffff):
+                        expected = (bias + (4 if index in (0, 2) else -7 if index == 1 else 100)) & 0xffffffff
+                        self.assertEqual(function(selector, bias), expected, (name, selector, bias))
+
+    def test_unproved_switches_refuse_instead_of_erasing_data(self):
+        bad = {
+            "wrong bound": SWITCH_ASM.replace("$a0, 3", "$a0, 4"),
+            "wrong index": SWITCH_ASM.replace("sll $v0, $a0", "sll $v0, $a1"),
+            "wrong scale": SWITCH_ASM.replace("$a0, 2", "$a0, 1"),
+            "wrong table": SWITCH_ASM.replace("%lo(jtbl_fixture)", "%lo(other_table)"),
+            "missing load delay": SWITCH_ASM.replace("nop\njr $v0", "jr $v0"),
+            "jump slot side effect": SWITCH_ASM.replace("jr $v0\nnop", "jr $v0\naddiu $a1, $a1, 1"),
+            "unknown target": SWITCH_ASM.replace(".word .Lsecond", ".word .Lexternal"),
+            "table expression": SWITCH_ASM.replace(".word .Lsecond", ".word .Lsecond + 4"),
+            "writable table": SWITCH_ASM.replace(".section .rodata", ".section .data"),
+            "backward case": SWITCH_ASM.replace("glabel fn\nsltiu", "glabel fn\n.Lentry:\nsltiu").replace(
+                ".word .Lsecond", ".word .Lentry"),
+            "dispatch interior entry": SWITCH_ASM.replace("lui $at", ".Linside:\nlui $at"),
+            "address value escapes": SWITCH_ASM.replace("addiu $v0, $a1, 3", "addu $v0, $at, $zero"),
+            "jump value escapes": SWITCH_ASM.replace("addiu $v0, $a1, 3", "addiu $a1, $a1, 3"),
+            "extra data": SWITCH_ASM.replace(".section .text", ".byte 17\n.section .text"),
+            "duplicate table": SWITCH_ASM.replace(".section .text", "glabel jtbl_fixture\n.word .Lfirst\n.section .text"),
+        }
+        for reason, assembly in bad.items():
+            with self.subTest(reason=reason):
+                self.assertIsNone(deterministic_local_draft(assembly, symbol="fn", declarations=SWITCH_DECLARATIONS))
+
+
 class TargetQueryTests(unittest.TestCase):
     def test_query_uses_archived_target_only_and_binds_recipient(self) -> None:
         temp, _archive, manifest, target_index = _target_fixture()

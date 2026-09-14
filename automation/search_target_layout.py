@@ -19,6 +19,7 @@ LAYOUT_DEPENDENCIES = (
         "ast_transforms", "lextab", "yacctab", "ply/__init__", "ply/lex", "ply/yacc")),
 )
 RENDERER_DEPENDENCIES = (
+    "automation/search_mips_switch.py",
     "automation/search_target_renderer.py", "automation/search_source_context.py",
     *LAYOUT_DEPENDENCIES,
 )

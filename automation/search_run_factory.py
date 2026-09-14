@@ -126,6 +126,7 @@ try:
     from .search_target_layout import LAYOUT_DEPENDENCIES
 except ImportError:
     from automation.search_target_layout import LAYOUT_DEPENDENCIES
+_CORE_MODULES += (("automation/search_mips_switch.py", "target_switch_source"),)
 _CORE_MODULES += tuple((path, "target_layout_" + str(index)) for index, path in enumerate(LAYOUT_DEPENDENCIES))
 _LANE_MODULES = {
     "idiom_atlas": (
@@ -1843,6 +1844,11 @@ def _verify_existing_artifacts(
         bound_core = _CORE_MODULES
         if not any(key.startswith("target_layout_") for key in (expected_tool_identities or {})):
             bound_core = tuple((path, key) for path, key in _CORE_MODULES if path not in LAYOUT_DEPENDENCIES)
+        # Completed pre-switch gates remain evidence for later publication.
+        # verify_factory_runtime still measures the current dependency set and
+        # refuses to execute an archive missing the switch reader binding.
+        if "target_switch_source" not in (expected_tool_identities or {}):
+            bound_core = tuple((path, key) for path, key in bound_core if key != "target_switch_source")
         expected_core_paths = {path for path, _key in bound_core}
         if set(core_modules) != expected_core_paths:
             raise PartialRunRefusal("core tool evidence coverage is invalid")

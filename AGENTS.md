@@ -120,6 +120,17 @@ These are absolute. Each exists because breaking it cost real work.
     Do not expand target admission, source preparation or landing to them.
     Cross-platform work means harvesting and adapting donor evidence for US,
     not decompiling every platform represented in the donor index.
+25. **Honor the owner's selected tool route in actions, not acknowledgments.**
+    On September 14 the owner explicitly directed this session to use normal
+    local tools for non-Git file inspection and editing. The lead acknowledged
+    that direction but continued calling connector `read_file` and `write_file`.
+    This liberty is reserved for **Astra and Fable only**. Those models may use
+    normal local tools for non-Git work and must use normal file tools and
+    `apply_patch` when the owner directs that route. All other models retain
+    the existing connector and sandbox restrictions. Git remains on `sotn-cmd`
+    for every model, and canonical WSL build execution and background job
+    controls remain applicable. This limited override of constraint 2 does
+    not permit a different build machine or weaken the exact pre-push gate.
 
 ## 3. Where everything is
 
