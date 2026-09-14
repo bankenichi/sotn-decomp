@@ -16,7 +16,8 @@ WHY THIS EXISTS
     us. It is a copy, and the build says whether the copy is right.
 
 WHAT THIS DOES
-    For every unmatched record in the queue, asks whether upstream/master has
+    For every unmatched record in the queue, asks whether the comparison ref
+    (upstream/master by default, any explicit ref with --ref) has
     a REAL definition rather than an INCLUDE_ASM stub, and reports the ones it
     does. The default report is read-only. `--publish <record-id> --apply`
     substitutes only that definition into the target translation unit and
@@ -37,6 +38,7 @@ NOT A MATCH ORACLE
 Usage:
     python3 automation/upstream_harvest.py
     python3 automation/upstream_harvest.py --overlay rno0
+    python3 automation/upstream_harvest.py --ref 9cd0decb --overlay rbo7
     python3 automation/upstream_harvest.py --show <function>
     python3 automation/upstream_harvest.py --overlay ST/RNO0 \
         --publish <function> --apply
@@ -59,8 +61,11 @@ if not Path(PYTHON).exists():                                # pragma: no cover
     PYTHON = sys.executable
 
 UPSTREAM = "upstream/master"
+DEFAULT_REF = UPSTREAM
+REF = UPSTREAM
 ARTIFACT_SCHEMA = "upstream-harvest-v4-preserved-overlay-conditionals"
 _UPSTREAM_COMMIT = ""
+_CACHE_REF = ""
 
 sys.path.insert(0, str(REPO / "automation"))
 from artifact_store import candidate_path, publish_versioned_artifact  # noqa: E402
@@ -79,13 +84,42 @@ def _git(*args: str, timeout: int = 120) -> str:
 
 
 def upstream_commit() -> str:
-    """Resolve the moving upstream name once, then use its immutable object ID."""
+    """Resolve the active ref once, then use its immutable object ID."""
     global _UPSTREAM_COMMIT
     if not _UPSTREAM_COMMIT:
-        value = _git("rev-parse", UPSTREAM).strip()
+        # --verify: bare rev-parse echoes even a nonexistent 40-hex input,
+        # which would let a typo'd pin compare against nothing and report
+        # an empty harvest as a finding.
+        value = _git("rev-parse", "--verify", "--quiet", REF + "^{commit}").strip()
         if re.fullmatch(r"[0-9a-fA-F]{40}", value):
             _UPSTREAM_COMMIT = value.lower()
     return _UPSTREAM_COMMIT
+
+
+_REF_SHAPE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_./~^-]{0,99}$")
+
+
+def set_ref(value: str) -> str:
+    """Point every comparison at one explicit ref for this process.
+
+    The default stays `upstream/master`, so existing callers behave exactly
+    as before. Switching refs drops the resolved commit and all ref-derived
+    caches: a definition index built from one tree must never answer for
+    another. Returns the resolved immutable commit, or "" when the ref is
+    unknown locally (the caller reports it and suggests git_fetch).
+    """
+    global REF, _UPSTREAM_COMMIT, _CACHE_REF, _UF_PATHS, _US_CACHE
+    if not isinstance(value, str) or not _REF_SHAPE.fullmatch(value):
+        raise ValueError(
+            "ref must look like upstream/master or a full commit SHA")
+    if value != _CACHE_REF:
+        _CACHE_REF = value
+        _UPSTREAM_COMMIT = ""
+        _UF_PATHS = None
+        _US_CACHE = None
+        _UF_CACHE.clear()
+    REF = value
+    return upstream_commit()
 
 
 def artifact_is_current(text: str, record_id: str, path: str,
@@ -211,12 +245,12 @@ def harvest(overlay: str = "") -> list[tuple[str, str, str]]:
 
 
 def report(overlay: str = "") -> int:
-    ref = _git("rev-parse", "--short", UPSTREAM).strip()
+    ref = _git("rev-parse", "--short", REF).strip()
     if not ref:
-        print(f"cannot resolve {UPSTREAM}; run git_fetch first")
+        print(f"cannot resolve {REF}; run git_fetch first")
         return 1
-    behind = _git("rev-list", "--count", f"HEAD..{UPSTREAM}").strip()
-    print(f"upstream/master {ref}, {behind} commits ahead of HEAD\n")
+    behind = _git("rev-list", "--count", f"HEAD..{REF}").strip()
+    print(f"{REF} {ref}, {behind} commits ahead of HEAD\n")
 
     rows = harvest(overlay)
     if not rows:
@@ -239,7 +273,7 @@ def report(overlay: str = "") -> int:
     for _fn, ovl, _p in rows:
         by_ovl[ovl] = by_ovl.get(ovl, 0) + 1
     spread = "  ".join(f"{o} {n}" for o, n in sorted(by_ovl.items()))
-    print(f"\nSUMMARY  {len(rows)} harvestable  from upstream/master {ref} "
+    print(f"\nSUMMARY  {len(rows)} harvestable  from {REF} {ref} "
           f"({behind} commits ahead)  |  {spread}")
     return 0
 
@@ -254,9 +288,9 @@ def show(fn: str) -> int:
     ref = upstream_commit()
     body = _git("show", f"{ref}:{path}")
     if not body:
-        print(f"could not read {path} at {UPSTREAM}")
+        print(f"could not read {path} at {REF}")
         return 1
-    print(f"=== {UPSTREAM}:{path} ===\n")
+    print(f"=== {REF}:{path} ===\n")
     print(body)
     return 0
 
@@ -295,7 +329,7 @@ def publish(record_id: str, apply: bool = False,
         return 1
     ref = upstream_commit()
     if not ref:
-        print(f"cannot resolve {UPSTREAM}; run git_fetch first")
+        print(f"cannot resolve {REF}; run git_fetch first")
         return 1
     source = _git("show", f"{ref}:{path}")
     body = _candidate_body(source, base, fn)
@@ -325,7 +359,7 @@ def publish(record_id: str, apply: bool = False,
         "   method : METHOD=UPSTREAM-HARVEST\n"
         f"   generator: {ARTIFACT_SCHEMA}\n"
         f"   record : {record_id}\n"
-        f"   upstream: {UPSTREAM}\n"
+        f"   upstream: {REF}\n"
         f"   source : {ref}:{path}\n"
         f"   target : {target_rel}\n"
         "   content: WHOLE FILE (stub substituted, declarations complete)\n"
@@ -388,7 +422,7 @@ def republish_artifact(path_text: str, apply: bool = False) -> int:
     base = re.sub(r"_from_\w+$", "", fn)
     ref = upstream_commit()
     if not ref:
-        print(f"cannot resolve {UPSTREAM}; run git_fetch first")
+        print(f"cannot resolve {REF}; run git_fetch first")
         return 1
     source = _git("show", f"{ref}:{source_path}")
     body = _candidate_body(source, base, fn)
@@ -418,7 +452,7 @@ def republish_artifact(path_text: str, apply: bool = False) -> int:
         "   method : METHOD=UPSTREAM-HARVEST\n"
         f"   generator: {ARTIFACT_SCHEMA}\n"
         f"   record : {record_id}\n"
-        f"   upstream: {UPSTREAM}\n"
+        f"   upstream: {REF}\n"
         f"   source : {ref}:{source_path}\n"
         f"   target : {target_rel}\n"
         "   content: WHOLE FILE (definition refreshed, declarations complete)\n"
@@ -472,7 +506,7 @@ def publish_file(path_text: str, apply: bool = False,
 
     ref = upstream_commit()
     if not ref:
-        print(f"cannot resolve {UPSTREAM}; run git_fetch first")
+        print(f"cannot resolve {REF}; run git_fetch first")
         return 1
 
     records = {
@@ -650,7 +684,7 @@ def write_provenance_manifest(path_text: str) -> int:
         return 1
     preferred = upstream_commit()
     if not preferred:
-        print(f"cannot resolve {UPSTREAM}; run git_fetch first")
+        print(f"cannot resolve {REF}; run git_fetch first")
         return 1
 
     source_cache: dict[tuple[str, str], str] = {}
@@ -753,7 +787,7 @@ def write_provenance_manifest(path_text: str) -> int:
 
     document = {
         "generator": "automation/upstream_harvest.py --provenance-manifest",
-        "upstream_ref": UPSTREAM,
+        "upstream_ref": REF,
         "upstream_head_at_generation": preferred,
         "artifacts": records,
         "summary": {"artifacts": len(records),
@@ -1021,9 +1055,9 @@ def compare_matched(limit: int = 0) -> int:
     A field they name and we call `unkNN` is a concrete, checkable upgrade,
     not an opinion.
     """
-    ref = _git("rev-parse", "--short", UPSTREAM).strip()
+    ref = _git("rev-parse", "--short", REF).strip()
     if not ref:
-        print(f"cannot resolve {UPSTREAM}; run git_fetch first")
+        print(f"cannot resolve {REF}; run git_fetch first")
         return 1
 
     r = subprocess.run(
@@ -1081,7 +1115,7 @@ def compare_matched(limit: int = 0) -> int:
             "our_lines": otext.count("\n"), "up_lines": utext.count("\n"),
         })
 
-    print(f"upstream/master {ref}\n")
+    print(f"{REF} {ref}\n")
     if not rows:
         print("no matched function of ours is also decompiled upstream; "
               "nothing to compare")
@@ -1354,6 +1388,39 @@ def self_test() -> int:
     ck("cannot resolve" in src and "git_fetch first" in src,
        "a missing upstream ref is reported, not silently treated as empty")
 
+    print("\n--ref selects one comparison tree per process")
+    saved_ref_state = (REF, _CACHE_REF, _UPSTREAM_COMMIT, _UF_PATHS,
+                       dict(_UF_CACHE), _US_CACHE)
+    try:
+        try:
+            set_ref("has a space")
+            rejected_shape = False
+        except ValueError:
+            rejected_shape = True
+        ck(rejected_shape, "a ref with shell-hostile characters is refused")
+        ck(set_ref("HEAD") != "" and REF == "HEAD",
+           "HEAD resolves through the same path as upstream/master")
+        globals()["_UF_PATHS"] = {"fn": ["src/x.c"]}
+        _UF_CACHE[("HEAD", "")] = {}
+        globals()["_US_CACHE"] = {"fn"}
+        set_ref(DEFAULT_REF)
+        ck(_UF_PATHS is None and _US_CACHE is None and not _UF_CACHE,
+           "switching refs drops the previous tree's definition caches")
+        ck(upstream_commit() != "" and REF == DEFAULT_REF,
+           "the default ref resolves again after a switch")
+        ck(set_ref("deadbeef" * 5) == "",
+           "an unknown local ref resolves to empty, not to a guess")
+    finally:
+        (saved_ref, saved_cache_ref, saved_commit, saved_paths,
+         saved_cache, saved_stubs) = saved_ref_state
+        globals()["_CACHE_REF"] = saved_cache_ref
+        globals()["_UPSTREAM_COMMIT"] = saved_commit
+        globals()["_UF_PATHS"] = saved_paths
+        globals()["_US_CACHE"] = saved_stubs
+        _UF_CACHE.clear()
+        _UF_CACHE.update(saved_cache)
+        globals()["REF"] = saved_ref
+
     print()
     if fails:
         print(f"{len(fails)} FAILED:")
@@ -1369,6 +1436,10 @@ def main() -> int:
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--overlay", default="", help="filter, e.g. rno0")
+    ap.add_argument("--ref", default=DEFAULT_REF,
+                    help="comparison ref: upstream/master (default), a pinned "
+                         "commit SHA, or any locally available ref such as a "
+                         "merged PR commit")
     ap.add_argument("--show", help="print upstream's file for one function")
     ap.add_argument("--publish",
                     help="unmatched function to publish; requires --overlay")
@@ -1390,6 +1461,10 @@ def main() -> int:
     a = ap.parse_args()
     if a.self_test:
         return self_test()
+    try:
+        set_ref(a.ref)
+    except ValueError as exc:
+        ap.error(str(exc))
     if a.show:
         return show(a.show)
     if a.provenance_manifest:
