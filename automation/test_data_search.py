@@ -133,6 +133,35 @@ class DataSearchTests(unittest.TestCase):
         with self.assertRaisesRegex(ds.DataSearchError, "another request"):
             ds.search(self.repo, "test", version="us", target="sta", stem="thing")
 
+    def test_boss_overlay_target_discovers_calibrated_range(self):
+        pattern = bytes(range(8, 16))
+        self.config("boadonor1", b"C" * 8 + pattern + b"c" * 8, 8, "e_boss")
+        self.config("boadonor2", b"D" * 8 + pattern + b"d" * 8, 8, "e_boss")
+        self.config("bobo0", b"E" * 8 + pattern + b"e" * 8, 8, None)
+        # Rename donor configs to boss-overlay target names: the discovery
+        # glob must treat bobo0 like any stage target.
+        (self.repo / "config/splat.us.boadonor1.yaml").rename(
+            self.repo / "config/splat.us.bobo1.yaml")
+        (self.repo / "config/splat.us.boadonor2.yaml").rename(
+            self.repo / "config/splat.us.bobo2.yaml")
+        result = ds.search(self.repo, "boss", version="us", target="bobo0", stem="e_boss")
+        self.assertEqual(result["funnel"]["eligible"], 1)
+        candidate = result["candidates"][0]
+        self.assertEqual(candidate["range"], {"start": 8, "end": 16, "ownership": "inferred"})
+        self.assertEqual(ds.verify(self.repo / ds.STORE / "boss"), result)
+
+    def test_rodata_section_search_end_to_end(self):
+        pattern = bytes(range(16, 24))
+        self.config("rodonor1", b"G" * 8 + pattern + b"g" * 8, 8, "e_table", kind="rodata")
+        self.config("rodonor2", b"H" * 8 + pattern + b"h" * 8, 8, "e_table", kind="rodata")
+        self.config("rotarget", b"I" * 8 + pattern + b"i" * 8, 8, None, kind="rodata")
+        result = ds.search(
+            self.repo, "rodata", version="us", target="rotarget",
+            stem="e_table", section="rodata")
+        self.assertEqual(result["funnel"]["eligible"], 1)
+        self.assertEqual(result["candidates"][0]["section"], "rodata")
+        self.assertEqual(ds.verify(self.repo / ds.STORE / "rodata"), result)
+
     def test_config_preparation_splits_only_calibrated_data_range(self):
         from automation.data_landing import _splice_config
         raw = b"segments:\n  - [0x0, data]\n  - [0x30, c, thing]\n"
