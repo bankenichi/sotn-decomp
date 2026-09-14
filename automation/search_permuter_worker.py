@@ -34,6 +34,8 @@ def load_events(archive: ContentAddressedArchive, session_identity: str):
         if path.is_symlink() or not path.is_file() or path.suffix != ".json":
             raise ValueError("permuter event archive contains an unexpected entry")
         raw = path.read_bytes()
+        if path.stem != hash_bytes(raw).split(":")[1]:
+            raise ValueError("permuter event filename differs from content")
         reference = ArtifactRef(
             hash_bytes(raw), path.relative_to(archive.run_root).as_posix(), "application/json", len(raw),
         )
@@ -51,6 +53,42 @@ def load_events(archive: ContentAddressedArchive, session_identity: str):
     if [event["iteration"] for _, event in events] != list(range(1, len(events) + 1)):
         raise ValueError("permuter evaluation sequence is not contiguous")
     return events
+
+
+def best_so_far_improvements(events):
+    """Strictly improving successful evaluations in iteration order.
+
+    Lower ``total`` is better and a score of zero is best. Failed or
+    unmeasured evaluations (``total`` is not an int) never count as an
+    improvement, and ties keep the earlier best instead of adding a new
+    attribution. Each returned entry carries the iteration, the new best
+    total, the content-addressed evaluation artifact, and the measured
+    source artifact so sparse improvements stay attributable without
+    re-reading the archive.
+
+    Args:
+        events: ``(reference, event)`` pairs as returned by
+            :func:`load_events`, in iteration order.
+
+    Returns:
+        A list of ``{"iteration", "total", "evaluation_artifact",
+        "source"}`` dicts, one per new best.
+    """
+    improvements = []
+    best = None
+    for reference, event in events:
+        total = event.get("score", {}).get("total")
+        if not isinstance(total, int) or isinstance(total, bool):
+            continue
+        if best is None or total < best:
+            best = total
+            improvements.append({
+                "iteration": event["iteration"],
+                "total": total,
+                "evaluation_artifact": reference.to_dict(),
+                "source": event.get("source"),
+            })
+    return improvements
 
 
 def execute_strategy(base, mutate, evaluate, *, strategy, operation):

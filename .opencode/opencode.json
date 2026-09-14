@@ -4,6 +4,16 @@
     "coding-assistant": { "enabled": false },
     "proton-suite": { "enabled": false },
     "vision": { "enabled": false },
-    "sotn": { "enabled": false }
+    "sotn": { "enabled": false },
+    "servers": {
+      "sotn-cmd": {
+        "type": "local",
+        "command": ["wsl.exe", "-d", "Ubuntu-24.04", "-e", "bash", "-lc", "SOTN_CMD_DRYRUN=0 SOTN_CMD_MAXOUT=20000 /mnt/c/Users/kenic/Documents/SOTN-Decomp/automation/mcp/.venv/bin/python /mnt/c/Users/kenic/Documents/SOTN-Decomp/automation/mcp/sotn_cmd_mcp.py"],
+        "timeout": {
+          "startup": 45000,
+          "execution": 3600000
+        }
+      }
+    }
   }
 }
