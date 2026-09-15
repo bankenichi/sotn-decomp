@@ -315,6 +315,46 @@ class FactoryFixture(unittest.TestCase):
         with self.assertRaises(PartialRunRefusal):
             self.create("call-context", ids=[IDS[0]], lanes=["permuter_targeted", "bounded_synthesis"])
 
+    def test_loop_call_seed_reconstructs_from_us_archive(self):
+        from automation.search_archive import ContentAddressedArchive
+        from automation.search_provider_lanes import reconstruct_lane_adapters
+        from automation.search_target_renderer import load_target_index, deterministic_local_draft, TargetEvidenceError
+        from automation.search_lanes import Recipient
+        source = self.repo / "src/st/rno0/unit_a.c"
+        source.parent.mkdir(parents=True)
+        context = b"int func_a(int value);\nint callee(int value);\n"
+        source.write_bytes(context)
+        from automation.test_search_target_renderer import LoopLoweringTests
+        assembly = (LoopLoweringTests.CALL_PREFIX + ".Ltop:\njal callee\nmove $a0, $s0\n"
+                    "addu $s1, $s1, $v0\naddiu $s0, $s0, -1\nbnez $s0, .Ltop\nnop\n"
+                    + LoopLoweringTests.CALL_SUFFIX).encode()
+        (self.repo / "asm/us/st/rno0/nonmatchings/unit_a/func_a.s").write_bytes(assembly)
+        with mock.patch("automation.search_source_context.preprocess_target_context", return_value=context):
+            result = self.create("loop-call-context", ids=[IDS[0]], lanes=["permuter_targeted", "bounded_synthesis"])
+        root = Path(result["run_root"])
+        archive = ContentAddressedArchive(root)
+        manifest = RunManifest.from_dict(result["manifest"])
+        source.unlink()
+        with mock.patch("automation.search_source_context.preprocess_target_context", side_effect=AssertionError("live preprocessing")):
+            target = load_target_index(archive, manifest).records[0]
+            draft = deterministic_local_draft(assembly, symbol="func_a", declarations=target.declarations)
+            self.assertIn("extern int callee(int);", draft)
+            self.assertIn("do {", draft)
+            adapters = reconstruct_lane_adapters(manifest, root)
+            provider = adapters.permuter_targeted.__self__
+            item = provider._input_for(Recipient(IDS[0], "ST/RNO0", "func_a"))
+            self.assertEqual(item.seed_source, draft)
+            # Calls cannot be stripped into branch-local/side-effect-free expressions.
+            synthesis = adapters.bounded_synthesis(Recipient(IDS[0], "ST/RNO0", "func_a"))
+            self.assertFalse(synthesis["candidates"])
+            self.assertTrue(self.create("loop-call-context", ids=[IDS[0]], lanes=["permuter_targeted", "bounded_synthesis"])["idempotent"])
+        path = root / target.declarations["context_evidence"]["preprocessed"]["path"]
+        path.write_bytes(b"int callee(void);")
+        with self.assertRaises(TargetEvidenceError):
+            load_target_index(archive, manifest)
+        with self.assertRaises(PartialRunRefusal):
+            self.create("loop-call-context", ids=[IDS[0]], lanes=["permuter_targeted", "bounded_synthesis"])
+
     def test_switch_seed_reconstructs_without_live_assembly_or_case_extraction(self):
         from automation.search_archive import ContentAddressedArchive
         from automation.search_provider_lanes import reconstruct_lane_adapters

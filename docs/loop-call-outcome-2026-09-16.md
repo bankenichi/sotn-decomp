@@ -1,7 +1,8 @@
 # Loop and per-iteration-call outcome: what landed, what refused, and why calls stay open
 
 Date: 2026-09-16. Branch: `automation/instrumented-search`. Oracle: 113/113 throughout.
-Status: do-while, while-form, and in-loop branch joins are landed and proven.
+Historical status, before the September 15 review below: do-while, while-form,
+and in-loop branch joins were landed with the fixture coverage listed here.
 Per-iteration calls are NOT landed. Both working-tree files were reverted to
 the last green commit after a long variant sweep broke invariants.
 
@@ -69,3 +70,71 @@ volatile, plus callee-declared admission decided once per region. After that:
 multi-exit joins, nesting, return-in-loop, switch dispatch, then bigger
 ceilings for the 69 size-blocked files. Queue lanes stay deferred by the
 September 8 owner order.
+
+## September 15 review and correction
+
+The preceding report was dated September 16 by its author; this review uses
+the session date, September 15. Earlier outcomes and diagnoses remain above
+as evidence, with the following explicit corrections.
+
+**Verdict:** bounded target-owned rendering is useful as a deterministic
+candidate generator, but the existing fixtures did not establish general
+loop correctness. Nor did the large structural refusal count establish that
+adding calls alone would unlock complete functions. Task #302 stays open.
+
+**Retracted diagnosis:** loop-carried registers are not necessarily volatile,
+and a caller must not assume volatile registers survive a call. Exempting them
+from invalidation would generate incorrect C. The actual conflict was between
+mutable C storage and the interpreter's map of currently valid register
+values. `_define` can process multiple definitions when these are separate.
+The existing `call_result_` temporary already provides a distinct call result;
+it must be assigned at the call site inside the loop, not hoisted.
+
+Reproductions against the previous implementation exposed an infinite loop
+when a latch delay slot changed its predicate operand, a skipped delay-slot
+effect on zero-trip exit, and `NameError` in `_assign_carried`. Review also
+found stale join initialization and loss of a value assigned inside a while
+loop but used only after exit. These are renderer defects, not compiler quirks.
+
+The repair shares direct/API call lowering between ordinary paths and loops.
+A bounded discovery pass records actual live-ins, including implicit call
+arguments after delay slots and conditional reads. Emission uses separate
+carrier storage and valid-value maps, instruction-local snapshots, predicates
+captured before delay slots, and joins initialized at the branch site. Known
+live-outs retain storage on zero-trip paths. Backedge validation refuses any
+lost live-in. Both passes consume the existing path budget.
+
+Call clobbering remains mandatory for volatile registers, argument-home stack
+words and HI/LO state. Missing declarations, unsafe frames, unbound indirect
+calls, and reads of clobbered values refuse. Loop stack writes, nonlocal exits,
+multiple exits, nested loops and in-loop switch dispatch remain unsupported.
+Standalone switch dispatch was already implemented in #308; the earlier
+unqualified "switch dispatch" deferral above referred to composition in loops.
+
+Focused proof includes timeout-bounded host executables, real PSX compilation
+with `jal` and `jalr`, archived target replay, ordinary indexed-lane receipts,
+factory provider reconstruction without live source, and archive tamper
+refusal. Jobs `run_automation-164009-57561` and
+`run_automation-164043-57561` passed all selected suites. No live queue search,
+candidate landing or indexed-runtime publication is part of this review.
+Existing published generations retain their old source identities; an explicit
+successor publication is required before using changed code with those indexes.
+
+Default-bound remeasurement `run_automation-164159-57561` completed in 466
+seconds: 260 active files, 23 stale matched files skipped, zero missing queue
+records, zero errors, zero complete renders. Structural admission now covers
+164 files, but whole-file clean regions leave 39 declared files over the
+64-instruction cap and seven without declarations; no declared, within-bound
+file is left blocked solely after loop admission. There are still 63
+undeclared files overall. Refusal file-votes are branch-in-loop 87,
+nested-loop 29, multi-exit 27, nonlocal-exit 26, barred-op 24,
+outside-entry 15, frame-adjust 3, return-in-loop 3, while-no-exit 2,
+crossing-branch 1. Calls no longer hide these later structural checks.
+This is a new structural tally, not 164 compilable candidates.
+
+Consolidated job `run_automation-165036-57561` passed 110/110 suites (74 test
+suites and 36 module self-tests). The renderer now has 88 tests and the real
+compiler driver has 17. Required build `make_build-164704-57561` succeeded;
+the following `verify_build` returned every expected checksum, 113/113 OK.
+
+Raised-limits remeasurement `run_automation-165425-57561` completed with zero errors over the same 260 active files: zero complete renders, structural admission 164, blocked_decl 7, blocked_shape 32, blocked_size 7. The raised ceiling moves 32 files from size-blocked to shape-blocked; the remaining shape refusals lead with branch-in-loop 87, nested-loop 29, multi-exit 27 and nonlocal-exit 26. Size cap is not the next practical blocker.

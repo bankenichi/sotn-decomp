@@ -1589,3 +1589,27 @@ fought the receiver path. A probe series confirmed each point before the
 revert; the tree is clean at the join commit. Next attempt starts from a
 call-free loop corpus with a dedicated per-iteration call-result temp, not
 from re-tuning. Full evidence: `docs/loop-call-outcome-2026-09-16.md`.
+
+### September 15 review: retraction and implemented control
+
+The previous section records the failed attempt, but its diagnosis is partly
+retracted. Loop carriers need not be volatile; volatile register values must
+be invalidated at a call. The missing distinction was persistent C storage
+versus the interpreter's currently valid value. `_define` may assign the same
+storage repeatedly, and the existing call-result temporary works when its
+assignment executes at the call site each iteration.
+
+`search_target_renderer.py` now discovers actual live-ins through ordinary
+lowering, uses separate storage bindings, and checks the backedge against
+the entry requirements. Declared direct and API calls share the ordinary ABI
+checks. No volatile, argument-home-word or HI/LO exemption exists.
+
+Loop tests must also prove instruction timing, not merely final arithmetic on
+nop-slot examples. Review reproduced an infinite loop from a latch operand
+overwritten in its delay slot, a zero-trip exit that skipped its delay-slot
+effect, and a loop-load `NameError`. Predicates now snapshot before the slot;
+join initialization stays at the branch; initialized live-outs survive both
+zero-trip and executed exits. Regression executables run with timeouts so a
+wrong loop cannot hang the suite. Nonlocal exits and loop stack writes refuse
+until their state joins are implemented. The full outcome and remaining
+coverage limits are recorded in the linked outcome document.

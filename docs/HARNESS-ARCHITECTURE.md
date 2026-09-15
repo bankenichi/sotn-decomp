@@ -100,16 +100,25 @@ always uses defaults, raised caps are measurement-only.
 Landed: D_\* addresses, g_\* globals, PLAYER_/RIC_ linker absolutes with
 width-derived externs, g_\* offset addresses, sibling declaration capture,
 do-while regions, while-form regions via exact condition negation, in-loop
-branch joins with taken/fall merging. Refused: per-iteration calls (two broken
-invariants, both reverted; see `docs/loop-call-outcome-2026-09-16.md`),
-multi-exit joins, nesting, return-in-loop, switch dispatch, bigger ceilings
+branch joins with taken/fall merging. The September 15 review adds per-iteration
+direct/API calls through the ordinary call ABI, separates carrier storage from
+register validity, captures predicates before delay slots, and checks live-ins
+at the backedge. See `docs/loop-call-outcome-2026-09-16.md` for the retracted
+diagnosis and regression evidence. Refused: loop stack writes, nonlocal exits,
+multi-exit joins, nesting, return-in-loop, in-loop switch dispatch, bigger ceilings
 for the 69 size-blocked files.
 
 Measurement lives in `measure_data_effect.py`: 283-file g_api jalr pool,
 real TU plus sibling capture, declaration projection, default-limits draft,
 queue-aware (23 stale matched skipped), shardable via `--limit/--offset`.
-Latest: 260 active files, 0 new renders, admitted-but-blocked 6 declared plus
+Pre-review baseline: 260 active files, 0 new renders, admitted-but-blocked 6 declared plus
 16 size; refusal file-votes call-in-loop 112, branch-in-loop 49, undeclared 63.
+
+Post-review default-bound census: the same 260 active files still yield zero
+complete renders, with zero errors. Calls are structurally admitted; 39
+otherwise admitted, declared files exceed the 64-instruction limit. Structural
+admission (164 files) is explicitly separate from declarations, ABI proof and
+whole-function rendering. See the outcome document for the full tally.
 
 ---
 

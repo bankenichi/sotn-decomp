@@ -1427,15 +1427,13 @@ def region_flow(instructions, start: int, end: int) -> tuple[set, set, set, set]
     return reads, writes, pure, read_first
 
 
-def loop_regions(instructions) -> tuple[list, list]:
+def loop_regions(instructions, *, allow_calls=False) -> tuple[list, list]:
     """Admitted do-while regions plus refusal reasons for a function.
 
-    Pure helper shared by lowering and measurement. Each admitted region
-    is a straight-line span ending in one backward conditional latch with
-    a non-control delay slot, entered only by fallthrough and its latch,
-    and free of multiply/divide latch state and frame adjustments. Anything
-    else is refused with a stable reason string; overlapping spans always
-    surface as inner control or an outside entry first.
+    Pure structural helper shared by lowering and measurement. Calls may be
+    admitted structurally; target-owned declarations and ABI validity are
+    checked by the same call lowerer used outside loops. Structural admission
+    is never a claim that a complete function can render.
     """
     labels: dict = {}
     for index, item in enumerate(instructions):
@@ -1509,6 +1507,9 @@ def loop_regions(instructions) -> tuple[list, list]:
                 continue
             inner_target = _branch_target_index(instructions, labels, k)
             if item_k.mnemonic in {"jal", "jalr"}:
+                if (allow_calls and k + 1 < branch
+                        and instructions[k + 1].mnemonic not in _CONTROL_OPS):
+                    continue
                 inner_reason = "call-in-loop"
             elif item_k.mnemonic == "jr":
                 inner_reason = "return-in-loop"
@@ -1536,6 +1537,9 @@ def loop_regions(instructions) -> tuple[list, list]:
             continue
         if _touches_frame(instructions, start, slot + 1):
             refused.append("frame-adjust")
+            continue
+        if exits and _branch_target_index(instructions, labels, exits[0]) != slot + 1:
+            refused.append("nonlocal-exit")
             continue
         outside = False
         for j, other in enumerate(instructions):
@@ -1829,7 +1833,7 @@ def _leaf_body(instructions, parameters, return_type, callees=None, layouts=None
                     _lexpr = _lsym
                 check_load_delay(index, target_register)
                 if target_register in materialize:
-                    _assign_carried(target_register, None, _lexpr, _lcast, lines, indent)
+                    _assign_carried(target_register, None, _lexpr, _lcast, values, lines, indent)
                     return
                 _lname = new_temporary("memory_result_", "unsigned int")
                 lines.append(indent + _lname + " = (unsigned int)(" + _lcast + ")(" + _lexpr + ");")
@@ -1856,7 +1860,7 @@ def _leaf_body(instructions, parameters, return_type, callees=None, layouts=None
                 _gocast = ("signed char" if op == "lb" else "unsigned char")
                 check_load_delay(index, target_register)
                 if target_register in materialize:
-                    _assign_carried(target_register, None, _gosym + "[" + str(_gooff) + "]", _gocast, lines, indent)
+                    _assign_carried(target_register, None, _gosym + "[" + str(_gooff) + "]", _gocast, values, lines, indent)
                     return
                 _goname = new_temporary("memory_result_", "unsigned int")
                 lines.append(indent + _goname + " = (unsigned int)(" + _gocast + ")(" + _gosym + "[" + str(_gooff) + "]);")
@@ -1880,7 +1884,7 @@ def _leaf_body(instructions, parameters, return_type, callees=None, layouts=None
                 else:
                     check_load_delay(index, target_register)
                     if target_register in materialize:
-                        _assign_carried(target_register, pointer_type, expression, cast, lines, indent)
+                        _assign_carried(target_register, pointer_type, expression, cast, values, lines, indent)
                         return
                     name = new_temporary("memory_result_", pointer_type or "unsigned int")
                     if pointer_type:
@@ -1897,21 +1901,15 @@ def _leaf_body(instructions, parameters, return_type, callees=None, layouts=None
                 raise ValueError("stack access outside owned frame")
             slot = "stack:" + str(offset)
             if op == "sw":
+                if loop_active[0]:
+                    raise ValueError("loop stack writes require stack phi values")
                 values[slot] = values[target_register]
             else:
                 check_load_delay(index, target_register)
-                if target_register in materialize:
-                    slot_value = values[slot]
-                    if isinstance(slot_value, _PointerValue):
-                        if not isinstance(values[target_register], _PointerValue) or values[target_register].kind != slot_value.kind:
-                            raise ValueError("loop-carried pointer kind differs")
-                        lines.append(indent + values[target_register].expression + " = " + slot_value.expression + ";")
-                    else:
-                        if not isinstance(slot_value, str) or "@" in slot_value or isinstance(values[target_register], _PointerValue):
-                            raise ValueError("loop-carried value is not a C expression")
-                        lines.append(indent + values[target_register] + " = " + slot_value + ";")
-                    return
-                values[target_register] = values[slot]
+                if target_register in materialize or loop_active[0] and target_register in writable:
+                    _define(target_register, values[slot], values, lines, indent)
+                else:
+                    values[target_register] = values[slot]
             return
         if op in {"mult", "multu", "div", "divu"} and (
                 len(args) == 2 or len(args) == 3 and register(args[0]) == "zero"):
@@ -2085,6 +2083,115 @@ def _leaf_body(instructions, parameters, return_type, callees=None, layouts=None
             raise ValueError("expression expansion limit")
         _define(destination, value, values, lines, indent)
 
+    def lower_call(index, values, lines, indent):
+        op, args = instructions[index].mnemonic, operands(instructions[index])
+        if op == "jal":
+            if (len(args) != 1 or args[0] not in callees or args[0] in labels
+                    or args[0] in {name for _, name in parameters}):
+                raise ValueError("call has no target-owned declaration")
+            declaration = callees[args[0]]
+            if declaration.get("status") != "declared":
+                raise ValueError("call declaration is unavailable")
+            result_type = declaration.get("return_type")
+            call_parameters = _safe_parameters(declaration.get("parameters"), "callee parameters")
+            if (result_type not in call_scalars | {"void"} | set(layouts) or call_parameters is None
+                    or len(call_parameters) > 4 or any(kind not in call_scalars and kind not in layouts for kind, _ in call_parameters)):
+                raise ValueError("unsupported call ABI")
+            if values["stack_offset"] != -values["frame_size"] or values["frame_size"] < 16:
+                raise ValueError("call requires outgoing argument area")
+            # jal writes ra before its delay slot. Saving ra there saves
+            # the local continuation, not the caller's original return.
+            values["ra"] = "@call-return"
+            step(index + 1, values, lines, indent)
+            if values["stack_offset"] != -values["frame_size"]:
+                raise ValueError("call delay slot released its frame")
+            arguments = []
+            for i, (kind, _) in enumerate(call_parameters):
+                value = values["a" + str(i)]
+                if kind in call_scalars:
+                    arguments.append("(" + kind + ")(" + value_for(values, "a" + str(i)) + ")")
+                elif kind in layouts:
+                    arguments.append(pointer_expression(value, layouts[kind]["canonical"]))
+                else:
+                    raise ValueError("call pointer type differs from US declaration")
+            parameter_text = ", ".join(kind for kind, _ in call_parameters) or "void"
+            prototypes[args[0]] = "    extern " + result_type + " " + args[0] + "(" + parameter_text + ");"
+            expression = args[0] + "(" + ", ".join(arguments) + ")"
+            values.pop("mul", None)
+            for name in volatile:
+                values.pop(name, None)
+            # A callee owns the four argument-home words even for zero args.
+            for offset in range(values["stack_offset"], values["stack_offset"] + 16, 4):
+                values.pop("stack:" + str(offset), None)
+            if result_type == "void":
+                lines.append(indent + expression + ";")
+            else:
+                if result_type in layouts:
+                    kind = layouts[result_type]["canonical"]
+                    name = new_temporary("call_result_", kind)
+                    lines.append(indent + name + " = " + expression + ";")
+                    _define("v0", _PointerValue(kind, name), values, lines, indent)
+                else:
+                    name = new_temporary("call_result_")
+                    lines.append(indent + name + " = (unsigned int)" + expression + ";")
+                    _define("v0", name, values, lines, indent)
+            return
+        if op == "jalr":
+            if len(args) != 1:
+                raise ValueError("unsupported indirect call shape")
+            held = values.get(register(args[0]))
+            if not isinstance(held, str) or not held.startswith("@api:"):
+                raise ValueError("indirect call without target-owned API declaration")
+            member = held.removeprefix("@api:")
+            if not re.fullmatch(r"g_api_[A-Za-z_]\w*", member) or member not in apis:
+                raise ValueError("call has no target-owned declaration")
+            if member in labels or member in {name for _, name in parameters}:
+                raise ValueError("call has no target-owned declaration")
+            declaration = apis[member]
+            if not isinstance(declaration, Mapping) or declaration.get("status") != "declared":
+                raise ValueError("call declaration is unavailable")
+            result_type = declaration.get("return_type")
+            call_parameters = _safe_parameters(declaration.get("parameters"), "callee parameters")
+            if (result_type not in call_scalars | {"void"} | set(layouts) or call_parameters is None
+                    or len(call_parameters) > 4 or any(kind not in call_scalars and kind not in layouts for kind, _ in call_parameters)):
+                raise ValueError("unsupported call ABI")
+            if values["stack_offset"] != -values["frame_size"] or values["frame_size"] < 16:
+                raise ValueError("call requires outgoing argument area")
+            values["ra"] = "@call-return"
+            step(index + 1, values, lines, indent)
+            if values["stack_offset"] != -values["frame_size"]:
+                raise ValueError("call delay slot released its frame")
+            arguments = []
+            for pos, (kind, _) in enumerate(call_parameters):
+                value = values["a" + str(pos)]
+                if kind in call_scalars:
+                    arguments.append("(" + kind + ")(" + value_for(values, "a" + str(pos)) + ")")
+                elif kind in layouts:
+                    arguments.append(pointer_expression(value, layouts[kind]["canonical"]))
+                else:
+                    raise ValueError("call pointer type differs from US declaration")
+            parameter_text = ", ".join(kind for kind, _ in call_parameters) or "void"
+            prototypes[member] = "    extern " + result_type + " (*" + member + ")(" + parameter_text + ");"
+            expression = member + "(" + ", ".join(arguments) + ")"
+            values.pop("mul", None)
+            for name in volatile:
+                values.pop(name, None)
+            for offset in range(values["stack_offset"], values["stack_offset"] + 16, 4):
+                values.pop("stack:" + str(offset), None)
+            if result_type == "void":
+                lines.append(indent + expression + ";")
+            else:
+                if result_type in layouts:
+                    kind = layouts[result_type]["canonical"]
+                    name = new_temporary("call_result_", kind)
+                    lines.append(indent + name + " = " + expression + ";")
+                    _define("v0", _PointerValue(kind, name), values, lines, indent)
+                else:
+                    name = new_temporary("call_result_")
+                    lines.append(indent + name + " = (unsigned int)" + expression + ";")
+                    _define("v0", name, values, lines, indent)
+            return
+
     def path(index, values, indent):
         lines = []
         while index < len(instructions):
@@ -2127,110 +2234,8 @@ def _leaf_body(instructions, parameters, return_type, callees=None, layouts=None
                 lines.append(indent + "default:")
                 lines.extend(path(labels[dispatch.default_label], default_values, indent + "    "))
                 return lines + [indent + "}"]
-            if op == "jal":
-                if (len(args) != 1 or args[0] not in callees or args[0] in labels
-                        or args[0] in {name for _, name in parameters}):
-                    raise ValueError("call has no target-owned declaration")
-                declaration = callees[args[0]]
-                if declaration.get("status") != "declared":
-                    raise ValueError("call declaration is unavailable")
-                result_type = declaration.get("return_type")
-                call_parameters = _safe_parameters(declaration.get("parameters"), "callee parameters")
-                if (result_type not in call_scalars | {"void"} | set(layouts) or call_parameters is None
-                        or len(call_parameters) > 4 or any(kind not in call_scalars and kind not in layouts for kind, _ in call_parameters)):
-                    raise ValueError("unsupported call ABI")
-                if values["stack_offset"] != -values["frame_size"] or values["frame_size"] < 16:
-                    raise ValueError("call requires outgoing argument area")
-                # jal writes ra before its delay slot. Saving ra there saves
-                # the local continuation, not the caller's original return.
-                values["ra"] = "@call-return"
-                step(index + 1, values, lines, indent)
-                if values["stack_offset"] != -values["frame_size"]:
-                    raise ValueError("call delay slot released its frame")
-                arguments = []
-                for i, (kind, _) in enumerate(call_parameters):
-                    value = values["a" + str(i)]
-                    if kind in call_scalars:
-                        arguments.append("(" + kind + ")(" + value_for(values, "a" + str(i)) + ")")
-                    elif kind in layouts:
-                        arguments.append(pointer_expression(value, layouts[kind]["canonical"]))
-                    else:
-                        raise ValueError("call pointer type differs from US declaration")
-                parameter_text = ", ".join(kind for kind, _ in call_parameters) or "void"
-                prototypes[args[0]] = "    extern " + result_type + " " + args[0] + "(" + parameter_text + ");"
-                expression = args[0] + "(" + ", ".join(arguments) + ")"
-                for name in volatile:
-                    values.pop(name, None)
-                # A callee owns the four argument-home words even for zero args.
-                for offset in range(values["stack_offset"], values["stack_offset"] + 16, 4):
-                    values.pop("stack:" + str(offset), None)
-                if result_type == "void":
-                    lines.append(indent + expression + ";")
-                else:
-                    if result_type in layouts:
-                        kind = layouts[result_type]["canonical"]
-                        name = new_temporary("call_result_", kind)
-                        lines.append(indent + name + " = " + expression + ";")
-                        values["v0"] = _PointerValue(kind, name)
-                    else:
-                        name = new_temporary("call_result_")
-                        lines.append(indent + name + " = (unsigned int)" + expression + ";")
-                        values["v0"] = name
-                index += 2
-                continue
-            if op == "jalr":
-                if len(args) != 1:
-                    raise ValueError("unsupported indirect call shape")
-                held = values.get(register(args[0]))
-                if not isinstance(held, str) or not held.startswith("@api:"):
-                    raise ValueError("indirect call without target-owned API declaration")
-                member = held.removeprefix("@api:")
-                if not re.fullmatch(r"g_api_[A-Za-z_]\w*", member) or member not in apis:
-                    raise ValueError("call has no target-owned declaration")
-                if member in labels or member in {name for _, name in parameters}:
-                    raise ValueError("call has no target-owned declaration")
-                declaration = apis[member]
-                if not isinstance(declaration, Mapping) or declaration.get("status") != "declared":
-                    raise ValueError("call declaration is unavailable")
-                result_type = declaration.get("return_type")
-                call_parameters = _safe_parameters(declaration.get("parameters"), "callee parameters")
-                if (result_type not in call_scalars | {"void"} | set(layouts) or call_parameters is None
-                        or len(call_parameters) > 4 or any(kind not in call_scalars and kind not in layouts for kind, _ in call_parameters)):
-                    raise ValueError("unsupported call ABI")
-                if values["stack_offset"] != -values["frame_size"] or values["frame_size"] < 16:
-                    raise ValueError("call requires outgoing argument area")
-                values["ra"] = "@call-return"
-                step(index + 1, values, lines, indent)
-                if values["stack_offset"] != -values["frame_size"]:
-                    raise ValueError("call delay slot released its frame")
-                arguments = []
-                for pos, (kind, _) in enumerate(call_parameters):
-                    value = values["a" + str(pos)]
-                    if kind in call_scalars:
-                        arguments.append("(" + kind + ")(" + value_for(values, "a" + str(pos)) + ")")
-                    elif kind in layouts:
-                        arguments.append(pointer_expression(value, layouts[kind]["canonical"]))
-                    else:
-                        raise ValueError("call pointer type differs from US declaration")
-                parameter_text = ", ".join(kind for kind, _ in call_parameters) or "void"
-                prototypes[member] = "    extern " + result_type + " (*" + member + ")(" + parameter_text + ");"
-                expression = member + "(" + ", ".join(arguments) + ")"
-                for name in volatile:
-                    values.pop(name, None)
-                for offset in range(values["stack_offset"], values["stack_offset"] + 16, 4):
-                    values.pop("stack:" + str(offset), None)
-                if result_type == "void":
-                    lines.append(indent + expression + ";")
-                else:
-                    if result_type in layouts:
-                        kind = layouts[result_type]["canonical"]
-                        name = new_temporary("call_result_", kind)
-                        lines.append(indent + name + " = " + expression + ";")
-                        values["v0"] = _PointerValue(kind, name)
-                    else:
-                        name = new_temporary("call_result_")
-                        lines.append(indent + name + " = (unsigned int)" + expression + ";")
-                        values["v0"] = name
+            if op in {"jal", "jalr"}:
+                lower_call(index, values, lines, indent)
                 index += 2
                 continue
             if op == "jr":
@@ -2296,9 +2301,13 @@ def _leaf_body(instructions, parameters, return_type, callees=None, layouts=None
 
     def _define(destination, value, values, lines, indent):
         if destination not in materialize:
+            # Capture expressions before a later instruction mutates a loop slot.
+            if loop_active[0] and (isinstance(value, _PointerValue)
+                                  or isinstance(value, str) and "@" not in value):
+                value = snapshot(value, lines, indent)
             values[destination] = value
             return
-        current = values[destination]
+        current = materialize[destination]
         if isinstance(value, _PointerValue):
             if not isinstance(current, _PointerValue) or current.kind != value.kind:
                 raise ValueError("loop-carried pointer kind differs")
@@ -2312,89 +2321,148 @@ def _leaf_body(instructions, parameters, return_type, callees=None, layouts=None
         if len(text) > bounds.max_expression:
             raise ValueError("expression expansion limit")
         lines.append(indent + target + " = " + text + ";")
+        values[destination] = current
 
-    def _assign_carried(target_register, pointer_kind, expression, cast, lines, indent):
-        current = values[target_register]
-        if pointer_kind is not None:
-            if not isinstance(current, _PointerValue) or current.kind != pointer_kind:
-                raise ValueError("loop-carried pointer kind differs")
-            text = expression
-            target = current.expression
-        else:
-            if isinstance(current, _PointerValue):
-                raise ValueError("loop-carried pointer kind differs")
-            text = "(unsigned int)(" + cast + ")(" + expression + ")"
-            target = current
-        if len(text) > bounds.max_expression:
-            raise ValueError("expression expansion limit")
-        lines.append(indent + target + " = " + text + ";")
+    def snapshot(value, lines, indent):
+        kind = value.kind if isinstance(value, _PointerValue) else "unsigned int"
+        text = value.expression if isinstance(value, _PointerValue) else value
+        if not isinstance(text, str) or "@" in text or len(text) > bounds.max_expression:
+            raise ValueError("value is not materializable")
+        temp = new_temporary("iteration_", kind)
+        lines.append(indent + temp + " = " + text + ";")
+        return _PointerValue(kind, temp) if isinstance(value, _PointerValue) else temp
+
+    def _assign_carried(target_register, pointer_kind, expression, cast, values, lines, indent):
+        value = (_PointerValue(pointer_kind, expression) if pointer_kind is not None else
+                 "(unsigned int)(" + cast + ")(" + expression + ")")
+        _define(target_register, value, values, lines, indent)
 
     _JOIN_SPECIAL_KEYS = frozenset({"zero", "ra", "stack_offset", "frame_size", "mul"})
 
-    def _merge_states(taken, fall_values, fall_lines, lines, indent, inits, negcond):
-        assigns, merged = [], {}
-        for key in taken.keys() | fall_values.keys():
-            if key in _JOIN_SPECIAL_KEYS or key.startswith("stack:"):
-                if key not in taken or key not in fall_values or taken[key] != fall_values[key]:
-                    raise ValueError("join diverges on machine state")
-                merged[key] = taken[key]
+    class LoopValues(dict):
+        """Track reads of entry values independently from mutable C storage.
+
+        A discovery pass finds actual live-ins, including implicit call
+        arguments after the delay slot. Forks share the evidence sets but
+        keep their own set of values still inherited from loop entry.
+        """
+        def __init__(self, initial, reads=None, writes=None, inherited=None):
+            super().__init__(initial)
+            self.entry_reads = set() if reads is None else reads
+            self.writes = set() if writes is None else writes
+            self.inherited = set(initial) if inherited is None else set(inherited)
+
+        def __getitem__(self, key):
+            value = super().__getitem__(key)
+            if key in self.inherited:
+                self.entry_reads.add(key)
+            return value
+
+        def get(self, key, default=None):
+            return self[key] if key in self else default
+
+        def __setitem__(self, key, value):
+            self.writes.add(key)
+            self.inherited.discard(key)
+            super().__setitem__(key, value)
+
+        def pop(self, key, *default):
+            self.writes.add(key)
+            self.inherited.discard(key)
+            return super().pop(key, *default)
+
+        def copy(self):
+            return LoopValues(dict(self), self.entry_reads, self.writes, self.inherited)
+
+        def adopt(self, other):
+            self.clear()
+            self.update(other)
+            self.inherited = set(other.inherited)
+
+    def _merge_states(taken, fall_values, fall_lines, lines, indent, negcond):
+        # Only values valid on both paths survive. A later read of a clobbered
+        # caller-saved register then refuses rather than recovering stale data.
+        merged = LoopValues({}, taken.entry_reads, taken.writes, set())
+        assigns, before = [], []
+        left_state, right_state = dict(taken), dict(fall_values)
+        for key in sorted(left_state.keys() | right_state.keys()):
+            if key not in left_state or key not in right_state:
+                if key in _JOIN_SPECIAL_KEYS or key.startswith("stack:"):
+                    # Calls can legitimately invalidate argument-home slots.
+                    if key not in {"ra", "mul"} and not key.startswith("stack:"):
+                        raise ValueError("join diverges on machine state")
                 continue
-            if key not in taken or key not in fall_values:
-                raise ValueError("join diverges on machine state")
-            left, right = taken[key], fall_values[key]
+            left, right = left_state[key], right_state[key]
             if left == right and type(left) is type(right):
-                merged[key] = left
+                dict.__setitem__(merged, key, left)
+                if key in taken.inherited | fall_values.inherited:
+                    merged.inherited.add(key)
                 continue
+            if key == "ra":
+                dict.__setitem__(merged, key, "@call-return")
+                continue
+            if key in _JOIN_SPECIAL_KEYS or key.startswith("stack:"):
+                raise ValueError("join diverges on machine state")
             if isinstance(left, _PointerValue) or isinstance(right, _PointerValue):
                 if (not isinstance(left, _PointerValue) or not isinstance(right, _PointerValue)
                         or left.kind != right.kind):
                     raise ValueError("join diverges on value kind")
-                kind = left.kind
-                taken_text, fall_text = left.expression, right.expression
+                kind, taken_text, fall_text = left.kind, left.expression, right.expression
             else:
-                kind = "unsigned int"
-                taken_text, fall_text = left, right
+                kind, taken_text, fall_text = "unsigned int", left, right
             if "@" in taken_text or "@" in fall_text:
                 raise ValueError("join cannot materialize a marker")
-            if len(taken_text) > bounds.max_expression or len(fall_text) > bounds.max_expression:
-                raise ValueError("expression expansion limit")
+            if key in taken.inherited | fall_values.inherited:
+                taken.entry_reads.add(key)
             temp = new_temporary("join_", kind)
-            inits.append(temp + " = " + taken_text)
-            assigns.append(temp + " = " + fall_text + ";")
-            merged[key] = _PointerValue(kind, temp) if isinstance(left, _PointerValue) else temp
+            before.append(indent + temp + " = " + taken_text + ";")
+            assigns.append(indent + "    " + temp + " = " + fall_text + ";")
+            dict.__setitem__(merged, key, _PointerValue(kind, temp) if isinstance(left, _PointerValue) else temp)
+        # Join initialization executes each time this branch is reached, never
+        # in the loop preheader and never outside an enclosing branch.
+        lines.extend(before)
         lines.append(indent + "if (" + negcond + ") {")
         lines.extend(fall_lines)
-        for assign in assigns:
-            lines.append(indent + "    " + assign)
+        lines.extend(assigns)
         lines.append(indent + "}")
         return merged
 
-    def _lower_segment(lo, hi, values, lines, indent, labels, inits):
+    def branch_condition(index, values, lines, indent, *, negate=False):
+        item = instructions[index]
+        args = operands(item)
+        arity = 3 if item.mnemonic in {"beq", "bne"} else 2
+        if len(args) != arity:
+            raise ValueError("malformed loop branch")
+        condition = _cond_text(item.mnemonic, args, values, arity, negate=negate)
+        # A Python expression string is not a runtime snapshot of mutable C
+        # locals. Capture the predicate before executing the MIPS delay slot.
+        return snapshot(condition, lines, indent)
+
+    def _lower_segment(lo, hi, values, lines, indent, labels):
         index = lo
         while index < hi:
+            budget[0] -= 1
+            if budget[0] < 0:
+                raise ValueError("path expansion limit")
             item = instructions[index]
+            if item.mnemonic in {"jal", "jalr"}:
+                if index + 1 >= hi:
+                    raise ValueError("call crosses segment boundary")
+                visited.add(index)
+                lower_call(index, values, lines, indent)
+                index += 2
+                continue
             if item.mnemonic in _COND_BRANCHES:
                 target = _branch_target_index(instructions, labels, index)
-                if target is None or not index < target <= hi:
+                if target is None or not index + 1 < target <= hi:
                     raise ValueError("inner branch leaves its segment")
-                args = tuple(part.strip() for part in item.operands.split(",")) if item.operands else ()
-                arity = 3 if item.mnemonic in {"beq", "bne"} else 2
+                visited.add(index)
+                negcond = branch_condition(index, values, lines, indent, negate=True)
                 step(index + 1, values, lines, indent)
-                if target == index + 1:
-                    _cond_text(item.mnemonic, args, values, arity)
-                    index += 2
-                    continue
-                taken = dict(values)
-                fall_values = dict(values)
+                taken, fall_values = values.copy(), values.copy()
                 fall_lines = []
-                _lower_segment(index + 2, target, fall_values, fall_lines, indent + "    ", labels, inits)
-                budget[0] -= (target - index)
-                if budget[0] < 0:
-                    raise ValueError("path expansion limit")
-                negcond = _cond_text(item.mnemonic, args, values, arity, negate=True)
-                merged = _merge_states(taken, fall_values, fall_lines, lines, indent, inits, negcond)
-                values.clear()
-                values.update(merged)
+                _lower_segment(index + 2, target, fall_values, fall_lines, indent + "    ", labels)
+                values.adopt(_merge_states(taken, fall_values, fall_lines, lines, indent, negcond))
                 index = target
                 continue
             step(index, values, lines, indent)
@@ -2402,65 +2470,81 @@ def _leaf_body(instructions, parameters, return_type, callees=None, layouts=None
 
     def _lower_loop(region, values, lines, indent, labels):
         start, branch, slot = region["start"], region["branch"], region["slot"]
-        reads, writes, pure, read_first = region_flow(instructions, start, slot + 1)
-        del pure
-        carried = sorted((reads & writes & read_first) - {"zero"})
-        inits = []
-        for reg in carried:
-            entry = values.get(reg)
-            if isinstance(entry, _PointerValue):
-                kind, text = entry.kind, entry.expression
-            elif isinstance(entry, str) and "@" not in entry:
-                kind, text = "unsigned int", entry
-            else:
-                raise ValueError("loop-carried value is not materializable")
-            temp = new_temporary("loop_", kind)
-            inits.append(temp + " = " + text)
-            values[reg] = _PointerValue(kind, temp) if isinstance(entry, _PointerValue) else temp
-        materialize.update(carried)
-        try:
-            body_lines = []
-            body_indent = indent + "    "
-            kind = region.get("kind", "do-while")
-            exit_index = region.get("exit")
-            latch = instructions[branch]
-            latch_args = tuple(part.strip() for part in latch.operands.split(",")) if latch.operands else ()
-            latch_arity = 3 if latch.mnemonic in {"beq", "bne"} else 2
-            if kind == "while" and exit_index == start:
-                exit_item = instructions[exit_index]
-                exit_args = tuple(part.strip() for part in exit_item.operands.split(",")) if exit_item.operands else ()
-                exit_arity = 3 if exit_item.mnemonic in {"beq", "bne"} else 2
-                step(exit_index + 1, values, body_lines, body_indent)
-                _lower_segment(exit_index + 2, branch, values, body_lines, body_indent, labels, inits)
-                step(slot, values, body_lines, body_indent)
-                condition = _cond_text(exit_item.mnemonic, exit_args, values, exit_arity, negate=True)
-                trailing = None
+        exit_index = region.get("exit")
+        kind = region.get("kind", "do-while")
+        body_indent = indent + "    "
+        # With a nop exit slot, a test-first C while is exact. Otherwise emit
+        # the predicate, delay slot and break inside while(1), including on
+        # the zero-trip path. Both exits must reach the same continuation.
+        test_first = (kind == "while" and exit_index == start
+                      and instructions[start + 1].mnemonic == "nop")
+
+        def emit(initial):
+            current = LoopValues(initial)
+            body_lines, exit_state = [], None
+            if test_first:
+                condition = _cond_text(instructions[start].mnemonic, operands(instructions[start]),
+                                       current, len(operands(instructions[start])), negate=True)
+                exit_state = current.copy()
+                step(start + 1, current, body_lines, body_indent)
+                _lower_segment(start + 2, branch, current, body_lines, body_indent, labels)
+                step(slot, current, body_lines, body_indent)
             else:
                 limit = exit_index if exit_index is not None else branch
-                _lower_segment(start, limit, values, body_lines, body_indent, labels, inits)
+                _lower_segment(start, limit, current, body_lines, body_indent, labels)
                 if exit_index is not None:
-                    exit_item = instructions[exit_index]
-                    exit_args = tuple(part.strip() for part in exit_item.operands.split(",")) if exit_item.operands else ()
-                    exit_arity = 3 if exit_item.mnemonic in {"beq", "bne"} else 2
-                    step(exit_index + 1, values, body_lines, body_indent)
-                    exit_condition = _cond_text(exit_item.mnemonic, exit_args, values, exit_arity)
-                    body_lines.append(body_indent + "if (" + exit_condition + ") break;")
-                    _lower_segment(exit_index + 2, branch, values, body_lines, body_indent, labels, inits)
-                step(slot, values, body_lines, body_indent)
-                if kind == "while":
-                    trailing = "1"
+                    predicate = branch_condition(exit_index, current, body_lines, body_indent)
+                    step(exit_index + 1, current, body_lines, body_indent)
+                    exit_state = current.copy()
+                    body_lines.append(body_indent + "if (" + predicate + ") break;")
+                    _lower_segment(exit_index + 2, branch, current, body_lines, body_indent, labels)
+                condition = (branch_condition(branch, current, body_lines, body_indent)
+                             if kind != "while" else "1")
+                step(slot, current, body_lines, body_indent)
+            return current, exit_state, condition, body_lines
+
+        loop_active[0] = True
+        try:
+            # Discover true live-ins using the ordinary interpreter, including
+            # conditional definitions and the implicit inputs/outputs of calls.
+            # No discovery C or temporary is retained in the emitted function.
+            temporary_count = len(temporaries)
+            names_before, prototypes_before = set(reserved_names), dict(prototypes)
+            end, early, _, _ = emit(values)
+            required, writes = set(end.entry_reads), set(end.writes)
+            del temporaries[temporary_count:]
+            reserved_names.clear()
+            reserved_names.update(names_before)
+            prototypes.clear()
+            prototypes.update(prototypes_before)
+            # Also preserve initialized live-outs: an assignment that is never
+            # read inside the loop still has to reach the caller on both the
+            # zero-trip and executed paths. Unknown scratch values stay absent.
+            initialized = {reg for reg, value in values.items()
+                           if isinstance(value, _PointerValue)
+                           or isinstance(value, str) and "@" not in value}
+            for reg in sorted(((required | initialized) & writes) & writable):
+                entry = values.get(reg)
+                if isinstance(entry, _PointerValue):
+                    ctype, text = entry.kind, entry.expression
+                elif isinstance(entry, str) and "@" not in entry:
+                    ctype, text = "unsigned int", entry
                 else:
-                    if len(latch_args) != latch_arity:
-                        raise ValueError("loop latch is malformed")
-                    trailing = _cond_text(latch.mnemonic, latch_args, values, latch_arity)
-                condition = trailing
-            budget[0] -= (slot - start + 1)
-            if budget[0] < 0:
-                raise ValueError("path expansion limit")
-            visited.update(range(start, slot + 1))
-            for init in inits:
-                lines.append(indent + init + ";")
-            if kind == "while" and exit_index == start:
+                    raise ValueError("loop-carried value is not materializable")
+                temp = new_temporary("loop_", ctype)
+                lines.append(indent + temp + " = " + text + ";")
+                storage = _PointerValue(ctype, temp) if isinstance(entry, _PointerValue) else temp
+                materialize[reg] = storage
+                values[reg] = storage
+            initial = dict(values)
+            end, early, condition, body_lines = emit(initial)
+            final = dict(end)
+            # Every value consumed from entry must remain available at the
+            # backedge with the same binding. Call clobbers get no exemption.
+            for key in required - {"ra", "mul"}:
+                if key not in final or key not in initial or final[key] != initial[key]:
+                    raise ValueError("loop backedge does not preserve a live-in")
+            if test_first or kind == "while" and exit_index == start:
                 lines.append(indent + "while (" + condition + ") {")
                 lines.extend(body_lines)
                 lines.append(indent + "}")
@@ -2468,12 +2552,26 @@ def _leaf_body(instructions, parameters, return_type, callees=None, layouts=None
                 lines.append(indent + "do {")
                 lines.extend(body_lines)
                 lines.append(indent + "} while (" + condition + ");")
+            if early is not None:
+                early_values = dict(early)
+                if kind == "while":
+                    final = early_values
+                else:
+                    # Keep only bindings valid at both the break and latch
+                    # exits. Unused scratch state is allowed to disappear.
+                    final = {key: value for key, value in final.items()
+                             if key in early_values and early_values[key] == value}
+            values.clear()
+            values.update(final)
+            visited.update(range(start, slot + 1))
         finally:
-            materialize.difference_update(carried)
+            materialize.clear()
+            loop_active[0] = False
         return slot + 1
 
-    materialize: set = set()
-    loop_admitted, loop_refused = loop_regions(instructions)
+    materialize: dict = {}
+    loop_active = [False]
+    loop_admitted, loop_refused = loop_regions(instructions, allow_calls=True)
     if loop_refused:
         return None
     region_by_start = {region["start"]: region for region in loop_admitted}
@@ -2492,7 +2590,7 @@ def _leaf_body(instructions, parameters, return_type, callees=None, layouts=None
             name = declaration.removesuffix(";").split()[-1]
             if len(re.findall(r"\b" + re.escape(name) + r"\b", body_text)) == 1:
                 body_text = re.sub(r"\b" + re.escape(name) + r" = (?:\(unsigned int\))?",
-                                   "(void)" if name.startswith("memory_result_") else "", body_text, count=1)
+                                   "" if name.startswith("call_result_") else "(void)", body_text, count=1)
             else:
                 used_temporaries.append(declaration)
         result = "\n".join([*prototypes.values(), *used_temporaries, body_text])

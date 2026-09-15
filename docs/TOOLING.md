@@ -819,7 +819,7 @@ script supports `--help` and most support `--self-test`.
 | `readme_status.py` | regenerates the detailed README blocks and compact status blocks in every living operational document from one snapshot; `--drift` compares them and the other machine-grounded documentation invariants against live sources |
 | `queue_coverage.py` | queue against tree |
 | `measure_data_effect.py` | read-only remeasurement of the renderer data-addressing plus loop slices over the 283-file g_api jalr pool: real TU plus sibling capture, declaration projection, default-limits draft, JSON tally with relocation, size, loop-shape, latch-form and refusal-reason histograms plus a one-line DIGEST; `--limit/--offset` shard long runs, `--limits raised` runs validated ceilings; queue-aware (skips stale matched, reports queue-missing); the dashboard diagnostics tab carries the smoke entries, full runs go through connector jobs |
-| `docs/loop-call-outcome-2026-09-16.md` | the full loop and per-iteration-call outcome: what landed, measured tallies, why calls stay open, and the ordered next slices |
+| `docs/loop-call-outcome-2026-09-16.md` | loop/call outcomes, historical tallies, the review's corrected diagnosis and implementation evidence, and remaining coverage limits |
 
 ### Maintenance and self-test
 

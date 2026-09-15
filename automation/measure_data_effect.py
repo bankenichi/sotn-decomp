@@ -211,15 +211,16 @@ def loop_latches(text: str) -> dict:
 def loop_region_summary(text: str) -> tuple[int, int, set]:
     """Admitted region counts plus refusal reasons for one file.
 
-    Returns admitted do-while-style regions, admitted while-form regions,
-    and refusal reasons. Pure helper shared by the tally. Unparseable
+    Returns structurally admitted regions (including call sites), while-form
+    regions, and refusal reasons. Declaration/ABI checks belong to the full
+    renderer below; these counts alone never prove renderability. Unparseable
     input yields zeros instead of raising.
     """
     from automation.search_target_renderer import _parse_assembly, loop_regions
     if not isinstance(text, str):
         return 0, 0, set()
     try:
-        admitted, refused = loop_regions(_parse_assembly(text))
+        admitted, refused = loop_regions(_parse_assembly(text), allow_calls=True)
     except ValueError:
         return 0, 0, set()
     kinds = [region.get("kind", "do-while") for region in admitted]

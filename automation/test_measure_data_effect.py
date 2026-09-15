@@ -123,6 +123,11 @@ class RemeasureHelperTests(unittest.TestCase):
         self.assertEqual(reasons, set())
         self.assertEqual(loop_region_summary(""), (0, 0, set()))
         self.assertEqual(loop_region_summary(None), (0, 0, set()))
+        # The census reports structural admission. Missing call declarations
+        # still refuse in the full renderer and never become render successes.
+        call_loop = (".Ltop:\njal callee\nnop\naddiu $s0, $s0, -1\n"
+                     "bnez $s0, .Ltop\nnop\njr $ra\nnop\n")
+        self.assertEqual(loop_region_summary(call_loop), (1, 0, set()))
 
 
 

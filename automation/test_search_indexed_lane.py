@@ -186,6 +186,38 @@ class IndexedLaneAdapterTests(unittest.TestCase):
             finally:
                 temp.cleanup()
 
+    def test_archived_us_loop_call_reaches_indexed_ordinary_receipt(self):
+        from automation.test_search_target_renderer import LoopLoweringTests
+        assembly = (LoopLoweringTests.CALL_PREFIX + ".Ltop:\njal callee\nmove $a0, $s0\n"
+                    "addu $s1, $s1, $v0\naddiu $s0, $s0, -1\nbnez $s0, .Ltop\nnop\n"
+                    + LoopLoweringTests.CALL_SUFFIX).encode()
+        context = b"unsigned int fn(unsigned int n);\nunsigned int callee(unsigned int n);\n"
+        with _index_fixture() as (index, archive, gate_archive, _gate, _calls, _sources):
+            temp, run_archive, manifest, target_index = _target_fixture(assembly, context_bytes=context,
+                                                                       compiler_identity=index.binding.compiler_identity)
+            try:
+                manifest = replace(manifest, config_identity=index.binding.config_identity)
+                query_for, render = _target_context_callbacks(manifest, target_index, lane="multi_donor")
+                adapter = indexed_lane_adapter(index, lane="multi_donor", expected_binding=index.binding,
+                    index_archive=archive, integration_archive=gate_archive,
+                    query_for=query_for, render_target_context=render)
+                first = adapter(recipient())
+                self.assertEqual(len(first["candidates"]), 1)
+                self.assertIn("extern unsigned int callee(unsigned int);", first["candidates"][0].source)
+                self.assertIn("do {", first["candidates"][0].source)
+                query_again, render_again = _target_context_callbacks(manifest, load_target_index(run_archive, manifest), lane="multi_donor")
+                replay = indexed_lane_adapter(index, lane="multi_donor", expected_binding=index.binding,
+                    index_archive=archive, integration_archive=gate_archive,
+                    query_for=query_again, render_target_context=render_again)
+                self.assertEqual(first, replay(recipient()))
+                batch = run_lane(manifest, "multi_donor", {recipient().recipient_id: recipient()},
+                    adapters=LaneAdapters.from_mapping({"multi_donor": replay}), repo_root=run_archive.run_root.parent)
+                self.assertEqual(len(batch.candidates), 1)
+                self.assertEqual(batch.candidates[0].source, first["candidates"][0].source)
+                self.assertTrue(batch[0].provenance)
+            finally:
+                temp.cleanup()
+
     def test_archived_us_member_context_reaches_indexed_ordinary_receipt(self):
         assembly = b"lw $v0, 0($a0)\nnop\njr $ra\nnop\n"
         context = b"typedef struct { int value; } Item;\nint fn(Item* self);\n"

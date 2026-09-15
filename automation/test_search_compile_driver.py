@@ -12,6 +12,40 @@ from automation.search_permuter_executor import REPOSITORY_COMPILE_WRAPPER_BYTES
 
 
 class CompileDriverTests(unittest.TestCase):
+    def test_loop_calls_compile_with_actual_psx_toolchain(self):
+        from automation.search_target_renderer import deterministic_local_draft
+        from automation.search_source_context import renderer_declarations
+        from automation.test_search_target_renderer import LoopLoweringTests
+        drafts = []
+        for name, call, context in (
+            ("loop_direct", "jal callee\n", b"unsigned int callee(unsigned int n);\n"),
+            ("loop_api", "lui $v0, %hi(g_api_Test)\nlw $v0, %lo(g_api_Test)($v0)\nnop\njalr $v0\n",
+             b"unsigned int (*g_api_Test)(unsigned int n);\n"),
+        ):
+            assembly = (LoopLoweringTests.CALL_PREFIX + ".Ltop:\n" + call +
+                        "move $a0, $s0\naddu $s1, $s1, $v0\naddiu $s0, $s0, -1\n"
+                        "bnez $s0, .Ltop\nnop\n" + LoopLoweringTests.CALL_SUFFIX)
+            facts = renderer_declarations(LoopLoweringTests.COUNTER_DECLS, assembly.encode(), context)
+            draft = deterministic_local_draft(assembly, symbol=name, declarations=facts)
+            self.assertIsNotNone(draft)
+            drafts.append(draft)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            wrapper, source, output = root / "compile.sh", root / "loops.c", root / "loops.o"
+            wrapper.write_bytes(REPOSITORY_COMPILE_WRAPPER_BYTES)
+            wrapper.chmod(0o700)
+            source.write_text("\n".join(drafts))
+            result = subprocess.run([str(wrapper), str(source), "-o", str(output)], env={
+                **os.environ, "SOTN_REPO_ROOT": str(ROOT),
+                "SOTN_COMPILER_IDENTITY": pipeline_identity().identity, "TMPDIR": directory,
+            }, capture_output=True, timeout=60)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.stderr, b"")
+            for symbol, opcode in (("loop_direct", "jal"), ("loop_api", "jalr")):
+                rows, count = _normalized_disassembly(output, symbol=symbol)
+                self.assertGreater(count, 0)
+                self.assertIn(opcode, rows)
+
     def test_target_pointer_declaration_exact_and_refusals(self):
         from automation.search_source_context import target_pointer_declaration
         text = ("extern s16 (*g_api_AllocPrimitives)(PrimitiveType type, s32 count);\n"
