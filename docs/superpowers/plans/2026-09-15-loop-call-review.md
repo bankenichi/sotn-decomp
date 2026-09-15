@@ -31,9 +31,10 @@ documents receive explicit corrections, not replacement.
   `run_selftests.py` gate once. Inspect any failures before another run.
 - [x] Record measured results, limitations and explicit retractions in
   `docs/loop-call-outcome-2026-09-16.md`, `MATCHING-LESSONS.md` and `ROADMAP.md`.
-- [ ] Build and verify; stage explicit paths; commit; audit the exact commit
+- [x] Build and verify; stage explicit paths; commit; audit the exact commit
   and generated stores; require clean state; build and verify again for the
   mandatory pre-push gate; push to origin as a job and confirm ahead is zero.
+  Landed as commit 382904a0a with a green oracle and the branch in sync.
 
 ## Review decision
 

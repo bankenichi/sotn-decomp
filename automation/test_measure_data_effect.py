@@ -128,6 +128,11 @@ class RemeasureHelperTests(unittest.TestCase):
         call_loop = (".Ltop:\njal callee\nnop\naddiu $s0, $s0, -1\n"
                      "bnez $s0, .Ltop\nnop\njr $ra\nnop\n")
         self.assertEqual(loop_region_summary(call_loop), (1, 0, set()))
+        multi = (".Ltop:\naddiu $v0, $v0, 1\n"
+                 "beq $v0, $a1, .Lexit\nnop\n"
+                 "beq $v0, $a2, .Lexit\nnop\n"
+                 "bne $v0, $a0, .Ltop\nnop\n.Lexit:\njr $ra\nnop\n")
+        self.assertEqual(loop_region_summary(multi), (1, 1, set()))
 
 
 

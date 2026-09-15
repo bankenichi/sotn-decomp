@@ -138,3 +138,24 @@ compiler driver has 17. Required build `make_build-164704-57561` succeeded;
 the following `verify_build` returned every expected checksum, 113/113 OK.
 
 Raised-limits remeasurement `run_automation-165425-57561` completed with zero errors over the same 260 active files: zero complete renders, structural admission 164, blocked_decl 7, blocked_shape 32, blocked_size 7. The raised ceiling moves 32 files from size-blocked to shape-blocked; the remaining shape refusals lead with branch-in-loop 87, nested-loop 29, multi-exit 27 and nonlocal-exit 26. Size cap is not the next practical blocker.
+
+## Multi-exit joins (#311)
+
+Shared-continuation multi-exit loops are admitted: the region records every
+forward exit, admission requires all exits to share one continuation, and the
+nonlocal-exit check requires that continuation immediately after the loop.
+Lowering emits one predicate snapshot, delay slot and break per exit and keeps
+only bindings valid on every exit path plus the latch exit. Split
+continuations still refuse multi-exit and join-plus-multi composition stays
+refused as branch-in-loop until each shape is proven separately.
+
+Fixture proof: region tests for admission, split-continuation, nonlocal and
+join-composition refusals; host-executed do-break and while-form loops with
+either break firing; a draft-shape test asserting two breaks render.
+
+Default-bound pool remeasurement `run_automation-174248-70861` completed
+with zero errors over the same 260 active files and zero complete renders:
+multi-exit file-votes fall from 27 to 17, branch-in-loop rises from 87 to 92
+(deferred join-plus-multi composition), nonlocal-exit rises from 26 to 28
+(shared but nonlocal exits now surfacing). Structural admission holds at 164
+files with 39 declared files over the size cap and 7 without declarations.

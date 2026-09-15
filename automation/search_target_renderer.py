@@ -1427,6 +1427,13 @@ def region_flow(instructions, start: int, end: int) -> tuple[set, set, set, set]
     return reads, writes, pure, read_first
 
 
+def _same_exit_target(instructions, labels, exits) -> bool:
+    """Whether every forward exit leaves the loop at one continuation. Pure helper."""
+    first = _branch_target_index(instructions, labels, exits[0])
+    return first is not None and all(
+        _branch_target_index(instructions, labels, k) == first for k in exits[1:])
+
+
 def loop_regions(instructions, *, allow_calls=False) -> tuple[list, list]:
     """Admitted do-while regions plus refusal reasons for a function.
 
@@ -1489,13 +1496,15 @@ def loop_regions(instructions, *, allow_calls=False) -> tuple[list, list]:
             if not exits:
                 refused.append("while-no-exit")
                 continue
-            if len(exits) > 1:
+            if len(exits) > 1 and not _same_exit_target(instructions, labels, exits):
                 refused.append("multi-exit")
                 continue
             kind = "while"
         elif len(exits) > 1:
-            refused.append("multi-exit")
-            continue
+            if not _same_exit_target(instructions, labels, exits):
+                refused.append("multi-exit")
+                continue
+            kind = "do-break"
         else:
             kind = "do-while" if not exits else "do-break"
         inner_bad = None
@@ -1529,6 +1538,11 @@ def loop_regions(instructions, *, allow_calls=False) -> tuple[list, list]:
         if inner_bad is not None:
             refused.append(inner_reason)
             continue
+        if len(exits) > 1 and joins:
+            # Join-plus-multi-exit composition is deferred; each shape is
+            # proven separately first.
+            refused.append("branch-in-loop")
+            continue
         if any(instructions[k].mnemonic in _LOOP_BARRED_OPS for k in range(start, slot + 1)):
             refused.append("barred-op")
             continue
@@ -1538,7 +1552,8 @@ def loop_regions(instructions, *, allow_calls=False) -> tuple[list, list]:
         if _touches_frame(instructions, start, slot + 1):
             refused.append("frame-adjust")
             continue
-        if exits and _branch_target_index(instructions, labels, exits[0]) != slot + 1:
+        if exits and any(_branch_target_index(instructions, labels, k) != slot + 1
+                         for k in exits):
             refused.append("nonlocal-exit")
             continue
         outside = False
@@ -1555,7 +1570,8 @@ def loop_regions(instructions, *, allow_calls=False) -> tuple[list, list]:
             refused.append("outside-entry")
             continue
         admitted.append({"start": start, "branch": branch, "slot": slot,
-                         "kind": kind, "exit": exits[0] if exits else None})
+                         "kind": kind, "exit": exits[0] if exits else None,
+                         "exits": list(exits)})
     return admitted, refused
 
 
@@ -2476,32 +2492,36 @@ def _leaf_body(instructions, parameters, return_type, callees=None, layouts=None
         # With a nop exit slot, a test-first C while is exact. Otherwise emit
         # the predicate, delay slot and break inside while(1), including on
         # the zero-trip path. Both exits must reach the same continuation.
-        test_first = (kind == "while" and exit_index == start
+        exit_list = region.get("exits") or ([exit_index] if exit_index is not None else [])
+        test_first = (len(exit_list) == 1 and kind == "while" and exit_index == start
                       and instructions[start + 1].mnemonic == "nop")
 
         def emit(initial):
             current = LoopValues(initial)
-            body_lines, exit_state = [], None
+            body_lines, exit_states = [], None
             if test_first:
                 condition = _cond_text(instructions[start].mnemonic, operands(instructions[start]),
                                        current, len(operands(instructions[start])), negate=True)
-                exit_state = current.copy()
+                exit_states = [current.copy()]
                 step(start + 1, current, body_lines, body_indent)
                 _lower_segment(start + 2, branch, current, body_lines, body_indent, labels)
                 step(slot, current, body_lines, body_indent)
             else:
-                limit = exit_index if exit_index is not None else branch
-                _lower_segment(start, limit, current, body_lines, body_indent, labels)
-                if exit_index is not None:
-                    predicate = branch_condition(exit_index, current, body_lines, body_indent)
-                    step(exit_index + 1, current, body_lines, body_indent)
-                    exit_state = current.copy()
+                bound = exit_list[0] if exit_list else branch
+                _lower_segment(start, bound, current, body_lines, body_indent, labels)
+                states = []
+                for pos, exit_at in enumerate(exit_list):
+                    predicate = branch_condition(exit_at, current, body_lines, body_indent)
+                    step(exit_at + 1, current, body_lines, body_indent)
+                    states.append(current.copy())
                     body_lines.append(body_indent + "if (" + predicate + ") break;")
-                    _lower_segment(exit_index + 2, branch, current, body_lines, body_indent, labels)
+                    follow = exit_list[pos + 1] if pos + 1 < len(exit_list) else branch
+                    _lower_segment(exit_at + 2, follow, current, body_lines, body_indent, labels)
+                exit_states = states or None
                 condition = (branch_condition(branch, current, body_lines, body_indent)
                              if kind != "while" else "1")
                 step(slot, current, body_lines, body_indent)
-            return current, exit_state, condition, body_lines
+            return current, exit_states, condition, body_lines
 
         loop_active[0] = True
         try:
@@ -2510,7 +2530,7 @@ def _leaf_body(instructions, parameters, return_type, callees=None, layouts=None
             # No discovery C or temporary is retained in the emitted function.
             temporary_count = len(temporaries)
             names_before, prototypes_before = set(reserved_names), dict(prototypes)
-            end, early, _, _ = emit(values)
+            end, early_list, _, _ = emit(values)
             required, writes = set(end.entry_reads), set(end.writes)
             del temporaries[temporary_count:]
             reserved_names.clear()
@@ -2537,7 +2557,7 @@ def _leaf_body(instructions, parameters, return_type, callees=None, layouts=None
                 materialize[reg] = storage
                 values[reg] = storage
             initial = dict(values)
-            end, early, condition, body_lines = emit(initial)
+            end, early_list, condition, body_lines = emit(initial)
             final = dict(end)
             # Every value consumed from entry must remain available at the
             # backedge with the same binding. Call clobbers get no exemption.
@@ -2552,15 +2572,25 @@ def _leaf_body(instructions, parameters, return_type, callees=None, layouts=None
                 lines.append(indent + "do {")
                 lines.extend(body_lines)
                 lines.append(indent + "} while (" + condition + ");")
-            if early is not None:
-                early_values = dict(early)
-                if kind == "while":
-                    final = early_values
+            if early_list is not None:
+                states = [dict(state) for state in early_list]
+                if len(states) == 1:
+                    if kind == "while":
+                        final = states[0]
+                    else:
+                        # Keep only bindings valid at both the break and latch
+                        # exits. Unused scratch state is allowed to disappear.
+                        final = {key: value for key, value in final.items()
+                                 if key in states[0] and states[0][key] == value}
+                elif kind == "while":
+                    final = states[0]
+                    for other in states[1:]:
+                        final = {key: value for key, value in final.items()
+                                 if key in other and other[key] == value}
                 else:
-                    # Keep only bindings valid at both the break and latch
-                    # exits. Unused scratch state is allowed to disappear.
-                    final = {key: value for key, value in final.items()
-                             if key in early_values and early_values[key] == value}
+                    for other in states:
+                        final = {key: value for key, value in final.items()
+                                 if key in other and other[key] == value}
             values.clear()
             values.update(final)
             visited.update(range(start, slot + 1))

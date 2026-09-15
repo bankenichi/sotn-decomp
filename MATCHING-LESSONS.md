@@ -1613,3 +1613,17 @@ zero-trip and executed exits. Regression executables run with timeouts so a
 wrong loop cannot hang the suite. Nonlocal exits and loop stack writes refuse
 until their state joins are implemented. The full outcome and remaining
 coverage limits are recorded in the linked outcome document.
+
+### Multi-exit joins: shared continuation with per-exit breaks
+
+Single-exit lowering assumed one break site, so any loop with two forward
+exits refused multi-exit even when every exit left at the same continuation.
+The region now records the full exit list and admits the loop only when all
+exits share one target; the existing nonlocal-exit check then requires that
+target immediately after the loop. Each exit lowers to its own predicate
+snapshot, delay slot and break, and the final state keeps only bindings valid
+on every exit path plus the latch exit. Split continuations still refuse
+multi-exit, and join-plus-multi composition stays refused until each shape is
+proven separately. Fixture proof is host-executed do-break and while-form
+loops with either break firing, plus region tests for admission and each
+refusal. Full-pool effect is recorded in the linked outcome document.

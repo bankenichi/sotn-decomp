@@ -1293,7 +1293,48 @@ class LoopRegionTests(unittest.TestCase):
                       "beq $v0, $a1, .Lexit\nnop\n"
                       "beq $v0, $a2, .Lexit\nnop\n"
                       "b .Ltop\nnop\n.Lexit:\njr $ra\nnop\n")
-        self.assertEqual(self._regions(multi_exit), ([], ["multi-exit"]))
+        admitted, refused = self._regions(multi_exit)
+        self.assertEqual(refused, [])
+        self.assertEqual(
+            [(region["kind"], region["exit"], region["exits"]) for region in admitted],
+            [("while", 1, [1, 3])])
+
+    def test_multi_exit_shared_continuation_admits(self):
+        multi = (".Ltop:\naddiu $v0, $v0, 1\n"
+                 "beq $v0, $a1, .Lexit\nnop\n"
+                 "beq $v0, $a2, .Lexit\nnop\n"
+                 "bne $v0, $a0, .Ltop\nnop\n.Lexit:\njr $ra\nnop\n")
+        admitted, refused = self._regions(multi)
+        self.assertEqual(refused, [])
+        self.assertEqual(len(admitted), 1)
+        self.assertEqual(admitted[0]["kind"], "do-break")
+        self.assertEqual(admitted[0]["exits"], [1, 3])
+        self.assertEqual(admitted[0]["exit"], 1)
+
+    def test_multi_exit_split_continuation_refuses(self):
+        split = (".Ltop:\naddiu $v0, $v0, 1\n"
+                 "beq $v0, $a1, .Lexit\nnop\n"
+                 "beq $v0, $a2, .Lfar\nnop\n"
+                 "bne $v0, $a0, .Ltop\nnop\n.Lexit:\naddiu $v1, $v1, 1\n"
+                 ".Lfar:\njr $ra\nnop\n")
+        self.assertEqual(self._regions(split), ([], ["multi-exit"]))
+
+    def test_multi_exit_shared_nonlocal_refuses(self):
+        far = (".Ltop:\naddiu $v0, $v0, 1\n"
+               "beq $v0, $a1, .Lfar\nnop\n"
+               "beq $v0, $a2, .Lfar\nnop\n"
+               "bne $v0, $a0, .Ltop\nnop\naddiu $v1, $v1, 1\n"
+               ".Lfar:\njr $ra\nnop\n")
+        self.assertEqual(self._regions(far)[1], ["nonlocal-exit"])
+
+    def test_multi_exit_with_join_stays_refused(self):
+        join_multi = (".Ltop:\naddiu $v0, $v0, 1\n"
+                      "beq $v0, $a1, .Lskip\nnop\n.Lskip:\n"
+                      "beq $v0, $a2, .Lexit\nnop\n"
+                      "beq $v0, $a3, .Lexit\nnop\n"
+                      "bne $v0, $a0, .Ltop\nnop\n.Lexit:\njr $ra\nnop\n")
+        self.assertEqual(self._regions(join_multi)[1], ["branch-in-loop"])
+
     def test_inner_control_and_outside_entry_refuse(self):
         bare_join = (".Ltop:\naddiu $v0, $v0, 1\n"
                      "beq $v0, $a1, .Lskip\nnop\n.Lskip:\n"
@@ -1493,6 +1534,38 @@ class LoopLoweringTests(unittest.TestCase):
                             "void callee(unsigned int n) { sum += n; }\n"
                             "int main(void) { return fn(0) != 0 || sum != 0 || fn(4) != 4 || sum != 4; }\n",
                             b"void callee(unsigned int n);\n")
+
+    MULTI_ASM = ("li $v0, 0\n.Ltop:\naddiu $v0, $v0, 1\n"
+                 "beq $v0, $a1, .Lexit\nnop\n"
+                 "beq $v0, $a2, .Lexit\nnop\n"
+                 "bne $v0, $a0, .Ltop\nnop\n.Lexit:\njr $ra\nnop\n")
+    MULTI_DECLS = {
+        "return_type": "unsigned int",
+        "parameters": [{"type": "unsigned int", "name": "limit"},
+                       {"type": "unsigned int", "name": "stop1"},
+                       {"type": "unsigned int", "name": "stop2"}],
+    }
+
+    def test_multi_break_renders_two_breaks(self):
+        source = deterministic_local_draft(
+            self.MULTI_ASM, symbol="fn", declarations=self.MULTI_DECLS)
+        self.assertIsNotNone(source)
+        self.assertEqual(source.count("break;"), 2)
+        self.assertIn("do {", source)
+
+    def test_multi_break_counts_with_either_limit(self):
+        self.assert_program(
+            self.MULTI_ASM, self.MULTI_DECLS,
+            "int main(void) { return fn(5, 9, 9) != 5 || fn(9, 2, 9) != 2 || fn(9, 9, 4) != 4; }\n")
+
+    def test_multi_break_while_form_counts(self):
+        assembly = ("li $v0, 0\n.Ltop:\naddiu $v0, $v0, 1\n"
+                    "beq $v0, $a1, .Lexit\nnop\n"
+                    "beq $v0, $a2, .Lexit\nnop\n"
+                    "b .Ltop\nnop\n.Lexit:\njr $ra\nnop\n")
+        self.assert_program(
+            assembly, self.MULTI_DECLS,
+            "int main(void) { return fn(9, 3, 9) != 3 || fn(9, 9, 2) != 2; }\n")
 
     def test_loop_call_refuses_clobbered_values_and_unsafe_frames(self):
         from automation.search_source_context import renderer_declarations

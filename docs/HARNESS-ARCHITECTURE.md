@@ -103,9 +103,11 @@ do-while regions, while-form regions via exact condition negation, in-loop
 branch joins with taken/fall merging. The September 15 review adds per-iteration
 direct/API calls through the ordinary call ABI, separates carrier storage from
 register validity, captures predicates before delay slots, and checks live-ins
-at the backedge. See `docs/loop-call-outcome-2026-09-16.md` for the retracted
+at the backedge. Multi-exit joins admit forward exits sharing one continuation
+immediately after the loop, each with its own predicate snapshot, delay slot
+and break, merging only bindings valid on every exit path. See `docs/loop-call-outcome-2026-09-16.md` for the retracted
 diagnosis and regression evidence. Refused: loop stack writes, nonlocal exits,
-multi-exit joins, nesting, return-in-loop, in-loop switch dispatch, bigger ceilings
+split-continuation multi-exit, join-plus-multi composition, nesting, return-in-loop, in-loop switch dispatch, bigger ceilings
 for the 69 size-blocked files.
 
 Measurement lives in `measure_data_effect.py`: 283-file g_api jalr pool,
