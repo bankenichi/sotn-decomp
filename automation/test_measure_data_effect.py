@@ -8,7 +8,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from automation.measure_data_effect import classify_file, derive_record, is_pool_member
+from automation.measure_data_effect import classify_file, derive_record, instruction_count, is_pool_member, resolve_limits, size_bucket
 
 
 class RemeasureHelperTests(unittest.TestCase):
@@ -57,6 +57,28 @@ class RemeasureHelperTests(unittest.TestCase):
         self.assertIsNone(derive_record("asm/us/st/func.s"))
         self.assertIsNone(derive_record("elsewhere/func_us_1.s"))
         self.assertIsNone(derive_record(""))
+
+    def test_resolve_limits_maps_names_and_refuses(self):
+        from automation.search_target_renderer import DEFAULT_LIMITS
+        self.assertIsNone(resolve_limits("default"))
+        raised = resolve_limits("raised")
+        self.assertEqual(raised.max_instructions, 512)
+        self.assertEqual(raised.path_budget, 4096)
+        self.assertEqual(raised.max_expression, 16384)
+        self.assertEqual(raised.max_body, 262144)
+        self.assertGreater(raised.max_instructions, DEFAULT_LIMITS.max_instructions)
+        with self.assertRaises(ValueError):
+            resolve_limits("turbo")
+
+    def test_instruction_count_and_size_buckets(self):
+        self.assertEqual(instruction_count("jr $ra\nnop\n"), 2)
+        self.assertIsNone(instruction_count(None))
+        self.assertEqual(size_bucket(None), "unparseable")
+        self.assertEqual(size_bucket(64), "<=64")
+        self.assertEqual(size_bucket(65), "65-128")
+        self.assertEqual(size_bucket(256), "129-256")
+        self.assertEqual(size_bucket(512), "257-512")
+        self.assertEqual(size_bucket(513), ">512")
 
 
 if __name__ == "__main__":

@@ -86,7 +86,55 @@ def derive_record(asm_relative: str) -> tuple[str, str] | None:
         return None
 
 
-def measure_pool(repo: Path, limit: int | None = None) -> dict:
+
+
+def resolve_limits(name: str):
+    """Map a measurement limits name to a renderer limits instance.
+
+    "default" returns None, which selects canonical DEFAULT_LIMITS, the only
+    setting production archived runs use. "raised" returns the validated hard
+    ceilings for scoped measurement. Anything else raises ValueError.
+    """
+    from automation.search_target_renderer import RendererLimits
+    if name == "default":
+        return None
+    if name == "raised":
+        return RendererLimits(max_instructions=512, path_budget=4096,
+                              max_expression=16384, max_body=262144)
+    raise ValueError("limits must be default or raised")
+
+
+def instruction_count(text: str) -> int | None:
+    """Number of parsed instructions in the assembly, or None.
+
+    Pure helper; unparseable input yields None instead of raising.
+    """
+    from automation.search_target_renderer import _parse_assembly
+    if not isinstance(text, str):
+        return None
+    try:
+        return len(_parse_assembly(text))
+    except ValueError:
+        return None
+
+
+def size_bucket(count: int | None) -> str:
+    """Bucket an instruction count for the size-blocked split.
+
+    Pure helper; unparseable input lands in "unparseable".
+    """
+    if count is None:
+        return "unparseable"
+    if count <= 64:
+        return "<=64"
+    if count <= 128:
+        return "65-128"
+    if count <= 256:
+        return "129-256"
+    if count <= 512:
+        return "257-512"
+    return ">512"
+def measure_pool(repo: Path, limit: int | None = None, limits: str = "default") -> dict:
     """Walk nonmatchings assembly and tally the g_api jalr pool.
 
     For each pool file, captures the real owning plus sibling context,
@@ -119,7 +167,10 @@ def measure_pool(repo: Path, limit: int | None = None) -> dict:
         "undeclared": 0,
         "errors": {},
         "reloc_histogram": {"g_api": 0, "d_star": 0, "g_star": 0, "linker": 0, "jtbl": 0, "other": 0},
+        "size_histogram": {"<=64": 0, "65-128": 0, "129-256": 0, "257-512": 0, ">512": 0, "unparseable": 0},
     }
+    bounds = resolve_limits(limits)
+    tally["limits"] = {"name": limits, "max_instructions": bounds.max_instructions if bounds is not None else 64}
 
     def _count(prefix: str, exc: Exception) -> None:
         tally["errors"].setdefault(prefix + type(exc).__name__, 0)
@@ -161,13 +212,14 @@ def measure_pool(repo: Path, limit: int | None = None) -> dict:
             sibling_contexts = tuple(blob for _, _, blob in blobs)
             facts = renderer_declarations(
                 dict(declarations), (repo / rel).read_bytes(), own_context, sibling_contexts)
-            draft = deterministic_local_draft(text, symbol=record_id.split(":")[2], declarations=facts)
+            draft = deterministic_local_draft(text, symbol=record_id.split(":")[2], declarations=facts, limits=bounds)
         except Exception as exc:  # noqa: BLE001 - tally refusal classes, never raise
             _count("render:", exc)
             tally["unrendered"] += 1
             continue
         if draft is None:
             tally["unrendered"] += 1
+            tally["size_histogram"][size_bucket(instruction_count(text))] += 1
             if evidence.get("status") != "declared":
                 tally["undeclared"] += 1
         else:
@@ -180,12 +232,13 @@ def main(argv=None) -> int:
     """Entry point: print the JSON tally for the pool to stdout."""
     parser = argparse.ArgumentParser(description="Remeasure data slices over the g_api jalr pool.")
     parser.add_argument("--limit", type=int, default=None, help="Measure only the first N pool files.")
+    parser.add_argument("--limits", choices=("default", "raised"), default="default", help="Renderer bounds: canonical defaults or validated ceilings.")
     parser.add_argument("--root", default=None, help="Repository root override.")
     args = parser.parse_args(argv)
     if args.limit is not None and args.limit < 0:
         parser.error("--limit must be non-negative")
     repo = Path(args.root) if args.root else ROOT
-    print(json.dumps(measure_pool(repo, args.limit), indent=2, sort_keys=True))
+    print(json.dumps(measure_pool(repo, args.limit, args.limits), indent=2, sort_keys=True))
     return 0
 
 
