@@ -207,20 +207,22 @@ def loop_latches(text: str) -> dict:
     return found
 
 
-def loop_region_summary(text: str) -> tuple[int, set]:
-    """Admitted region count plus refusal reasons for one file.
+def loop_region_summary(text: str) -> tuple[int, int, set]:
+    """Admitted region counts plus refusal reasons for one file.
 
-    Pure helper shared by the tally. Unparseable input yields no regions
-    and no reasons instead of raising.
+    Returns admitted do-while-style regions, admitted while-form regions,
+    and refusal reasons. Pure helper shared by the tally. Unparseable
+    input yields zeros instead of raising.
     """
     from automation.search_target_renderer import _parse_assembly, loop_regions
     if not isinstance(text, str):
-        return 0, set()
+        return 0, 0, set()
     try:
         admitted, refused = loop_regions(_parse_assembly(text))
     except ValueError:
-        return 0, set()
-    return len(admitted), set(refused)
+        return 0, 0, set()
+    kinds = [region.get("kind", "do-while") for region in admitted]
+    return len(admitted), sum(1 for kind in kinds if kind != "do-while"), set(refused)
 def measure_pool(repo: Path, limit: int | None = None, limits: str = "default", offset: int = 0) -> dict:
     """Walk nonmatchings assembly and tally the g_api jalr pool.
 
@@ -261,6 +263,7 @@ def measure_pool(repo: Path, limit: int | None = None, limits: str = "default", 
         "single_uncond_latch": 0,
         "multi_latch": 0,
         "loop_admitted_files": 0,
+        "while_admitted_files": 0,
         "loop_reasons": {},
         "loop_histogram": {"<=64": 0, "65-128": 0, "129-256": 0, "257-512": 0, ">512": 0, "unparseable": 0},
     }
@@ -282,9 +285,11 @@ def measure_pool(repo: Path, limit: int | None = None, limits: str = "default", 
         for key in tally["reloc_histogram"]:
             if classify_file(text).get(key):
                 tally["reloc_histogram"][key] += 1
-        admitted_count, reasons = loop_region_summary(text)
+        admitted_count, while_count, reasons = loop_region_summary(text)
         if admitted_count:
             tally["loop_admitted_files"] += 1
+        if while_count:
+            tally["while_admitted_files"] += 1
         for reason in reasons:
             tally["loop_reasons"][reason] = tally["loop_reasons"].get(reason, 0) + 1
         if has_loop_shape(text):
@@ -354,7 +359,8 @@ def main(argv=None) -> int:
     tally = measure_pool(repo, args.limit, args.limits, args.offset)
     print(json.dumps(tally, indent=2, sort_keys=True))
     digest = {"pool": tally["pool"], "rendered": len(tally["rendered"]),
-              "admitted": tally["loop_admitted_files"], "unrendered": tally["unrendered"],
+              "admitted": tally["loop_admitted_files"], "while_admitted": tally["while_admitted_files"],
+              "unrendered": tally["unrendered"],
               "undeclared": tally["undeclared"], "reasons": tally["loop_reasons"]}
     print("DIGEST " + json.dumps(digest, sort_keys=True))
     return 0

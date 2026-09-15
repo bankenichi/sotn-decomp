@@ -1330,6 +1330,8 @@ _CONTROL_OPS = _COND_BRANCHES | frozenset({"b", "j", "jr", "jal", "jalr"})
 _LOOP_BARRED_OPS = frozenset({"mult", "multu", "div", "divu", "mflo", "mfhi"})
 _LOOP_LOAD_OPS = frozenset({"lw", "lh", "lhu", "lb", "lbu"})
 _LOOP_STORE_OPS = frozenset({"sw", "sh", "sb"})
+_NEGATED_BRANCH = {"beq": "bne", "bne": "beq", "beqz": "bnez", "bnez": "beqz",
+                   "bltz": "bgez", "bgez": "bltz", "bgtz": "blez", "blez": "bgtz"}
 
 
 def _build_reg_aliases() -> dict:
@@ -1458,11 +1460,11 @@ def loop_regions(instructions) -> tuple[list, list]:
         if target > index:
             continue
         if item.mnemonic in {"b", "j"}:
-            refused.append("while-latch")
+            candidates.append((target, index, False))
             continue
-        candidates.append((target, index))
+        candidates.append((target, index, True))
     admitted = []
-    for start, branch in sorted(candidates):
+    for start, branch, latch_cond in sorted(candidates):
         slot = branch + 1
         if slot >= len(instructions):
             refused.append("missing-slot")
@@ -1477,17 +1479,42 @@ def loop_regions(instructions) -> tuple[list, list]:
             if slot_dest is not None and slot_dest in top_reads:
                 refused.append("delay-hazard")
                 continue
-        inner = next((k for k in range(start, branch) if instructions[k].mnemonic in _CONTROL_OPS), None)
-        if inner is not None:
-            inner_item = instructions[inner]
-            inner_target = _branch_target_index(instructions, labels, inner)
+        exits = []
+        inner_bad = None
+        for k in range(start, branch):
+            item_k = instructions[k]
+            if item_k.mnemonic not in _CONTROL_OPS:
+                continue
+            exit_target = _branch_target_index(instructions, labels, k)
+            if (item_k.mnemonic in _COND_BRANCHES and exit_target is not None
+                    and exit_target > slot):
+                exits.append(k)
+                continue
+            inner_bad = k
+            break
+        if inner_bad is not None:
+            inner_item = instructions[inner_bad]
+            inner_target = _branch_target_index(instructions, labels, inner_bad)
             if inner_item.mnemonic in {"jal", "jalr"}:
                 refused.append("call-in-loop")
-            elif inner_target is not None and inner_target < inner:
+            elif inner_target is not None and inner_target < inner_bad:
                 refused.append("nested-loop")
             else:
                 refused.append("branch-in-loop")
             continue
+        if not latch_cond:
+            if not exits:
+                refused.append("while-no-exit")
+                continue
+            if len(exits) > 1:
+                refused.append("multi-exit")
+                continue
+            kind = "while"
+        elif len(exits) > 1:
+            refused.append("multi-exit")
+            continue
+        else:
+            kind = "do-while" if not exits else "do-break"
         if any(instructions[k].mnemonic in _LOOP_BARRED_OPS for k in range(start, slot + 1)):
             refused.append("barred-op")
             continue
@@ -1510,7 +1537,8 @@ def loop_regions(instructions) -> tuple[list, list]:
         if outside:
             refused.append("outside-entry")
             continue
-        admitted.append({"start": start, "branch": branch, "slot": slot})
+        admitted.append({"start": start, "branch": branch, "slot": slot,
+                         "kind": kind, "exit": exits[0] if exits else None})
     return admitted, refused
 
 
@@ -2231,7 +2259,9 @@ def _leaf_body(instructions, parameters, return_type, callees=None, layouts=None
             return lines + [indent + "if (" + condition + ") {"] + taken + [indent + "} else {"] + other + [indent + "}"]
         raise ValueError("path does not return")
 
-    def _cond_text(op, args, values, expected):
+    def _cond_text(op, args, values, expected, negate=False):
+        if negate:
+            op = _NEGATED_BRANCH[op]
         left_value = values[register(args[0])]
         right_value = values[register(args[1])] if expected == 3 else "0"
         if isinstance(left_value, _PointerValue) or isinstance(right_value, _PointerValue):
@@ -2308,24 +2338,56 @@ def _leaf_body(instructions, parameters, return_type, callees=None, layouts=None
         try:
             body_lines = []
             body_indent = indent + "    "
-            for k in range(start, branch):
-                step(k, values, body_lines, body_indent)
-            step(slot, values, body_lines, body_indent)
+            kind = region.get("kind", "do-while")
+            exit_index = region.get("exit")
             latch = instructions[branch]
             latch_args = tuple(part.strip() for part in latch.operands.split(",")) if latch.operands else ()
             latch_arity = 3 if latch.mnemonic in {"beq", "bne"} else 2
-            if len(latch_args) != latch_arity:
-                raise ValueError("loop latch is malformed")
-            condition = _cond_text(latch.mnemonic, latch_args, values, latch_arity)
+            if kind == "while" and exit_index == start:
+                exit_item = instructions[exit_index]
+                exit_args = tuple(part.strip() for part in exit_item.operands.split(",")) if exit_item.operands else ()
+                exit_arity = 3 if exit_item.mnemonic in {"beq", "bne"} else 2
+                step(exit_index + 1, values, body_lines, body_indent)
+                for k in range(exit_index + 2, branch):
+                    step(k, values, body_lines, body_indent)
+                step(slot, values, body_lines, body_indent)
+                condition = _cond_text(exit_item.mnemonic, exit_args, values, exit_arity, negate=True)
+                trailing = None
+            else:
+                limit = exit_index if exit_index is not None else branch
+                for k in range(start, limit):
+                    step(k, values, body_lines, body_indent)
+                if exit_index is not None:
+                    exit_item = instructions[exit_index]
+                    exit_args = tuple(part.strip() for part in exit_item.operands.split(",")) if exit_item.operands else ()
+                    exit_arity = 3 if exit_item.mnemonic in {"beq", "bne"} else 2
+                    step(exit_index + 1, values, body_lines, body_indent)
+                    exit_condition = _cond_text(exit_item.mnemonic, exit_args, values, exit_arity)
+                    body_lines.append(body_indent + "if (" + exit_condition + ") break;")
+                    for k in range(exit_index + 2, branch):
+                        step(k, values, body_lines, body_indent)
+                step(slot, values, body_lines, body_indent)
+                if kind == "while":
+                    trailing = "1"
+                else:
+                    if len(latch_args) != latch_arity:
+                        raise ValueError("loop latch is malformed")
+                    trailing = _cond_text(latch.mnemonic, latch_args, values, latch_arity)
+                condition = trailing
             budget[0] -= (slot - start + 1)
             if budget[0] < 0:
                 raise ValueError("path expansion limit")
             visited.update(range(start, slot + 1))
             for init in inits:
                 lines.append(indent + init + ";")
-            lines.append(indent + "do {")
-            lines.extend(body_lines)
-            lines.append(indent + "} while (" + condition + ");")
+            if kind == "while" and exit_index == start:
+                lines.append(indent + "while (" + condition + ") {")
+                lines.extend(body_lines)
+                lines.append(indent + "}")
+            else:
+                lines.append(indent + "do {")
+                lines.extend(body_lines)
+                lines.append(indent + "} while (" + condition + ");")
         finally:
             materialize.difference_update(carried)
         return slot + 1

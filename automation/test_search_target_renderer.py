@@ -1271,13 +1271,29 @@ class LoopRegionTests(unittest.TestCase):
         self.assertLess(region["start"], region["branch"])
         self.assertEqual(region["slot"], region["branch"] + 1)
 
-    def test_while_latch_and_degenerate_shapes_refuse(self):
+    def test_while_forms_admit_with_kind_and_exit(self):
         while_latch = (".Ltop:\naddiu $v0, $v0, 1\n"
                        "beq $v0, $a0, .Lexit\nnop\n"
                        "b .Ltop\nnop\n.Lexit:\njr $ra\nnop\n")
-        self.assertEqual(self._regions(while_latch), ([], ["while-latch"]))
+        admitted, refused = self._regions(while_latch)
+        self.assertEqual(refused, [])
+        self.assertEqual([(region["kind"], region["exit"]) for region in admitted], [("while", 1)])
+        do_break = (".Ltop:\naddiu $v0, $v0, 1\n"
+                    "beq $v0, $a1, .Lexit\nnop\n"
+                    "addiu $v1, $v1, 1\nbne $v0, $a0, .Ltop\nnop\n"
+                    ".Lexit:\njr $ra\nnop\n")
+        admitted, refused = self._regions(do_break)
+        self.assertEqual(refused, [])
+        self.assertEqual([(region["kind"], region["exit"]) for region in admitted], [("do-break", 1)])
         spin = "bne $v0, $a0, .Ls\n.Ls:\nnop\njr $ra\nnop\n"
         self.assertEqual(self._regions(spin), ([], ["delay-entry"]))
+        no_exit = ".Ltop:\naddiu $v0, $v0, 1\nb .Ltop\nnop\njr $ra\nnop\n"
+        self.assertEqual(self._regions(no_exit), ([], ["while-no-exit"]))
+        multi_exit = (".Ltop:\naddiu $v0, $v0, 1\n"
+                      "beq $v0, $a1, .Lexit\nnop\n"
+                      "beq $v0, $a2, .Lexit\nnop\n"
+                      "b .Ltop\nnop\n.Lexit:\njr $ra\nnop\n")
+        self.assertEqual(self._regions(multi_exit), ([], ["multi-exit"]))
     def test_inner_control_and_outside_entry_refuse(self):
         inner = (".Ltop:\naddiu $v0, $v0, 1\n"
                  "beq $v0, $a1, .Lskip\nnop\n.Lskip:\n"
@@ -1441,6 +1457,95 @@ class LoopLoweringTests(unittest.TestCase):
             function.restype = None
             function(buffer, 7, 4)
             self.assertEqual(list(buffer), [7, 7, 7, 7])
+
+    def _compile_and_load(self, source, name, directory):
+        compiler = shutil.which("gcc") or shutil.which("cc")
+        if compiler is None:
+            self.skipTest("host C compiler unavailable")
+        root = Path(directory)
+        (root / (name + ".c")).write_text(source, encoding="utf-8")
+        subprocess.run([compiler, "-std=c89", "-O2", "-Wall", "-Werror", "-shared", "-fPIC",
+                        str(root / (name + ".c")), "-o", str(root / (name + ".so"))], check=True,
+                        capture_output=True, text=True)
+        return ctypes.CDLL(str(root / (name + ".so")))
+
+    def test_while_exit_middle_sums_until_sentinel(self):
+        from automation.search_target_layout import pointer_layouts
+        layouts = pointer_layouts(b"typedef signed short s16;\n", ["s16*"])
+        self.assertIn("s16*", layouts)
+        assembly = ("li $v0, 0\n.Ltop:\nlh $v1, 0($a0)\nnop\n"
+                    "bltz $v1, .Lexit\naddu $v0, $v0, $v1\n"
+                    "addiu $a0, $a0, 2\nb .Ltop\nnop\n"
+                    ".Lexit:\njr $ra\nnop\n")
+        declarations = {
+            "return_type": "unsigned int",
+            "parameters": [{"type": "s16*", "name": "p"}],
+            "pointer_layouts": layouts,
+        }
+        source = deterministic_local_draft(assembly, symbol="fn", declarations=declarations)
+        self.assertIsNotNone(source)
+        self.assertIn("if (", source)
+        self.assertIn("break;", source)
+        self.assertIn("while (1);", source)
+        with tempfile.TemporaryDirectory(prefix="loop-while-") as directory:
+            library = self._compile_and_load("typedef signed short s16;\n" + source, "fn", directory)
+            function = library.fn
+            array = (ctypes.c_int16 * 3)(3, 4, -1)
+            function.argtypes = [ctypes.POINTER(ctypes.c_int16)]
+            function.restype = ctypes.c_uint32
+            self.assertEqual(function(array), 6)
+
+    def test_exit_first_while_is_zero_trip_capable(self):
+        assembly = ("li $v0, 0\n.Ltop:\nbeq $a1, $zero, .Lexit\nnop\n"
+                    "addu $v0, $v0, $a0\naddiu $a1, $a1, -1\n"
+                    "b .Ltop\nnop\n.Lexit:\njr $ra\nnop\n")
+        declarations = {
+            "return_type": "unsigned int",
+            "parameters": [{"type": "unsigned int", "name": "v"},
+                           {"type": "unsigned int", "name": "n"}],
+        }
+        source = deterministic_local_draft(assembly, symbol="fn", declarations=declarations)
+        self.assertIsNotNone(source)
+        self.assertNotIn("do {", source)
+        self.assertIn("while (", source)
+        with tempfile.TemporaryDirectory(prefix="loop-zerotrip-") as directory:
+            library = self._compile_and_load(source, "fn", directory)
+            function = library.fn
+            function.argtypes = [ctypes.c_uint32, ctypes.c_uint32]
+            function.restype = ctypes.c_uint32
+            self.assertEqual(function(10, 3), 30)
+            self.assertEqual(function(10, 0), 0)
+
+    def test_do_break_counts_with_early_exit(self):
+        assembly = ("li $v0, 0\n.Ltop:\naddiu $v0, $v0, 1\n"
+                    "beq $v0, $a1, .Lexit\nnop\n"
+                    "bne $v0, $a0, .Ltop\nnop\n"
+                    ".Lexit:\njr $ra\nnop\n")
+        declarations = {
+            "return_type": "unsigned int",
+            "parameters": [{"type": "unsigned int", "name": "n"},
+                           {"type": "unsigned int", "name": "lim"}],
+        }
+        source = deterministic_local_draft(assembly, symbol="fn", declarations=declarations)
+        self.assertIsNotNone(source)
+        self.assertIn("break;", source)
+        with tempfile.TemporaryDirectory(prefix="loop-dobreak-") as directory:
+            library = self._compile_and_load(source, "fn", directory)
+            function = library.fn
+            function.argtypes = [ctypes.c_uint32, ctypes.c_uint32]
+            function.restype = ctypes.c_uint32
+            self.assertEqual(function(5, 3), 3)
+            self.assertEqual(function(5, 9), 5)
+
+    def test_while_refusals(self):
+        decls = self.COUNTER_DECLS
+        spin = ".Ltop:\naddiu $v0, $v0, 1\nb .Ltop\nnop\njr $ra\nnop\n"
+        self.assertIsNone(deterministic_local_draft(spin, symbol="fn", declarations=decls))
+        multi = (".Ltop:\naddiu $v0, $v0, 1\n"
+                 "beq $v0, $a1, .Lexit\nnop\n"
+                 "beq $v0, $a2, .Lexit\nnop\n"
+                 "b .Ltop\nnop\n.Lexit:\njr $ra\nnop\n")
+        self.assertIsNone(deterministic_local_draft(multi, symbol="fn", declarations=decls))
 
     def test_loop_refusals(self):
         cases = {}

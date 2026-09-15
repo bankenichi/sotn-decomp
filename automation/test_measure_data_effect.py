@@ -114,15 +114,15 @@ class RemeasureHelperTests(unittest.TestCase):
     def test_loop_region_summary_counts_and_reasons(self):
         do_while = ("li $v0, 0\n.Ltop:\naddiu $v0, $v0, 1\n"
                     "bne $v0, $a0, .Ltop\nnop\njr $ra\nnop\n")
-        self.assertEqual(loop_region_summary(do_while), (1, set()))
+        self.assertEqual(loop_region_summary(do_while), (1, 0, set()))
         while_latch = (".Ltop:\naddiu $v0, $v0, 1\n"
                        "beq $v0, $a0, .Lexit\nnop\n"
                        "b .Ltop\nnop\n.Lexit:\njr $ra\nnop\n")
-        count, reasons = loop_region_summary(while_latch)
-        self.assertEqual(count, 0)
-        self.assertIn("while-latch", reasons)
-        self.assertEqual(loop_region_summary(""), (0, set()))
-        self.assertEqual(loop_region_summary(None), (0, set()))
+        count, while_count, reasons = loop_region_summary(while_latch)
+        self.assertEqual((count, while_count), (1, 1))
+        self.assertEqual(reasons, set())
+        self.assertEqual(loop_region_summary(""), (0, 0, set()))
+        self.assertEqual(loop_region_summary(None), (0, 0, set()))
 
 
 
@@ -143,7 +143,8 @@ class RemeasureHelperTests(unittest.TestCase):
             self.assertEqual(tally["rendered"], [])
             digest = json.loads(digest_line[len("DIGEST "):])
             self.assertEqual(digest, {"pool": 0, "rendered": 0, "admitted": 0,
-                                     "unrendered": 0, "undeclared": 0, "reasons": {}})
+                                     "while_admitted": 0, "unrendered": 0,
+                                     "undeclared": 0, "reasons": {}})
             with self.assertRaises(SystemExit):
                 main(["--offset", "-1"])
 
