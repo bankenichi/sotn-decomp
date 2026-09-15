@@ -1090,5 +1090,88 @@ class VariableLimitsTests(unittest.TestCase):
             symbol="fn", declarations=ApiPointerCallTests.API_DECLS))
 
 
+
+
+class MultDivTests(unittest.TestCase):
+    DECLS = {"return_type": "unsigned int", "parameters": [
+        {"type": "unsigned int", "name": "x"},
+        {"type": "unsigned int", "name": "y"}]}
+
+    def _compile_and_load(self, directory, name, source):
+        compiler = shutil.which("gcc") or shutil.which("cc")
+        if compiler is None:
+            self.skipTest("host C compiler unavailable")
+        root = Path(directory)
+        (root / (name + ".c")).write_text(source, encoding="utf-8")
+        subprocess.run([compiler, "-std=c89", "-O2", "-Wall", "-Werror", "-shared", "-fPIC",
+                        str(root / (name + ".c")), "-o", str(root / (name + ".so"))], check=True,
+                       capture_output=True, text=True)
+        return ctypes.CDLL(str(root / (name + ".so")))
+
+    def test_mult_lo_computes_low_word(self):
+        source = deterministic_local_draft(
+            "mult $a0, $a1\nmflo $v0\njr $ra\nnop\n",
+            symbol="mul_lo", declarations=self.DECLS)
+        self.assertIsNotNone(source)
+        with tempfile.TemporaryDirectory(prefix="mult-semantics-") as directory:
+            function = self._compile_and_load(directory, "mul_lo", source).mul_lo
+            function.argtypes, function.restype = [ctypes.c_uint32] * 2, ctypes.c_uint32
+            for x in (0, 1, 7, 0x7FFFFFFF, 0x80000000, 0xFFFFFFFF):
+                for y in (0, 1, 3, 0x80000000, 0xFFFFFFFF):
+                    self.assertEqual(function(x, y), (x * y) & 0xFFFFFFFF, (x, y))
+
+    def test_multu_hi_computes_high_word(self):
+        source = deterministic_local_draft(
+            "multu $a0, $a1\nmfhi $v0\njr $ra\nnop\n",
+            symbol="mul_hi", declarations=self.DECLS)
+        self.assertIsNotNone(source)
+        with tempfile.TemporaryDirectory(prefix="multu-semantics-") as directory:
+            function = self._compile_and_load(directory, "mul_hi", source).mul_hi
+            function.argtypes, function.restype = [ctypes.c_uint32] * 2, ctypes.c_uint32
+            for x in (0, 1, 7, 0x7FFFFFFF, 0x80000000, 0xFFFFFFFF):
+                for y in (0, 1, 3, 0x80000000, 0xFFFFFFFF):
+                    self.assertEqual(function(x, y), (x * y) >> 32, (x, y))
+
+    def test_div_guard_shape_computes_quotient(self):
+        assembly = ("divu $zero, $a0, $a1\nbnez $a1, .Lok\nnop\nbreak 7\n"
+                    ".Lok:\nmflo $v0\njr $ra\nnop\n")
+        source = deterministic_local_draft(assembly, symbol="div_q", declarations=self.DECLS)
+        self.assertIsNotNone(source)
+        with tempfile.TemporaryDirectory(prefix="div-semantics-") as directory:
+            function = self._compile_and_load(directory, "div_q", source).div_q
+            function.argtypes, function.restype = [ctypes.c_uint32] * 2, ctypes.c_uint32
+            for x in (0, 1, 7, 100, 0xFFFFFFFF):
+                for y in (1, 3, 7, 0x80000000, 0xFFFFFFFF):
+                    self.assertEqual(function(x, y), x // y, (x, y))
+
+    def test_div_remainder_and_signed_shapes(self):
+        remainder = deterministic_local_draft(
+            "divu $zero, $a0, $a1\nmfhi $v0\njr $ra\nnop\n",
+            symbol="div_r", declarations=self.DECLS)
+        self.assertIsNotNone(remainder)
+        signed = {"return_type": "int", "parameters": [
+            {"type": "int", "name": "x"}, {"type": "int", "name": "y"}]}
+        quotient = deterministic_local_draft(
+            "div $zero, $a0, $a1\nmflo $v0\njr $ra\nnop\n",
+            symbol="sdiv_q", declarations=signed)
+        self.assertIsNotNone(quotient)
+        self.assertIn("/", quotient)
+
+    def test_hilo_refusals(self):
+        cases = {
+            "mflo_without_mult": "mflo $v0\njr $ra\nnop\n",
+            "mfhi_without_mult": "mfhi $v0\njr $ra\nnop\n",
+            "mthi": "mthi $a0\njr $ra\nmove $v0, $a0\n",
+            "mtlo": "mtlo $a0\njr $ra\nmove $v0, $a0\n",
+            "div_nonzero_rd": "div $t0, $a0, $a1\nmflo $v0\njr $ra\nnop\n",
+            "mult_arity": "mult $a0\nmflo $v0\njr $ra\nnop\n",
+            "break_too_large": "break 0x1000000\njr $ra\nmove $v0, $a0\n",
+        }
+        for name, assembly in cases.items():
+            with self.subTest(case=name):
+                self.assertIsNone(deterministic_local_draft(
+                    assembly, symbol="fn", declarations=self.DECLS))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -457,7 +457,8 @@ class FactoryFixture(unittest.TestCase):
         from automation.search_source_context import target_declaration
         cases = [
             ("int f(void);", "declared"),
-            ("int f(unsigned int);", "unsupported_declaration"),
+            # Unnamed parameters declare with positional names; empty lists still refuse.
+            ("int f(unsigned int);", "declared"),
             ("int f();", "unsupported_declaration"),
             ("typedef int f(int x);", "unsupported_declaration"),
             ("int f(int x);\nint f(unsigned int x);", "ambiguous_declaration"),

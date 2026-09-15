@@ -130,6 +130,38 @@ class CompileDriverTests(unittest.TestCase):
                 _rows, count = _normalized_disassembly(output, symbol=name)
                 self.assertGreater(count, 0)
 
+    def test_mult_div_break_shapes_reproduced_by_actual_psx_toolchain(self):
+        from automation.search_target_renderer import deterministic_local_draft
+        decls = {"return_type": "unsigned int", "parameters": [
+            {"type": "unsigned int", "name": "x"}, {"type": "unsigned int", "name": "y"}]}
+        prod = deterministic_local_draft(
+            "mult $a0, $a1\nmflo $v0\njr $ra\nnop\n",
+            symbol="md_prod", declarations=decls)
+        guarded = deterministic_local_draft(
+            "divu $zero, $a0, $a1\nbnez $a1, .Lok\nnop\nbreak 7\n.Lok:\n"
+            "mflo $v0\njr $ra\nnop\n",
+            symbol="md_guard", declarations=decls)
+        self.assertIsNotNone(prod)
+        self.assertIsNotNone(guarded)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            wrapper, source, output = root / "compile.sh", root / "md.c", root / "md.o"
+            wrapper.write_bytes(REPOSITORY_COMPILE_WRAPPER_BYTES)
+            wrapper.chmod(0o700)
+            source.write_text(prod + "\n" + guarded, encoding="utf-8")
+            result = subprocess.run([str(wrapper), str(source), "-o", str(output)], env={
+                **os.environ, "SOTN_REPO_ROOT": str(ROOT),
+                "SOTN_COMPILER_IDENTITY": pipeline_identity().identity, "TMPDIR": directory,
+            }, capture_output=True, timeout=60)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            rows, _ = _normalized_disassembly(output, symbol="md_prod")
+            self.assertIn("mult", rows)
+            self.assertIn("mflo", rows)
+            rows, _ = _normalized_disassembly(output, symbol="md_guard")
+            self.assertIn("divu", rows)
+            self.assertIn("break", rows)
+            self.assertIn("mflo", rows)
+
     def test_recovered_switch_compiles_with_actual_psx_toolchain(self):
         from automation.search_target_renderer import deterministic_local_draft
         from automation.test_search_target_renderer import SWITCH_ASM, SWITCH_DECLARATIONS

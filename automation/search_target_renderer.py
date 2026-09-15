@@ -1413,6 +1413,12 @@ def _leaf_body(instructions, parameters, return_type, callees=None, layouts=None
         visited.add(index)
         if op == "nop" and not args:
             return
+        if op == "break" and len(args) <= 1 and all(
+                re.fullmatch(r"(?:0[xX][0-9a-fA-F]{1,5}|[0-9]{1,7})", part.strip()) for part in args):
+            # Divide guards (break 7 for zero, break 6 for INT_MIN / -1)
+            # are reproduced by the compiler from plain C division, and are
+            # unreachable in correct execution. No state changes.
+            return
         if op == "sll" and len(args) == 3 and register(args[0]) == register(args[1]) == "zero" and args[2] == "0":
             return
         if op == "addiu" and len(args) == 3 and register(args[0]) == register(args[1]) == "sp":
@@ -1476,6 +1482,19 @@ def _leaf_body(instructions, parameters, return_type, callees=None, layouts=None
                 check_load_delay(index, target_register)
                 values[target_register] = values[slot]
             return
+        if op in {"mult", "multu", "div", "divu"} and (
+                len(args) == 2 or len(args) == 3 and register(args[0]) == "zero"):
+            # Integer multiply/divide latches HI/LO without emitting C. The
+            # pending triple lives beside the register file so branch paths
+            # copy it; a later mult/div overwrites it, matching hardware.
+            # Generic value sites never observe the tuple: no GPR is named
+            # mul, and every consumer below validates the shape explicitly.
+            # Three-operand divide spells the ignored rd field ($zero).
+            operands2 = args[-2:]
+            left = value_for(values, operands2[0])
+            right = value_for(values, operands2[1])
+            values["mul"] = (op, left, right)
+            return
         if not args or register(args[0]) not in writable:
             raise ValueError("not a scratch-register assignment")
         destination = register(args[0])
@@ -1526,6 +1545,33 @@ def _leaf_body(instructions, parameters, return_type, callees=None, layouts=None
             value = "(unsigned int)((" + left + ") " + operator + " (" + right + "))"
             if register(args[1]) == "zero" and op in {"addiu", "ori"}:
                 value = right
+        elif op in {"mflo", "mfhi"} and len(args) == 1:
+            pending = values.get("mul")
+            if (not isinstance(pending, tuple) or len(pending) != 3
+                    or pending[0] not in {"mult", "multu", "div", "divu"}):
+                raise ValueError("HI/LO read without a producing multiply")
+            kind, left, right = pending
+            unsigned = "(unsigned int)(" + left + ")", "(unsigned int)(" + right + ")"
+            signed = "(int)(" + left + ")", "(int)(" + right + ")"
+            if op == "mflo" and kind in {"mult", "multu"}:
+                # Low words of signed and unsigned products coincide.
+                value = "(unsigned int)((" + unsigned[0] + ") * (" + unsigned[1] + "))"
+            elif op == "mflo":
+                sides = unsigned if kind == "divu" else signed
+                value = "(unsigned int)((" + sides[0] + ") / (" + sides[1] + "))"
+            elif kind == "mult":
+                value = ("(unsigned int)(((long long)" + signed[0] + " * (long long)" + signed[1]
+                         + ") >> 32)")
+            elif kind == "multu":
+                value = ("(unsigned int)(((unsigned long long)" + unsigned[0]
+                         + " * (unsigned long long)" + unsigned[1] + ") >> 32)")
+            else:
+                sides = unsigned if kind == "divu" else signed
+                value = "(unsigned int)((" + sides[0] + ") % (" + sides[1] + "))"
+            if len(value) > bounds.max_expression:
+                raise ValueError("expression expansion limit")
+            values[destination] = value
+            return
         elif op == "negu" and len(args) == 2:
             # Unsigned negate: 0 minus the operand with no overflow trap.
             # The trapping `neg` pseudo-instruction stays unsupported.
