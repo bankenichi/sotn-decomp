@@ -135,9 +135,15 @@ class RemeasureHelperTests(unittest.TestCase):
             buffer = io.StringIO()
             with redirect_stdout(buffer):
                 self.assertEqual(main(["--root", directory, "--limit", "5", "--offset", "2"]), 0)
-            tally = json.loads(buffer.getvalue())
+            payload = buffer.getvalue()
+            digest_line = [line for line in payload.splitlines() if line.startswith("DIGEST ")][0]
+            body = "\n".join(line for line in payload.splitlines() if not line.startswith("DIGEST "))
+            tally = json.loads(body)
             self.assertEqual(tally["pool"], 0)
             self.assertEqual(tally["rendered"], [])
+            digest = json.loads(digest_line[len("DIGEST "):])
+            self.assertEqual(digest, {"pool": 0, "rendered": 0, "admitted": 0,
+                                     "unrendered": 0, "undeclared": 0, "reasons": {}})
             with self.assertRaises(SystemExit):
                 main(["--offset", "-1"])
 

@@ -351,7 +351,12 @@ def main(argv=None) -> int:
     if args.offset < 0:
         parser.error("--offset must be non-negative")
     repo = Path(args.root) if args.root else ROOT
-    print(json.dumps(measure_pool(repo, args.limit, args.limits, args.offset), indent=2, sort_keys=True))
+    tally = measure_pool(repo, args.limit, args.limits, args.offset)
+    print(json.dumps(tally, indent=2, sort_keys=True))
+    digest = {"pool": tally["pool"], "rendered": len(tally["rendered"]),
+              "admitted": tally["loop_admitted_files"], "unrendered": tally["unrendered"],
+              "undeclared": tally["undeclared"], "reasons": tally["loop_reasons"]}
+    print("DIGEST " + json.dumps(digest, sort_keys=True))
     return 0
 
 
