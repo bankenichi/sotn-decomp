@@ -54,8 +54,9 @@ fleet_stop()                    # ALWAYS. Releases claims, clears the lock, and
   which named the wrong backend entirely. `http` still works and resolves to
   `zen`.
 * **The dashboard is the front end.** `python3 automation/dashboard.py`, then
-  open the URL it prints. Live queue counters, worker logs, 37 read-only
-  diagnostics, build actions, permuter control. The token is regenerated on
+  open the URL it prints. Live queue counters, worker logs, 58 read-only
+  diagnostics (including the renderer-measurement smokes), build actions,
+  permuter control. The token is regenerated on
   every restart and embedded in the page, so **a tab left open across a
   restart will be rejected**; reload it. (Until 2026-08-09 that rejection
   rendered as a blank panel, which is not a helpful way to learn this.)

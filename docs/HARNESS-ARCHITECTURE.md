@@ -78,10 +78,38 @@ scratch, queue state, build artifacts, managed documents or source:
 | `decl_coverage.py` | which unmatched functions have resolvable declarations |
 | `overlay_size_check.py` | map vs symbol addresses; catches TEXT size bugs |
 | `opencode_size_bisect.py` | model/prompt-size diagnosis for the cli backend |
+| `measure_data_effect.py` | read-only remeasurement of the renderer data-addressing plus loop slices over the 283-file g_api jalr pool (JSON tally plus one-line DIGEST; `--limit/--offset` shards, `--limits raised` runs validated ceilings; queue-aware); dashboard diagnostics carry the smoke entries, full runs go through connector jobs |
 
 Self-tests: `test_twin_wiring.py`, `test_build_classifier.py`,
 `test_review_gate.py`. Each is allowlisted and each pins a bug that actually
 happened.
+
+---
+
+## 2b. The deterministic target renderer (September 2026)
+
+`automation/search_target_renderer.py` lowers bounded MIPS straight-line
+dataflow plus admitted loop regions to C, driven only by archived US target
+evidence. Nothing donor-supplied reaches generation: target prototypes,
+callee ABI, API signatures, data/global/linker declarations, pointer layouts,
+and sibling scopes all come from the owning translation unit, its same-overlay
+siblings, or exact context. `RendererLimits` (64/256/4096/65536 canonical,
+512/4096/16384/262144 ceilings) governs termination; production archived replay
+always uses defaults, raised caps are measurement-only.
+
+Landed: D_\* addresses, g_\* globals, PLAYER_/RIC_ linker absolutes with
+width-derived externs, g_\* offset addresses, sibling declaration capture,
+do-while regions, while-form regions via exact condition negation, in-loop
+branch joins with taken/fall merging. Refused: per-iteration calls (two broken
+invariants, both reverted; see `docs/loop-call-outcome-2026-09-16.md`),
+multi-exit joins, nesting, return-in-loop, switch dispatch, bigger ceilings
+for the 69 size-blocked files.
+
+Measurement lives in `measure_data_effect.py`: 283-file g_api jalr pool,
+real TU plus sibling capture, declaration projection, default-limits draft,
+queue-aware (23 stale matched skipped), shardable via `--limit/--offset`.
+Latest: 260 active files, 0 new renders, admitted-but-blocked 6 declared plus
+16 size; refusal file-votes call-in-loop 112, branch-in-loop 49, undeclared 63.
 
 ---
 

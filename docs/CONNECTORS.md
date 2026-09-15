@@ -205,9 +205,9 @@ caller-controlled paths and arbitrary argv out of the boundary:
 `search_create_instrumented` also accepts `weight_tuning_run` for explicit
 later-run scorer adoption. The factory verifies the complete archived tuning
 report, checks compiler/config compatibility, and freezes the exact weight
-document. It cannot change an existing run's weights. `data_search.py` and
-`weight_tuner.py` are available through `job_start(action="run_automation")`;
-their operational arguments and limits are documented in `automation/README.md`.
+document. It cannot change an existing run's weights. `data_search.py`,
+`weight_tuner.py`, and `measure_data_effect.py` are available through `job_start(action="run_automation")`;
+their operational arguments and limits are documented in `automation/README.md`. `measure_data_effect.py` takes `--limit/--offset` shards (full pool runs ~8 minutes, shard to 71-file pieces) and `--limits raised` for validated ceilings; it prints the full JSON tally plus a one-line DIGEST for shard merging.
 
 Run IDs are single path-safe components. The connector resolves them only
 below `nonmatchings/<function>/search-runs/`; it never accepts a manifest path.

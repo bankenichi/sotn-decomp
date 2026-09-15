@@ -200,6 +200,10 @@ were quoting turned out to be an artefact:
 - `match_provenance.py` — the table above.
 - `quality_audit.py`, `review_checks.py`, `relocation_check.py`,
   `provenance_check.py`.
+- `measure_data_effect.py` — read-only renderer measurement over the
+  283-file g_api jalr pool (JSON tally plus DIGEST; dashboard smokes,
+  connector-job shards). Full outcome in
+  `docs/loop-call-outcome-2026-09-16.md`.
 
 ### Control
 
@@ -374,6 +378,7 @@ second hand-maintained overlay list.
 | `MATCHING-LESSONS.md` | evidence-backed matching notes, with retractions |
 | `docs/NAMING.md`, `docs/STYLE.md` | conventions |
 | `ROADMAP.md` | direction, plus the ledger of every task ever opened |
+| `docs/loop-call-outcome-2026-09-16.md` | loop and per-iteration-call outcome: landed slices, tallies, broken invariants, ordered next steps |
 
 A standing rule across all of them: **when a claim turns out to be wrong it is
 retracted in place, with the measurement that disproved it.** Several documents

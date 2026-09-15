@@ -209,7 +209,7 @@ Below 900px they stack.
 
 Polls `/api/status` every 3 seconds.
 
-Four tabs: **monitor** (the above), **diagnostics**, **build**, **logs**.
+Four tabs: **monitor** (the above), **diagnostics**, **build**, **logs**. The diagnostics tab now carries 58 entries including three renderer-measurement smokes (pool smoke, raised ceilings, loop census); sharded full-pool runs stay on connector jobs because one full pass takes ~8 minutes.
 
 #### Diagnostics tab layout (rewritten 2026-08-09, twice)
 

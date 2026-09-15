@@ -1569,3 +1569,23 @@ tool rather than the verdict:
   list puts `src/saturn/` first, so one US record compared Saturn's port
   against upstream PSX and reported a phantom row. Both sides now resolve
   through the record's own overlay before falling back.
+
+## 31. Loop calls need their own temp kind, not a materialize exemption
+
+Per-iteration `jal` lowering was attempted as a long variant sweep on top of
+the landed loop support and every variant was reverted. The two broken
+invariants, both load-bearing:
+
+- The call path pops every volatile after each `jal`. Loop-carried
+  registers are exactly the volatiles that must survive, so exemptions either
+  corrupted carriers or refused every call site.
+- `_define` assumes one value per destination per pass. A call result fresh
+  each iteration fights that assumption both when routed through `_define`
+  (stuck state) and around it (corrupted carriers).
+
+Secondary: admission could not tell declared from declared-and-loop-safe
+without threading callee facts through `loop_regions`, and that threading
+fought the receiver path. A probe series confirmed each point before the
+revert; the tree is clean at the join commit. Next attempt starts from a
+call-free loop corpus with a dedicated per-iteration call-result temp, not
+from re-tuning. Full evidence: `docs/loop-call-outcome-2026-09-16.md`.
