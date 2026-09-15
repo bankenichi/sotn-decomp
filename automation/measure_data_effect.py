@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import sys
 from pathlib import Path
@@ -223,6 +224,36 @@ def loop_region_summary(text: str) -> tuple[int, int, set]:
         return 0, 0, set()
     kinds = [region.get("kind", "do-while") for region in admitted]
     return len(admitted), sum(1 for kind in kinds if kind != "do-while"), set(refused)
+def load_queue_statuses(queue_path=None) -> dict:
+    """Map queue record ids to their live status. Pure file read.
+
+    Resolves the live queue exactly like the scheduler: SOTN_QUEUE or
+    ~/sotn-work/queue.jsonl. Missing or malformed lines are skipped;
+    a missing file yields an empty map instead of raising.
+    """
+    import json as _json
+    if queue_path is None:
+        queue_path = Path(os.environ.get("SOTN_QUEUE", "~/sotn-work/queue.jsonl")).expanduser()
+    else:
+        queue_path = Path(queue_path)
+    statuses = {}
+    try:
+        lines = queue_path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return statuses
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            record = _json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(record.get("id"), str):
+            statuses[record["id"]] = record.get("status", "")
+    return statuses
+
+
 def measure_pool(repo: Path, limit: int | None = None, limits: str = "default", offset: int = 0) -> dict:
     """Walk nonmatchings assembly and tally the g_api jalr pool.
 
@@ -249,8 +280,11 @@ def measure_pool(repo: Path, limit: int | None = None, limits: str = "default", 
     if offset < 0:
         raise ValueError("offset must be non-negative")
     pool = pool[offset:(offset + limit) if limit is not None else None]
+    queue_statuses = load_queue_statuses()
     tally: dict = {
-        "pool": len(pool),
+        "pool": 0,
+        "stale_matched": 0,
+        "queue_missing": 0,
         "rendered": [],
         "unrendered": 0,
         "missing_tu": 0,
@@ -264,6 +298,10 @@ def measure_pool(repo: Path, limit: int | None = None, limits: str = "default", 
         "multi_latch": 0,
         "loop_admitted_files": 0,
         "while_admitted_files": 0,
+        "admitted_blocked_decl": 0,
+        "admitted_blocked_shape": 0,
+        "blocked_shape_ids": [],
+        "admitted_blocked_size": 0,
         "loop_reasons": {},
         "loop_histogram": {"<=64": 0, "65-128": 0, "129-256": 0, "257-512": 0, ">512": 0, "unparseable": 0},
     }
@@ -276,6 +314,13 @@ def measure_pool(repo: Path, limit: int | None = None, limits: str = "default", 
 
     for path in pool:
         rel = path.relative_to(repo).as_posix()
+        derived = derive_record(rel)
+        if derived is not None and queue_statuses.get(derived[0]) == "matched":
+            tally["stale_matched"] += 1
+            continue
+        if derived is not None and derived[0] not in queue_statuses and queue_statuses:
+            tally["queue_missing"] += 1
+        tally["pool"] += 1
         try:
             text = path.read_text(encoding="utf-8")
         except (OSError, UnicodeDecodeError) as exc:
@@ -302,7 +347,6 @@ def measure_pool(repo: Path, limit: int | None = None, limits: str = "default", 
                 tally["single_cond_latch"] += 1
             elif latches["unconditional"]:
                 tally["single_uncond_latch"] += 1
-        derived = derive_record(rel)
         if derived is None:
             tally["unrendered"] += 1
             continue
@@ -334,6 +378,16 @@ def measure_pool(repo: Path, limit: int | None = None, limits: str = "default", 
             continue
         if draft is None:
             tally["unrendered"] += 1
+            count = instruction_count(text)
+            ceiling = bounds.max_instructions if bounds is not None else 64
+            if admitted_count > 0 and not reasons and evidence.get("status") == "declared" and count is not None and count > ceiling:
+                tally["admitted_blocked_size"] += 1
+            elif admitted_count > 0 and not reasons and evidence.get("status") == "declared":
+                tally["admitted_blocked_shape"] += 1
+                if len(tally["blocked_shape_ids"]) < 20:
+                    tally["blocked_shape_ids"].append(record_id)
+            elif admitted_count > 0 and not reasons:
+                tally["admitted_blocked_decl"] += 1
             tally["size_histogram"][size_bucket(instruction_count(text))] += 1
             if evidence.get("status") != "declared":
                 tally["undeclared"] += 1
@@ -360,6 +414,10 @@ def main(argv=None) -> int:
     print(json.dumps(tally, indent=2, sort_keys=True))
     digest = {"pool": tally["pool"], "rendered": len(tally["rendered"]),
               "admitted": tally["loop_admitted_files"], "while_admitted": tally["while_admitted_files"],
+              "blocked_decl": tally["admitted_blocked_decl"], "blocked_shape": tally["admitted_blocked_shape"],
+              "blocked_size": tally["admitted_blocked_size"],
+              "shape_ids": sorted(tally["blocked_shape_ids"]),
+              "stale_matched": tally["stale_matched"], "queue_missing": tally["queue_missing"],
               "unrendered": tally["unrendered"],
               "undeclared": tally["undeclared"], "reasons": tally["loop_reasons"]}
     print("DIGEST " + json.dumps(digest, sort_keys=True))

@@ -1480,28 +1480,13 @@ def loop_regions(instructions) -> tuple[list, list]:
                 refused.append("delay-hazard")
                 continue
         exits = []
-        inner_bad = None
         for k in range(start, branch):
             item_k = instructions[k]
-            if item_k.mnemonic not in _CONTROL_OPS:
+            if item_k.mnemonic not in _COND_BRANCHES:
                 continue
             exit_target = _branch_target_index(instructions, labels, k)
-            if (item_k.mnemonic in _COND_BRANCHES and exit_target is not None
-                    and exit_target > slot):
+            if exit_target is not None and exit_target > slot:
                 exits.append(k)
-                continue
-            inner_bad = k
-            break
-        if inner_bad is not None:
-            inner_item = instructions[inner_bad]
-            inner_target = _branch_target_index(instructions, labels, inner_bad)
-            if inner_item.mnemonic in {"jal", "jalr"}:
-                refused.append("call-in-loop")
-            elif inner_target is not None and inner_target < inner_bad:
-                refused.append("nested-loop")
-            else:
-                refused.append("branch-in-loop")
-            continue
         if not latch_cond:
             if not exits:
                 refused.append("while-no-exit")
@@ -1515,6 +1500,34 @@ def loop_regions(instructions) -> tuple[list, list]:
             continue
         else:
             kind = "do-while" if not exits else "do-break"
+        inner_bad = None
+        inner_reason = "branch-in-loop"
+        joins = set()
+        for k in range(start, branch):
+            item_k = instructions[k]
+            if item_k.mnemonic not in _CONTROL_OPS or k in exits:
+                continue
+            inner_target = _branch_target_index(instructions, labels, k)
+            if item_k.mnemonic in {"jal", "jalr"}:
+                inner_reason = "call-in-loop"
+            elif item_k.mnemonic == "jr":
+                inner_reason = "return-in-loop"
+            elif inner_target is not None and inner_target < k:
+                inner_reason = "nested-loop"
+            elif (item_k.mnemonic in _COND_BRANCHES and inner_target is not None
+                    and exits and k < exits[0] < inner_target):
+                inner_reason = "crossing-branch"
+            elif (item_k.mnemonic in _COND_BRANCHES and inner_target is not None
+                    and k + 1 < inner_target <= (exits[0] if exits and k < exits[0] else branch)
+                    and instructions[k + 1].mnemonic not in _CONTROL_OPS
+                    and instructions[inner_target - 1].mnemonic not in _CONTROL_OPS):
+                joins.add(k)
+                continue
+            inner_bad = k
+            break
+        if inner_bad is not None:
+            refused.append(inner_reason)
+            continue
         if any(instructions[k].mnemonic in _LOOP_BARRED_OPS for k in range(start, slot + 1)):
             refused.append("barred-op")
             continue
@@ -1526,7 +1539,7 @@ def loop_regions(instructions) -> tuple[list, list]:
             continue
         outside = False
         for j, other in enumerate(instructions):
-            if j == branch or other.mnemonic not in _COND_BRANCHES | {"b", "j"}:
+            if j == branch or j in joins or other.mnemonic not in _COND_BRANCHES | {"b", "j"}:
                 continue
             other_target = _branch_target_index(instructions, labels, j)
             if other_target is None:
@@ -2075,6 +2088,9 @@ def _leaf_body(instructions, parameters, return_type, callees=None, layouts=None
     def path(index, values, indent):
         lines = []
         while index < len(instructions):
+            if index in region_by_start:
+                index = _lower_loop(region_by_start[index], values, lines, indent, labels)
+                continue
             budget[0] -= 1
             if budget[0] < 0:
                 raise ValueError("path expansion limit")
@@ -2240,10 +2256,6 @@ def _leaf_body(instructions, parameters, return_type, callees=None, layouts=None
                 raise ValueError("unbound branch target")
             target = labels[args[-1]]
             if target <= index + 1 or target in slots:
-                region = region_by_latch.get(index)
-                if region is not None and target == region["start"]:
-                    index = _lower_loop(region, values, lines, indent)
-                    continue
                 raise ValueError("loop or delay-slot entry")
             condition = None
             if op in conditional:
@@ -2317,11 +2329,82 @@ def _leaf_body(instructions, parameters, return_type, callees=None, layouts=None
             raise ValueError("expression expansion limit")
         lines.append(indent + target + " = " + text + ";")
 
-    def _lower_loop(region, values, lines, indent):
+    _JOIN_SPECIAL_KEYS = frozenset({"zero", "ra", "stack_offset", "frame_size", "mul"})
+
+    def _merge_states(taken, fall_values, fall_lines, lines, indent, inits, negcond):
+        assigns, merged = [], {}
+        for key in taken.keys() | fall_values.keys():
+            if key in _JOIN_SPECIAL_KEYS or key.startswith("stack:"):
+                if key not in taken or key not in fall_values or taken[key] != fall_values[key]:
+                    raise ValueError("join diverges on machine state")
+                merged[key] = taken[key]
+                continue
+            if key not in taken or key not in fall_values:
+                raise ValueError("join diverges on machine state")
+            left, right = taken[key], fall_values[key]
+            if left == right and type(left) is type(right):
+                merged[key] = left
+                continue
+            if isinstance(left, _PointerValue) or isinstance(right, _PointerValue):
+                if (not isinstance(left, _PointerValue) or not isinstance(right, _PointerValue)
+                        or left.kind != right.kind):
+                    raise ValueError("join diverges on value kind")
+                kind = left.kind
+                taken_text, fall_text = left.expression, right.expression
+            else:
+                kind = "unsigned int"
+                taken_text, fall_text = left, right
+            if "@" in taken_text or "@" in fall_text:
+                raise ValueError("join cannot materialize a marker")
+            if len(taken_text) > bounds.max_expression or len(fall_text) > bounds.max_expression:
+                raise ValueError("expression expansion limit")
+            temp = new_temporary("join_", kind)
+            inits.append(temp + " = " + taken_text)
+            assigns.append(temp + " = " + fall_text + ";")
+            merged[key] = _PointerValue(kind, temp) if isinstance(left, _PointerValue) else temp
+        lines.append(indent + "if (" + negcond + ") {")
+        lines.extend(fall_lines)
+        for assign in assigns:
+            lines.append(indent + "    " + assign)
+        lines.append(indent + "}")
+        return merged
+
+    def _lower_segment(lo, hi, values, lines, indent, labels, inits):
+        index = lo
+        while index < hi:
+            item = instructions[index]
+            if item.mnemonic in _COND_BRANCHES:
+                target = _branch_target_index(instructions, labels, index)
+                if target is None or not index < target <= hi:
+                    raise ValueError("inner branch leaves its segment")
+                args = tuple(part.strip() for part in item.operands.split(",")) if item.operands else ()
+                arity = 3 if item.mnemonic in {"beq", "bne"} else 2
+                step(index + 1, values, lines, indent)
+                if target == index + 1:
+                    _cond_text(item.mnemonic, args, values, arity)
+                    index += 2
+                    continue
+                taken = dict(values)
+                fall_values = dict(values)
+                fall_lines = []
+                _lower_segment(index + 2, target, fall_values, fall_lines, indent + "    ", labels, inits)
+                budget[0] -= (target - index)
+                if budget[0] < 0:
+                    raise ValueError("path expansion limit")
+                negcond = _cond_text(item.mnemonic, args, values, arity, negate=True)
+                merged = _merge_states(taken, fall_values, fall_lines, lines, indent, inits, negcond)
+                values.clear()
+                values.update(merged)
+                index = target
+                continue
+            step(index, values, lines, indent)
+            index += 1
+
+    def _lower_loop(region, values, lines, indent, labels):
         start, branch, slot = region["start"], region["branch"], region["slot"]
         reads, writes, pure, read_first = region_flow(instructions, start, slot + 1)
-        carried = sorted(r for r in reads & writes if r in pure or r in read_first)
-        carried = [reg for reg in carried if reg != "zero"]
+        del pure
+        carried = sorted((reads & writes & read_first) - {"zero"})
         inits = []
         for reg in carried:
             entry = values.get(reg)
@@ -2348,15 +2431,13 @@ def _leaf_body(instructions, parameters, return_type, callees=None, layouts=None
                 exit_args = tuple(part.strip() for part in exit_item.operands.split(",")) if exit_item.operands else ()
                 exit_arity = 3 if exit_item.mnemonic in {"beq", "bne"} else 2
                 step(exit_index + 1, values, body_lines, body_indent)
-                for k in range(exit_index + 2, branch):
-                    step(k, values, body_lines, body_indent)
+                _lower_segment(exit_index + 2, branch, values, body_lines, body_indent, labels, inits)
                 step(slot, values, body_lines, body_indent)
                 condition = _cond_text(exit_item.mnemonic, exit_args, values, exit_arity, negate=True)
                 trailing = None
             else:
                 limit = exit_index if exit_index is not None else branch
-                for k in range(start, limit):
-                    step(k, values, body_lines, body_indent)
+                _lower_segment(start, limit, values, body_lines, body_indent, labels, inits)
                 if exit_index is not None:
                     exit_item = instructions[exit_index]
                     exit_args = tuple(part.strip() for part in exit_item.operands.split(",")) if exit_item.operands else ()
@@ -2364,8 +2445,7 @@ def _leaf_body(instructions, parameters, return_type, callees=None, layouts=None
                     step(exit_index + 1, values, body_lines, body_indent)
                     exit_condition = _cond_text(exit_item.mnemonic, exit_args, values, exit_arity)
                     body_lines.append(body_indent + "if (" + exit_condition + ") break;")
-                    for k in range(exit_index + 2, branch):
-                        step(k, values, body_lines, body_indent)
+                    _lower_segment(exit_index + 2, branch, values, body_lines, body_indent, labels, inits)
                 step(slot, values, body_lines, body_indent)
                 if kind == "while":
                     trailing = "1"
@@ -2396,7 +2476,7 @@ def _leaf_body(instructions, parameters, return_type, callees=None, layouts=None
     loop_admitted, loop_refused = loop_regions(instructions)
     if loop_refused:
         return None
-    region_by_latch = {region["branch"]: region for region in loop_admitted}
+    region_by_start = {region["start"]: region for region in loop_admitted}
     try:
         body = path(0, state, "    ")
         # Extra definitions or unexplained dead code cannot be silently merged

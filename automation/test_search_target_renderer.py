@@ -1295,10 +1295,16 @@ class LoopRegionTests(unittest.TestCase):
                       "b .Ltop\nnop\n.Lexit:\njr $ra\nnop\n")
         self.assertEqual(self._regions(multi_exit), ([], ["multi-exit"]))
     def test_inner_control_and_outside_entry_refuse(self):
-        inner = (".Ltop:\naddiu $v0, $v0, 1\n"
-                 "beq $v0, $a1, .Lskip\nnop\n.Lskip:\n"
-                 "bne $v0, $a0, .Ltop\nnop\njr $ra\nnop\n")
-        self.assertEqual(self._regions(inner)[1], ["branch-in-loop"])
+        bare_join = (".Ltop:\naddiu $v0, $v0, 1\n"
+                     "beq $v0, $a1, .Lskip\nnop\n.Lskip:\n"
+                     "bne $v0, $a0, .Ltop\nnop\njr $ra\nnop\n")
+        admitted, refused = self._regions(bare_join)
+        self.assertEqual(refused, [])
+        self.assertEqual(len(admitted), 1)
+        jump_out = (".Ltop:\naddiu $v0, $v0, 1\n"
+                    "b .Lfar\nnop\naddiu $v1, $v1, 1\n"
+                    "bne $v0, $a0, .Ltop\nnop\n.Lfar:\njr $ra\nnop\n")
+        self.assertEqual(self._regions(jump_out)[1], ["branch-in-loop"])
         entry = ("beq $a0, $zero, .Ltop\nnop\n"
                  "addiu $v0, $zero, 0\n.Ltop:\naddiu $v0, $v0, 1\n"
                  "bne $v0, $a0, .Ltop\nnop\njr $ra\nnop\n")
@@ -1536,6 +1542,40 @@ class LoopLoweringTests(unittest.TestCase):
             function.restype = ctypes.c_uint32
             self.assertEqual(function(5, 3), 3)
             self.assertEqual(function(5, 9), 5)
+
+    def test_scratch_temp_needs_no_entry(self):
+        assembly = ("li $v0, 0\n.Ltop:\naddiu $v0, $v0, 1\n"
+                    "andi $t0, $v0, 3\nbne $t0, $zero, .Ltop\nnop\n"
+                    "jr $ra\nnop\n")
+        source = deterministic_local_draft(
+            assembly, symbol="fn", declarations=self.COUNTER_DECLS)
+        self.assertIsNotNone(source)
+        self.assertIn("do {", source)
+        with tempfile.TemporaryDirectory(prefix="loop-scratch-") as directory:
+            library = self._compile_and_load(source, "fn", directory)
+            function = library.fn
+            function.argtypes = [ctypes.c_uint32]
+            function.restype = ctypes.c_uint32
+            self.assertEqual(function(99), 4)
+
+    def test_in_loop_branch_merges_divergent_values(self):
+        assembly = ("li $v0, 0\nli $v1, 0\nli $t1, 0\n.Ltop:\n"
+                    "addiu $v1, $v1, 1\nandi $t0, $v1, 1\n"
+                    "beq $t0, $zero, .Leven\nnop\n"
+                    "addu $t1, $v1, $zero\n.Leven:\n"
+                    "addu $v0, $v0, $t1\nbne $v1, $a0, .Ltop\nnop\n"
+                    "jr $ra\nnop\n")
+        source = deterministic_local_draft(
+            assembly, symbol="fn", declarations=self.COUNTER_DECLS)
+        self.assertIsNotNone(source)
+        self.assertIn("if (", source)
+        with tempfile.TemporaryDirectory(prefix="loop-join-") as directory:
+            library = self._compile_and_load(source, "fn", directory)
+            function = library.fn
+            function.argtypes = [ctypes.c_uint32]
+            function.restype = ctypes.c_uint32
+            self.assertEqual(function(3), 5)
+            self.assertEqual(function(1), 1)
 
     def test_while_refusals(self):
         decls = self.COUNTER_DECLS

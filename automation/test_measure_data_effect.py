@@ -8,7 +8,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from automation.measure_data_effect import classify_file, derive_record, has_loop_shape, instruction_count, is_pool_member, loop_latches, loop_region_summary, main, loop_region_summary, resolve_limits, size_bucket
+from automation.measure_data_effect import classify_file, derive_record, has_loop_shape, instruction_count, is_pool_member, loop_latches, loop_region_summary, load_queue_statuses, main, loop_region_summary, resolve_limits, size_bucket
 
 
 class RemeasureHelperTests(unittest.TestCase):
@@ -143,11 +143,32 @@ class RemeasureHelperTests(unittest.TestCase):
             self.assertEqual(tally["rendered"], [])
             digest = json.loads(digest_line[len("DIGEST "):])
             self.assertEqual(digest, {"pool": 0, "rendered": 0, "admitted": 0,
-                                     "while_admitted": 0, "unrendered": 0,
+                                     "while_admitted": 0, "blocked_decl": 0,
+                                     "blocked_shape": 0, "shape_ids": [],
+                                     "blocked_size": 0,
+                                     "stale_matched": 0, "queue_missing": 0,
+                                     "unrendered": 0,
                                      "undeclared": 0, "reasons": {}})
             with self.assertRaises(SystemExit):
                 main(["--offset", "-1"])
 
+
+
+    def test_load_queue_statuses_reads_live_shape(self):
+        import json
+        import tempfile
+        from pathlib import Path as _Path
+        with tempfile.TemporaryDirectory(prefix="queue-status-") as directory:
+            queue = _Path(directory) / "queue.jsonl"
+            queue.write_text("\n".join([
+                json.dumps({"id": "us:A:f", "status": "matched"}),
+                json.dumps({"id": "us:A:g", "status": "todo"}),
+                "not json",
+                json.dumps({"no-id": 1}),
+            ]) + "\n", encoding="utf-8")
+            statuses = load_queue_statuses(queue)
+            self.assertEqual(statuses, {"us:A:f": "matched", "us:A:g": "todo"})
+            self.assertEqual(load_queue_statuses(_Path(directory) / "absent.jsonl"), {})
 
 if __name__ == "__main__":
     unittest.main()
