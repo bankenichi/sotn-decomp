@@ -205,7 +205,23 @@ def loop_latches(text: str) -> dict:
         else:
             found["conditional"] = True
     return found
-def measure_pool(repo: Path, limit: int | None = None, limits: str = "default") -> dict:
+
+
+def loop_region_summary(text: str) -> tuple[int, set]:
+    """Admitted region count plus refusal reasons for one file.
+
+    Pure helper shared by the tally. Unparseable input yields no regions
+    and no reasons instead of raising.
+    """
+    from automation.search_target_renderer import _parse_assembly, loop_regions
+    if not isinstance(text, str):
+        return 0, set()
+    try:
+        admitted, refused = loop_regions(_parse_assembly(text))
+    except ValueError:
+        return 0, set()
+    return len(admitted), set(refused)
+def measure_pool(repo: Path, limit: int | None = None, limits: str = "default", offset: int = 0) -> dict:
     """Walk nonmatchings assembly and tally the g_api jalr pool.
 
     For each pool file, captures the real owning plus sibling context,
@@ -228,8 +244,9 @@ def measure_pool(repo: Path, limit: int | None = None, limits: str = "default") 
             continue
         if is_pool_member(text):
             pool.append(path)
-    if limit is not None:
-        pool = pool[:limit]
+    if offset < 0:
+        raise ValueError("offset must be non-negative")
+    pool = pool[offset:(offset + limit) if limit is not None else None]
     tally: dict = {
         "pool": len(pool),
         "rendered": [],
@@ -243,6 +260,8 @@ def measure_pool(repo: Path, limit: int | None = None, limits: str = "default") 
         "single_cond_latch": 0,
         "single_uncond_latch": 0,
         "multi_latch": 0,
+        "loop_admitted_files": 0,
+        "loop_reasons": {},
         "loop_histogram": {"<=64": 0, "65-128": 0, "129-256": 0, "257-512": 0, ">512": 0, "unparseable": 0},
     }
     bounds = resolve_limits(limits)
@@ -263,6 +282,11 @@ def measure_pool(repo: Path, limit: int | None = None, limits: str = "default") 
         for key in tally["reloc_histogram"]:
             if classify_file(text).get(key):
                 tally["reloc_histogram"][key] += 1
+        admitted_count, reasons = loop_region_summary(text)
+        if admitted_count:
+            tally["loop_admitted_files"] += 1
+        for reason in reasons:
+            tally["loop_reasons"][reason] = tally["loop_reasons"].get(reason, 0) + 1
         if has_loop_shape(text):
             tally["loop_shape"] += 1
             tally["loop_histogram"][size_bucket(instruction_count(text))] += 1
@@ -319,12 +343,15 @@ def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description="Remeasure data slices over the g_api jalr pool.")
     parser.add_argument("--limit", type=int, default=None, help="Measure only the first N pool files.")
     parser.add_argument("--limits", choices=("default", "raised"), default="default", help="Renderer bounds: canonical defaults or validated ceilings.")
+    parser.add_argument("--offset", type=int, default=0, help="Skip the first M pool files; pairs with --limit for sharded runs.")
     parser.add_argument("--root", default=None, help="Repository root override.")
     args = parser.parse_args(argv)
     if args.limit is not None and args.limit < 0:
         parser.error("--limit must be non-negative")
+    if args.offset < 0:
+        parser.error("--offset must be non-negative")
     repo = Path(args.root) if args.root else ROOT
-    print(json.dumps(measure_pool(repo, args.limit, args.limits), indent=2, sort_keys=True))
+    print(json.dumps(measure_pool(repo, args.limit, args.limits, args.offset), indent=2, sort_keys=True))
     return 0
 
 

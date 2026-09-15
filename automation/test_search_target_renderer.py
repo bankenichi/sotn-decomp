@@ -29,6 +29,9 @@ from automation.search_target_renderer import (
     load_target_index,
     query_for_recipient,
     render_target_candidate,
+    _canonical_reg,
+    loop_regions,
+    region_flow,
 )
 from automation.search_types import RunManifest, hash_bytes, hash_canonical
 from automation.test_search_donor_index import digest
@@ -1247,6 +1250,222 @@ class GlobalOffsetTests(unittest.TestCase):
             "nop\n"
         )
         self.assertIsNone(deterministic_local_draft(unpaired, symbol="fn", declarations=self._decls()))
+
+
+class LoopRegionTests(unittest.TestCase):
+    DO_WHILE = ("li $v0, 0\n.Ltop:\naddiu $v0, $v0, 1\n"
+                "bne $v0, $a0, .Ltop\nnop\njr $ra\nnop\n")
+
+    def _regions(self, assembly):
+        return loop_regions(_parse_assembly(assembly))
+
+    def test_straight_code_has_no_regions(self):
+        admitted, refused = self._regions("addu $v0, $a0, $a1\njr $ra\nnop\n")
+        self.assertEqual((admitted, refused), ([], []))
+
+    def test_do_while_admits_one_region(self):
+        admitted, refused = self._regions(self.DO_WHILE)
+        self.assertEqual(refused, [])
+        self.assertEqual(len(admitted), 1)
+        region = admitted[0]
+        self.assertLess(region["start"], region["branch"])
+        self.assertEqual(region["slot"], region["branch"] + 1)
+
+    def test_while_latch_and_degenerate_shapes_refuse(self):
+        while_latch = (".Ltop:\naddiu $v0, $v0, 1\n"
+                       "beq $v0, $a0, .Lexit\nnop\n"
+                       "b .Ltop\nnop\n.Lexit:\njr $ra\nnop\n")
+        self.assertEqual(self._regions(while_latch), ([], ["while-latch"]))
+        spin = "bne $v0, $a0, .Ls\n.Ls:\nnop\njr $ra\nnop\n"
+        self.assertEqual(self._regions(spin), ([], ["delay-entry"]))
+    def test_inner_control_and_outside_entry_refuse(self):
+        inner = (".Ltop:\naddiu $v0, $v0, 1\n"
+                 "beq $v0, $a1, .Lskip\nnop\n.Lskip:\n"
+                 "bne $v0, $a0, .Ltop\nnop\njr $ra\nnop\n")
+        self.assertEqual(self._regions(inner)[1], ["inner-control"])
+        entry = ("beq $a0, $zero, .Ltop\nnop\n"
+                 "addiu $v0, $zero, 0\n.Ltop:\naddiu $v0, $v0, 1\n"
+                 "bne $v0, $a0, .Ltop\nnop\njr $ra\nnop\n")
+        self.assertEqual(self._regions(entry)[1], ["outside-entry"])
+
+    def test_disjoint_regions_admit_and_shared_slot_refuses_entry(self):
+        two = (".La:\naddiu $v0, $v0, 1\n"
+               "bne $v0, $a0, .La\nnop\n"
+               ".Lb:\naddiu $v1, $v1, 1\n"
+               "bne $v1, $a1, .Lb\nnop\njr $ra\nnop\n")
+        admitted, refused = self._regions(two)
+        self.assertEqual(refused, [])
+        self.assertEqual(len(admitted), 2)
+        mid = ("beq $a1, $zero, .Lmid\nnop\n.La:\naddiu $v0, $v0, 1\n"
+               ".Lmid:\naddiu $v1, $v1, 1\n"
+               "bne $v0, $a0, .La\nnop\njr $ra\nnop\n")
+        self.assertEqual(self._regions(mid), ([], ["outside-entry"]))
+
+    def test_barred_ops_and_delay_control_refuse(self):
+        mult = (".Ltop:\nmult $v0, $a0\naddiu $v0, $v0, 1\n"
+                "bne $v0, $a1, .Ltop\nnop\njr $ra\nnop\n")
+        self.assertEqual(self._regions(mult)[1], ["barred-op"])
+        call = (".Ltop:\njal TestCallee\nnop\naddiu $v0, $v0, 1\n"
+                "bne $v0, $a0, .Ltop\nnop\njr $ra\nnop\n")
+        self.assertEqual(self._regions(call)[1], ["inner-control"])
+        slot_branch = (".Ltop:\naddiu $v0, $v0, 1\n"
+                       "bne $v0, $a0, .Ltop\nbeq $zero, $zero, .Lfar\n"
+                       "nop\n.Lfar:\njr $ra\nnop\n")
+
+    def test_region_flow_tracks_order_and_fresh_loads(self):
+        instructions = _parse_assembly(
+            "li $v0, 5\nlw $v1, 0($a0)\nsw $v1, 0($a1)\n"
+            "beq $v0, $v1, .Lx\nnop\n.Lx:\njr $ra\nnop\n")
+        reads, writes, pure, read_first = region_flow(instructions, 0, 4)
+        self.assertEqual(writes, {"v0", "v1"})
+        self.assertEqual(reads, {"a0", "a1", "v0", "v1"})
+        self.assertEqual(pure, {"v0"})
+        self.assertEqual(read_first, {"a0", "a1"})
+        li = region_flow(instructions, 0, 1)
+        self.assertEqual(li, (set(), {"v0"}, {"v0"}, set()))
+        self.assertEqual(region_flow(instructions, 4, 4), (set(), set(), set(), set()))
+        self.assertEqual(region_flow(None, 0, 4), (set(), set(), set(), set()))
+
+    def test_canonical_reg_matches_machine_spellings(self):
+        self.assertEqual(_canonical_reg("$4"), "a0")
+        self.assertEqual(_canonical_reg("$A0"), "a0")
+        self.assertEqual(_canonical_reg("$r16"), "s0")
+        self.assertEqual(_canonical_reg("$sp"), "sp")
+        self.assertEqual(_canonical_reg("$zero"), "zero")
+
+
+class LoopLoweringTests(unittest.TestCase):
+    COUNTER_ASM = ("li $v0, 0\n.Ltop:\naddiu $v0, $v0, 1\n"
+                   "bne $v0, $a0, .Ltop\nnop\njr $ra\nnop\n")
+    COUNTER_DECLS = {
+        "return_type": "unsigned int",
+        "parameters": [{"type": "unsigned int", "name": "n"}],
+    }
+
+    def test_counter_loop_renders_do_while(self):
+        source = deterministic_local_draft(
+            self.COUNTER_ASM, symbol="fn", declarations=self.COUNTER_DECLS)
+        self.assertIsNotNone(source)
+        self.assertIn("do {", source)
+        self.assertIn("while (", source)
+        self.assertNotIn("%hi", source)
+        self.assertNotIn("$", source)
+
+    def test_counter_loop_counts_host_exact(self):
+        compiler = shutil.which("gcc") or shutil.which("cc")
+        if compiler is None:
+            self.skipTest("host C compiler unavailable")
+        source = deterministic_local_draft(
+            self.COUNTER_ASM, symbol="count", declarations=self.COUNTER_DECLS)
+        self.assertIsNotNone(source)
+        with tempfile.TemporaryDirectory(prefix="loop-semantics-") as directory:
+            root = Path(directory)
+            (root / "count.c").write_text(source, encoding="utf-8")
+            subprocess.run([compiler, "-std=c89", "-O2", "-Wall", "-Werror", "-shared", "-fPIC",
+                            str(root / "count.c"), "-o", str(root / "count.so")], check=True,
+                           capture_output=True, text=True)
+            function = ctypes.CDLL(str(root / "count.so")).count
+            function.argtypes, function.restype = [ctypes.c_uint32], ctypes.c_uint32
+            self.assertEqual(function(5), 5)
+            self.assertEqual(function(1), 1)
+
+    def test_sum_loop_walks_pointer(self):
+        from automation.search_target_layout import pointer_layouts
+        context = b"typedef signed short s16;\n"
+        layouts = pointer_layouts(context, ["s16*"])
+        self.assertIn("s16*", layouts)
+        assembly = ("li $v0, 0\n.Ltop:\nlh $v1, 0($a0)\nnop\n"
+                    "addu $v0, $v0, $v1\naddiu $a0, $a0, 2\n"
+                    "addiu $a1, $a1, -1\nbnez $a1, .Ltop\nnop\n"
+                    "jr $ra\nnop\n")
+        declarations = {
+            "return_type": "unsigned int", "parameters": [],
+            "pointer_layouts": layouts,
+            "global_declarations": {},
+        }
+        target = dict(declarations)
+        target["parameters"] = [{"type": "s16*", "name": "p"}, {"type": "unsigned int", "name": "n"}]
+        source = deterministic_local_draft(assembly, symbol="fn", declarations=target)
+        self.assertIsNotNone(source)
+        self.assertIn("do {", source)
+        header = "typedef signed short s16;\n"
+        compiler = shutil.which("gcc") or shutil.which("cc")
+        if compiler is None:
+            self.skipTest("host C compiler unavailable")
+        with tempfile.TemporaryDirectory(prefix="loop-sum-") as directory:
+            root = Path(directory)
+            (root / "sum.c").write_text(header + source, encoding="utf-8")
+            subprocess.run([compiler, "-std=c89", "-O2", "-Wall", "-Werror", "-shared", "-fPIC",
+                            str(root / "sum.c"), "-o", str(root / "sum.so")], check=True,
+                           capture_output=True, text=True)
+            function = ctypes.CDLL(str(root / "sum.so")).fn
+            array = (ctypes.c_int16 * 3)(1, 2, 3)
+            function.argtypes = [ctypes.POINTER(ctypes.c_int16), ctypes.c_uint32]
+            function.restype = ctypes.c_uint32
+            self.assertEqual(function(array, 3), 6)
+
+    def test_store_loop_renders(self):
+        from automation.search_target_layout import pointer_layouts
+        context = b"typedef unsigned char u8;\n"
+        layouts = pointer_layouts(context, ["u8*"])
+        self.assertIn("u8*", layouts)
+        assembly = ("li $v0, 0\n.Ltop:\nsb $a1, 0($a0)\n"
+                    "addiu $a0, $a0, 1\naddiu $v0, $v0, 1\n"
+                    "bne $v0, $a2, .Ltop\nnop\njr $ra\nnop\n")
+        declarations = {
+            "return_type": "void",
+            "parameters": [{"type": "u8*", "name": "p"}, {"type": "unsigned int", "name": "v"}, {"type": "unsigned int", "name": "n"}],
+            "pointer_layouts": layouts,
+        }
+        source = deterministic_local_draft(assembly, symbol="fn", declarations=declarations)
+        self.assertIsNotNone(source)
+        self.assertIn("do {", source)
+        header = "typedef unsigned char u8;\n"
+        compiler = shutil.which("gcc") or shutil.which("cc")
+        if compiler is None:
+            self.skipTest("host C compiler unavailable")
+        with tempfile.TemporaryDirectory(prefix="loop-store-") as directory:
+            root = Path(directory)
+            (root / "fill.c").write_text(header + source, encoding="utf-8")
+            subprocess.run([compiler, "-std=c89", "-O2", "-Wall", "-Werror", "-shared", "-fPIC",
+                            str(root / "fill.c"), "-o", str(root / "fill.so")], check=True,
+                           capture_output=True, text=True)
+            function = ctypes.CDLL(str(root / "fill.so")).fn
+            buffer = (ctypes.c_uint8 * 4)(0, 0, 0, 0)
+            function.argtypes = [ctypes.POINTER(ctypes.c_uint8), ctypes.c_uint32, ctypes.c_uint32]
+            function.restype = None
+            function(buffer, 7, 4)
+            self.assertEqual(list(buffer), [7, 7, 7, 7])
+
+    def test_loop_refusals(self):
+        cases = {}
+        nested = (".Louter:\nnop\n.Linner:\naddiu $v0, $v0, 1\n"
+                  "bne $v0, $a0, .Linner\nnop\n"
+                  "addiu $v1, $v1, 1\n"
+                  "bne $v1, $a1, .Louter\nnop\njr $ra\nnop\n")
+        cases["nested"] = nested
+        call = ("li $v0, 0\n.Ltop:\njal TestCallee\nnop\n"
+                "addiu $v0, $v0, 1\nbne $v0, $a0, .Ltop\nnop\njr $ra\nnop\n")
+        cases["call_in_loop"] = call
+        mult = ("li $v0, 0\n.Ltop:\nmult $v0, $a0\n"
+                "addiu $v0, $v0, 1\nbne $v0, $a1, .Ltop\nnop\njr $ra\nnop\n")
+        cases["mult_in_loop"] = mult
+        while_shape = (".Ltop:\naddiu $v0, $v0, 1\n"
+                       "beq $v0, $a0, .Lexit\nnop\n"
+                       "b .Ltop\nnop\n.Lexit:\njr $ra\nnop\n")
+        cases["while_shape"] = while_shape
+        marker = ("li $v0, 0\n.Ltop:\naddu $v0, $v0, $ra\n"
+                  "bne $v0, $a0, .Ltop\nnop\njr $ra\nnop\n")
+        cases["marker_entry"] = marker
+        hazard = ("li $v0, 0\nli $v1, 0\n.Ltop:\n"
+                  "addu $v0, $v0, $v1\naddiu $v1, $v1, 1\n"
+                  "bne $v0, $a0, .Ltop\nlw $v1, 0($a1)\n"
+                  "jr $ra\nnop\n")
+        cases["delay_hazard"] = hazard
+        for name, assembly in cases.items():
+            with self.subTest(case=name):
+                self.assertIsNone(deterministic_local_draft(
+                    assembly, symbol="fn", declarations=self.COUNTER_DECLS))
 
 
 class VariableLimitsTests(unittest.TestCase):

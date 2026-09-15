@@ -8,7 +8,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from automation.measure_data_effect import classify_file, derive_record, has_loop_shape, instruction_count, is_pool_member, loop_latches, resolve_limits, size_bucket
+from automation.measure_data_effect import classify_file, derive_record, has_loop_shape, instruction_count, is_pool_member, loop_latches, loop_region_summary, main, loop_region_summary, resolve_limits, size_bucket
 
 
 class RemeasureHelperTests(unittest.TestCase):
@@ -110,6 +110,36 @@ class RemeasureHelperTests(unittest.TestCase):
         self.assertFalse(has_loop_shape("addu $v0, $a0, $a1\njr $ra\nnop\n"))
         self.assertEqual(loop_latches(""), {"total": 0, "conditional": False, "unconditional": False})
         self.assertEqual(loop_latches(None), {"total": 0, "conditional": False, "unconditional": False})
+
+    def test_loop_region_summary_counts_and_reasons(self):
+        do_while = ("li $v0, 0\n.Ltop:\naddiu $v0, $v0, 1\n"
+                    "bne $v0, $a0, .Ltop\nnop\njr $ra\nnop\n")
+        self.assertEqual(loop_region_summary(do_while), (1, set()))
+        while_latch = (".Ltop:\naddiu $v0, $v0, 1\n"
+                       "beq $v0, $a0, .Lexit\nnop\n"
+                       "b .Ltop\nnop\n.Lexit:\njr $ra\nnop\n")
+        count, reasons = loop_region_summary(while_latch)
+        self.assertEqual(count, 0)
+        self.assertIn("while-latch", reasons)
+        self.assertEqual(loop_region_summary(""), (0, set()))
+        self.assertEqual(loop_region_summary(None), (0, set()))
+
+
+
+    def test_main_offset_and_limit_slice_empty_tree(self):
+        import io
+        import json
+        import tempfile
+        from contextlib import redirect_stdout
+        with tempfile.TemporaryDirectory(prefix="measure-offset-") as directory:
+            buffer = io.StringIO()
+            with redirect_stdout(buffer):
+                self.assertEqual(main(["--root", directory, "--limit", "5", "--offset", "2"]), 0)
+            tally = json.loads(buffer.getvalue())
+            self.assertEqual(tally["pool"], 0)
+            self.assertEqual(tally["rendered"], [])
+            with self.assertRaises(SystemExit):
+                main(["--offset", "-1"])
 
 
 if __name__ == "__main__":

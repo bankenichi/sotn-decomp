@@ -1323,6 +1323,195 @@ class _PointerValue:
     expression: str
 
 
+
+
+_COND_BRANCHES = frozenset({"beq", "bne", "beqz", "bnez", "bltz", "bgez", "bgtz", "blez"})
+_CONTROL_OPS = _COND_BRANCHES | frozenset({"b", "j", "jr", "jal", "jalr"})
+_LOOP_BARRED_OPS = frozenset({"mult", "multu", "div", "divu", "mflo", "mfhi"})
+_LOOP_LOAD_OPS = frozenset({"lw", "lh", "lhu", "lb", "lbu"})
+_LOOP_STORE_OPS = frozenset({"sw", "sh", "sb"})
+
+
+def _build_reg_aliases() -> dict:
+    """Canonical register spellings shared by lowering and analysis.
+
+    Single source for numeric and ABI names so region access sets cannot
+    drift from the value machine below.
+    """
+    aliases = {"0": "zero", "r0": "zero", "2": "v0", "r2": "v0",
+               "3": "v1", "r3": "v1", "31": "ra", "r31": "ra"}
+    aliases.update({str(4 + i): "a" + str(i) for i in range(4)})
+    aliases.update({"r" + str(4 + i): "a" + str(i) for i in range(4)})
+    aliases.update({str(16 + i): "s" + str(i) for i in range(8)})
+    aliases.update({"r" + str(16 + i): "s" + str(i) for i in range(8)})
+    aliases.update({"29": "sp", "r29": "sp", "1": "at", "r1": "at"})
+    for number, name in (*((8 + i, "t" + str(i)) for i in range(8)), (24, "t8"), (25, "t9")):
+        aliases.update({str(number): name, "r" + str(number): name})
+    return aliases
+
+
+_REG_ALIASES = _build_reg_aliases()
+
+
+def _canonical_reg(operand: str) -> str:
+    """Normalize one register spelling exactly like the value machine."""
+    value = operand.strip().removeprefix("$").lower()
+    return _REG_ALIASES.get(value, value)
+
+
+def _operand_regs(text: str) -> list[str]:
+    """Canonical registers mentioned anywhere in an operand string."""
+    return [_canonical_reg(match) for match in re.findall(r"\$[A-Za-z0-9]+", text or "")]
+
+
+def _branch_target_index(instructions, labels: dict, index: int):
+    """Label index a branch jumps to, or None when malformed or unbound.
+
+    Mirrors the arity and binding checks of the lowering path below.
+    """
+    item = instructions[index]
+    if item.mnemonic not in _COND_BRANCHES | {"b", "j"}:
+        return None
+    expected = 3 if item.mnemonic in {"beq", "bne"} else 1 if item.mnemonic in {"b", "j"} else 2
+    args = tuple(part.strip() for part in item.operands.split(",")) if item.operands else ()
+    if len(args) != expected or args[-1] not in labels:
+        return None
+    return labels[args[-1]]
+
+
+def region_flow(instructions, start: int, end: int) -> tuple[set, set, set, set]:
+    """Register use order over the half-open span [start, end).
+
+    Pure helper for loop-carried analysis. Returns reads, writes,
+    pure-written registers, and registers read before any define.
+    Memory loads define fresh per-iteration values; every other define
+    carries iteration state. Stores and branches only read. Malformed
+    spans yield empty sets.
+    """
+    reads: set = set()
+    writes: set = set()
+    pure: set = set()
+    read_first: set = set()
+    try:
+        span = instructions[start:end]
+    except (TypeError, IndexError):
+        return reads, writes, pure, read_first
+    defined: set = set()
+    for item in span:
+        mnemonic = item.mnemonic
+        operands = item.operands or ""
+        if mnemonic in _LOOP_STORE_OPS or mnemonic in _COND_BRANCHES or mnemonic in {"b", "j", "jr", "jal", "jalr"} or not operands:
+            for reg in _operand_regs(operands):
+                reads.add(reg)
+                if reg not in defined:
+                    read_first.add(reg)
+            continue
+        args = [part.strip() for part in operands.split(",")]
+        if args and args[0].startswith("$"):
+            dest = _canonical_reg(args[0])
+            for reg in _operand_regs(",".join(args[1:])):
+                reads.add(reg)
+                if reg not in defined:
+                    read_first.add(reg)
+            writes.add(dest)
+            defined.add(dest)
+            if mnemonic not in _LOOP_LOAD_OPS:
+                pure.add(dest)
+        else:
+            for reg in _operand_regs(operands):
+                reads.add(reg)
+                if reg not in defined:
+                    read_first.add(reg)
+    return reads, writes, pure, read_first
+
+
+def loop_regions(instructions) -> tuple[list, list]:
+    """Admitted do-while regions plus refusal reasons for a function.
+
+    Pure helper shared by lowering and measurement. Each admitted region
+    is a straight-line span ending in one backward conditional latch with
+    a non-control delay slot, entered only by fallthrough and its latch,
+    and free of multiply/divide latch state and frame adjustments. Anything
+    else is refused with a stable reason string; overlapping spans always
+    surface as inner control or an outside entry first.
+    """
+    labels: dict = {}
+    for index, item in enumerate(instructions):
+        if item.label:
+            if item.label in labels:
+                return [], ["duplicate-label"]
+            labels[item.label] = index
+    candidates = []
+    refused: list = []
+    for index, item in enumerate(instructions):
+        if item.mnemonic not in _COND_BRANCHES | {"b", "j"}:
+            continue
+        target = _branch_target_index(instructions, labels, index)
+        if target is None:
+            continue
+        if target == index + 1:
+            refused.append("delay-entry")
+            continue
+        if target == index:
+            refused.append("degenerate-latch")
+            continue
+        if target > index:
+            continue
+        if item.mnemonic in {"b", "j"}:
+            refused.append("while-latch")
+            continue
+        candidates.append((target, index))
+    admitted = []
+    for start, branch in sorted(candidates):
+        slot = branch + 1
+        if slot >= len(instructions):
+            refused.append("missing-slot")
+            continue
+        if instructions[slot].mnemonic in _CONTROL_OPS:
+            refused.append("delay-control")
+            continue
+        if instructions[slot].mnemonic in _LOOP_LOAD_OPS:
+            slot_args = (instructions[slot].operands or "").split(",")
+            slot_dest = _canonical_reg(slot_args[0]) if slot_args and slot_args[0].strip().startswith("$") else None
+            top_reads = set(region_flow(instructions, start, start + 1)[0])
+            if slot_dest is not None and slot_dest in top_reads:
+                refused.append("delay-hazard")
+                continue
+        if any(instructions[k].mnemonic in _CONTROL_OPS for k in range(start, branch)):
+            refused.append("inner-control")
+            continue
+        if any(instructions[k].mnemonic in _LOOP_BARRED_OPS for k in range(start, slot + 1)):
+            refused.append("barred-op")
+            continue
+        if start > 0 and instructions[start - 1].mnemonic in _CONTROL_OPS:
+            refused.append("delay-entry")
+            continue
+        if _touches_frame(instructions, start, slot + 1):
+            refused.append("frame-adjust")
+            continue
+        outside = False
+        for j, other in enumerate(instructions):
+            if j == branch or other.mnemonic not in _COND_BRANCHES | {"b", "j"}:
+                continue
+            other_target = _branch_target_index(instructions, labels, j)
+            if other_target is None:
+                continue
+            if other_target == start or start < other_target <= slot:
+                outside = True
+                break
+        if outside:
+            refused.append("outside-entry")
+            continue
+        admitted.append({"start": start, "branch": branch, "slot": slot})
+    return admitted, refused
+
+
+def _touches_frame(instructions, start: int, end: int) -> bool:
+    """Whether the span adjusts the stack pointer. Pure helper."""
+    for item in instructions[start:end]:
+        if item.mnemonic == "addiu" and "sp" in {name.lower() for name in _operand_regs(item.operands or "")}:
+            return True
+    return False
 def _leaf_body(instructions, parameters, return_type, callees=None, layouts=None, switches=None, apis=None, limits=None, datas=None, gdata=None, linker=None):
     """Lower bounded MIPS scalar paths without losing delay-slot dataflow.
 
@@ -1348,20 +1537,12 @@ def _leaf_body(instructions, parameters, return_type, callees=None, layouts=None
             or not 0 < len(instructions) <= bounds.max_instructions
             or any(item.unsupported for item in instructions)):
         return None
-    aliases = {"0": "zero", "r0": "zero", "2": "v0", "r2": "v0",
-               "3": "v1", "r3": "v1", "31": "ra", "r31": "ra"}
-    aliases.update({str(4 + i): "a" + str(i) for i in range(4)})
-    aliases.update({"r" + str(4 + i): "a" + str(i) for i in range(4)})
+    aliases = dict(_REG_ALIASES)
     writable = {"v0", "v1", "at", *("a" + str(i) for i in range(4)),
                 *("t" + str(i) for i in range(10))}
     preserved = {"s" + str(i) for i in range(8)}
     volatile = set(writable)
     writable.update(preserved)
-    aliases.update({str(16 + i): "s" + str(i) for i in range(8)})
-    aliases.update({"r" + str(16 + i): "s" + str(i) for i in range(8)})
-    aliases.update({"29": "sp", "r29": "sp", "1": "at", "r1": "at"})
-    for number, name in (*((8 + i, "t" + str(i)) for i in range(8)), (24, "t8"), (25, "t9")):
-        aliases.update({str(number): name, "r" + str(number): name})
     callees = callees or {}
     apis = apis or {}
     datas = datas or {}
@@ -1429,8 +1610,8 @@ def _leaf_body(instructions, parameters, return_type, callees=None, layouts=None
             if item.label in labels:
                 return None
             labels[item.label] = index
-    conditional = {"beq", "bne", "beqz", "bnez", "bltz", "bgez", "bgtz", "blez"}
-    controls = conditional | {"b", "j", "jr", "jal", "jalr"}
+    conditional = set(_COND_BRANCHES)
+    controls = set(_CONTROL_OPS)
     slots = {i + 1 for i, item in enumerate(instructions) if item.mnemonic in controls}
     state = {"zero": "0", "ra": "@entry-ra", "stack_offset": 0, "frame_size": 0}
     state.update({name: "@entry-" + name for name in preserved})
@@ -1564,6 +1745,8 @@ def _leaf_body(instructions, parameters, return_type, callees=None, layouts=None
                 if target_register not in writable:
                     raise ValueError("unsupported API destination")
                 check_load_delay(index, target_register)
+                if target_register in materialize:
+                    raise ValueError("loop-carried API handle")
                 values[target_register] = "@api:" + member
                 return
             linker_lo = re.fullmatch(r"%lo\s*\(\s*((?:PLAYER_|RIC_)[A-Za-z_]\w*)\s*\)\s*\(\s*(\$[A-Za-z0-9]+)\s*\)", args[1].strip())
@@ -1596,6 +1779,9 @@ def _leaf_body(instructions, parameters, return_type, callees=None, layouts=None
                     prototypes["linker:" + _lsym] = "    extern " + _wtype + " " + _lsym + ";"
                     _lexpr = _lsym
                 check_load_delay(index, target_register)
+                if target_register in materialize:
+                    _assign_carried(target_register, None, _lexpr, _lcast, lines, indent)
+                    return
                 _lname = new_temporary("memory_result_", "unsigned int")
                 lines.append(indent + _lname + " = (unsigned int)(" + _lcast + ")(" + _lexpr + ");")
                 values[target_register] = _lname
@@ -1620,6 +1806,9 @@ def _leaf_body(instructions, parameters, return_type, callees=None, layouts=None
                 prototypes["global:" + _gosym] = global_externs[_gosym]
                 _gocast = ("signed char" if op == "lb" else "unsigned char")
                 check_load_delay(index, target_register)
+                if target_register in materialize:
+                    _assign_carried(target_register, None, _gosym + "[" + str(_gooff) + "]", _gocast, lines, indent)
+                    return
                 _goname = new_temporary("memory_result_", "unsigned int")
                 lines.append(indent + _goname + " = (unsigned int)(" + _gocast + ")(" + _gosym + "[" + str(_gooff) + "]);")
                 values[target_register] = _goname
@@ -1641,6 +1830,9 @@ def _leaf_body(instructions, parameters, return_type, callees=None, layouts=None
                     lines.append(indent + expression + " = " + value + ";")
                 else:
                     check_load_delay(index, target_register)
+                    if target_register in materialize:
+                        _assign_carried(target_register, pointer_type, expression, cast, lines, indent)
+                        return
                     name = new_temporary("memory_result_", pointer_type or "unsigned int")
                     if pointer_type:
                         lines.append(indent + name + " = " + expression + ";")
@@ -1659,6 +1851,17 @@ def _leaf_body(instructions, parameters, return_type, callees=None, layouts=None
                 values[slot] = values[target_register]
             else:
                 check_load_delay(index, target_register)
+                if target_register in materialize:
+                    slot_value = values[slot]
+                    if isinstance(slot_value, _PointerValue):
+                        if not isinstance(values[target_register], _PointerValue) or values[target_register].kind != slot_value.kind:
+                            raise ValueError("loop-carried pointer kind differs")
+                        lines.append(indent + values[target_register].expression + " = " + slot_value.expression + ";")
+                    else:
+                        if not isinstance(slot_value, str) or "@" in slot_value or isinstance(values[target_register], _PointerValue):
+                            raise ValueError("loop-carried value is not a C expression")
+                        lines.append(indent + values[target_register] + " = " + slot_value + ";")
+                    return
                 values[target_register] = values[slot]
             return
         if op in {"mult", "multu", "div", "divu"} and (
@@ -1717,7 +1920,7 @@ def _leaf_body(instructions, parameters, return_type, callees=None, layouts=None
             if values.get(data_base) != "@data-hi:" + data_symbol or data_symbol not in data_ptrs:
                 raise ValueError("data address halves are not paired")
             prototypes["data:" + data_symbol] = data_externs[data_symbol]
-            values[destination] = data_ptrs[data_symbol]
+            _define(destination, data_ptrs[data_symbol], values, lines, indent)
             return
         elif op == "addiu" and len(args) == 3 and (re.fullmatch(r"%lo\s*\(\s*(g_(?!api_)[A-Za-z_]\w*)\s*\)", args[2].strip()) is not None):
             # Global address computation: lui %hi(g) paired with addiu %lo(g).
@@ -1727,7 +1930,7 @@ def _leaf_body(instructions, parameters, return_type, callees=None, layouts=None
             if values.get(_gbase) != "@global-hi:" + _gsym or _gsym not in global_ptrs:
                 raise ValueError("global address halves are not paired")
             prototypes["global:" + _gsym] = global_externs[_gsym]
-            values[destination] = global_ptrs[_gsym]
+            _define(destination, global_ptrs[_gsym], values, lines, indent)
             return
         elif op == "addiu" and len(args) == 3 and (re.fullmatch(r"%lo\s*\(\s*((?:PLAYER_|RIC_)[A-Za-z_]\w*)\s*\)", args[2].strip()) is not None):
             # Absolute address computation: lui %hi(S) paired with addiu %lo(S).
@@ -1737,7 +1940,7 @@ def _leaf_body(instructions, parameters, return_type, callees=None, layouts=None
             if values.get(_lbase) != "@linker-hi:" + _lsym or _lsym not in linker_ptrs:
                 raise ValueError("linker address halves are not paired")
             prototypes["linker:" + _lsym] = linker_externs[_lsym]
-            values[destination] = linker_ptrs[_lsym]
+            _define(destination, linker_ptrs[_lsym], values, lines, indent)
             return
         elif op == "addiu" and len(args) == 3 and (re.fullmatch(r"%lo\s*\(\s*(g_(?!api_)[A-Za-z_]\w*)\s*\+\s*(0[xX][0-9a-fA-F]+|[0-9]+)\s*\)", args[2].strip()) is not None):
             # Global offset address: lui %hi(g+off) paired with addiu %lo(g+off).
@@ -1747,7 +1950,7 @@ def _leaf_body(instructions, parameters, return_type, callees=None, layouts=None
             if _gooff is None or values.get(_gobase) != "@global-offhi:" + _gosym + "+" + str(_gooff) or _gosym not in global_ptrs:
                 raise ValueError("global offset halves are not paired")
             prototypes["global:" + _gosym] = global_externs[_gosym]
-            values[destination] = advance_pointer(global_ptrs[_gosym], _gooff)
+            _define(destination, advance_pointer(global_ptrs[_gosym], _gooff), values, lines, indent)
             return
         elif op == "addiu" and len(args) == 3 and isinstance(values.get(register(args[1])), _PointerValue):
             amount = immediate(args[2], -0x8000, 0xFFFF)
@@ -1809,7 +2012,7 @@ def _leaf_body(instructions, parameters, return_type, callees=None, layouts=None
                 value = "(unsigned int)((" + sides[0] + ") % (" + sides[1] + "))"
             if len(value) > bounds.max_expression:
                 raise ValueError("expression expansion limit")
-            values[destination] = value
+            _define(destination, value, values, lines, indent)
             return
         elif op == "negu" and len(args) == 2:
             # Unsigned negate: 0 minus the operand with no overflow trap.
@@ -1831,7 +2034,7 @@ def _leaf_body(instructions, parameters, return_type, callees=None, layouts=None
             raise ValueError("unsupported leaf instruction")
         if len(value.expression if isinstance(value, _PointerValue) else value) > bounds.max_expression:
             raise ValueError("expression expansion limit")
-        values[destination] = value
+        _define(destination, value, values, lines, indent)
 
     def path(index, values, indent):
         lines = []
@@ -2001,28 +2204,14 @@ def _leaf_body(instructions, parameters, return_type, callees=None, layouts=None
                 raise ValueError("unbound branch target")
             target = labels[args[-1]]
             if target <= index + 1 or target in slots:
+                region = region_by_latch.get(index)
+                if region is not None and target == region["start"]:
+                    index = _lower_loop(region, values, lines, indent)
+                    continue
                 raise ValueError("loop or delay-slot entry")
             condition = None
             if op in conditional:
-                left_value = values[register(args[0])]
-                right_value = values[register(args[1])] if expected == 3 else "0"
-                if isinstance(left_value, _PointerValue) or isinstance(right_value, _PointerValue):
-                    if op not in {"beq", "bne", "beqz", "bnez"} or not (
-                            isinstance(left_value, _PointerValue) and right_value == "0"
-                            or isinstance(right_value, _PointerValue) and left_value == "0"
-                            or isinstance(left_value, _PointerValue) and isinstance(right_value, _PointerValue)
-                            and left_value.kind == right_value.kind):
-                        raise ValueError("unsupported pointer comparison")
-                    left = left_value.expression if isinstance(left_value, _PointerValue) else left_value
-                    right = right_value.expression if isinstance(right_value, _PointerValue) else right_value
-                else:
-                    left = value_for(values, args[0])
-                    right = value_for(values, args[1]) if expected == 3 else "0"
-                operator = {"beq": "==", "bne": "!=", "beqz": "==", "bnez": "!=",
-                            "bltz": "<", "bgez": ">=", "bgtz": ">", "blez": "<="}[op]
-                if op in {"bltz", "bgez", "bgtz", "blez"}:
-                    left = "(int)(" + left + ")"
-                condition = "(" + left + ") " + operator + " (" + right + ")"
+                condition = _cond_text(op, args, values, expected)
             # Capture the predicate from the old state, then execute the slot
             # once on both outgoing paths. A slot can overwrite its operands.
             step(index + 1, values, lines, indent)
@@ -2034,6 +2223,110 @@ def _leaf_body(instructions, parameters, return_type, callees=None, layouts=None
             return lines + [indent + "if (" + condition + ") {"] + taken + [indent + "} else {"] + other + [indent + "}"]
         raise ValueError("path does not return")
 
+    def _cond_text(op, args, values, expected):
+        left_value = values[register(args[0])]
+        right_value = values[register(args[1])] if expected == 3 else "0"
+        if isinstance(left_value, _PointerValue) or isinstance(right_value, _PointerValue):
+            if op not in {"beq", "bne", "beqz", "bnez"} or not (
+                    isinstance(left_value, _PointerValue) and right_value == "0"
+                    or isinstance(right_value, _PointerValue) and left_value == "0"
+                    or isinstance(left_value, _PointerValue) and isinstance(right_value, _PointerValue)
+                    and left_value.kind == right_value.kind):
+                raise ValueError("unsupported pointer comparison")
+            left = left_value.expression if isinstance(left_value, _PointerValue) else left_value
+            right = right_value.expression if isinstance(right_value, _PointerValue) else right_value
+        else:
+            left = value_for(values, args[0])
+            right = value_for(values, args[1]) if expected == 3 else "0"
+        operator = {"beq": "==", "bne": "!=", "beqz": "==", "bnez": "!=",
+                    "bltz": "<", "bgez": ">=", "bgtz": ">", "blez": "<="}[op]
+        if op in {"bltz", "bgez", "bgtz", "blez"}:
+            left = "(int)(" + left + ")"
+        return "(" + left + ") " + operator + " (" + right + ")"
+
+    def _define(destination, value, values, lines, indent):
+        if destination not in materialize:
+            values[destination] = value
+            return
+        current = values[destination]
+        if isinstance(value, _PointerValue):
+            if not isinstance(current, _PointerValue) or current.kind != value.kind:
+                raise ValueError("loop-carried pointer kind differs")
+            text, target = value.expression, current.expression
+        else:
+            if not isinstance(value, str) or "@" in value:
+                raise ValueError("loop-carried value is not a C expression")
+            if isinstance(current, _PointerValue):
+                raise ValueError("loop-carried pointer kind differs")
+            text, target = value, current
+        if len(text) > bounds.max_expression:
+            raise ValueError("expression expansion limit")
+        lines.append(indent + target + " = " + text + ";")
+
+    def _assign_carried(target_register, pointer_kind, expression, cast, lines, indent):
+        current = values[target_register]
+        if pointer_kind is not None:
+            if not isinstance(current, _PointerValue) or current.kind != pointer_kind:
+                raise ValueError("loop-carried pointer kind differs")
+            text = expression
+            target = current.expression
+        else:
+            if isinstance(current, _PointerValue):
+                raise ValueError("loop-carried pointer kind differs")
+            text = "(unsigned int)(" + cast + ")(" + expression + ")"
+            target = current
+        if len(text) > bounds.max_expression:
+            raise ValueError("expression expansion limit")
+        lines.append(indent + target + " = " + text + ";")
+
+    def _lower_loop(region, values, lines, indent):
+        start, branch, slot = region["start"], region["branch"], region["slot"]
+        reads, writes, pure, read_first = region_flow(instructions, start, slot + 1)
+        carried = sorted(r for r in reads & writes if r in pure or r in read_first)
+        carried = [reg for reg in carried if reg != "zero"]
+        inits = []
+        for reg in carried:
+            entry = values.get(reg)
+            if isinstance(entry, _PointerValue):
+                kind, text = entry.kind, entry.expression
+            elif isinstance(entry, str) and "@" not in entry:
+                kind, text = "unsigned int", entry
+            else:
+                raise ValueError("loop-carried value is not materializable")
+            temp = new_temporary("loop_", kind)
+            inits.append(temp + " = " + text)
+            values[reg] = _PointerValue(kind, temp) if isinstance(entry, _PointerValue) else temp
+        materialize.update(carried)
+        try:
+            body_lines = []
+            body_indent = indent + "    "
+            for k in range(start, branch):
+                step(k, values, body_lines, body_indent)
+            step(slot, values, body_lines, body_indent)
+            latch = instructions[branch]
+            latch_args = tuple(part.strip() for part in latch.operands.split(",")) if latch.operands else ()
+            latch_arity = 3 if latch.mnemonic in {"beq", "bne"} else 2
+            if len(latch_args) != latch_arity:
+                raise ValueError("loop latch is malformed")
+            condition = _cond_text(latch.mnemonic, latch_args, values, latch_arity)
+            budget[0] -= (slot - start + 1)
+            if budget[0] < 0:
+                raise ValueError("path expansion limit")
+            visited.update(range(start, slot + 1))
+            for init in inits:
+                lines.append(indent + init + ";")
+            lines.append(indent + "do {")
+            lines.extend(body_lines)
+            lines.append(indent + "} while (" + condition + ");")
+        finally:
+            materialize.difference_update(carried)
+        return slot + 1
+
+    materialize: set = set()
+    loop_admitted, loop_refused = loop_regions(instructions)
+    if loop_refused:
+        return None
+    region_by_latch = {region["branch"]: region for region in loop_admitted}
     try:
         body = path(0, state, "    ")
         # Extra definitions or unexplained dead code cannot be silently merged
