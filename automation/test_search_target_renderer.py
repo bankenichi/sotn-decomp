@@ -1120,6 +1120,135 @@ class GlobalAddressTests(unittest.TestCase):
 
 
 
+class LinkerAbsoluteTests(unittest.TestCase):
+    LINKER_ASM = (
+        "lui $v0, %hi(PLAYER_posX_i_hi)\n"
+        "lhu $v0, %lo(PLAYER_posX_i_hi)($v0)\n"
+        "jr $ra\n"
+        "nop\n"
+    )
+
+    def test_linker_scalar_load_derives_width_extern(self):
+        source = deterministic_local_draft(
+            self.LINKER_ASM, symbol="fn",
+            declarations={"return_type": "unsigned int", "parameters": []})
+        self.assertIsNotNone(source)
+        self.assertIn("extern u16 PLAYER_posX_i_hi;", source)
+        self.assertIn("PLAYER_posX_i_hi", source)
+        self.assertNotIn("%hi", source)
+
+    def test_linker_refusals(self):
+        store = self.LINKER_ASM.replace("lhu $v0,", "sh $v0,")
+        self.assertIsNone(deterministic_local_draft(
+            store, symbol="fn",
+            declarations={"return_type": "unsigned int", "parameters": []}))
+        unpaired = self.LINKER_ASM.replace("%lo(PLAYER_posX_i_hi)", "%lo(PLAYER_posY_i_hi)")
+        self.assertIsNone(deterministic_local_draft(
+            unpaired, symbol="fn",
+            declarations={"return_type": "unsigned int", "parameters": []}))
+        conflict = (
+            "lui $v0, %hi(PLAYER_posX_i_hi)\n"
+            "lhu $v0, %lo(PLAYER_posX_i_hi)($v0)\n"
+            "nop\n"
+            "lui $v1, %hi(PLAYER_posX_i_hi)\n"
+            "lb $v1, %lo(PLAYER_posX_i_hi)($v1)\n"
+            "addu $v0, $v0, $v1\n"
+            "jr $ra\n"
+            "nop\n"
+        )
+        self.assertIsNone(deterministic_local_draft(
+            conflict, symbol="fn",
+            declarations={"return_type": "unsigned int", "parameters": []}))
+
+    def test_linker_declared_address_renders(self):
+        from automation.search_target_layout import pointer_layouts
+        context = b"typedef unsigned short u16;\nextern u16 RIC_step;\n"
+        layouts = pointer_layouts(context, ["u16*"])
+        self.assertIn("u16*", layouts)
+        assembly = (
+            "lui $v0, %hi(RIC_step)\n"
+            "addiu $v0, $v0, %lo(RIC_step)\n"
+            "jr $ra\n"
+            "nop\n"
+        )
+        declarations = {
+            "return_type": "u16*", "parameters": [],
+            "pointer_layouts": layouts,
+            "linker_declarations": {
+                "RIC_step": {"type": "u16", "dims": "", "status": "declared"}},
+        }
+        source = deterministic_local_draft(assembly, symbol="fn", declarations=declarations)
+        self.assertIsNotNone(source)
+        self.assertIn("extern u16 RIC_step;", source)
+        self.assertIn("return (&RIC_step);", source)
+
+
+class GlobalOffsetTests(unittest.TestCase):
+    CONTEXT = b"typedef unsigned char u8;\nextern u8 g_CastleFlags[768];\n"
+
+    def _decls(self):
+        from automation.search_target_layout import pointer_layouts
+        layouts = pointer_layouts(self.CONTEXT, ["u8*"])
+        self.assertIn("u8*", layouts)
+        self.assertEqual(layouts["u8*"]["size"], 1)
+        return {
+            "return_type": "unsigned int", "parameters": [],
+            "pointer_layouts": layouts,
+            "global_declarations": {
+                "g_CastleFlags": {"type": "u8", "dims": "[768]", "status": "declared"}},
+        }
+
+    def test_offset_address_renders_pointer_plus_index(self):
+        assembly = (
+            "lui $v0, %hi(g_CastleFlags + 0x20)\n"
+            "addiu $v0, $v0, %lo(g_CastleFlags + 0x20)\n"
+            "jr $ra\n"
+            "nop\n"
+        )
+        source = deterministic_local_draft(assembly, symbol="fn", declarations={
+            "return_type": "u8*", "parameters": [],
+            "pointer_layouts": self._decls()["pointer_layouts"],
+            "global_declarations": self._decls()["global_declarations"]})
+        self.assertIsNotNone(source)
+        self.assertIn("extern u8 g_CastleFlags[768];", source)
+        self.assertIn("g_CastleFlags", source)
+        self.assertNotIn("%hi", source)
+
+    def test_offset_byte_load_renders_index(self):
+        assembly = (
+            "lui $v0, %hi(g_CastleFlags + 0x20)\n"
+            "lbu $v0, %lo(g_CastleFlags + 0x20)($v0)\n"
+            "jr $ra\n"
+            "nop\n"
+        )
+        source = deterministic_local_draft(assembly, symbol="fn", declarations=self._decls())
+        self.assertIsNotNone(source)
+        self.assertIn("g_CastleFlags[32]", source)
+
+    def test_offset_refusals(self):
+        wide = (
+            "lui $v0, %hi(g_CastleFlags + 0x20)\n"
+            "lw $v0, %lo(g_CastleFlags + 0x20)($v0)\n"
+            "jr $ra\n"
+            "nop\n"
+        )
+        self.assertIsNone(deterministic_local_draft(wide, symbol="fn", declarations=self._decls()))
+        store = (
+            "lui $v0, %hi(g_CastleFlags + 0x20)\n"
+            "sb $a0, %lo(g_CastleFlags + 0x20)($v0)\n"
+            "jr $ra\n"
+            "nop\n"
+        )
+        self.assertIsNone(deterministic_local_draft(store, symbol="fn", declarations=self._decls()))
+        unpaired = (
+            "lui $v0, %hi(g_CastleFlags + 0x20)\n"
+            "lbu $v0, %lo(g_CastleFlags + 0x21)($v0)\n"
+            "jr $ra\n"
+            "nop\n"
+        )
+        self.assertIsNone(deterministic_local_draft(unpaired, symbol="fn", declarations=self._decls()))
+
+
 class VariableLimitsTests(unittest.TestCase):
     LEAF_DECLS = {
         "return_type": "unsigned int",

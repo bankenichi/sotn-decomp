@@ -530,6 +530,7 @@ def renderer_declarations(declarations, assembly_bytes, context_bytes, sibling_c
     result.pop("api_declarations", None)
     result.pop("data_declarations", None)
     result.pop("global_declarations", None)
+    result.pop("linker_declarations", None)
     result.pop("pointer_layouts", None)
     result.pop("type_declarations", None)
     if context_bytes is None:
@@ -587,6 +588,16 @@ def renderer_declarations(declarations, assembly_bytes, context_bytes, sibling_c
             facts = {key: value for key, value in facts.items() if key != "static"}
             glob[member] = {**facts, "status": status}
         result["global_declarations"] = glob
+    linker_members = _linker_member_names(assembly_bytes.decode("utf-8"))
+    if len(linker_members) > 64:
+        raise ValueError("target linker declaration limit exceeded")
+    if linker_members:
+        link = {}
+        for member in linker_members:
+            facts, status = target_data_declaration(text, member)
+            facts = {key: value for key, value in facts.items() if key != "static"}
+            link[member] = {**facts, "status": status}
+        result["linker_declarations"] = link
     from .search_target_layout import pointer_layouts, renderer_type_declarations
     scalar_types = {"int", "signed int", "unsigned int", "s32", "u32"}
     kinds = {p["type"] for facts in (result, *result.get("call_declarations", {}).values(),
@@ -596,7 +607,8 @@ def renderer_declarations(declarations, assembly_bytes, context_bytes, sibling_c
                                                    *result.get("api_declarations", {}).values())
                  if facts.get("return_type") and facts["return_type"] not in scalar_types | {"void"})
     for entry in (*result.get("data_declarations", {}).values(),
-                 *result.get("global_declarations", {}).values()):
+                 *result.get("global_declarations", {}).values(),
+                 *result.get("linker_declarations", {}).values()):
         if entry.get("status") == "declared" and entry.get("type"):
             pointer = re.sub(r"\s*\*\s*", "*", entry["type"]) + "*"
             if re.fullmatch(r"[A-Za-z_]\w*(?: [A-Za-z_]\w*)*\**", pointer):
@@ -627,14 +639,31 @@ def _global_member_names(assembly_text: str) -> list[str]:
     """Globals with both halves of an address load present in assembly.
 
     Matches `%hi(g_Symbol)` alongside `%lo(g_Symbol)` excluding the
-    `g_api_` pointer-call family, without interpreting registers: the
-    render-time value machine enforces the actual same-register pairing
+    `g_api_` pointer-call family, including `+ const` offset forms by
+    base symbol, without interpreting registers: the render-time value
+    machine enforces the actual same-register pairing, offset equality
     and clobber discipline.
     """
     if not isinstance(assembly_text, str):
         return []
-    his = set(re.findall(r"%hi\(\s*(g_(?!api_)[A-Za-z_]\w*)\s*\)", assembly_text))
-    los = set(re.findall(r"%lo\(\s*(g_(?!api_)[A-Za-z_]\w*)\s*\)", assembly_text))
+    plain_hi = set(re.findall(r"%hi\(\s*(g_(?!api_)[A-Za-z_]\w*)\s*\)", assembly_text))
+    plain_lo = set(re.findall(r"%lo\(\s*(g_(?!api_)[A-Za-z_]\w*)\s*\)", assembly_text))
+    off_hi = set(re.findall(r"%hi\(\s*(g_(?!api_)[A-Za-z_]\w*)\s*\+\s*(?:0[xX][0-9a-fA-F]+|[0-9]+)\s*\)", assembly_text))
+    off_lo = set(re.findall(r"%lo\(\s*(g_(?!api_)[A-Za-z_]\w*)\s*\+\s*(?:0[xX][0-9a-fA-F]+|[0-9]+)\s*\)", assembly_text))
+    return sorted((plain_hi | off_hi) & (plain_lo | off_lo))
+
+
+def _linker_member_names(assembly_text: str) -> list[str]:
+    """Absolute linker symbols with both address halves present in assembly.
+
+    Matches plain `%hi(PLAYER_*)/%lo(PLAYER_*)` and `%hi(RIC_*)/%lo(RIC_*)`
+    pairs. Offset forms stay refused; the render-time value machine
+    enforces pairing and clobber discipline.
+    """
+    if not isinstance(assembly_text, str):
+        return []
+    his = set(re.findall(r"%hi\(\s*((?:PLAYER_|RIC_)[A-Za-z_]\w*)\s*\)", assembly_text))
+    los = set(re.findall(r"%lo\(\s*((?:PLAYER_|RIC_)[A-Za-z_]\w*)\s*\)", assembly_text))
     return sorted(his & los)
 
 

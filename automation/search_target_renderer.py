@@ -855,6 +855,10 @@ _DATA_HI = re.compile(r"%hi\s*\(\s*(D_[A-Za-z0-9_.$]*)\s*\)")
 _DATA_LO = re.compile(r"%lo\s*\(\s*(D_[A-Za-z0-9_.$]*)\s*\)")
 _GLOBAL_HI = re.compile(r"%hi\s*\(\s*(g_(?!api_)[A-Za-z_]\w*)\s*\)")
 _GLOBAL_LO = re.compile(r"%lo\s*\(\s*(g_(?!api_)[A-Za-z_]\w*)\s*\)")
+_LINKER_HI = re.compile(r"%hi\s*\(\s*((?:PLAYER_|RIC_)[A-Za-z_]\w*)\s*\)")
+_LINKER_LO = re.compile(r"%lo\s*\(\s*((?:PLAYER_|RIC_)[A-Za-z_]\w*)\s*\)")
+_GLOBAL_OFF_HI = re.compile(r"%hi\s*\(\s*(g_(?!api_)[A-Za-z_]\w*)\s*\+\s*(?:0[xX][0-9a-fA-F]+|[0-9]+)\s*\)")
+_GLOBAL_OFF_LO = re.compile(r"%lo\s*\(\s*(g_(?!api_)[A-Za-z_]\w*)\s*\+\s*(?:0[xX][0-9a-fA-F]+|[0-9]+)\s*\)")
 
 
 def _is_supported_api_relocation(operands: str) -> bool:
@@ -879,6 +883,16 @@ def _is_supported_global_relocation(operands: str) -> bool:
         return False
     stripped = _GLOBAL_HI.sub("", operands)
     stripped = _GLOBAL_LO.sub("", stripped)
+    stripped = _GLOBAL_OFF_HI.sub("", stripped)
+    stripped = _GLOBAL_OFF_LO.sub("", stripped)
+    return not _ASM_RELOCATION.search(stripped)
+
+def _is_supported_linker_relocation(operands: str) -> bool:
+    """Whether relocations are only PLAYER_/RIC_ absolute hi/lo halves."""
+    if not _ASM_RELOCATION.search(operands):
+        return False
+    stripped = _LINKER_HI.sub("", operands)
+    stripped = _LINKER_LO.sub("", stripped)
     return not _ASM_RELOCATION.search(stripped)
 
 def _fold_const_expr(text: str):
@@ -923,7 +937,7 @@ def _parse_assembly(text: str, *, retain_relocations: bool = False) -> tuple[_In
         # embedded data. Unknown directives still refuse rendering below.
         if re.fullmatch(r"\.set\s+(?:noat|noreorder|nomacro)", line):
             continue
-        if _ASM_DATA_DIRECTIVE.match(line) or (_ASM_RELOCATION.search(line) and not retain_relocations and not _is_supported_api_relocation(line) and not _is_supported_data_relocation(line) and not _is_supported_global_relocation(line)):
+        if _ASM_DATA_DIRECTIVE.match(line) or (_ASM_RELOCATION.search(line) and not retain_relocations and not _is_supported_api_relocation(line) and not _is_supported_data_relocation(line) and not _is_supported_global_relocation(line) and not _is_supported_linker_relocation(line)):
             # Preserve a deterministic query shape while marking the target
             # context as non-renderable.  The renderer will turn this typed
             # shape into target_context_unsupported, and the raw line never
@@ -947,7 +961,7 @@ def _parse_assembly(text: str, *, retain_relocations: bool = False) -> tuple[_In
             line = (label_match.group("tail") or "").strip()
             if not line:
                 continue
-            if _ASM_DATA_DIRECTIVE.match(line) or (_ASM_RELOCATION.search(line) and not retain_relocations and not _is_supported_api_relocation(line) and not _is_supported_data_relocation(line) and not _is_supported_global_relocation(line)):
+            if _ASM_DATA_DIRECTIVE.match(line) or (_ASM_RELOCATION.search(line) and not retain_relocations and not _is_supported_api_relocation(line) and not _is_supported_data_relocation(line) and not _is_supported_global_relocation(line) and not _is_supported_linker_relocation(line)):
                 instructions.append(_Instruction("unsupported", "", pending_label, True))
                 pending_label = None
                 continue
@@ -995,7 +1009,7 @@ def _parse_assembly(text: str, *, retain_relocations: bool = False) -> tuple[_In
         if not re.fullmatch(r"[a-z][a-z0-9.]*", mnemonic):
             pending_label = None
             continue
-        if has_numeric_branch_target(mnemonic, operands) or (_ASM_RELOCATION.search(operands) and not _is_supported_api_relocation(operands) and not _is_supported_data_relocation(operands) and not _is_supported_global_relocation(operands)):
+        if has_numeric_branch_target(mnemonic, operands) or (_ASM_RELOCATION.search(operands) and not _is_supported_api_relocation(operands) and not _is_supported_data_relocation(operands) and not _is_supported_global_relocation(operands) and not _is_supported_linker_relocation(operands)):
             instructions.append(_Instruction(mnemonic, operands, pending_label, True))
         else:
             instructions.append(_Instruction(mnemonic, operands, pending_label))
@@ -1309,7 +1323,7 @@ class _PointerValue:
     expression: str
 
 
-def _leaf_body(instructions, parameters, return_type, callees=None, layouts=None, switches=None, apis=None, limits=None, datas=None, gdata=None):
+def _leaf_body(instructions, parameters, return_type, callees=None, layouts=None, switches=None, apis=None, limits=None, datas=None, gdata=None, linker=None):
     """Lower bounded MIPS scalar paths without losing delay-slot dataflow.
 
     Values are unsigned 32-bit C expressions. Signed comparisons explicitly
@@ -1353,7 +1367,8 @@ def _leaf_body(instructions, parameters, return_type, callees=None, layouts=None
     datas = datas or {}
     gdata = gdata or {}
     prototypes, temporaries = {}, []
-    reserved_names = {name for _, name in parameters} | set(callees) | set(apis) | {name for name in datas if isinstance(name, str)} | {name for name in gdata if isinstance(name, str)}
+    linker = linker or {}
+    reserved_names = {name for _, name in parameters} | set(callees) | set(apis) | {name for name in datas if isinstance(name, str)} | {name for name in gdata if isinstance(name, str)} | {name for name in linker if isinstance(name, str)}
     data_ptrs, data_externs = {}, {}
     for data_name, declaration in datas.items():
         # Only identifier-safe declared data resolves to an address value.
@@ -1390,6 +1405,24 @@ def _leaf_body(instructions, parameters, return_type, callees=None, layouts=None
         global_ptrs[global_name] = _PointerValue(layouts[global_kind]["canonical"],
                                                  global_name if global_dims else "(&" + global_name + ")")
         global_externs[global_name] = "    extern " + global_type + " " + global_name + global_dims + ";"
+    linker_ptrs, linker_externs, linker_widths = {}, {}, {}
+    for linker_name, declaration in linker.items():
+        if (not isinstance(linker_name, str) or not re.fullmatch(r"(?:PLAYER_|RIC_)[A-Za-z_]\w*", linker_name)):
+            continue
+        if not isinstance(declaration, Mapping) or declaration.get("status") != "declared":
+            continue
+        linker_type = declaration.get("type")
+        if not isinstance(linker_type, str):
+            continue
+        linker_kind = re.sub(r"\s*\*\s*", "*", linker_type) + "*"
+        if linker_kind not in layouts:
+            continue
+        linker_dims = declaration.get("dims", "")
+        if not isinstance(linker_dims, str):
+            continue
+        linker_ptrs[linker_name] = _PointerValue(layouts[linker_kind]["canonical"],
+                                                 linker_name if linker_dims else "(&" + linker_name + ")")
+        linker_externs[linker_name] = "    extern " + linker_type + " " + linker_name + linker_dims + ";"
     labels = {}
     for index, item in enumerate(instructions):
         if item.label:
@@ -1533,6 +1566,64 @@ def _leaf_body(instructions, parameters, return_type, callees=None, layouts=None
                 check_load_delay(index, target_register)
                 values[target_register] = "@api:" + member
                 return
+            linker_lo = re.fullmatch(r"%lo\s*\(\s*((?:PLAYER_|RIC_)[A-Za-z_]\w*)\s*\)\s*\(\s*(\$[A-Za-z0-9]+)\s*\)", args[1].strip())
+            if linker_lo is not None:
+                if op.startswith("s"):
+                    raise ValueError("linker absolute store is deferred")
+                _lsym, _lbase = linker_lo.group(1), register(linker_lo.group(2))
+                if values.get(_lbase) != "@linker-hi:" + _lsym:
+                    raise ValueError("linker halves are not paired")
+                if target_register not in writable:
+                    raise ValueError("unsupported linker destination")
+                _lwidth = 4 if op == "lw" else 2 if op in {"lh", "lhu"} else 1 if op in {"lb", "lbu"} else None
+                if _lwidth is None:
+                    raise ValueError("unsupported linker access width")
+                _lsigned = op in {"lb", "lh"}
+                _lcast = ("signed" if _lsigned else "unsigned") + " " + {1: "char", 2: "short", 4: "int"}[_lwidth]
+                if _lsym in linker_ptrs:
+                    _ldecl = linker.get(_lsym, {})
+                    _ltype = _ldecl.get("type") if isinstance(_ldecl, Mapping) else None
+                    _lkind = re.sub(r"\s*\*\s*", "*", _ltype) + "*" if isinstance(_ltype, str) else None
+                    if _lkind not in layouts or layouts[_lkind]["size"] != _lwidth or _ldecl.get("dims", "") != "":
+                        raise ValueError("linker declaration width differs")
+                    prototypes["linker:" + _lsym] = linker_externs[_lsym]
+                    _lexpr = _lsym
+                else:
+                    _wtype = {"lb": "s8", "lbu": "u8", "lh": "s16", "lhu": "u16", "lw": "u32"}[op]
+                    if _lsym in linker_widths and linker_widths[_lsym] != _wtype:
+                        raise ValueError("linker width conflicts")
+                    linker_widths[_lsym] = _wtype
+                    prototypes["linker:" + _lsym] = "    extern " + _wtype + " " + _lsym + ";"
+                    _lexpr = _lsym
+                check_load_delay(index, target_register)
+                _lname = new_temporary("memory_result_", "unsigned int")
+                lines.append(indent + _lname + " = (unsigned int)(" + _lcast + ")(" + _lexpr + ");")
+                values[target_register] = _lname
+                return
+            global_off_lo = re.fullmatch(r"%lo\s*\(\s*(g_(?!api_)[A-Za-z_]\w*)\s*\+\s*(0[xX][0-9a-fA-F]+|[0-9]+)\s*\)\s*\(\s*(\$[A-Za-z0-9]+)\s*\)", args[1].strip())
+            if global_off_lo is not None:
+                if op.startswith("s"):
+                    raise ValueError("global offset store is deferred")
+                if op not in {"lb", "lbu"}:
+                    raise ValueError("global offset width is deferred")
+                _gosym, _goofftext, _gobase = global_off_lo.group(1), global_off_lo.group(2), register(global_off_lo.group(3))
+                _gooff = _fold_const_expr(_goofftext)
+                if _gooff is None or values.get(_gobase) != "@global-offhi:" + _gosym + "+" + str(_gooff):
+                    raise ValueError("global offset halves are not paired")
+                if target_register not in writable or _gosym not in global_ptrs:
+                    raise ValueError("global offset load is unavailable")
+                _gdecl = gdata.get(_gosym, {})
+                _gtype = _gdecl.get("type") if isinstance(_gdecl, Mapping) else None
+                _gkind = re.sub(r"\s*\*\s*", "*", _gtype) + "*" if isinstance(_gtype, str) else None
+                if _gkind not in layouts or layouts[_gkind]["size"] != 1:
+                    raise ValueError("global offset element is not a byte")
+                prototypes["global:" + _gosym] = global_externs[_gosym]
+                _gocast = ("signed char" if op == "lb" else "unsigned char")
+                check_load_delay(index, target_register)
+                _goname = new_temporary("memory_result_", "unsigned int")
+                lines.append(indent + _goname + " = (unsigned int)(" + _gocast + ")(" + _gosym + "[" + str(_gooff) + "]);")
+                values[target_register] = _goname
+                return
             memory = re.fullmatch(r"(-?(?:0[xX][0-9A-Fa-f]+|[0-9]+))\(([^()]+)\)", args[1])
             if not memory or target_register not in writable | {"ra", "zero"}:
                 raise ValueError("unsupported memory access")
@@ -1592,6 +1683,8 @@ def _leaf_body(instructions, parameters, return_type, callees=None, layouts=None
             hi_match = re.fullmatch(r"%hi\s*\(\s*(g_api_[A-Za-z_]\w*)\s*\)", args[1].strip())
             data_hi = re.fullmatch(r"%hi\s*\(\s*(D_[A-Za-z0-9_.$]*)\s*\)", args[1].strip())
             global_hi = re.fullmatch(r"%hi\s*\(\s*(g_(?!api_)[A-Za-z_]\w*)\s*\)", args[1].strip())
+            linker_hi = re.fullmatch(r"%hi\s*\(\s*((?:PLAYER_|RIC_)[A-Za-z_]\w*)\s*\)", args[1].strip())
+            global_off_hi = re.fullmatch(r"%hi\s*\(\s*(g_(?!api_)[A-Za-z_]\w*)\s*\+\s*(0[xX][0-9a-fA-F]+|[0-9]+)\s*\)", args[1].strip())
             if hi_match is not None:
                 value = "@api-hi:" + hi_match.group(1)
             elif data_hi is not None:
@@ -1602,6 +1695,14 @@ def _leaf_body(instructions, parameters, return_type, callees=None, layouts=None
                 if global_hi.group(1) not in global_ptrs:
                     raise ValueError("global declaration is unavailable")
                 value = "@global-hi:" + global_hi.group(1)
+            elif linker_hi is not None:
+                value = "@linker-hi:" + linker_hi.group(1)
+            elif global_off_hi is not None:
+                _osym, _offtext = global_off_hi.group(1), global_off_hi.group(2)
+                _off = _fold_const_expr(_offtext)
+                if _osym not in global_ptrs or _off is None or not 0 <= _off < 4096:
+                    raise ValueError("global offset address is unavailable")
+                value = "@global-offhi:" + _osym + "+" + str(_off)
             else:
                 value = literal(immediate(args[1], 0, 0xFFFF) << 16)
         elif op == "move" and len(args) == 2:
@@ -1627,6 +1728,26 @@ def _leaf_body(instructions, parameters, return_type, callees=None, layouts=None
                 raise ValueError("global address halves are not paired")
             prototypes["global:" + _gsym] = global_externs[_gsym]
             values[destination] = global_ptrs[_gsym]
+            return
+        elif op == "addiu" and len(args) == 3 and (re.fullmatch(r"%lo\s*\(\s*((?:PLAYER_|RIC_)[A-Za-z_]\w*)\s*\)", args[2].strip()) is not None):
+            # Absolute address computation: lui %hi(S) paired with addiu %lo(S).
+            _llo = re.fullmatch(r"%lo\s*\(\s*((?:PLAYER_|RIC_)[A-Za-z_]\w*)\s*\)", args[2].strip())
+            _lsym = _llo.group(1)
+            _lbase = register(args[1])
+            if values.get(_lbase) != "@linker-hi:" + _lsym or _lsym not in linker_ptrs:
+                raise ValueError("linker address halves are not paired")
+            prototypes["linker:" + _lsym] = linker_externs[_lsym]
+            values[destination] = linker_ptrs[_lsym]
+            return
+        elif op == "addiu" and len(args) == 3 and (re.fullmatch(r"%lo\s*\(\s*(g_(?!api_)[A-Za-z_]\w*)\s*\+\s*(0[xX][0-9a-fA-F]+|[0-9]+)\s*\)", args[2].strip()) is not None):
+            # Global offset address: lui %hi(g+off) paired with addiu %lo(g+off).
+            _golo = re.fullmatch(r"%lo\s*\(\s*(g_(?!api_)[A-Za-z_]\w*)\s*\+\s*(0[xX][0-9a-fA-F]+|[0-9]+)\s*\)", args[2].strip())
+            _gosym, _gooff = _golo.group(1), _fold_const_expr(_golo.group(2))
+            _gobase = register(args[1])
+            if _gooff is None or values.get(_gobase) != "@global-offhi:" + _gosym + "+" + str(_gooff) or _gosym not in global_ptrs:
+                raise ValueError("global offset halves are not paired")
+            prototypes["global:" + _gosym] = global_externs[_gosym]
+            values[destination] = advance_pointer(global_ptrs[_gosym], _gooff)
             return
         elif op == "addiu" and len(args) == 3 and isinstance(values.get(register(args[1])), _PointerValue):
             amount = immediate(args[2], -0x8000, 0xFFFF)
@@ -1960,7 +2081,7 @@ def _deterministic_local_draft(
     bounds = _coerce_limits(limits)
     body = _leaf_body(instructions, parameters, return_type, context.declarations.get("call_declarations"),
                       context.declarations.get("pointer_layouts"), switches, context.declarations.get("api_declarations"),
-                      datas=context.declarations.get("data_declarations"), gdata=context.declarations.get("global_declarations"), limits=bounds)
+                      datas=context.declarations.get("data_declarations"), gdata=context.declarations.get("global_declarations"), linker=context.declarations.get("linker_declarations"), limits=bounds)
     if body is None:
         return None
     parameter_text = "void" if not parameters else ", ".join(

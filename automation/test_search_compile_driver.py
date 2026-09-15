@@ -144,6 +144,18 @@ class CompileDriverTests(unittest.TestCase):
                                         assembly, b"int x;\n")
         self.assertEqual(missing["global_declarations"]["g_Entities"]["status"],
                          "declaration_missing")
+    def test_linker_member_names_and_projection(self):
+        from automation.search_source_context import _global_member_names, _linker_member_names, renderer_declarations
+        self.assertEqual(_linker_member_names("lui $v0, %hi(PLAYER_posX_i_hi)\naddiu $v0, $v0, %lo(PLAYER_posX_i_hi)\n"), ["PLAYER_posX_i_hi"])
+        self.assertEqual(_linker_member_names("lui $v0, %hi(g_Other)\naddiu $v0, $v0, %lo(g_Other)\n"), [])
+        self.assertEqual(_linker_member_names("lui $v0, %hi(g_api_Test)\naddiu $v0, $v0, %lo(g_api_Test)\n"), [])
+        self.assertEqual(_global_member_names("lui $v0, %hi(g_Flags + 0x20)\naddiu $v0, $v0, %lo(g_Flags + 0x20)\n"), ["g_Flags"])
+        assembly = b"lui $v0, %hi(RIC_step)\nlhu $v0, %lo(RIC_step)($v0)\njr $ra\nnop\n"
+        context = b"extern unsigned short RIC_step;\n"
+        facts = renderer_declarations({"return_type": "void", "parameters": []}, assembly, context)
+        self.assertEqual(facts["linker_declarations"]["RIC_step"]["status"], "declared")
+        missing = renderer_declarations({"return_type": "void", "parameters": []}, assembly, b"int x;\n")
+        self.assertEqual(missing["linker_declarations"]["RIC_step"]["status"], "declaration_missing")
     def test_api_member_projection_exact_and_refusals(self):
         from automation.search_source_context import _api_member_names, renderer_declarations
         assembly = (b"lui $v0, %hi(g_api_AllocPrimitives)\n"
