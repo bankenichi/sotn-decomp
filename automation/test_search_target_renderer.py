@@ -828,5 +828,140 @@ class TargetRendererTests(unittest.TestCase):
             temp.cleanup()
 
 
+
+
+class ApiPointerCallTests(unittest.TestCase):
+    API_ASM = (
+        "addiu $sp, $sp, -24\n"
+        "sw $ra, 20($sp)\n"
+        "sw $s0, 16($sp)\n"
+        "lui $v0, %hi(g_api_TestCall)\n"
+        "lw $v0, %lo(g_api_TestCall)($v0)\n"
+        "nop\n"
+        "ori $a0, $zero, 4\n"
+        "jalr $v0\n"
+        "ori $a1, $zero, 1\n"
+        "lw $ra, 20($sp)\n"
+        "lw $s0, 16($sp)\n"
+        "jr $ra\n"
+        "addiu $sp, $sp, 24\n"
+    )
+    API_DECLS = {
+        "return_type": "void",
+        "parameters": [],
+        "api_declarations": {
+            "g_api_TestCall": {
+                "return_type": "void",
+                "parameters": [
+                    {"type": "s32", "name": "x"},
+                    {"type": "s32", "name": "y"}],
+                "status": "declared",
+            },
+        },
+    }
+
+    def test_api_relocation_is_supported_shape(self):
+        instructions = _parse_assembly(self.API_ASM)
+        self.assertTrue(instructions)
+        self.assertFalse(any(item.unsupported for item in instructions))
+        other = _parse_assembly("lui $v0, %hi(other_symbol)\n")
+        self.assertTrue(any(item.unsupported for item in other))
+
+    def test_api_call_renders_pointer_call(self):
+        source = deterministic_local_draft(
+            self.API_ASM, symbol="fn", declarations=self.API_DECLS)
+        self.assertIsNotNone(source)
+        self.assertIn("g_api_TestCall(", source)
+        self.assertIn("extern void (*g_api_TestCall)(s32, s32);", source)
+        self.assertNotIn("%hi", source)
+        self.assertNotIn("jalr", source)
+
+    def test_api_call_refusals(self):
+        cases = {}
+        missing = dict(self.API_DECLS)
+        missing["api_declarations"] = {}
+        cases["missing_table"] = (self.API_ASM, missing)
+        undeclared = {
+            "return_type": "void", "parameters": [],
+            "api_declarations": {
+                "g_api_TestCall": {"status": "declaration_missing"}}}
+        cases["undeclared"] = (self.API_ASM, undeclared)
+        unpaired = self.API_ASM.replace(
+            "lw $v0, %lo(g_api_TestCall)($v0)",
+            "lw $v0, %lo(g_api_TestCall)($at)")
+        cases["unpaired_halves"] = (unpaired, self.API_DECLS)
+        clobbered = self.API_ASM.replace(
+            "nop\nori $a0", "or $v0, $zero, $zero\nnop\nori $a0")
+        cases["clobbered_hi"] = (clobbered, self.API_DECLS)
+        noframe = "\n".join(
+            line for line in self.API_ASM.splitlines()
+            if "addiu $sp" not in line and "sw $ra" not in line
+            and "lw $ra" not in line).replace(
+            "jr $ra\n", "jr $ra\n")
+        cases["missing_frame"] = (noframe, self.API_DECLS)
+        data_ptr = {
+            "return_type": "void", "parameters": [],
+            "api_declarations": {
+                "g_api_TestCall": {"status": "unsupported_declaration"}}}
+        cases["data_pointer"] = (self.API_ASM, data_ptr)
+        for name, (assembly, declarations) in cases.items():
+            with self.subTest(case=name):
+                self.assertIsNone(
+                    deterministic_local_draft(
+                        assembly, symbol="fn", declarations=declarations))
+
+    def test_dominant_alloc_primitives_shape_renders(self):
+        assembly = (
+            "addiu $sp, $sp, -24\nsw $ra, 20($sp)\nsw $s0, 16($sp)\n"
+            "lui $v0, %hi(g_api_AllocPrimitives)\n"
+            "lw $v0, %lo(g_api_AllocPrimitives)($v0)\n"
+            "nop\nori $a0, $zero, 4\njalr $v0\nori $a1, $zero, 1\n"
+            "sll $v0, $v0, 16\nsra $v0, $v0, 16\n"
+            "lw $ra, 20($sp)\nlw $s0, 16($sp)\njr $ra\naddiu $sp, $sp, 24\n"
+        )
+        declarations = {
+            "return_type": "void", "parameters": [],
+            "api_declarations": {
+                "g_api_AllocPrimitives": {
+                    "return_type": "s16",
+                    "parameters": [
+                        {"type": "PrimitiveType", "name": "type"},
+                        {"type": "s32", "name": "count"}],
+                    "status": "declared",
+                },
+            },
+        }
+        source = deterministic_local_draft(assembly, symbol="fn", declarations=declarations)
+        self.assertIsNotNone(source)
+        self.assertIn("g_api_AllocPrimitives(", source)
+        self.assertIn("extern s16 (*g_api_AllocPrimitives)(PrimitiveType, s32);", source)
+
+    def test_unnamed_api_parameters_render_types_only(self):
+        assembly = self.API_ASM.replace("g_api_TestCall", "g_api_FreePrimitives")
+        declarations = {
+            "return_type": "void", "parameters": [],
+            "api_declarations": {
+                "g_api_FreePrimitives": {
+                    "return_type": "void",
+                    "parameters": [{"type": "s32", "name": "arg0"}],
+                    "status": "declared",
+                },
+            },
+        }
+        source = deterministic_local_draft(assembly, symbol="fn", declarations=declarations)
+        self.assertIsNotNone(source)
+        self.assertIn("g_api_FreePrimitives(", source)
+
+    def test_plain_jalr_without_api_remains_refusal(self):
+        assembly = (
+            "addiu $sp, $sp, -24\nsw $ra, 20($sp)\n"
+            "addu $v0, $a0, $zero\nnop\n"
+            "jalr $v0\nnop\n"
+            "lw $ra, 20($sp)\njr $ra\naddiu $sp, $sp, 24\n"
+        )
+        self.assertIsNone(deterministic_local_draft(
+            assembly, symbol="fn", declarations=self.API_DECLS))
+
+
 if __name__ == "__main__":
     unittest.main()

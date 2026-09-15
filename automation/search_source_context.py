@@ -105,6 +105,106 @@ def target_declaration(text: str, symbol: str) -> tuple[dict, str]:
     return max(facts, key=lambda item: item[0])[1], "declared"
 
 
+def target_pointer_declaration(text: str, symbol: str) -> tuple[dict, str]:
+    """Extract a top-level function-pointer data declaration, never a guess.
+
+    Covers `extern RET (*NAME)(params);` declarators such as the standalone
+    `g_api_*` API pointers, which `target_declaration` cannot match because
+    its grammar expects the parameter list immediately after the symbol.
+    Same strictness: top-level scope only, no ambiguous or invalid shapes,
+    and the pointed-to signature in the identical facts form so renderers
+    reuse every downstream ABI check unchanged.
+    """
+    if not isinstance(symbol, str) or not re.fullmatch(r"[A-Za-z_]\w*", symbol):
+        return {}, "declaration_missing"
+    tokens = re.compile(r'/\*.*?\*/|//[^\n]*|"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'', re.S)
+    scrubbed = tokens.sub(lambda m: "".join("\n" if c == "\n" else " " for c in m[0]), text)
+    pattern = re.compile(
+        r"(?m)(?:^|(?<=[;{}]))[ \t]*(?P<ret>[A-Za-z_][\w \t\n*]*?)\(\s*\*\s*"
+        + re.escape(symbol) + r"\s*\)\s*\((?P<params>[^();{}]*)\)\s*;",
+        re.S)
+    cursor, depth, facts = 0, 0, []
+    unsupported = False
+    for match in pattern.finditer(scrubbed):
+        prefix = scrubbed[cursor:match.start()]
+        depth += prefix.count("{") - prefix.count("}")
+        cursor = match.start()
+        if depth != 0:
+            continue
+        result_type = " ".join(match["ret"].split())
+        if "typedef" in result_type.split():
+            unsupported = True
+            continue
+        result_type = re.sub(r"^(?:(?:static|extern|inline)\s+)+", "", result_type)
+        result_type = re.sub(r"\s*\*\s*", "*", result_type)
+        # A data pointer (`RET *NAME;`) or function returning a pointer
+        # (`RET *NAME(params);`) is not a callable API surface.
+        if "*" in result_type:
+            unsupported = True
+            continue
+        raw = match["params"].strip()
+        parameters = []
+        valid = bool(raw)
+        if raw != "void":
+            for pos, entry in enumerate(raw.split(",")):
+                normalized = re.sub(r"\*\s*", "* ", entry.strip())
+                parts = normalized.rsplit(None, 1)
+                if len(parts) == 1:
+                    kind = re.sub(r"\s*\*\s*", "*", " ".join(parts[0].split()))
+                    if not re.fullmatch(r"[A-Za-z_]\w*(?: [A-Za-z_]\w*)*\**", kind) or kind in {"void", "const", "volatile", "struct", "union", "enum"}:
+                        valid = False
+                        break
+                    parameters.append({"type": kind, "name": f"arg{pos}"})
+                    continue
+                if len(parts) != 2:
+                    valid = False
+                    break
+                if parts[-1] in {"void", "char", "short", "int", "long", "float", "double", "signed", "unsigned", "const", "volatile", "struct", "union", "enum"} or not re.fullmatch(r"[A-Za-z_]\w*", parts[1]):
+                    whole = re.sub(r"\s*\*\s*", "*", " ".join(entry.strip().split()))
+                    if not re.fullmatch(r"[A-Za-z_]\w*(?: [A-Za-z_]\w*)*\**", whole) or whole in {"void", "const", "volatile", "struct", "union", "enum"}:
+                        valid = False
+                        break
+                    parameters.append({"type": whole, "name": f"arg{pos}"})
+                    continue
+                kind = re.sub(r"\s*\*\s*", "*", " ".join(parts[0].split()))
+                if not re.fullmatch(r"[A-Za-z_]\w*(?: [A-Za-z_]\w*)*\**", kind) or kind in {"void", "const", "volatile", "struct", "union", "enum"}:
+                    valid = False
+                    break
+                parameters.append({"type": kind, "name": parts[1]})
+        if not valid or len({p["name"] for p in parameters}) != len(parameters):
+            unsupported = True
+            continue
+        facts.append({"return_type": result_type, "parameters": parameters})
+    if unsupported:
+        return {}, "unsupported_declaration"
+    if not facts:
+        # A same-name top-level data pointer is present but not callable;
+        # report the shape refusal rather than a blank absence.
+        if _same_name_data_pointer(scrubbed, symbol):
+            return {}, "unsupported_declaration"
+        return {}, "declaration_missing"
+    signatures = {(d["return_type"], tuple(p["type"] for p in d["parameters"])) for d in facts}
+    if len(signatures) != 1:
+        return {}, "ambiguous_declaration"
+    return facts[0], "declared"
+
+
+def _same_name_data_pointer(scrubbed: str, symbol: str) -> bool:
+    """Whether a top-level data pointer declarator names this symbol."""
+    pointer = re.compile(
+        r"(?m)(?:^|(?<=[;{}]))[ \t]*[A-Za-z_][\w \t\n*]*?\*\s*"
+        + re.escape(symbol) + r"\s*(?:\[[^\];{}]*\])?\s*;",
+        re.S)
+    cursor, depth = 0, 0
+    for match in pointer.finditer(scrubbed):
+        prefix = scrubbed[cursor:match.start()]
+        depth += prefix.count("{") - prefix.count("}")
+        cursor = match.start()
+        if depth == 0:
+            return True
+    return False
+
+
 def preprocess_target_context(repo: Path, source: bytes, directory: Path, expected_identity: str, config_path: Path) -> bytes:
     from .compiler_corpus import _pipeline, _run_stage, CompilerCorpusError
     import tempfile
@@ -209,6 +309,7 @@ def renderer_declarations(declarations, assembly_bytes, context_bytes):
 
     result = dict(declarations)
     result.pop("call_declarations", None)
+    result.pop("api_declarations", None)
     result.pop("pointer_layouts", None)
     result.pop("type_declarations", None)
     if context_bytes is None:
@@ -225,14 +326,40 @@ def renderer_declarations(declarations, assembly_bytes, context_bytes):
             facts, status = target_declaration(text, symbol)
             callees[symbol] = {**facts, "status": status}
         result["call_declarations"] = callees
+    api_members = _api_member_names(assembly_bytes.decode("utf-8"))
+    if len(api_members) > 64:
+        raise ValueError("target API declaration limit exceeded")
+    if api_members:
+        api = {}
+        for member in api_members:
+            facts, status = target_pointer_declaration(text, member)
+            api[member] = {**facts, "status": status}
+        result["api_declarations"] = api
     from .search_target_layout import pointer_layouts, renderer_type_declarations
     scalar_types = {"int", "signed int", "unsigned int", "s32", "u32"}
-    kinds = {p["type"] for facts in (result, *result.get("call_declarations", {}).values())
+    kinds = {p["type"] for facts in (result, *result.get("call_declarations", {}).values(),
+                                     *result.get("api_declarations", {}).values())
              for p in facts.get("parameters", ()) if p["type"] not in scalar_types}
-    kinds.update(facts["return_type"] for facts in (result, *result.get("call_declarations", {}).values())
+    kinds.update(facts["return_type"] for facts in (result, *result.get("call_declarations", {}).values(),
+                                                   *result.get("api_declarations", {}).values())
                  if facts.get("return_type") and facts["return_type"] not in scalar_types | {"void"})
     if kinds:
         result["pointer_layouts"] = pointer_layouts(context_bytes, kinds)
         if result["pointer_layouts"]:
             result["type_declarations"] = renderer_type_declarations(context_bytes)
     return result
+
+
+def _api_member_names(assembly_text: str) -> list[str]:
+    """API members with both halves of a pointer load present in assembly.
+
+    Matches `%hi(g_api_Member)` alongside `%lo(g_api_Member)` without
+    interpreting registers: the render-time value machine enforces the actual
+    same-register pairing, load delay, and clobber discipline. Names here only
+    decide which declaration facts get projected.
+    """
+    if not isinstance(assembly_text, str):
+        return []
+    his = set(re.findall(r"%hi\(\s*(g_api_[A-Za-z_]\w*)\s*\)", assembly_text))
+    los = set(re.findall(r"%lo\(\s*(g_api_[A-Za-z_]\w*)\s*\)", assembly_text))
+    return sorted(his & los)

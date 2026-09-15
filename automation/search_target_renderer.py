@@ -792,6 +792,18 @@ def _strip_assembly_comment(line: str) -> str:
     return line
 
 
+_API_HI = re.compile(r"%hi\s*\(\s*(g_api_[A-Za-z_]\w*)\s*\)")
+_API_LO = re.compile(r"%lo\s*\(\s*(g_api_[A-Za-z_]\w*)\s*\)")
+
+
+def _is_supported_api_relocation(operands: str) -> bool:
+    """Whether relocations are only g_api hi/lo halves, never other shapes."""
+    if not _ASM_RELOCATION.search(operands):
+        return False
+    stripped = _API_HI.sub("", operands)
+    stripped = _API_LO.sub("", stripped)
+    return not _ASM_RELOCATION.search(stripped)
+
 def _parse_assembly(text: str, *, retain_relocations: bool = False) -> tuple[_Instruction, ...]:
     if not isinstance(text, str):
         raise TargetEvidenceError("target assembly is not UTF-8 text")
@@ -806,7 +818,7 @@ def _parse_assembly(text: str, *, retain_relocations: bool = False) -> tuple[_In
         # embedded data. Unknown directives still refuse rendering below.
         if re.fullmatch(r"\.set\s+(?:noat|noreorder|nomacro)", line):
             continue
-        if _ASM_DATA_DIRECTIVE.match(line) or (_ASM_RELOCATION.search(line) and not retain_relocations):
+        if _ASM_DATA_DIRECTIVE.match(line) or (_ASM_RELOCATION.search(line) and not retain_relocations and not _is_supported_api_relocation(line)):
             # Preserve a deterministic query shape while marking the target
             # context as non-renderable.  The renderer will turn this typed
             # shape into target_context_unsupported, and the raw line never
@@ -830,7 +842,7 @@ def _parse_assembly(text: str, *, retain_relocations: bool = False) -> tuple[_In
             line = (label_match.group("tail") or "").strip()
             if not line:
                 continue
-            if _ASM_DATA_DIRECTIVE.match(line) or (_ASM_RELOCATION.search(line) and not retain_relocations):
+            if _ASM_DATA_DIRECTIVE.match(line) or (_ASM_RELOCATION.search(line) and not retain_relocations and not _is_supported_api_relocation(line)):
                 instructions.append(_Instruction("unsupported", "", pending_label, True))
                 pending_label = None
                 continue
@@ -871,7 +883,7 @@ def _parse_assembly(text: str, *, retain_relocations: bool = False) -> tuple[_In
         if not re.fullmatch(r"[a-z][a-z0-9.]*", mnemonic):
             pending_label = None
             continue
-        if has_numeric_branch_target(mnemonic, operands) or _ASM_RELOCATION.search(operands):
+        if has_numeric_branch_target(mnemonic, operands) or (_ASM_RELOCATION.search(operands) and not _is_supported_api_relocation(operands)):
             instructions.append(_Instruction(mnemonic, operands, pending_label, True))
         else:
             instructions.append(_Instruction(mnemonic, operands, pending_label))
@@ -1185,7 +1197,7 @@ class _PointerValue:
     expression: str
 
 
-def _leaf_body(instructions, parameters, return_type, callees=None, layouts=None, switches=None):
+def _leaf_body(instructions, parameters, return_type, callees=None, layouts=None, switches=None, apis=None):
     """Lower bounded MIPS scalar paths without losing delay-slot dataflow.
 
     Values are unsigned 32-bit C expressions. Signed comparisons explicitly
@@ -1194,6 +1206,7 @@ def _leaf_body(instructions, parameters, return_type, callees=None, layouts=None
     with a shared budget to bound joins and nested branches.
     """
     scalar_types = {"int", "signed int", "unsigned int", "s32", "u32"}
+    call_scalars = scalar_types | {"s16", "u16", "s8", "u8", "char", "signed char", "unsigned char", "short", "signed short", "unsigned short", "bool", "PrimitiveType"}
     layouts = layouts or {}
     switches = switches or {}
     if (return_type not in scalar_types | {"void"} | set(layouts) or len(parameters) > 4
@@ -1217,8 +1230,9 @@ def _leaf_body(instructions, parameters, return_type, callees=None, layouts=None
     for number, name in (*((8 + i, "t" + str(i)) for i in range(8)), (24, "t8"), (25, "t9")):
         aliases.update({str(number): name, "r" + str(number): name})
     callees = callees or {}
+    apis = apis or {}
     prototypes, temporaries = {}, []
-    reserved_names = {name for _, name in parameters} | set(callees)
+    reserved_names = {name for _, name in parameters} | set(callees) | set(apis)
     labels = {}
     for index, item in enumerate(instructions):
         if item.label:
@@ -1226,7 +1240,7 @@ def _leaf_body(instructions, parameters, return_type, callees=None, layouts=None
                 return None
             labels[item.label] = index
     conditional = {"beq", "bne", "beqz", "bnez", "bltz", "bgez", "bgtz", "blez"}
-    controls = conditional | {"b", "j", "jr", "jal"}
+    controls = conditional | {"b", "j", "jr", "jal", "jalr"}
     slots = {i + 1 for i, item in enumerate(instructions) if item.mnemonic in controls}
     state = {"zero": "0", "ra": "@entry-ra", "stack_offset": 0, "frame_size": 0}
     state.update({name: "@entry-" + name for name in preserved})
@@ -1342,6 +1356,18 @@ def _leaf_body(instructions, parameters, return_type, callees=None, layouts=None
             return
         if op in {"sw", "sh", "sb", "lw", "lh", "lhu", "lb", "lbu"} and len(args) == 2:
             target_register = register(args[0])
+            api_lo = re.fullmatch(r"%lo\s*\(\s*(g_api_[A-Za-z_]\w*)\s*\)\s*\(\s*(\$[A-Za-z0-9]+)\s*\)", args[1].strip())
+            if api_lo is not None:
+                if op != "lw":
+                    raise ValueError("unsupported API access width")
+                member, base = api_lo.group(1), register(api_lo.group(2))
+                if values.get(base) != "@api-hi:" + member:
+                    raise ValueError("API pointer halves are not paired")
+                if target_register not in writable:
+                    raise ValueError("unsupported API destination")
+                check_load_delay(index, target_register)
+                values[target_register] = "@api:" + member
+                return
             memory = re.fullmatch(r"(-?(?:0[xX][0-9A-Fa-f]+|[0-9]+))\(([^()]+)\)", args[1])
             if not memory or target_register not in writable | {"ra", "zero"}:
                 raise ValueError("unsupported memory access")
@@ -1385,7 +1411,11 @@ def _leaf_body(instructions, parameters, return_type, callees=None, layouts=None
         if op == "li" and len(args) == 2:
             value = literal(immediate(args[1], -0x80000000, 0xFFFFFFFF))
         elif op == "lui" and len(args) == 2:
-            value = literal(immediate(args[1], 0, 0xFFFF) << 16)
+            hi_match = re.fullmatch(r"%hi\s*\(\s*(g_api_[A-Za-z_]\w*)\s*\)", args[1].strip())
+            if hi_match is not None:
+                value = "@api-hi:" + hi_match.group(1)
+            else:
+                value = literal(immediate(args[1], 0, 0xFFFF) << 16)
         elif op == "move" and len(args) == 2:
             value = values[register(args[1])]
             if not isinstance(value, _PointerValue):
@@ -1490,8 +1520,8 @@ def _leaf_body(instructions, parameters, return_type, callees=None, layouts=None
                     raise ValueError("call declaration is unavailable")
                 result_type = declaration.get("return_type")
                 call_parameters = _safe_parameters(declaration.get("parameters"), "callee parameters")
-                if (result_type not in scalar_types | {"void"} | set(layouts) or call_parameters is None
-                        or len(call_parameters) > 4 or any(kind not in scalar_types and kind not in layouts for kind, _ in call_parameters)):
+                if (result_type not in call_scalars | {"void"} | set(layouts) or call_parameters is None
+                        or len(call_parameters) > 4 or any(kind not in call_scalars and kind not in layouts for kind, _ in call_parameters)):
                     raise ValueError("unsupported call ABI")
                 if values["stack_offset"] != -values["frame_size"] or values["frame_size"] < 16:
                     raise ValueError("call requires outgoing argument area")
@@ -1504,7 +1534,7 @@ def _leaf_body(instructions, parameters, return_type, callees=None, layouts=None
                 arguments = []
                 for i, (kind, _) in enumerate(call_parameters):
                     value = values["a" + str(i)]
-                    if kind in scalar_types:
+                    if kind in call_scalars:
                         arguments.append("(" + kind + ")(" + value_for(values, "a" + str(i)) + ")")
                     elif kind in layouts:
                         arguments.append(pointer_expression(value, layouts[kind]["canonical"]))
@@ -1516,6 +1546,61 @@ def _leaf_body(instructions, parameters, return_type, callees=None, layouts=None
                 for name in volatile:
                     values.pop(name, None)
                 # A callee owns the four argument-home words even for zero args.
+                for offset in range(values["stack_offset"], values["stack_offset"] + 16, 4):
+                    values.pop("stack:" + str(offset), None)
+                if result_type == "void":
+                    lines.append(indent + expression + ";")
+                else:
+                    if result_type in layouts:
+                        kind = layouts[result_type]["canonical"]
+                        name = new_temporary("call_result_", kind)
+                        lines.append(indent + name + " = " + expression + ";")
+                        values["v0"] = _PointerValue(kind, name)
+                    else:
+                        name = new_temporary("call_result_")
+                        lines.append(indent + name + " = (unsigned int)" + expression + ";")
+                        values["v0"] = name
+                index += 2
+                continue
+            if op == "jalr":
+                if len(args) != 1:
+                    raise ValueError("unsupported indirect call shape")
+                held = values.get(register(args[0]))
+                if not isinstance(held, str) or not held.startswith("@api:"):
+                    raise ValueError("indirect call without target-owned API declaration")
+                member = held.removeprefix("@api:")
+                if not re.fullmatch(r"g_api_[A-Za-z_]\w*", member) or member not in apis:
+                    raise ValueError("call has no target-owned declaration")
+                if member in labels or member in {name for _, name in parameters}:
+                    raise ValueError("call has no target-owned declaration")
+                declaration = apis[member]
+                if not isinstance(declaration, Mapping) or declaration.get("status") != "declared":
+                    raise ValueError("call declaration is unavailable")
+                result_type = declaration.get("return_type")
+                call_parameters = _safe_parameters(declaration.get("parameters"), "callee parameters")
+                if (result_type not in call_scalars | {"void"} | set(layouts) or call_parameters is None
+                        or len(call_parameters) > 4 or any(kind not in call_scalars and kind not in layouts for kind, _ in call_parameters)):
+                    raise ValueError("unsupported call ABI")
+                if values["stack_offset"] != -values["frame_size"] or values["frame_size"] < 16:
+                    raise ValueError("call requires outgoing argument area")
+                values["ra"] = "@call-return"
+                step(index + 1, values, lines, indent)
+                if values["stack_offset"] != -values["frame_size"]:
+                    raise ValueError("call delay slot released its frame")
+                arguments = []
+                for pos, (kind, _) in enumerate(call_parameters):
+                    value = values["a" + str(pos)]
+                    if kind in call_scalars:
+                        arguments.append("(" + kind + ")(" + value_for(values, "a" + str(pos)) + ")")
+                    elif kind in layouts:
+                        arguments.append(pointer_expression(value, layouts[kind]["canonical"]))
+                    else:
+                        raise ValueError("call pointer type differs from US declaration")
+                parameter_text = ", ".join(kind for kind, _ in call_parameters) or "void"
+                prototypes[member] = "    extern " + result_type + " (*" + member + ")(" + parameter_text + ");"
+                expression = member + "(" + ", ".join(arguments) + ")"
+                for name in volatile:
+                    values.pop(name, None)
                 for offset in range(values["stack_offset"], values["stack_offset"] + 16, 4):
                     values.pop("stack:" + str(offset), None)
                 if result_type == "void":
@@ -1631,7 +1716,7 @@ def _deterministic_local_draft(
     except ValueError:
         return None
     body = _leaf_body(instructions, parameters, return_type, context.declarations.get("call_declarations"),
-                      context.declarations.get("pointer_layouts"), switches)
+                      context.declarations.get("pointer_layouts"), switches, context.declarations.get("api_declarations"))
     if body is None:
         return None
     parameter_text = "void" if not parameters else ", ".join(

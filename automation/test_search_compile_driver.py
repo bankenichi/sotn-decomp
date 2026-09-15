@@ -12,6 +12,75 @@ from automation.search_permuter_executor import REPOSITORY_COMPILE_WRAPPER_BYTES
 
 
 class CompileDriverTests(unittest.TestCase):
+    def test_target_pointer_declaration_exact_and_refusals(self):
+        from automation.search_source_context import target_pointer_declaration
+        text = ("extern s16 (*g_api_AllocPrimitives)(PrimitiveType type, s32 count);\n"
+                "static int ignored(int x) { return x; }\n")
+        facts, status = target_pointer_declaration(text, "g_api_AllocPrimitives")
+        self.assertEqual(status, "declared")
+        self.assertEqual(facts, {"return_type": "s16", "parameters": [
+            {"type": "PrimitiveType", "name": "type"},
+            {"type": "s32", "name": "count"}]})
+        self.assertEqual(target_pointer_declaration(text, "g_api_Missing"),
+                         ({}, "declaration_missing"))
+        self.assertEqual(target_pointer_declaration(
+            "extern void (*f)(void);\nextern s32 (*f)(void);\n", "f")[1],
+            "ambiguous_declaration")
+        # A data pointer is not a callable API surface.
+        self.assertEqual(target_pointer_declaration(
+            "extern s16 *g_api_Data;\n", "g_api_Data")[1],
+            "unsupported_declaration")
+        # A function returning a pointer is not a supported ABI shape.
+        self.assertEqual(target_pointer_declaration(
+            "extern int *(*f)(int x);\n", "f")[1],
+            "unsupported_declaration")
+        # Local scopes never supply API facts.
+        self.assertEqual(target_pointer_declaration(
+            "void g(void) { extern int (*f)(int x); }\n", "f")[1],
+            "declaration_missing")
+        # A plain function is not a pointer declarator.
+        self.assertEqual(target_pointer_declaration(
+            "extern s16 callee(s32 x);\n", "callee")[1],
+            "declaration_missing")
+        self.assertEqual(target_pointer_declaration(text, "not an identifier")[1],
+                         "declaration_missing")
+        unnamed, status = target_pointer_declaration(
+            "extern void (*g_api_FreePrimitives)(s32);\n", "g_api_FreePrimitives")
+        self.assertEqual(status, "declared")
+        self.assertEqual(unnamed["parameters"], [{"type": "s32", "name": "arg0"}])
+        multi, status = target_pointer_declaration(
+            "extern s16 (*g_api_func)(s32, s32);\n", "g_api_func")
+        self.assertEqual(status, "declared")
+        self.assertEqual([p["name"] for p in multi["parameters"]], ["arg0", "arg1"])
+        # Synthesized names never collide silently; collisions refuse.
+        self.assertEqual(target_pointer_declaration(
+            "extern void (*g_api_Collide)(s32 arg1, s32);\n", "g_api_Collide")[1],
+            "unsupported_declaration")
+
+    def test_api_member_projection_exact_and_refusals(self):
+        from automation.search_source_context import _api_member_names, renderer_declarations
+        assembly = (b"lui $v0, %hi(g_api_AllocPrimitives)\n"
+                    b"lw $v0, %lo(g_api_AllocPrimitives)($v0)\n"
+                    b"nop\njalr $v0\nnop\njr $ra\nnop\n")
+        self.assertEqual(_api_member_names(assembly.decode()), ["g_api_AllocPrimitives"])
+        self.assertEqual(_api_member_names("lui $v0, %hi(g_api_OnlyHi)\nnop\n"), [])
+        self.assertEqual(_api_member_names("lw $v0, %lo(g_api_OnlyLo)($v0)\nnop\n"), [])
+        self.assertEqual(_api_member_names(""), [])
+        context = (b"typedef unsigned int u32;\n"
+                   b"extern short (*g_api_AllocPrimitives)(int type, s32 count);\n")
+        facts = renderer_declarations({"return_type": "int", "parameters": []},
+                                      assembly, context)
+        self.assertEqual(facts["api_declarations"]["g_api_AllocPrimitives"]["status"],
+                         "declared")
+        self.assertEqual(
+            facts["api_declarations"]["g_api_AllocPrimitives"]["parameters"],
+            [{"type": "int", "name": "type"}, {"type": "s32", "name": "count"}])
+        self.assertNotIn("call_declarations", facts)
+        missing = renderer_declarations(
+            {"return_type": "int", "parameters": []}, assembly, b"int x;\n")
+        self.assertEqual(missing["api_declarations"]["g_api_AllocPrimitives"]["status"],
+                         "declaration_missing")
+
     def test_recovered_switch_compiles_with_actual_psx_toolchain(self):
         from automation.search_target_renderer import deterministic_local_draft
         from automation.test_search_target_renderer import SWITCH_ASM, SWITCH_DECLARATIONS
