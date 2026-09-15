@@ -987,6 +987,81 @@ class ApiPointerCallTests(unittest.TestCase):
             assembly, symbol="fn", declarations=self.API_DECLS))
 
 
+class DataAddressTests(unittest.TestCase):
+    DATA_ASM = (
+        "lui $v0, %hi(D_us_1)\n"
+        "addiu $v0, $v0, %lo(D_us_1)\n"
+        "jr $ra\n"
+        "nop\n"
+    )
+    CONTEXT = b"typedef signed short s16;\nextern s16 D_us_1[4];\n"
+
+    def _decls(self, **override):
+        from automation.search_target_layout import pointer_layouts
+        layouts = pointer_layouts(self.CONTEXT, ["s16*"])
+        self.assertIn("s16*", layouts)
+        base = {
+            "return_type": "s16*",
+            "parameters": [],
+            "pointer_layouts": layouts,
+            "data_declarations": {
+                "D_us_1": {"type": "s16", "dims": "[4]", "status": "declared"},
+            },
+        }
+        base.update(override)
+        return base
+
+    def test_data_relocation_is_supported_shape(self):
+        instructions = _parse_assembly(self.DATA_ASM)
+        self.assertTrue(instructions)
+        self.assertFalse(any(item.unsupported for item in instructions))
+        other = _parse_assembly("lui $v0, %hi(other_symbol)\n")
+        self.assertTrue(any(item.unsupported for item in other))
+
+    def test_data_address_renders_extern_and_return(self):
+        source = deterministic_local_draft(
+            self.DATA_ASM, symbol="fn", declarations=self._decls())
+        self.assertIsNotNone(source)
+        self.assertIn("extern s16 D_us_1[4];", source)
+        self.assertIn("return D_us_1;", source)
+        self.assertNotIn("%hi", source)
+        self.assertNotIn("%lo", source)
+
+    def test_data_address_refusals(self):
+        cases = {}
+        cases["missing_table"] = (self.DATA_ASM, {
+            "return_type": "s16*", "parameters": [],
+            "pointer_layouts": self._decls()["pointer_layouts"]})
+        cases["undeclared"] = (self.DATA_ASM, self._decls(
+            data_declarations={"D_us_1": {"status": "declaration_missing"}}))
+        unpaired = self.DATA_ASM.replace("%lo(D_us_1)", "%lo(D_us_2)")
+        cases["unpaired_halves"] = (unpaired, self._decls())
+        clobbered = self.DATA_ASM.replace(
+            "addiu $v0", "or $v0, $zero, $zero\naddiu $v0", 1)
+        cases["clobbered_hi"] = (clobbered, self._decls())
+        scalar_context = b"typedef signed short s16;\nextern s16 D_us_1;\n"
+        from automation.search_target_layout import pointer_layouts as _layouts
+        scalar_layouts = _layouts(scalar_context, ["s16*"])
+        cases["scalar_address_of"] = (
+            self.DATA_ASM, {
+                "return_type": "s16*", "parameters": [],
+                "pointer_layouts": scalar_layouts,
+                "data_declarations": {
+                    "D_us_1": {"type": "s16", "dims": "", "status": "declared"}},
+            })
+        for name, (assembly, declarations) in cases.items():
+            with self.subTest(case=name):
+                if name == "scalar_address_of":
+                    rendered = deterministic_local_draft(
+                        assembly, symbol="fn", declarations=declarations)
+                    self.assertIsNotNone(rendered)
+                    self.assertIn("extern s16 D_us_1;", rendered)
+                    self.assertIn("return (&D_us_1);", rendered)
+                else:
+                    self.assertIsNone(deterministic_local_draft(
+                        assembly, symbol="fn", declarations=declarations))
+
+
 
 
 class VariableLimitsTests(unittest.TestCase):

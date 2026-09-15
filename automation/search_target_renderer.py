@@ -851,6 +851,8 @@ def _strip_assembly_comment(line: str) -> str:
 
 _API_HI = re.compile(r"%hi\s*\(\s*(g_api_[A-Za-z_]\w*)\s*\)")
 _API_LO = re.compile(r"%lo\s*\(\s*(g_api_[A-Za-z_]\w*)\s*\)")
+_DATA_HI = re.compile(r"%hi\s*\(\s*(D_[A-Za-z0-9_.$]*)\s*\)")
+_DATA_LO = re.compile(r"%lo\s*\(\s*(D_[A-Za-z0-9_.$]*)\s*\)")
 
 
 def _is_supported_api_relocation(operands: str) -> bool:
@@ -860,6 +862,42 @@ def _is_supported_api_relocation(operands: str) -> bool:
     stripped = _API_HI.sub("", operands)
     stripped = _API_LO.sub("", stripped)
     return not _ASM_RELOCATION.search(stripped)
+
+def _is_supported_data_relocation(operands: str) -> bool:
+    """Whether relocations are only D_* data hi/lo halves, never other shapes."""
+    if not _ASM_RELOCATION.search(operands):
+        return False
+    stripped = _DATA_HI.sub("", operands)
+    stripped = _DATA_LO.sub("", stripped)
+    return not _ASM_RELOCATION.search(stripped)
+
+def _fold_const_expr(text: str):
+    """Fold one assembler constant expression to an int, or None.
+
+    Splat spells large constants as (0xC0000000 >> 16); the assembler
+    folds these before encoding, so folding here models exact semantics.
+    Only a single binary operator over plain numerics is admitted.
+    """
+    plain = re.fullmatch(r"-?(?:0[xX][0-9a-fA-F]+|[0-9]+)", text.strip())
+    if plain:
+        return int(plain.group(0), 0)
+    folded = re.fullmatch(
+        r"\(\s*(0[xX][0-9a-fA-F]+|[0-9]+)\s*(>>|<<|&|\||\+|-)\s*(0[xX][0-9a-fA-F]+|[0-9]+)\s*\)\s*",
+        text.strip())
+    if not folded:
+        return None
+    left, operator, right = int(folded.group(1), 0), folded.group(2), int(folded.group(3), 0)
+    if operator == ">>":
+        return left >> right
+    if operator == "<<":
+        return (left << right) & 0xFFFFFFFF
+    if operator == "&":
+        return left & right
+    if operator == "|":
+        return left | right
+    if operator == "+":
+        return (left + right) & 0xFFFFFFFF
+    return (left - right) & 0xFFFFFFFF
 
 def _parse_assembly(text: str, *, retain_relocations: bool = False) -> tuple[_Instruction, ...]:
     if not isinstance(text, str):
@@ -875,7 +913,7 @@ def _parse_assembly(text: str, *, retain_relocations: bool = False) -> tuple[_In
         # embedded data. Unknown directives still refuse rendering below.
         if re.fullmatch(r"\.set\s+(?:noat|noreorder|nomacro)", line):
             continue
-        if _ASM_DATA_DIRECTIVE.match(line) or (_ASM_RELOCATION.search(line) and not retain_relocations and not _is_supported_api_relocation(line)):
+        if _ASM_DATA_DIRECTIVE.match(line) or (_ASM_RELOCATION.search(line) and not retain_relocations and not _is_supported_api_relocation(line) and not _is_supported_data_relocation(line)):
             # Preserve a deterministic query shape while marking the target
             # context as non-renderable.  The renderer will turn this typed
             # shape into target_context_unsupported, and the raw line never
@@ -899,7 +937,7 @@ def _parse_assembly(text: str, *, retain_relocations: bool = False) -> tuple[_In
             line = (label_match.group("tail") or "").strip()
             if not line:
                 continue
-            if _ASM_DATA_DIRECTIVE.match(line) or (_ASM_RELOCATION.search(line) and not retain_relocations and not _is_supported_api_relocation(line)):
+            if _ASM_DATA_DIRECTIVE.match(line) or (_ASM_RELOCATION.search(line) and not retain_relocations and not _is_supported_api_relocation(line) and not _is_supported_data_relocation(line)):
                 instructions.append(_Instruction("unsupported", "", pending_label, True))
                 pending_label = None
                 continue
@@ -947,7 +985,7 @@ def _parse_assembly(text: str, *, retain_relocations: bool = False) -> tuple[_In
         if not re.fullmatch(r"[a-z][a-z0-9.]*", mnemonic):
             pending_label = None
             continue
-        if has_numeric_branch_target(mnemonic, operands) or (_ASM_RELOCATION.search(operands) and not _is_supported_api_relocation(operands)):
+        if has_numeric_branch_target(mnemonic, operands) or (_ASM_RELOCATION.search(operands) and not _is_supported_api_relocation(operands) and not _is_supported_data_relocation(operands)):
             instructions.append(_Instruction(mnemonic, operands, pending_label, True))
         else:
             instructions.append(_Instruction(mnemonic, operands, pending_label))
@@ -1261,7 +1299,7 @@ class _PointerValue:
     expression: str
 
 
-def _leaf_body(instructions, parameters, return_type, callees=None, layouts=None, switches=None, apis=None, limits=None):
+def _leaf_body(instructions, parameters, return_type, callees=None, layouts=None, switches=None, apis=None, limits=None, datas=None):
     """Lower bounded MIPS scalar paths without losing delay-slot dataflow.
 
     Values are unsigned 32-bit C expressions. Signed comparisons explicitly
@@ -1302,8 +1340,28 @@ def _leaf_body(instructions, parameters, return_type, callees=None, layouts=None
         aliases.update({str(number): name, "r" + str(number): name})
     callees = callees or {}
     apis = apis or {}
+    datas = datas or {}
     prototypes, temporaries = {}, []
-    reserved_names = {name for _, name in parameters} | set(callees) | set(apis)
+    reserved_names = {name for _, name in parameters} | set(callees) | set(apis) | {name for name in datas if isinstance(name, str)}
+    data_ptrs, data_externs = {}, {}
+    for data_name, declaration in datas.items():
+        # Only identifier-safe declared data resolves to an address value.
+        # Anything else refuses at its use site, never here.
+        if (not isinstance(data_name, str) or not re.fullmatch(r"D_[A-Za-z_]\w*", data_name)
+                or not isinstance(declaration, Mapping) or declaration.get("status") != "declared"):
+            continue
+        data_type = declaration.get("type")
+        if not isinstance(data_type, str):
+            continue
+        pointer_kind = re.sub(r"\s*\*\s*", "*", data_type) + "*"
+        if pointer_kind not in layouts:
+            continue
+        dims = declaration.get("dims", "")
+        if not isinstance(dims, str):
+            continue
+        data_ptrs[data_name] = _PointerValue(layouts[pointer_kind]["canonical"],
+                                             data_name if dims else "(&" + data_name + ")")
+        data_externs[data_name] = "    extern " + data_type + " " + data_name + dims + ";"
     labels = {}
     for index, item in enumerate(instructions):
         if item.label:
@@ -1324,9 +1382,11 @@ def _leaf_body(instructions, parameters, return_type, callees=None, layouts=None
         return aliases.get(value, value)
 
     def immediate(value, low, high):
-        if not re.fullmatch(r"-?(?:0[xX][0-9a-fA-F]+|[0-9]+)", value):
+        # Splat folds assembler constant expressions before encoding;
+        # folding here models the identical value at every use site.
+        number = _fold_const_expr(value)
+        if number is None:
             raise ValueError("not an immediate")
-        number = int(value, 0)
         if not low <= number <= high:
             raise ValueError("immediate out of range")
         return number
@@ -1502,14 +1562,29 @@ def _leaf_body(instructions, parameters, return_type, callees=None, layouts=None
             value = literal(immediate(args[1], -0x80000000, 0xFFFFFFFF))
         elif op == "lui" and len(args) == 2:
             hi_match = re.fullmatch(r"%hi\s*\(\s*(g_api_[A-Za-z_]\w*)\s*\)", args[1].strip())
+            data_hi = re.fullmatch(r"%hi\s*\(\s*(D_[A-Za-z0-9_.$]*)\s*\)", args[1].strip())
             if hi_match is not None:
                 value = "@api-hi:" + hi_match.group(1)
+            elif data_hi is not None:
+                if data_hi.group(1) not in data_ptrs:
+                    raise ValueError("data declaration is unavailable")
+                value = "@data-hi:" + data_hi.group(1)
             else:
                 value = literal(immediate(args[1], 0, 0xFFFF) << 16)
         elif op == "move" and len(args) == 2:
             value = values[register(args[1])]
             if not isinstance(value, _PointerValue):
                 value = value_for(values, args[1])
+        elif op == "addiu" and len(args) == 3 and (re.fullmatch(r"%lo\s*\(\s*(D_[A-Za-z0-9_.$]*)\s*\)", args[2].strip()) is not None):
+            # Data address computation: lui %hi(D) paired with addiu %lo(D).
+            data_lo = re.fullmatch(r"%lo\s*\(\s*(D_[A-Za-z0-9_.$]*)\s*\)", args[2].strip())
+            data_symbol = data_lo.group(1)
+            data_base = register(args[1])
+            if values.get(data_base) != "@data-hi:" + data_symbol or data_symbol not in data_ptrs:
+                raise ValueError("data address halves are not paired")
+            prototypes["data:" + data_symbol] = data_externs[data_symbol]
+            values[destination] = data_ptrs[data_symbol]
+            return
         elif op == "addiu" and len(args) == 3 and isinstance(values.get(register(args[1])), _PointerValue):
             amount = immediate(args[2], -0x8000, 0xFFFF)
             value = advance_pointer(values[register(args[1])], amount if amount < 0x8000 else amount - 0x10000)
@@ -1841,7 +1916,7 @@ def _deterministic_local_draft(
         return None
     bounds = _coerce_limits(limits)
     body = _leaf_body(instructions, parameters, return_type, context.declarations.get("call_declarations"),
-                      context.declarations.get("pointer_layouts"), switches, context.declarations.get("api_declarations"), limits=bounds)
+                      context.declarations.get("pointer_layouts"), switches, context.declarations.get("api_declarations"), datas=context.declarations.get("data_declarations"), limits=bounds)
     if body is None:
         return None
     parameter_text = "void" if not parameters else ", ".join(
