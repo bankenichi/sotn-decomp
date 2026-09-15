@@ -744,6 +744,21 @@ DIAGNOSTICS = [
     ("Queue coverage", "queue_coverage.py", "",
      "does the queue cover what is actually in the tree, and where the two "
      "populations legitimately disagree"),
+    # Renderer measurement, September 2026. The data-addressing plus loop
+    # epic is measured through the pool tally below, not through matching.
+    # First entry is the fast smoke (default limits, 10 files); the second
+    # is the raised-ceilings pass that proved bounds add zero flips.
+    ("Data effect: pool smoke (10)", "measure_data_effect.py", "--limit 10",
+     "283-file g_api jalr pool at default limits: rendered, admitted and "
+     "refusal file-votes; read-only, ~30s"),
+    ("Data effect: raised ceilings (10)", "measure_data_effect.py",
+     "--limit 10 --limits raised",
+     "same smoke at validated ceilings 512/4096/16384/262144; proved size "
+     "blocks at most 69 files while 213 refuse on shape"),
+    ("Data effect: loop census (10)", "measure_data_effect.py",
+     "--limit 10 --limits default",
+     "loop-shape, latch-form and refusal-reason histograms with DIGEST line "
+     "for shard merging; read-only"),
 ]
 
 
@@ -2139,7 +2154,7 @@ def self_test() -> int:
         "fn_diff.py",               # takes a function name
         "find_data_segment.py",     # takes an address
         "data_search.py",           # explicit frozen run, target and stem; connector job
-        "measure_data_effect.py",   # read-only pool tally with --limit; connector job
+        "measure_data_effect.py",   # sharded pool tally; connector job for full runs
         "weight_tuner.py",          # explicit gate, contributing runs and budget; connector job
         "member_types.py",          # a library; its self-test runs in-process
         "search_evidence_corpus.py",  # a library; corpus builders import it and
