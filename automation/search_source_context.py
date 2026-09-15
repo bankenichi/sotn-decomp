@@ -53,7 +53,13 @@ TARGET_CONTEXT_PROTOCOL = "sotn-us-target-context-v1"
 
 
 def target_declaration(text: str, symbol: str) -> tuple[dict, str]:
-    """Extract a named top-level declaration, never a local scope or a guess."""
+    """Extract a named top-level declaration, never a local scope or a guess.
+
+    Unnamed parameters (as in `void DestroyEntity(Entity*);`) receive
+    positional arg{i} names. Callee names never reach generated C
+    (prototypes emit types only; arguments come from registers), so the
+    synthesis is sound; collisions with real names refuse below.
+    """
     # Mask comments and strings without moving offsets or interpreting braces
     # inside literals. Function bodies and struct members are excluded by depth.
     tokens = re.compile(r'/\*.*?\*/|//[^\n]*|"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'', re.S)
@@ -77,14 +83,30 @@ def target_declaration(text: str, symbol: str) -> tuple[dict, str]:
         parameters = []
         valid = bool(raw)
         if raw != "void":
-            for entry in raw.split(","):
+            for pos, entry in enumerate(raw.split(",")):
                 # Normalize stars before separating the final identifier, so
                 # Entity* self and Entity *self retain the same pointer type.
+                # Unnamed parameters receive positional names; callee names
+                # never reach generated C, and collisions refuse below.
                 normalized = re.sub(r"\*\s*", "* ", entry.strip())
                 parts = normalized.rsplit(None, 1)
-                if len(parts) != 2 or parts[-1] in {"void", "char", "short", "int", "long", "float", "double", "signed", "unsigned", "const", "volatile", "struct", "union", "enum"} or not re.fullmatch(r"[A-Za-z_]\w*", parts[1]):
+                if len(parts) == 1:
+                    kind = re.sub(r"\s*\*\s*", "*", " ".join(parts[0].split()))
+                    if not re.fullmatch(r"[A-Za-z_]\w*(?: [A-Za-z_]\w*)*\**", kind) or kind in {"void", "const", "volatile", "struct", "union", "enum"}:
+                        valid = False
+                        break
+                    parameters.append({"type": kind, "name": f"arg{pos}"})
+                    continue
+                if len(parts) != 2:
                     valid = False
                     break
+                if parts[-1] in {"void", "char", "short", "int", "long", "float", "double", "signed", "unsigned", "const", "volatile", "struct", "union", "enum"} or not re.fullmatch(r"[A-Za-z_]\w*", parts[1]):
+                    whole = re.sub(r"\s*\*\s*", "*", " ".join(entry.strip().split()))
+                    if not re.fullmatch(r"[A-Za-z_]\w*(?: [A-Za-z_]\w*)*\**", whole) or whole in {"void", "const", "volatile", "struct", "union", "enum"}:
+                        valid = False
+                        break
+                    parameters.append({"type": whole, "name": f"arg{pos}"})
+                    continue
                 kind = re.sub(r"\s*\*\s*", "*", " ".join(parts[0].split()))
                 if not re.fullmatch(r"[A-Za-z_]\w*(?: [A-Za-z_]\w*)*\**", kind) or kind in {"void", "const", "volatile", "struct", "union", "enum"}:
                     valid = False

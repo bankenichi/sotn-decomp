@@ -1273,11 +1273,15 @@ def _leaf_body(instructions, parameters, return_type, callees=None, layouts=None
     """
     bounds = _coerce_limits(limits)
     scalar_types = {"int", "signed int", "unsigned int", "s32", "u32"}
+    # Call and caller signatures additionally admit short, narrow, boolean
+    # and game-enum integer types. Values stay unsigned 32-bit C
+    # expressions; the checksum oracle judges whether the admitted shape
+    # matches, so wider admission cannot produce a false claim.
     call_scalars = scalar_types | {"s16", "u16", "s8", "u8", "char", "signed char", "unsigned char", "short", "signed short", "unsigned short", "bool", "PrimitiveType"}
     layouts = layouts or {}
     switches = switches or {}
-    if (return_type not in scalar_types | {"void"} | set(layouts) or len(parameters) > 4
-            or any(kind not in scalar_types and kind not in layouts for kind, _ in parameters)
+    if (return_type not in call_scalars | {"void"} | set(layouts) or len(parameters) > 4
+            or any(kind not in call_scalars and kind not in layouts for kind, _ in parameters)
             or len({name for _, name in parameters}) != len(parameters)
             or not 0 < len(instructions) <= bounds.max_instructions
             or any(item.unsupported for item in instructions)):
@@ -1311,7 +1315,7 @@ def _leaf_body(instructions, parameters, return_type, callees=None, layouts=None
     slots = {i + 1 for i, item in enumerate(instructions) if item.mnemonic in controls}
     state = {"zero": "0", "ra": "@entry-ra", "stack_offset": 0, "frame_size": 0}
     state.update({name: "@entry-" + name for name in preserved})
-    state.update({"a" + str(i): "(unsigned int)" + name if kind in scalar_types else _PointerValue(layouts[kind]["canonical"], name)
+    state.update({"a" + str(i): "(unsigned int)" + name if kind in call_scalars else _PointerValue(layouts[kind]["canonical"], name)
                   for i, (kind, name) in enumerate(parameters)})
     visited, budget = set(), [bounds.path_budget]
 
@@ -1703,7 +1707,7 @@ def _leaf_body(instructions, parameters, return_type, callees=None, layouts=None
                     result = "return " + pointer_expression(values["v0"], layouts[return_type]["canonical"]) + ";"
                 else:
                     value = value_for(values, "v0")
-                    if not re.fullmatch(r"[0-9]+", value) and return_type in {"int", "signed int", "s32"}:
+                    if not re.fullmatch(r"[0-9]+", value) and return_type in {"int", "signed int", "s32", "s16", "s8", "short", "signed short", "signed char"}:
                         value = "(int)(" + value + ")"
                     result = "return " + value + ";"
                 return lines + [indent + result]

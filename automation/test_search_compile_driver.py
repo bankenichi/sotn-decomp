@@ -57,6 +57,25 @@ class CompileDriverTests(unittest.TestCase):
             "extern void (*g_api_Collide)(s32 arg1, s32);\n", "g_api_Collide")[1],
             "unsupported_declaration")
 
+    def test_target_declaration_unnamed_parameters(self):
+        from automation.search_source_context import target_declaration
+        facts, status = target_declaration("void DestroyEntity(Entity*);\n", "DestroyEntity")
+        self.assertEqual(status, "declared")
+        self.assertEqual(facts["parameters"], [{"type": "Entity*", "name": "arg0"}])
+        multi, status = target_declaration("int f(int, unsigned int);\n", "f")
+        self.assertEqual(status, "declared")
+        self.assertEqual([p["name"] for p in multi["parameters"]], ["arg0", "arg1"])
+        # Named behavior is unchanged.
+        named, status = target_declaration("int f(int x);\n", "f")
+        self.assertEqual(status, "declared")
+        self.assertEqual(named["parameters"], [{"type": "int", "name": "x"}])
+        # Collisions, varargs and empty lists still refuse.
+        self.assertEqual(target_declaration("void f(s32 arg1, s32);\n", "f")[1],
+                         "unsupported_declaration")
+        self.assertEqual(target_declaration("void f(int, ...);\n", "f")[1],
+                         "unsupported_declaration")
+        self.assertEqual(target_declaration("void f();\n", "f")[1],
+                         "unsupported_declaration")
     def test_api_member_projection_exact_and_refusals(self):
         from automation.search_source_context import _api_member_names, renderer_declarations
         assembly = (b"lui $v0, %hi(g_api_AllocPrimitives)\n"

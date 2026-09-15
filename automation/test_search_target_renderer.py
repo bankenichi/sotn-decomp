@@ -518,6 +518,26 @@ class DirectCallTests(unittest.TestCase):
                     wanted = tuple(item & 0xFFFFFFFF for item in expected(x))
                     self.assertEqual((value, effects.value, trace.value), wanted, (name, x))
 
+    def test_unnamed_callee_prototype_renders_types_only(self):
+        from automation.search_source_context import renderer_declarations
+        p, e = self.PROLOGUE, self.EPILOGUE
+        assembly = p + "jal add_value\nnop\n" + e
+        context = b"unsigned int add_value(unsigned int);\n"
+        facts = renderer_declarations({"return_type": "unsigned int", "parameters": [
+            {"type": "unsigned int", "name": "value"}]}, assembly.encode(), context)
+        self.assertEqual(facts["call_declarations"]["add_value"]["status"], "declared")
+        source = deterministic_local_draft(assembly, symbol="caller", declarations=facts)
+        self.assertIsNotNone(source)
+        self.assertIn("add_value(", source)
+
+    def test_narrow_caller_signature_renders(self):
+        declarations = {"return_type": "u8",
+                        "parameters": [{"type": "s16", "name": "sfxId"}]}
+        source = deterministic_local_draft(
+            "move $v0, $a0\njr $ra\nnop\n",
+            symbol="fn", declarations=declarations)
+        self.assertIsNotNone(source)
+        self.assertIn("return", source)
     def test_call_abi_and_stack_refusals(self):
         p, e = self.PROLOGUE, self.EPILOGUE
         good = p + "jal add_value\nnop\n" + e
@@ -540,7 +560,9 @@ class DirectCallTests(unittest.TestCase):
         for assembly in invalid:
             with self.subTest(assembly=assembly):
                 self.assertIsNone(deterministic_local_draft(assembly, symbol="caller", declarations=self.declarations(assembly)))
-        for text in (b"void add_value(unsigned int value);", b"int add_value(int);",
+        # Unnamed declarations now declare with positional names, so the
+        # arity case below carries the ABI-mismatch refusal instead.
+        for text in (b"void add_value(unsigned int value);", b"int add_value(int x, int y);",
                      b"int add_value(int x); int add_value(unsigned int x);", b"int add_value(void* p);"):
             from automation.search_source_context import renderer_declarations
             facts = renderer_declarations(self.declarations(good), good.encode(), text)
