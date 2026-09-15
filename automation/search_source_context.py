@@ -1,6 +1,7 @@
 """Target-scoped preprocessing for archived translation-unit candidates."""
 from __future__ import annotations
 
+from collections.abc import Mapping
 from pathlib import Path
 import re
 
@@ -227,6 +228,105 @@ def _same_name_data_pointer(scrubbed: str, symbol: str) -> bool:
     return False
 
 
+def target_data_declaration(text: str, symbol: str) -> tuple[dict, str]:
+    """Extract a top-level data object declaration, never a guess.
+
+    Covers `extern T NAME;`, `extern T NAME[N];` and definitions such as
+    `EInit NAME = {...};` for TU-local data (D_* tables). Same strictness as
+    function extraction: top-level scope only, single signature, no
+    ambiguous shapes. Facts carry the storage class so callers can apply
+    scope rules: a static in a sibling file is a different object.
+    """
+    if not isinstance(symbol, str) or not re.fullmatch(r"[A-Za-z_]\w*", symbol):
+        return {}, "declaration_missing"
+    tokens = re.compile(r'/\*.*?\*/|//[^\n]*|"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'', re.S)
+    scrubbed = tokens.sub(lambda m: "".join("\n" if c == "\n" else " " for c in m[0]), text)
+    pattern = re.compile(
+        r"(?m)(?:^|(?<=[;{}]))[ \t]*(?P<storage>(?:static|extern)\s+)?(?P<type>[A-Za-z_][\w \t\n*]*?)\b"
+        + re.escape(symbol) + r"\s*(?P<dims>\[[^\];{}]*\])?\s*(?P<end>[;=])",
+        re.S)
+    cursor, depth, facts = 0, 0, []
+    unsupported = False
+    for match in pattern.finditer(scrubbed):
+        prefix = scrubbed[cursor:match.start()]
+        depth += prefix.count("{") - prefix.count("}")
+        cursor = match.start()
+        if depth != 0:
+            continue
+        if "typedef" in (match["storage"] or "").split():
+            unsupported = True
+            continue
+        result_type = " ".join(match["type"].split())
+        if "typedef" in result_type.split():
+            unsupported = True
+            continue
+        result_type = re.sub(r"\s*\*\s*", "*", result_type)
+        dims = (match["dims"] or "")
+        if dims and not re.fullmatch(r"\[\s*(?:0[xX][0-9a-fA-F]+|[0-9]+)?\s*\]", dims):
+            unsupported = True
+            continue
+        if not re.fullmatch(r"[A-Za-z_]\w*(?: [A-Za-z_]\w*)*\**", result_type) or result_type in {"void", "const", "volatile", "struct", "union", "enum"}:
+            unsupported = True
+            continue
+        facts.append({"type": result_type, "dims": re.sub(r"\s+", "", dims),
+                      "static": bool(match["storage"] and "static" in match["storage"].split())})
+    if unsupported:
+        return {}, "unsupported_declaration"
+    if not facts:
+        return {}, "declaration_missing"
+    signatures = {(d["type"], d["dims"]) for d in facts}
+    if len(signatures) != 1:
+        return {}, "ambiguous_declaration"
+    return facts[0], "declared"
+
+
+_SIBLING_FILE_CAP = 256
+_SIBLING_MENTION_CAP = 32
+_SIBLING_BYTES_CAP = 32 * 1024 * 1024
+
+
+def _overlay_c_sources(repo: Path, overlay: str) -> list:
+    """Sorted same-overlay C files that may hold a sibling declaration."""
+    root = repo / "src" / overlay
+    if not root.is_dir():
+        return []
+    files = sorted(path.relative_to(repo).as_posix() for path in root.rglob("*.c")
+                   if path.is_file() and not path.is_symlink())
+    if len(files) > _SIBLING_FILE_CAP:
+        raise ValueError("sibling declaration scope exceeds bound")
+    return files
+
+
+def _mentions_symbol(raw: bytes, symbol: str) -> bool:
+    """Whether the byte blob mentions the word, comments and strings aside."""
+    return re.search(r"\b" + re.escape(symbol) + r"\b", raw.decode("utf-8", errors="replace")) is not None
+
+
+def _combine_function_scopes(own, siblings):
+    """Combine owning-TU facts with deterministic sibling results.
+
+    The owning scope speaks first: only a missing owning declaration falls
+    through to siblings. Across siblings the first declared file in sorted
+    order wins after proving a single signature; any unsupported shape
+    poisons, mirroring single-scope semantics.
+    """
+    if own[1] == "declared":
+        return own
+    if own[1] != "declaration_missing":
+        return {}, own[1]
+    declared = [facts for facts, status in siblings if status == "declared"]
+    if any(status == "unsupported_declaration" for _, status in siblings):
+        return {}, "unsupported_declaration"
+    if any(status == "ambiguous_declaration" for _, status in siblings):
+        return {}, "ambiguous_declaration"
+    if not declared:
+        return {}, "declaration_missing"
+    signatures = {(d["return_type"], tuple(p["type"] for p in d["parameters"])) for d in declared}
+    if len(signatures) != 1:
+        return {}, "ambiguous_declaration"
+    return declared[0], "declared"
+
+
 def preprocess_target_context(repo: Path, source: bytes, directory: Path, expected_identity: str, config_path: Path) -> bytes:
     from .compiler_corpus import _pipeline, _run_stage, CompilerCorpusError
     import tempfile
@@ -239,14 +339,55 @@ def preprocess_target_context(repo: Path, source: bytes, directory: Path, expect
                           cwd=repo, temporary_root=Path(temporary), label="target-context-preprocessor", source_name="target-context")
 
 
-def capture_target_context(repo, record_id, assembly_path, compiler_identity, config_path):
+def _sibling_scope_blobs(repo, overlay, symbol, own_rel, compiler_identity, config_path, cache):
+    """Preprocessed same-overlay scopes mentioning the symbol, in order.
+
+    Returns (results, blobs) where results parallels blobs with
+    (facts, status) pairs. Mentioners beyond the cap fail loudly; the
+    caller archives every scanned blob so verification replays the
+    identical scope set from archived bytes.
+    """
+    from .search_run_factory import _safe_repo_file
+
+    blobs, results = [], []
+    mentioners = []
+    for rel in _overlay_c_sources(repo, overlay):
+        if rel == own_rel:
+            continue
+        entry = repo / rel
+        raw = entry.read_bytes()
+        if len(raw) > 8 * 1024 * 1024:
+            raise ValueError("sibling declaration scope exceeds archive bound")
+        if _mentions_symbol(raw, symbol):
+            mentioners.append((rel, raw))
+    if len(mentioners) > _SIBLING_MENTION_CAP:
+        raise ValueError("sibling declaration mentioners exceed bound")
+    total = 0
+    for rel, raw in mentioners:
+        if rel not in cache:
+            path = _safe_repo_file(repo, rel, "sibling declaration source")
+            context = preprocess_target_context(repo, raw, path.parent, compiler_identity, config_path)
+            if len(context) > 8 * 1024 * 1024:
+                raise ValueError("sibling declaration scope exceeds archive bound")
+            cache[rel] = (raw, context)
+        _, context = cache[rel]
+        total += len(context)
+        if total > _SIBLING_BYTES_CAP:
+            raise ValueError("sibling declaration scopes exceed archive bound")
+        blobs.append((rel, cache[rel][0], context))
+        results.append(target_declaration(context.decode("utf-8"), symbol))
+    return results, blobs
+
+
+def capture_target_context(repo, record_id, assembly_path, compiler_identity, config_path, sibling_cache=None):
     from .search_types import ArtifactRef, hash_bytes
     from .search_run_factory import _safe_repo_file
 
     version, overlay, symbol = record_id.split(":")
     if version != "us":
         raise ValueError("target context requires US recipient")
-    relative = Path("src").joinpath(*overlay.lower().split("/"), Path(assembly_path).parent.name + ".c")
+    overlay = overlay.lower()
+    relative = Path("src").joinpath(*overlay.split("/"), Path(assembly_path).parent.name + ".c")
     evidence = {"protocol": TARGET_CONTEXT_PROTOCOL, "record_id": record_id,
                 "compiler_identity": compiler_identity, "path": relative.as_posix(), "status": "source_missing"}
     path = repo / relative
@@ -259,6 +400,8 @@ def capture_target_context(repo, record_id, assembly_path, compiler_identity, co
     context = preprocess_target_context(repo, raw, path.parent, compiler_identity, config_path)
     if len(raw) > 8 * 1024 * 1024 or len(context) > 8 * 1024 * 1024:
         raise ValueError("target context exceeds archive bound")
+    cache = sibling_cache if sibling_cache is not None else {}
+    cache[relative.as_posix()] = (raw, context)
     facts, status = target_declaration(context.decode("utf-8"), symbol)
     artifacts = []
     for key, category, data in (("input", "target-context-input", raw), ("preprocessed", "target-context", context)):
@@ -266,6 +409,22 @@ def capture_target_context(repo, record_id, assembly_path, compiler_identity, co
         reference = ArtifactRef(digest, "artifacts/" + category + "/" + digest[7:] + ".c", "text/x-c", len(data))
         evidence[key] = reference.to_dict()
         artifacts.append((category, reference, data))
+    if status != "declared":
+        results, blobs = _sibling_scope_blobs(repo, overlay, symbol, relative.as_posix(), compiler_identity, config_path, cache)
+        facts, status = _combine_function_scopes((facts, status), results)
+        siblings = []
+        for rel, raw_blob, context_blob in blobs:
+            entry = {}
+            for key, category, data in (("input", "target-context-sibling-input", raw_blob),
+                                        ("preprocessed", "target-context-sibling", context_blob)):
+                digest = hash_bytes(data)
+                reference = ArtifactRef(digest, "artifacts/" + category + "/" + digest[7:] + ".c", "text/x-c", len(data))
+                entry[key] = reference.to_dict()
+                artifacts.append((category, reference, data))
+            entry["path"] = rel
+            siblings.append(entry)
+        if siblings:
+            evidence["siblings"] = siblings
     evidence["status"] = status
     return {**facts, "context_evidence": evidence}, tuple(artifacts)
 
@@ -280,9 +439,17 @@ def verify_target_context(declarations, archive, record_id, compiler_identity, a
     base = {"protocol", "record_id", "compiler_identity", "path", "status"}
     if not isinstance(evidence, dict):
         evidence = dict(evidence)
+    siblings = evidence.get("siblings", ())
+    if siblings is None:
+        siblings = ()
     missing = evidence.get("status") == "source_missing"
-    if set(evidence) != (base if missing else base | {"input", "preprocessed"}):
+    expected = base if missing else base | {"input", "preprocessed"}
+    if siblings:
+        expected = expected | {"siblings"}
+    if set(evidence) != expected:
         raise ValueError("target context fields differ")
+    if missing and siblings:
+        raise ValueError("missing target context carries sibling scopes")
     if (evidence["protocol"] != TARGET_CONTEXT_PROTOCOL or evidence["record_id"] != record_id
             or evidence["compiler_identity"] != compiler_identity or not record_id.startswith("us:")):
         raise ValueError("target context bindings differ")
@@ -302,7 +469,29 @@ def verify_target_context(declarations, archive, record_id, compiler_identity, a
         if ref.path != "artifacts/" + category + "/" + ref.content_hash[7:] + ".c" or ref.media_type != "text/x-c" or ref.byte_size > 8 * 1024 * 1024:
             raise ValueError("target context artifact is not canonical")
         values[key] = archive.verify(ref)
-    facts, status = target_declaration(values["preprocessed"].decode("utf-8"), record_id.split(":")[2])
+    symbol = record_id.split(":")[2]
+    facts, status = target_declaration(values["preprocessed"].decode("utf-8"), symbol)
+    sibling_results = []
+    for entry in siblings:
+        if not isinstance(entry, Mapping):
+            raise ValueError("sibling declaration scope is not a mapping")
+        if set(entry) != {"path", "input", "preprocessed"}:
+            raise ValueError("sibling declaration scope fields differ")
+        sibling_path = entry["path"]
+        if (not isinstance(sibling_path, str) or Path(sibling_path).is_absolute()
+                or ".." in Path(sibling_path).parts or "\\" in sibling_path
+                or not sibling_path.startswith("src/" + overlay + "/")
+                or not sibling_path.endswith(".c") or sibling_path == evidence["path"]):
+            raise ValueError("sibling declaration scope path differs from recipient")
+        scope_values = {}
+        for key, category in (("input", "target-context-sibling-input"),
+                              ("preprocessed", "target-context-sibling")):
+            ref = ArtifactRef.from_dict(entry[key])
+            if ref.path != "artifacts/" + category + "/" + ref.content_hash[7:] + ".c" or ref.media_type != "text/x-c" or ref.byte_size > 8 * 1024 * 1024:
+                raise ValueError("sibling declaration scope artifact is not canonical")
+            scope_values[key] = archive.verify(ref)
+        sibling_results.append(target_declaration(scope_values["preprocessed"].decode("utf-8"), symbol))
+    facts, status = _combine_function_scopes((facts, status), sibling_results)
     if status != evidence["status"] or {k: v for k, v in declarations.items() if k != "context_evidence"} != facts:
         raise ValueError("target declarations differ from archived context")
 
@@ -319,19 +508,27 @@ def verify_target_context_source(declarations, source_document):
     elif (len(entries) != 1 or any(entries[0][key] != evidence["input"][key]
                                   for key in ("content_hash", "byte_size"))):
         raise ValueError("target context input differs from frozen source evidence")
+    for sibling in evidence.get("siblings", ()) or ():
+        sibling_entries = [item for item in source_document["files"] if item["path"] == sibling["path"]]
+        if (len(sibling_entries) != 1 or any(sibling_entries[0][key] != sibling["input"][key]
+                                            for key in ("content_hash", "byte_size"))):
+            raise ValueError("sibling declaration source differs from frozen source evidence")
 
 
-def renderer_declarations(declarations, assembly_bytes, context_bytes):
+def renderer_declarations(declarations, assembly_bytes, context_bytes, sibling_contexts=()):
     """Project direct callee ABI facts from exact US context, without donor input.
 
     This is a derived view, not a new target-evidence format. The same immutable
     assembly/context bytes drive factory seeds and later archived index loads.
+    Sibling scopes arrive as archived preprocessed bytes in deterministic
+    order; data facts consult the owning context before those scopes.
     """
     from .search_target_renderer import _parse_assembly
 
     result = dict(declarations)
     result.pop("call_declarations", None)
     result.pop("api_declarations", None)
+    result.pop("data_declarations", None)
     result.pop("pointer_layouts", None)
     result.pop("type_declarations", None)
     if context_bytes is None:
@@ -357,6 +554,28 @@ def renderer_declarations(declarations, assembly_bytes, context_bytes):
             facts, status = target_pointer_declaration(text, member)
             api[member] = {**facts, "status": status}
         result["api_declarations"] = api
+    data_members = _data_member_names(assembly_bytes.decode("utf-8"))
+    if len(data_members) > 64:
+        raise ValueError("target data declaration limit exceeded")
+    if data_members:
+        data = {}
+        for member in data_members:
+            facts, status = target_data_declaration(text, member)
+            if status == "declaration_missing":
+                for sibling in sibling_contexts or ():
+                    sibling_facts, sibling_status = target_data_declaration(sibling.decode("utf-8"), member)
+                    if sibling_status == "declared":
+                        if sibling_facts.get("static"):
+                            status = "unsupported_declaration"
+                        else:
+                            facts, status = sibling_facts, sibling_status
+                        break
+                    if sibling_status == "unsupported_declaration":
+                        status = sibling_status
+                        break
+            facts = {key: value for key, value in facts.items() if key != "static"}
+            data[member] = {**facts, "status": status}
+        result["data_declarations"] = data
     from .search_target_layout import pointer_layouts, renderer_type_declarations
     scalar_types = {"int", "signed int", "unsigned int", "s32", "u32"}
     kinds = {p["type"] for facts in (result, *result.get("call_declarations", {}).values(),
@@ -365,11 +584,31 @@ def renderer_declarations(declarations, assembly_bytes, context_bytes):
     kinds.update(facts["return_type"] for facts in (result, *result.get("call_declarations", {}).values(),
                                                    *result.get("api_declarations", {}).values())
                  if facts.get("return_type") and facts["return_type"] not in scalar_types | {"void"})
+    for entry in result.get("data_declarations", {}).values():
+        if entry.get("status") == "declared" and entry.get("type"):
+            pointer = re.sub(r"\s*\*\s*", "*", entry["type"]) + "*"
+            if re.fullmatch(r"[A-Za-z_]\w*(?: [A-Za-z_]\w*)*\**", pointer):
+                kinds.add(pointer)
     if kinds:
         result["pointer_layouts"] = pointer_layouts(context_bytes, kinds)
         if result["pointer_layouts"]:
             result["type_declarations"] = renderer_type_declarations(context_bytes)
     return result
+
+
+def _data_member_names(assembly_text: str) -> list[str]:
+    """Data objects with both halves of an address load present in assembly.
+
+    Matches `%hi(D_Symbol)` alongside `%lo(D_Symbol)` without interpreting
+    registers: the render-time value machine enforces the actual
+    same-register pairing and clobber discipline. Global (g_*) relocations
+    stay unprojected; their binding is a separate slice.
+    """
+    if not isinstance(assembly_text, str):
+        return []
+    his = set(re.findall(r"%hi\(\s*(D_[A-Za-z0-9_.$]*)\s*\)", assembly_text))
+    los = set(re.findall(r"%lo\(\s*(D_[A-Za-z0-9_.$]*)\s*\)", assembly_text))
+    return sorted(his & los)
 
 
 def _api_member_names(assembly_text: str) -> list[str]:

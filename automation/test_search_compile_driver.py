@@ -76,6 +76,56 @@ class CompileDriverTests(unittest.TestCase):
                          "unsupported_declaration")
         self.assertEqual(target_declaration("void f();\n", "f")[1],
                          "unsupported_declaration")
+    def test_target_data_declaration_exact_and_refusals(self):
+        from automation.search_source_context import target_data_declaration
+        facts, status = target_data_declaration("extern s16 D_us_1[4];\n", "D_us_1")
+        self.assertEqual(status, "declared")
+        self.assertEqual(facts, {"type": "s16", "dims": "[4]", "static": False})
+        definition, status = target_data_declaration(
+            "EInit D_us_2 = {1, 2};\n", "D_us_2")
+        self.assertEqual(status, "declared")
+        self.assertEqual(definition, {"type": "EInit", "dims": "", "static": False})
+        static, status = target_data_declaration("static u16 D_us_3[];\n", "D_us_3")
+        self.assertEqual(status, "declared")
+        self.assertTrue(static["static"])
+        pointer, status = target_data_declaration("extern s16 *D_us_4;\n", "D_us_4")
+        self.assertEqual(status, "declared")
+        self.assertEqual(pointer["type"], "s16*")
+        self.assertEqual(target_data_declaration("extern s16 D_us_5[x];\n", "D_us_5")[1],
+                         "unsupported_declaration")
+        self.assertEqual(target_data_declaration(
+            "extern s16 D_us_6;\nextern s32 D_us_6;\n", "D_us_6")[1],
+            "ambiguous_declaration")
+        self.assertEqual(target_data_declaration("int D_us_7;\n", "D_us_8")[1],
+                         "declaration_missing")
+        self.assertEqual(target_data_declaration(
+            "void g(void) { extern s16 D_us_9[4]; }\n", "D_us_9")[1],
+            "declaration_missing")
+
+    def test_data_member_projection_exact_and_refusals(self):
+        from automation.search_source_context import _data_member_names, renderer_declarations
+        assembly = (b"lui $a0, %hi(D_us_1)\naddiu $a0, $a0, %lo(D_us_1)\n"
+                    b"jalr $v0\nnop\njr $ra\nnop\n")
+        self.assertEqual(_data_member_names(assembly.decode()), ["D_us_1"])
+        self.assertEqual(_data_member_names("lui $v0, %hi(g_Other)\nnop\n"), [])
+        context = b"typedef signed short s16;\nextern s16 D_us_1[4];\n"
+        facts = renderer_declarations({"return_type": "void", "parameters": []},
+                                      assembly, context)
+        self.assertEqual(facts["data_declarations"]["D_us_1"]["status"], "declared")
+        self.assertEqual(facts["data_declarations"]["D_us_1"]["type"], "s16")
+        self.assertIn("s16*", facts["pointer_layouts"])
+        sibling = renderer_declarations({"return_type": "void", "parameters": []},
+                                        assembly, b"int x;\n", [b"extern s16 D_us_1[4];\n"])
+        self.assertEqual(sibling["data_declarations"]["D_us_1"]["status"], "declared")
+        static_sibling = renderer_declarations(
+            {"return_type": "void", "parameters": []}, assembly, b"int x;\n",
+            [b"static s16 D_us_1[4];\n"])
+        self.assertEqual(static_sibling["data_declarations"]["D_us_1"]["status"],
+                         "unsupported_declaration")
+        missing = renderer_declarations({"return_type": "void", "parameters": []},
+                                        assembly, b"int x;\n")
+        self.assertEqual(missing["data_declarations"]["D_us_1"]["status"],
+                         "declaration_missing")
     def test_api_member_projection_exact_and_refusals(self):
         from automation.search_source_context import _api_member_names, renderer_declarations
         assembly = (b"lui $v0, %hi(g_api_AllocPrimitives)\n"

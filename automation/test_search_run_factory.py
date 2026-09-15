@@ -1360,5 +1360,93 @@ class FactoryFixture(unittest.TestCase):
             self.create("symlink-target", ids=[IDS[0]])
 
 
+
+
+class SiblingCaptureTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory(prefix="sibling-capture-")
+        self.repo = Path(self.temp.name)
+        (self.repo / "src" / "ovl").mkdir(parents=True)
+
+    def tearDown(self):
+        self.temp.cleanup()
+
+    def _capture(self, record, assembly_path, cache=None):
+        from automation.compiler_corpus import DEFAULT_CONFIG_PATH, pipeline_identity
+        from automation.search_source_context import capture_target_context
+        return capture_target_context(
+            self.repo, record, assembly_path, pipeline_identity().identity,
+            DEFAULT_CONFIG_PATH, sibling_cache={} if cache is None else cache)
+
+    def test_sibling_prototype_declares_with_evidence(self):
+        (self.repo / "src" / "ovl" / "tu.c").write_text("int tu_owner(void) { return 1; }\n")
+        (self.repo / "src" / "ovl" / "e_init.c").write_text("void wanted(int x);\n")
+        (self.repo / "src" / "ovl" / "quiet.c").write_text("int quiet(void) { return 0; }\n")
+        declarations, artifacts = self._capture("us:OVL:wanted", "asm/us/ovl/tu/wanted.s")
+        self.assertEqual(declarations["return_type"], "void")
+        self.assertEqual(declarations["parameters"], [{"type": "int", "name": "x"}])
+        siblings = declarations["context_evidence"]["siblings"]
+        self.assertEqual([entry["path"] for entry in siblings], ["src/ovl/e_init.c"])
+        self.assertEqual({category for category, _, _ in artifacts},
+                         {"target-context-input", "target-context",
+                          "target-context-sibling-input", "target-context-sibling"})
+
+    def test_sibling_ambiguity_and_missing(self):
+        from automation.search_source_context import _combine_function_scopes
+        (self.repo / "src" / "ovl" / "tu.c").write_text("int tu_owner(void) { return 1; }\n")
+        (self.repo / "src" / "ovl" / "a.c").write_text("void wanted(int x);\n")
+        (self.repo / "src" / "ovl" / "b.c").write_text("void wanted(signed int y);\n")
+        declarations, _ = self._capture("us:OVL:wanted", "asm/us/ovl/tu/wanted.s")
+        self.assertNotIn("return_type", declarations)
+        self.assertEqual(declarations["context_evidence"]["status"], "ambiguous_declaration")
+        missing, _ = self._capture("us:OVL:absent", "asm/us/ovl/tu/wanted.s")
+        self.assertEqual(missing["context_evidence"]["status"], "declaration_missing")
+        self.assertEqual(_combine_function_scopes(({}, "declaration_missing"),
+            [({}, "unsupported_declaration")]), ({}, "unsupported_declaration"))
+        self.assertEqual(_combine_function_scopes(({}, "declaration_missing"),
+            [({}, "ambiguous_declaration")]), ({}, "ambiguous_declaration"))
+        kept = ({"return_type": "int", "parameters": []}, "declared")
+        self.assertEqual(_combine_function_scopes(kept, [({}, "declaration_missing")]), kept)
+
+    def test_sibling_cache_reuse_and_verify_round_trip(self):
+        from automation.search_source_context import verify_target_context, verify_target_context_source
+        (self.repo / "src" / "ovl" / "tu.c").write_text("int tu_owner(void) { return 1; }\n")
+        (self.repo / "src" / "ovl" / "e_init.c").write_text("void wanted(int x);\n")
+        cache = {}
+        first, first_blobs = self._capture("us:OVL:wanted", "asm/us/ovl/tu/wanted.s", cache=cache)
+        second, _ = self._capture("us:OVL:wanted", "asm/us/ovl/tu/wanted.s", cache=cache)
+        self.assertEqual(first, second)
+        self.assertIn("src/ovl/e_init.c", cache)
+        store = {}
+        for _, reference, data in first_blobs:
+            store[reference.to_dict()["content_hash"]] = data
+
+        class StubArchive:
+            def verify(self, reference):
+                return store[reference.content_hash]
+
+        source_document = {"files": [
+            {"path": "src/ovl/tu.c",
+             "content_hash": first["context_evidence"]["input"]["content_hash"],
+             "byte_size": first["context_evidence"]["input"]["byte_size"]},
+            {"path": "src/ovl/e_init.c",
+             "content_hash": first["context_evidence"]["siblings"][0]["input"]["content_hash"],
+             "byte_size": first["context_evidence"]["siblings"][0]["input"]["byte_size"]},
+        ]}
+        verify_target_context(first, StubArchive(), "us:OVL:wanted",
+                              first["context_evidence"]["compiler_identity"], "asm/us/ovl/tu/wanted.s")
+        verify_target_context_source(first, source_document)
+        tampered = dict(first, return_type="int")
+        with self.assertRaises(ValueError):
+            verify_target_context(tampered, StubArchive(), "us:OVL:wanted",
+                                  first["context_evidence"]["compiler_identity"], "asm/us/ovl/tu/wanted.s")
+        dropped = dict(first)
+        dropped["context_evidence"] = {key: value for key, value in first["context_evidence"].items()
+                                       if key != "siblings"}
+        with self.assertRaises(ValueError):
+            verify_target_context(dropped, StubArchive(), "us:OVL:wanted",
+                                  first["context_evidence"]["compiler_identity"], "asm/us/ovl/tu/wanted.s")
+
+
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()

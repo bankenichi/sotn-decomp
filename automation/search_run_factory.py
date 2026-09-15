@@ -2356,6 +2356,7 @@ def _create_instrumented_run_locked(
     )
 
     from .search_source_context import capture_target_context, verify_target_context_source
+    sibling_preprocess_cache = {}
     target_context_artifacts = {}
     target_renderer_declarations = {}
     target_payloads: dict[str, dict[str, Any]] = {}
@@ -2367,7 +2368,8 @@ def _create_instrumented_run_locked(
         )
         try:
             declarations, context_artifacts = capture_target_context(
-                root_repo, record_id, payload["assembly"]["path"], compiler_identity, resolved_config)
+                root_repo, record_id, payload["assembly"]["path"], compiler_identity, resolved_config,
+                sibling_cache=sibling_preprocess_cache)
             verify_target_context_source(declarations, source_payload)
         except Exception as exc:
             raise EvidenceRefusal("US target context capture failed: " + str(exc)) from exc
@@ -2375,7 +2377,8 @@ def _create_instrumented_run_locked(
         target_context_artifacts[record_id] = context_artifacts
         from .search_source_context import renderer_declarations
         context_bytes = next((data for category, _, data in context_artifacts if category == "target-context"), None)
-        target_renderer_declarations[record_id] = renderer_declarations(declarations, assembly_bytes, context_bytes)
+        sibling_contexts = tuple(data for category, _, data in context_artifacts if category == "target-context-sibling")
+        target_renderer_declarations[record_id] = renderer_declarations(declarations, assembly_bytes, context_bytes, sibling_contexts)
         target_payloads[record_id] = payload
         target_bytes[record_id] = (assembly_bytes, object_bytes)
 
