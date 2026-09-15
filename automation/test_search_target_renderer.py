@@ -18,6 +18,8 @@ from automation.search_donor_query import DonorSemanticClaim
 from automation.search_lanes import DonorEvidence, LaneCandidate, Recipient
 from automation.search_semantic_signatures import SemanticInstruction, assembly_signatures
 from automation.search_target_renderer import (
+    DEFAULT_LIMITS,
+    RendererLimits,
     TargetContextUnsupported,
     TargetEvidenceError,
     TargetRendererInputError,
@@ -961,6 +963,109 @@ class ApiPointerCallTests(unittest.TestCase):
         )
         self.assertIsNone(deterministic_local_draft(
             assembly, symbol="fn", declarations=self.API_DECLS))
+
+
+
+
+class VariableLimitsTests(unittest.TestCase):
+    LEAF_DECLS = {
+        "return_type": "unsigned int",
+        "parameters": [],
+    }
+
+    @staticmethod
+    def _leaf(adds):
+        return "li $v0, 0\n" + "addiu $v0, $v0, 1\n" * adds + "jr $ra\nnop\n"
+
+    def test_canonical_defaults_match_previous_constants(self):
+        self.assertEqual(DEFAULT_LIMITS, RendererLimits(
+            max_instructions=64, path_budget=256,
+            max_expression=4096, max_body=65536))
+
+    def test_instruction_boundary_is_exact(self):
+        # li + 61 adds + jr + nop is exactly 64 and renders by default.
+        self.assertIsNotNone(deterministic_local_draft(
+            self._leaf(61), symbol="fn", declarations=self.LEAF_DECLS))
+        # 65 and 66 instructions refuse without explicit wider bounds.
+        self.assertIsNone(deterministic_local_draft(
+            self._leaf(62), symbol="fn", declarations=self.LEAF_DECLS))
+        self.assertIsNone(deterministic_local_draft(
+            self._leaf(63), symbol="fn", declarations=self.LEAF_DECLS))
+
+    def test_raised_cap_renders_and_computes(self):
+        compiler = shutil.which("gcc") or shutil.which("cc")
+        if compiler is None:
+            self.skipTest("host C compiler unavailable")
+        assembly = self._leaf(70)
+        self.assertIsNone(deterministic_local_draft(
+            assembly, symbol="fn", declarations=self.LEAF_DECLS))
+        for limits in (RendererLimits(max_instructions=96), {"max_instructions": 96}):
+            source = deterministic_local_draft(
+                assembly, symbol="big", declarations=self.LEAF_DECLS, limits=limits)
+            self.assertIsNotNone(source)
+            self.assertNotIn("$", source)
+        with tempfile.TemporaryDirectory(prefix="limits-semantics-") as directory:
+            root = Path(directory)
+            (root / "big.c").write_text(source, encoding="utf-8")
+            subprocess.run([compiler, "-std=c89", "-O2", "-Wall", "-Werror", "-shared", "-fPIC",
+                            str(root / "big.c"), "-o", str(root / "big.so")], check=True,
+                           capture_output=True, text=True)
+            function = ctypes.CDLL(str(root / "big.so")).big
+            function.argtypes, function.restype = [], ctypes.c_uint32
+            self.assertEqual(function(), 70)
+
+    def test_tiny_budget_terminates_with_refusal(self):
+        self.assertIsNone(deterministic_local_draft(
+            SWITCH_ASM, symbol="fn", declarations=SWITCH_DECLARATIONS,
+            limits=RendererLimits(path_budget=1)))
+        self.assertIsNotNone(deterministic_local_draft(
+            SWITCH_ASM, symbol="fn", declarations=SWITCH_DECLARATIONS))
+
+    def test_invalid_limits_raise(self):
+        good = self._leaf(1)
+        for bad in ({"max_instructions": 0}, {"max_instructions": 513},
+                    {"path_budget": 0}, {"path_budget": 4097},
+                    {"max_expression": 512}, {"max_expression": 20000},
+                    {"max_body": 1000}, {"max_body": 300000},
+                    {"unknown_field": 1}, "96", 96):
+            with self.subTest(limits=bad):
+                with self.assertRaises(TargetRendererInputError):
+                    deterministic_local_draft(
+                        good, symbol="fn", declarations=self.LEAF_DECLS, limits=bad)
+
+    def test_negu_renders_and_computes(self):
+        compiler = shutil.which("gcc") or shutil.which("cc")
+        if compiler is None:
+            self.skipTest("host C compiler unavailable")
+        declarations = {"return_type": "unsigned int",
+                        "parameters": [{"type": "unsigned int", "name": "value"}]}
+        source = deterministic_local_draft(
+            "negu $v0, $a0\njr $ra\nnop\n",
+            symbol="negate", declarations=declarations)
+        self.assertIsNotNone(source)
+        self.assertNotIn("$", source)
+        # The trapping `neg` pseudo-instruction stays a refusal.
+        self.assertIsNone(deterministic_local_draft(
+            "neg $v0, $a0\njr $ra\nnop\n",
+            symbol="negate", declarations=declarations))
+        with tempfile.TemporaryDirectory(prefix="negu-semantics-") as directory:
+            root = Path(directory)
+            (root / "neg.c").write_text(source, encoding="utf-8")
+            subprocess.run([compiler, "-std=c89", "-O2", "-Wall", "-Werror", "-shared", "-fPIC",
+                            str(root / "neg.c"), "-o", str(root / "neg.so")], check=True,
+                           capture_output=True, text=True)
+            function = ctypes.CDLL(str(root / "neg.so")).negate
+            function.argtypes, function.restype = [ctypes.c_uint32], ctypes.c_uint32
+            for value in (0, 1, 7, 0x7FFFFFFF, 0x80000000, 0xFFFFFFFF):
+                self.assertEqual(function(value), (0 - value) & 0xFFFFFFFF)
+
+    def test_empty_directives_skip_but_data_still_refuses(self):
+        assembly = ApiPointerCallTests.API_ASM + ".size fn, . - fn\n.ent fn\n.end fn\n"
+        self.assertIsNotNone(deterministic_local_draft(
+            assembly, symbol="fn", declarations=ApiPointerCallTests.API_DECLS))
+        self.assertIsNone(deterministic_local_draft(
+            ApiPointerCallTests.API_ASM + ".word 0x12345678\n",
+            symbol="fn", declarations=ApiPointerCallTests.API_DECLS))
 
 
 if __name__ == "__main__":

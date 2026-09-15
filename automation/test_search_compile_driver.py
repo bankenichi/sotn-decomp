@@ -81,6 +81,36 @@ class CompileDriverTests(unittest.TestCase):
         self.assertEqual(missing["api_declarations"]["g_api_AllocPrimitives"]["status"],
                          "declaration_missing")
 
+    def test_variable_limits_and_negu_compile_with_actual_psx_toolchain(self):
+        from automation.search_target_renderer import RendererLimits, deterministic_local_draft
+        negu_asm = "negu $v0, $a0\njr $ra\nnop\n"
+        negu_decls = {"return_type": "unsigned int",
+                      "parameters": [{"type": "unsigned int", "name": "value"}]}
+        big_asm = "li $v0, 0\n" + "addiu $v0, $v0, 1\n" * 70 + "jr $ra\nnop\n"
+        big_decls = {"return_type": "unsigned int", "parameters": []}
+        cases = (("negu_fn", negu_asm, negu_decls, None),
+                 ("big_fn", big_asm, big_decls, RendererLimits(max_instructions=96)))
+        drafts = []
+        for name, assembly, declarations, limits in cases:
+            draft = deterministic_local_draft(
+                assembly, symbol=name, declarations=declarations, limits=limits)
+            self.assertIsNotNone(draft)
+            drafts.append(draft)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            wrapper, source, output = root / "compile.sh", root / "limits.c", root / "limits.o"
+            wrapper.write_bytes(REPOSITORY_COMPILE_WRAPPER_BYTES)
+            wrapper.chmod(0o700)
+            source.write_text("\n".join(drafts), encoding="utf-8")
+            result = subprocess.run([str(wrapper), str(source), "-o", str(output)], env={
+                **os.environ, "SOTN_REPO_ROOT": str(ROOT),
+                "SOTN_COMPILER_IDENTITY": pipeline_identity().identity, "TMPDIR": directory,
+            }, capture_output=True, timeout=60)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            for name in ("negu_fn", "big_fn"):
+                _rows, count = _normalized_disassembly(output, symbol=name)
+                self.assertGreater(count, 0)
+
     def test_recovered_switch_compiles_with_actual_psx_toolchain(self):
         from automation.search_target_renderer import deterministic_local_draft
         from automation.test_search_target_renderer import SWITCH_ASM, SWITCH_DECLARATIONS

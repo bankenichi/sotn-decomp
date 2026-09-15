@@ -757,6 +757,10 @@ _ASM_DATA_DIRECTIVE = re.compile(
     r"^\s*\.(?:byte|2byte|4byte|8byte|half|word|dword|float|double|incbin|fill|space)\b",
     re.IGNORECASE,
 )
+_EMPTY_DIRECTIVE = re.compile(
+    r"^\s*\.(?:size|ent|end|frame|mask|fmask|loc)\b",
+    re.IGNORECASE,
+)
 _RETURN_MNEMONICS = frozenset({"jr", "rts", "ret"})
 _ABI_PARAMETER_POSITIONS = {
     **{f"a{index}": index for index in range(4)},
@@ -771,6 +775,59 @@ class _Instruction:
     operands: str
     label: Optional[str] = None
     unsupported: bool = False
+
+
+@dataclass(frozen=True)
+class RendererLimits:
+    """Explicit variable bounds for one deterministic rendering attempt.
+
+    Every field has a validated hard ceiling, so any valid instance still
+    guarantees termination: the path budget caps total control-flow steps,
+    the instruction cap keeps each linear pass proportional to its input,
+    and the expression/body caps bound memory. Production rendering
+    (render_target_candidate) always uses DEFAULT_LIMITS so archived runs
+    replay exactly; custom instances are for scoped measurement and
+    fixtures, and any future production use must archive the chosen
+    instance alongside its inputs.
+    """
+
+    max_instructions: int = 64
+    path_budget: int = 256
+    max_expression: int = 4096
+    max_body: int = 65536
+
+    def __post_init__(self) -> None:
+        for name, low, high in (
+            ("max_instructions", 1, 512),
+            ("path_budget", 1, 4096),
+            ("max_expression", 1024, 16384),
+            ("max_body", 4096, 262144),
+        ):
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, int) or not low <= value <= high:
+                raise TargetRendererInputError(
+                    f"renderer limit {name} must be an integer from {low} through {high}")
+
+
+DEFAULT_LIMITS = RendererLimits()
+
+
+def _coerce_limits(value: Any) -> RendererLimits:
+    """Accept the default, a RendererLimits, or an explicit partial mapping."""
+    if value is None:
+        return DEFAULT_LIMITS
+    if isinstance(value, RendererLimits):
+        return value
+    if isinstance(value, Mapping):
+        unknown = set(value) - {"max_instructions", "path_budget", "max_expression", "max_body"}
+        if unknown:
+            raise TargetRendererInputError("renderer limits contain unknown fields: " + ", ".join(sorted(unknown)))
+        try:
+            return RendererLimits(**{key: value[key] for key in (
+                "max_instructions", "path_budget", "max_expression", "max_body") if key in value})
+        except TypeError as exc:
+            raise TargetRendererInputError("renderer limits are invalid: " + str(exc)) from exc
+    raise TargetRendererInputError("renderer limits must be a RendererLimits or a mapping")
 
 
 def _strip_assembly_comment(line: str) -> str:
@@ -852,6 +909,13 @@ def _parse_assembly(text: str, *, retain_relocations: bool = False) -> tuple[_In
                 line,
             )
         if not objdump:
+            # Function-body metadata (symbol sizes, frame descriptions, line
+            # markers) carries no dataflow. The renderer independently
+            # verifies prologue and epilogue behavior, so skipping these is
+            # sound; anything else unparseable still refuses below.
+            if _EMPTY_DIRECTIVE.match(line):
+                pending_label = None
+                continue
             instructions.append(_Instruction("unsupported", "", pending_label, True))
             pending_label = None
             continue
@@ -1197,14 +1261,17 @@ class _PointerValue:
     expression: str
 
 
-def _leaf_body(instructions, parameters, return_type, callees=None, layouts=None, switches=None, apis=None):
+def _leaf_body(instructions, parameters, return_type, callees=None, layouts=None, switches=None, apis=None, limits=None):
     """Lower bounded MIPS scalar paths without losing delay-slot dataflow.
 
     Values are unsigned 32-bit C expressions. Signed comparisons explicitly
     reinterpret them as signed words; arithmetic therefore cannot acquire C
     signed-overflow undefined behavior. Forward paths are expanded separately,
-    with a shared budget to bound joins and nested branches.
+    with a shared budget to bound joins and nested branches. The bounds
+    argument selects a validated RendererLimits; None means the canonical
+    DEFAULT_LIMITS, which is what production archived runs always use.
     """
+    bounds = _coerce_limits(limits)
     scalar_types = {"int", "signed int", "unsigned int", "s32", "u32"}
     call_scalars = scalar_types | {"s16", "u16", "s8", "u8", "char", "signed char", "unsigned char", "short", "signed short", "unsigned short", "bool", "PrimitiveType"}
     layouts = layouts or {}
@@ -1212,7 +1279,7 @@ def _leaf_body(instructions, parameters, return_type, callees=None, layouts=None
     if (return_type not in scalar_types | {"void"} | set(layouts) or len(parameters) > 4
             or any(kind not in scalar_types and kind not in layouts for kind, _ in parameters)
             or len({name for _, name in parameters}) != len(parameters)
-            or not 0 < len(instructions) <= 64
+            or not 0 < len(instructions) <= bounds.max_instructions
             or any(item.unsupported for item in instructions)):
         return None
     aliases = {"0": "zero", "r0": "zero", "2": "v0", "r2": "v0",
@@ -1246,7 +1313,7 @@ def _leaf_body(instructions, parameters, return_type, callees=None, layouts=None
     state.update({name: "@entry-" + name for name in preserved})
     state.update({"a" + str(i): "(unsigned int)" + name if kind in scalar_types else _PointerValue(layouts[kind]["canonical"], name)
                   for i, (kind, name) in enumerate(parameters)})
-    visited, budget = set(), [256]
+    visited, budget = set(), [bounds.path_budget]
 
     def register(value):
         value = value.strip().removeprefix("$").lower()
@@ -1455,6 +1522,11 @@ def _leaf_body(instructions, parameters, return_type, callees=None, layouts=None
             value = "(unsigned int)((" + left + ") " + operator + " (" + right + "))"
             if register(args[1]) == "zero" and op in {"addiu", "ori"}:
                 value = right
+        elif op == "negu" and len(args) == 2:
+            # Unsigned negate: 0 minus the operand with no overflow trap.
+            # The trapping `neg` pseudo-instruction stays unsupported.
+            subtrahend = "(unsigned int)(" + value_for(values, args[1]) + ")"
+            value = "(unsigned int)(((unsigned int)(0)) - (" + subtrahend + "))"
         elif op in {"addu", "subu", "and", "or", "xor", "nor", "slt", "sltu"} and len(args) == 3:
             left, right = (value_for(values, arg) for arg in args[1:])
             operator = {"addu": "+", "subu": "-", "and": "&", "or": "|", "xor": "^", "nor": "|", "slt": "<", "sltu": "<"}[op]
@@ -1468,7 +1540,7 @@ def _leaf_body(instructions, parameters, return_type, callees=None, layouts=None
             value = "(unsigned int)(" + value + ")"
         else:
             raise ValueError("unsupported leaf instruction")
-        if len(value.expression if isinstance(value, _PointerValue) else value) > 4096:
+        if len(value.expression if isinstance(value, _PointerValue) else value) > bounds.max_expression:
             raise ValueError("expression expansion limit")
         values[destination] = value
 
@@ -1692,7 +1764,7 @@ def _leaf_body(instructions, parameters, return_type, callees=None, layouts=None
             else:
                 used_temporaries.append(declaration)
         result = "\n".join([*prototypes.values(), *used_temporaries, body_text])
-        return result if len(result) <= 65536 else None
+        return result if len(result) <= bounds.max_body else None
     except (ValueError, KeyError, RecursionError):
         return None
 
@@ -1700,6 +1772,8 @@ def _leaf_body(instructions, parameters, return_type, callees=None, layouts=None
 def _deterministic_local_draft(
     context: _TargetContext,
     claims: Sequence[DonorSemanticClaim],
+    *,
+    limits: Any = None,
 ) -> Optional[str]:
     try:
         text = context.assembly_bytes.decode("utf-8")
@@ -1715,8 +1789,9 @@ def _deterministic_local_draft(
                              for i, item in enumerate(instructions))
     except ValueError:
         return None
+    bounds = _coerce_limits(limits)
     body = _leaf_body(instructions, parameters, return_type, context.declarations.get("call_declarations"),
-                      context.declarations.get("pointer_layouts"), switches, context.declarations.get("api_declarations"))
+                      context.declarations.get("pointer_layouts"), switches, context.declarations.get("api_declarations"), limits=bounds)
     if body is None:
         return None
     parameter_text = "void" if not parameters else ", ".join(
@@ -1731,8 +1806,14 @@ def deterministic_local_draft(
     symbol: str,
     declarations: Mapping[str, Any] | None = None,
     claims: Sequence[DonorSemanticClaim] = (),
+    limits: Any = None,
 ) -> Optional[str]:
-    """Public pure wrapper around the local target draft generator."""
+    """Public pure wrapper around the local target draft generator.
+
+    The limits argument selects a validated RendererLimits (or a partial
+    mapping) for scoped measurement. None selects the canonical
+    DEFAULT_LIMITS, which is the only setting production archived runs use.
+    """
 
     raw = target_assembly.encode("utf-8") if isinstance(target_assembly, str) else target_assembly
     if not isinstance(raw, bytes):
@@ -1753,7 +1834,7 @@ def deterministic_local_draft(
         declarations=declarations or {},
         version="us",
     )
-    return _deterministic_local_draft(context, tuple(claims))
+    return _deterministic_local_draft(context, tuple(claims), limits=limits)
 
 
 def _unsupported(
