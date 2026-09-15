@@ -980,6 +980,8 @@ AUTOMATION_SCRIPTS = {
     "find_data_segment.py",
     "data_search.py",
     "test_data_search.py",
+    "measure_data_effect.py",
+    "test_measure_data_effect.py",
     "weight_tuner.py",
     "test_weight_tuner.py",
     "test_journal_replay.py",

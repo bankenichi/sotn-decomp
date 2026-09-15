@@ -2139,6 +2139,7 @@ def self_test() -> int:
         "fn_diff.py",               # takes a function name
         "find_data_segment.py",     # takes an address
         "data_search.py",           # explicit frozen run, target and stem; connector job
+        "measure_data_effect.py",   # read-only pool tally with --limit; connector job
         "weight_tuner.py",          # explicit gate, contributing runs and budget; connector job
         "member_types.py",          # a library; its self-test runs in-process
         "search_evidence_corpus.py",  # a library; corpus builders import it and
