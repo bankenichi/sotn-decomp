@@ -1064,6 +1064,62 @@ class DataAddressTests(unittest.TestCase):
 
 
 
+class GlobalAddressTests(unittest.TestCase):
+    GLOBAL_ASM = (
+        "lui $v0, %hi(g_Buf)\n"
+        "addiu $v0, $v0, %lo(g_Buf)\n"
+        "jr $ra\n"
+        "nop\n"
+    )
+    CONTEXT = b"typedef struct { int x; int y; } Buf;\nextern Buf g_Buf[4];\n"
+
+    def _decls(self, **override):
+        from automation.search_target_layout import pointer_layouts
+        layouts = pointer_layouts(self.CONTEXT, ["Buf*"])
+        self.assertIn("Buf*", layouts)
+        base = {
+            "return_type": "Buf*",
+            "parameters": [],
+            "pointer_layouts": layouts,
+            "global_declarations": {
+                "g_Buf": {"type": "Buf", "dims": "[4]", "status": "declared"},
+            },
+        }
+        base.update(override)
+        return base
+
+    def test_global_relocation_is_supported_shape(self):
+        instructions = _parse_assembly(self.GLOBAL_ASM)
+        self.assertTrue(instructions)
+        self.assertFalse(any(item.unsupported for item in instructions))
+        other = _parse_assembly("lui $v0, %hi(other_symbol)\n")
+        self.assertTrue(any(item.unsupported for item in other))
+
+    def test_global_address_renders_extern_and_return(self):
+        source = deterministic_local_draft(
+            self.GLOBAL_ASM, symbol="fn", declarations=self._decls())
+        self.assertIsNotNone(source)
+        self.assertIn("extern Buf g_Buf[4];", source)
+        self.assertIn("return g_Buf;", source)
+        self.assertNotIn("%hi", source)
+        self.assertNotIn("%lo", source)
+
+    def test_global_address_refusals(self):
+        cases = {}
+        cases["missing_table"] = (self.GLOBAL_ASM, {
+            "return_type": "Buf*", "parameters": [],
+            "pointer_layouts": self._decls()["pointer_layouts"]})
+        cases["undeclared"] = (self.GLOBAL_ASM, self._decls(
+            global_declarations={"g_Buf": {"status": "declaration_missing"}}))
+        unpaired = self.GLOBAL_ASM.replace("%lo(g_Buf)", "%lo(g_Other)")
+        cases["unpaired_halves"] = (unpaired, self._decls())
+        for name, (assembly, declarations) in cases.items():
+            with self.subTest(case=name):
+                self.assertIsNone(deterministic_local_draft(
+                    assembly, symbol="fn", declarations=declarations))
+
+
+
 class VariableLimitsTests(unittest.TestCase):
     LEAF_DECLS = {
         "return_type": "unsigned int",

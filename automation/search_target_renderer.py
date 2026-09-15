@@ -853,6 +853,8 @@ _API_HI = re.compile(r"%hi\s*\(\s*(g_api_[A-Za-z_]\w*)\s*\)")
 _API_LO = re.compile(r"%lo\s*\(\s*(g_api_[A-Za-z_]\w*)\s*\)")
 _DATA_HI = re.compile(r"%hi\s*\(\s*(D_[A-Za-z0-9_.$]*)\s*\)")
 _DATA_LO = re.compile(r"%lo\s*\(\s*(D_[A-Za-z0-9_.$]*)\s*\)")
+_GLOBAL_HI = re.compile(r"%hi\s*\(\s*(g_(?!api_)[A-Za-z_]\w*)\s*\)")
+_GLOBAL_LO = re.compile(r"%lo\s*\(\s*(g_(?!api_)[A-Za-z_]\w*)\s*\)")
 
 
 def _is_supported_api_relocation(operands: str) -> bool:
@@ -869,6 +871,14 @@ def _is_supported_data_relocation(operands: str) -> bool:
         return False
     stripped = _DATA_HI.sub("", operands)
     stripped = _DATA_LO.sub("", stripped)
+    return not _ASM_RELOCATION.search(stripped)
+
+def _is_supported_global_relocation(operands: str) -> bool:
+    """Whether relocations are only g_* global hi/lo halves, never other shapes."""
+    if not _ASM_RELOCATION.search(operands):
+        return False
+    stripped = _GLOBAL_HI.sub("", operands)
+    stripped = _GLOBAL_LO.sub("", stripped)
     return not _ASM_RELOCATION.search(stripped)
 
 def _fold_const_expr(text: str):
@@ -913,7 +923,7 @@ def _parse_assembly(text: str, *, retain_relocations: bool = False) -> tuple[_In
         # embedded data. Unknown directives still refuse rendering below.
         if re.fullmatch(r"\.set\s+(?:noat|noreorder|nomacro)", line):
             continue
-        if _ASM_DATA_DIRECTIVE.match(line) or (_ASM_RELOCATION.search(line) and not retain_relocations and not _is_supported_api_relocation(line) and not _is_supported_data_relocation(line)):
+        if _ASM_DATA_DIRECTIVE.match(line) or (_ASM_RELOCATION.search(line) and not retain_relocations and not _is_supported_api_relocation(line) and not _is_supported_data_relocation(line) and not _is_supported_global_relocation(line)):
             # Preserve a deterministic query shape while marking the target
             # context as non-renderable.  The renderer will turn this typed
             # shape into target_context_unsupported, and the raw line never
@@ -937,7 +947,7 @@ def _parse_assembly(text: str, *, retain_relocations: bool = False) -> tuple[_In
             line = (label_match.group("tail") or "").strip()
             if not line:
                 continue
-            if _ASM_DATA_DIRECTIVE.match(line) or (_ASM_RELOCATION.search(line) and not retain_relocations and not _is_supported_api_relocation(line) and not _is_supported_data_relocation(line)):
+            if _ASM_DATA_DIRECTIVE.match(line) or (_ASM_RELOCATION.search(line) and not retain_relocations and not _is_supported_api_relocation(line) and not _is_supported_data_relocation(line) and not _is_supported_global_relocation(line)):
                 instructions.append(_Instruction("unsupported", "", pending_label, True))
                 pending_label = None
                 continue
@@ -985,7 +995,7 @@ def _parse_assembly(text: str, *, retain_relocations: bool = False) -> tuple[_In
         if not re.fullmatch(r"[a-z][a-z0-9.]*", mnemonic):
             pending_label = None
             continue
-        if has_numeric_branch_target(mnemonic, operands) or (_ASM_RELOCATION.search(operands) and not _is_supported_api_relocation(operands) and not _is_supported_data_relocation(operands)):
+        if has_numeric_branch_target(mnemonic, operands) or (_ASM_RELOCATION.search(operands) and not _is_supported_api_relocation(operands) and not _is_supported_data_relocation(operands) and not _is_supported_global_relocation(operands)):
             instructions.append(_Instruction(mnemonic, operands, pending_label, True))
         else:
             instructions.append(_Instruction(mnemonic, operands, pending_label))
@@ -1299,7 +1309,7 @@ class _PointerValue:
     expression: str
 
 
-def _leaf_body(instructions, parameters, return_type, callees=None, layouts=None, switches=None, apis=None, limits=None, datas=None):
+def _leaf_body(instructions, parameters, return_type, callees=None, layouts=None, switches=None, apis=None, limits=None, datas=None, gdata=None):
     """Lower bounded MIPS scalar paths without losing delay-slot dataflow.
 
     Values are unsigned 32-bit C expressions. Signed comparisons explicitly
@@ -1341,8 +1351,9 @@ def _leaf_body(instructions, parameters, return_type, callees=None, layouts=None
     callees = callees or {}
     apis = apis or {}
     datas = datas or {}
+    gdata = gdata or {}
     prototypes, temporaries = {}, []
-    reserved_names = {name for _, name in parameters} | set(callees) | set(apis) | {name for name in datas if isinstance(name, str)}
+    reserved_names = {name for _, name in parameters} | set(callees) | set(apis) | {name for name in datas if isinstance(name, str)} | {name for name in gdata if isinstance(name, str)}
     data_ptrs, data_externs = {}, {}
     for data_name, declaration in datas.items():
         # Only identifier-safe declared data resolves to an address value.
@@ -1362,6 +1373,23 @@ def _leaf_body(instructions, parameters, return_type, callees=None, layouts=None
         data_ptrs[data_name] = _PointerValue(layouts[pointer_kind]["canonical"],
                                              data_name if dims else "(&" + data_name + ")")
         data_externs[data_name] = "    extern " + data_type + " " + data_name + dims + ";"
+    global_ptrs, global_externs = {}, {}
+    for global_name, declaration in gdata.items():
+        if (not isinstance(global_name, str) or not re.fullmatch(r"g_(?!api_)[A-Za-z_]\w*", global_name)
+                or not isinstance(declaration, Mapping) or declaration.get("status") != "declared"):
+            continue
+        global_type = declaration.get("type")
+        if not isinstance(global_type, str):
+            continue
+        global_kind = re.sub(r"\s*\*\s*", "*", global_type) + "*"
+        if global_kind not in layouts:
+            continue
+        global_dims = declaration.get("dims", "")
+        if not isinstance(global_dims, str):
+            continue
+        global_ptrs[global_name] = _PointerValue(layouts[global_kind]["canonical"],
+                                                 global_name if global_dims else "(&" + global_name + ")")
+        global_externs[global_name] = "    extern " + global_type + " " + global_name + global_dims + ";"
     labels = {}
     for index, item in enumerate(instructions):
         if item.label:
@@ -1563,12 +1591,17 @@ def _leaf_body(instructions, parameters, return_type, callees=None, layouts=None
         elif op == "lui" and len(args) == 2:
             hi_match = re.fullmatch(r"%hi\s*\(\s*(g_api_[A-Za-z_]\w*)\s*\)", args[1].strip())
             data_hi = re.fullmatch(r"%hi\s*\(\s*(D_[A-Za-z0-9_.$]*)\s*\)", args[1].strip())
+            global_hi = re.fullmatch(r"%hi\s*\(\s*(g_(?!api_)[A-Za-z_]\w*)\s*\)", args[1].strip())
             if hi_match is not None:
                 value = "@api-hi:" + hi_match.group(1)
             elif data_hi is not None:
                 if data_hi.group(1) not in data_ptrs:
                     raise ValueError("data declaration is unavailable")
                 value = "@data-hi:" + data_hi.group(1)
+            elif global_hi is not None:
+                if global_hi.group(1) not in global_ptrs:
+                    raise ValueError("global declaration is unavailable")
+                value = "@global-hi:" + global_hi.group(1)
             else:
                 value = literal(immediate(args[1], 0, 0xFFFF) << 16)
         elif op == "move" and len(args) == 2:
@@ -1584,6 +1617,16 @@ def _leaf_body(instructions, parameters, return_type, callees=None, layouts=None
                 raise ValueError("data address halves are not paired")
             prototypes["data:" + data_symbol] = data_externs[data_symbol]
             values[destination] = data_ptrs[data_symbol]
+            return
+        elif op == "addiu" and len(args) == 3 and (re.fullmatch(r"%lo\s*\(\s*(g_(?!api_)[A-Za-z_]\w*)\s*\)", args[2].strip()) is not None):
+            # Global address computation: lui %hi(g) paired with addiu %lo(g).
+            _glo = re.fullmatch(r"%lo\s*\(\s*(g_(?!api_)[A-Za-z_]\w*)\s*\)", args[2].strip())
+            _gsym = _glo.group(1)
+            _gbase = register(args[1])
+            if values.get(_gbase) != "@global-hi:" + _gsym or _gsym not in global_ptrs:
+                raise ValueError("global address halves are not paired")
+            prototypes["global:" + _gsym] = global_externs[_gsym]
+            values[destination] = global_ptrs[_gsym]
             return
         elif op == "addiu" and len(args) == 3 and isinstance(values.get(register(args[1])), _PointerValue):
             amount = immediate(args[2], -0x8000, 0xFFFF)
@@ -1916,7 +1959,8 @@ def _deterministic_local_draft(
         return None
     bounds = _coerce_limits(limits)
     body = _leaf_body(instructions, parameters, return_type, context.declarations.get("call_declarations"),
-                      context.declarations.get("pointer_layouts"), switches, context.declarations.get("api_declarations"), datas=context.declarations.get("data_declarations"), limits=bounds)
+                      context.declarations.get("pointer_layouts"), switches, context.declarations.get("api_declarations"),
+                      datas=context.declarations.get("data_declarations"), gdata=context.declarations.get("global_declarations"), limits=bounds)
     if body is None:
         return None
     parameter_text = "void" if not parameters else ", ".join(

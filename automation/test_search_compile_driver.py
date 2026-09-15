@@ -126,6 +126,24 @@ class CompileDriverTests(unittest.TestCase):
                                         assembly, b"int x;\n")
         self.assertEqual(missing["data_declarations"]["D_us_1"]["status"],
                          "declaration_missing")
+    def test_global_member_projection_exact_and_refusals(self):
+        from automation.search_source_context import _global_member_names, renderer_declarations
+        assembly = (b"lui $a1, %hi(g_Entities)\naddiu $a1, $a1, %lo(g_Entities)\n"
+                    b"jr $ra\nnop\n")
+        self.assertEqual(_global_member_names(assembly.decode()), ["g_Entities"])
+        self.assertEqual(_global_member_names("lui $v0, %hi(g_api_Test)\naddiu $v0, $v0, %lo(g_api_Test)\n"), [])
+        self.assertEqual(_global_member_names("lui $v0, %hi(g_OnlyHi)\nnop\n"), [])
+        self.assertEqual(_global_member_names(""), [])
+        context = b"typedef struct { int x; } Entity;\nextern Entity g_Entities[256];\n"
+        facts = renderer_declarations({"return_type": "void", "parameters": []},
+                                      assembly, context)
+        self.assertEqual(facts["global_declarations"]["g_Entities"]["status"], "declared")
+        self.assertEqual(facts["global_declarations"]["g_Entities"]["type"], "Entity")
+        self.assertIn("Entity*", facts["pointer_layouts"])
+        missing = renderer_declarations({"return_type": "void", "parameters": []},
+                                        assembly, b"int x;\n")
+        self.assertEqual(missing["global_declarations"]["g_Entities"]["status"],
+                         "declaration_missing")
     def test_api_member_projection_exact_and_refusals(self):
         from automation.search_source_context import _api_member_names, renderer_declarations
         assembly = (b"lui $v0, %hi(g_api_AllocPrimitives)\n"
