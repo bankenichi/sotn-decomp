@@ -249,6 +249,25 @@ anim_bird_cage = 0x80181ABC; // size:0x4
 anim_gear_1 = 0x80181AD8; // size:0xC
 anim_gear_2 = 0x80181AE4; // size:0xC
 g_StoneDoorTiles = 0x80181AF0; // size:0x10
+// Prize-drop support tables for rno0/e_collect.c, named after upstream's
+// statics in src/st/e_collect.h. Bytes verified against the extracted
+// rodata below; each address has a single user in this overlay.
+// aluric_subweapons_idx starts at 0x801817B8, 14 halfwords past its
+// container label, so the body indexes [subWeaponIdx - 14] as upstream does.
+aluric_subweapons_idx = 0x801817B8; // size:0x12
+aluric_subweapons_id = 0x801817CC; // size:0x14
+c_GoldPrizes = 0x80181808; // size:0x28
+g_SubweaponAnimPrizeDrop = 0x80181830; // size:0x60
+g_PrizeDropCollisionOffsets = 0x80181890; // size:0x8
+c_HeartPrizes = 0x80181898; // size:0x4
+g_ExplosionYVelocities = 0x8018189C; // size:0x14
+g_ExplosionAnimations = 0x80181948; // size:0x14
+// Jack O'Bones death-part rotation speeds. The extracted rodata at this
+// address is byte-identical ({0x100, 0x80, 0x48, 0x20, 0x40, 0x10, 0x18, 0})
+// to upstream's static death_parts_rotspeeds in src/st/e_jack_o_bones.h and
+// to the same table in rno1 (0x80181C74) and rno4 (0x80182954), which carry
+// their own per-overlay entries. Referenced only by EntityJackOBonesDeathParts.
+death_parts_rotspeeds = 0x80181F00; // size:0x10
 g_Statues = 0x801D4B48; // size:0x4
 
 // src/st/e_red_door.h. Named so rno0 can shim the shared header instead of

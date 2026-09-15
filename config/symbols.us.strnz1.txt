@@ -17,6 +17,13 @@ g_EInitBombKnight = 0x80180C3C;
 g_EInitRockKnight = 0x80180C6C;
 BackgroundBlockInit = 0x80180C9C;
 rooms = 0x801824C4;
+// Spikes dust animation frames for rnz1/e_spikes.c; same bytes and role as
+// rno2's anim_dust and the shared header's static. Single user.
+anim_dust = 0x80181090; // size:0x10
+// Cloaked-knight cloak animation frames for rnz1/e_cloaked_knight.c, named
+// after upstream's static anim_cloak in src/st/e_cloaked_knight.h. First
+// four frames verified ({4,3}..{4,6} plus terminator). Single user.
+anim_cloak = 0x80181F24; // size:0x10
 EntityBreakable = 0x801A6568;
 EntityBreakableDebris = 0x801A6A10;
 CreateExplosionPuff = 0x801A6D08;

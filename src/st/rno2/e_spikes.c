@@ -5,7 +5,7 @@
    receipt after destination-scope filtering. */
 #define PAL_SPIKES_DUST 353
 extern EInit g_EInitParticle;
-extern AnimateEntityFrame D_us_80180D30[7];
+extern AnimateEntityFrame anim_dust[7];
 
 void EntitySpikesDust(Entity* self) {
     s16 angle;
@@ -21,7 +21,7 @@ void EntitySpikesDust(Entity* self) {
         return;
     }
     MoveEntity();
-    if (!AnimateEntity(D_us_80180D30, self)) {
+    if (!AnimateEntity(anim_dust, self)) {
         DestroyEntity(self);
     }
 }

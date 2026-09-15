@@ -11,6 +11,13 @@ g_EInitBat = 0x80180684;
 g_RedDoorTiles = 0x801806C8;
 PrizeDrops = 0x801807CC;
 rooms = 0x80181838;
+// Slogra/Gaibon projectile tables for rchi/e_slogra.c and e_gaibon.c, named
+// after upstream's externs in src/st/rchi/e_slogra.c and e_gaibon.c. Roles
+// verified by identical code shape (hitbox quads walked 4-at-a-time,
+// u8 frame indices, AnimateEntity tables); each address has a single user.
+g_SlograSpearHitboxes = 0x801815BC; // size:0x38
+g_SlograSpearHitboxIdx = 0x801815F4; // size:0x38
+g_AnimSmallGaibonProjectile = 0x80181748; // size:0xC
 EntityBreakable = 0x801993BC;
 EntityBreakableDebris = 0x8019962C;
 UpdateFallingPebble = 0x80199A30;

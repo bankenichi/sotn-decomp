@@ -7,43 +7,46 @@
 // drops. Storage lives in an undecompiled data blob.
 extern u16 D_us_80180F8C[];
 
-// Heart pickup values, indexed by CollectHeart's heartIdx. Storage lives in an
-// undecompiled data blob.
-extern s8 D_us_80181898[];
+// Heart pickup values, indexed by CollectHeart's heartIdx. Upstream's
+// c_HeartPrizes in src/st/e_collect.h; bytes verified in our rodata.
+extern s8 c_HeartPrizes[];
 
-// Gold pickup values, indexed by (goldSize - 2). Storage lives in the
-// undecompiled data blob.
-extern u32 D_us_80181808[];
+// Gold pickup values, indexed by (goldSize - 2). Upstream's c_GoldPrizes
+// in src/st/e_collect.h; bytes verified in our rodata.
+extern u32 c_GoldPrizes[];
 
 extern const char* g_goldCollectTexts[];
 
 extern void BottomCornerText(u8* str, u8 leftAlign);
 
-// aluric_subweapons_idx, pre-shifted by -14 elements so it can be indexed
-// directly by subWeaponIdx (14..22). Storage lives in the undecompiled data
-// blob.
-extern u16 D_us_8018179C[];
+// aluric_subweapons_idx, indexed by (subWeaponIdx - 14) exactly as upstream
+// does in src/st/collect_subweapon.h. Retail stores the label 14 halfwords
+// early (0x8018179C); the symbols file names the true table start
+// (0x801817B8), so no preshifted addressing remains in C.
+extern u16 aluric_subweapons_idx[];
 
-// aluric_subweapons_id, indexed by g_Status.subWeapon. Storage lives in the
-// undecompiled data blob.
-extern u16 D_us_801817CC[];
+// aluric_subweapons_id, indexed by g_Status.subWeapon. Named after
+// upstream's static in src/st/e_collect.h; bytes verified in our rodata.
+extern u16 aluric_subweapons_id[];
 
 // InitializeEntity descriptors used by the entities below.
 extern EInit g_EInitObtainable;
 extern EInit OVL_EXPORT(EInitParticle);
 
-// EntityExplosion's per-type Y velocity and animation-list tables. Storage
-// lives in undecompiled data blobs.
-extern s32 D_us_8018189C[];
-extern u8* D_us_80181948[];
+// EntityExplosion's per-type Y velocity and animation-list tables.
+// Upstream's g_ExplosionYVelocities / g_ExplosionAnimations in
+// src/st/e_collect.h; bytes verified in our rodata.
+extern s32 g_ExplosionYVelocities[];
+extern AnimateEntityFrame* g_ExplosionAnimations[];
 
 // g_SubweaponAnimPrizeDrop: per-item animation script pointers, indexed by
-// itemId. Storage lives in an undecompiled data blob.
-extern u8* D_us_80181830[];
+// itemId. Upstream's global in src/st/e_collect.h; entries verified as the
+// same animation tables in our rodata.
+extern AnimateEntityFrame* g_SubweaponAnimPrizeDrop[];
 
-// D_80180EB8: field-collision check offsets shared by the drop entities.
-// Storage lives in an undecompiled data blob.
-extern s16 D_us_80181890[];
+// Upstream's g_PrizeDropCollisionOffsets ({-6, 4, 0, -8}): field-collision
+// check offsets shared by the drop entities. Bytes verified in our rodata.
+extern s16 g_PrizeDropCollisionOffsets[];
 
 // Icon-slot allocation table. Was `extern u16 D_us_801D4B4C[32]`, a raw
 // address. It is g_ItemIconSlots, declared by src/st/st_update.h as
@@ -124,7 +127,7 @@ static void PrizeDropFall2(u16 arg0) {
 // This function is messy, maybe there's a better way.
 static void CollectHeart(u16 heartIdx) {
     g_api.PlaySfx(SFX_HEART_PICKUP);
-    g_Status.hearts += D_us_80181898[heartIdx];
+    g_Status.hearts += c_HeartPrizes[heartIdx];
 
     if (g_Status.hearts > g_Status.heartsMax) {
         g_Status.hearts = g_Status.heartsMax;
@@ -136,7 +139,7 @@ static void CollectHeart(u16 heartIdx) {
 void CollectGold(u16 goldSize) {
     g_api.PlaySfx(SFX_GOLD_PICKUP);
     goldSize -= 2;
-    g_Status.gold += D_us_80181808[goldSize];
+    g_Status.gold += c_GoldPrizes[goldSize];
     if (g_Status.gold > MAX_GOLD) {
         g_Status.gold = MAX_GOLD;
     }
@@ -155,13 +158,13 @@ static void CollectSubweapon(u16 subWeaponIdx) {
 
     g_api.PlaySfx(SFX_ITEM_PICKUP);
     subWeapon = g_Status.subWeapon;
-    g_Status.subWeapon = D_us_8018179C[subWeaponIdx];
+    g_Status.subWeapon = aluric_subweapons_idx[subWeaponIdx - 14];
 
     if (subWeapon == g_Status.subWeapon) {
         subWeapon = 1;
         g_CurrentEntity->unk6D[0] = 0x10;
     } else {
-        subWeapon = D_us_801817CC[subWeapon];
+        subWeapon = aluric_subweapons_id[subWeapon];
         g_CurrentEntity->unk6D[0] = 0x60;
     }
 
@@ -246,7 +249,7 @@ void EntityPrizeDrop(Entity* self) {
 
     itemId = self->params & 0x7FFF;
     if (self->step) {
-        AnimateEntity(D_us_80181830[itemId], self);
+        AnimateEntity(g_SubweaponAnimPrizeDrop[itemId], self);
     }
     if (self->step > 1 && self->step < 5 && self->hitFlags) {
         self->step = 5;
@@ -265,7 +268,7 @@ void EntityPrizeDrop(Entity* self) {
         }
 
         if (itemId >= 14 && itemId < 23 &&
-            itemId == D_us_801817CC[g_Status.subWeapon]) {
+            itemId == aluric_subweapons_id[g_Status.subWeapon]) {
             itemId = 1;
             self->params = 1;
         }
@@ -312,7 +315,7 @@ void EntityPrizeDrop(Entity* self) {
             } else {
                 FallEntity();
             }
-            CheckFieldCollision(D_us_80181890, 2);
+            CheckFieldCollision(g_PrizeDropCollisionOffsets, 2);
         } else if (collider.effects & EFFECT_NOTHROUGH) {
             self->posY.i.hi += collider.unk18;
             self->ext.equipItemDrop.aliveTimer = 0x60;
@@ -367,7 +370,7 @@ void EntityPrizeDrop(Entity* self) {
         case 0:
             self->animCurFrame = 0;
             if (itemId >= 14 && itemId < 23 &&
-                itemId == D_us_801817CC[g_Status.subWeapon]) {
+                itemId == aluric_subweapons_id[g_Status.subWeapon]) {
                 itemId = 1;
                 self->params = 1;
             }
@@ -398,7 +401,7 @@ void EntityPrizeDrop(Entity* self) {
             } else {
                 FallEntity();
             }
-            CheckFieldCollision(D_us_80181890, 2);
+            CheckFieldCollision(g_PrizeDropCollisionOffsets, 2);
             self->animCurFrame = 0;
             if (self->ext.equipItemDrop.sparkleTimer) {
                 self->ext.equipItemDrop.sparkleTimer--;
@@ -462,11 +465,11 @@ void EntityExplosion(Entity* entity) {
             entity->zPriority = (entity->params & 0xFF00) >> 8;
         }
         entity->params &= 15;
-        entity->velocityY = D_us_8018189C[entity->params];
+        entity->velocityY = g_ExplosionYVelocities[entity->params];
     } else {
         entity->posY.val += entity->velocityY;
 
-        if (!AnimateEntity(D_us_80181948[entity->params], entity)) {
+        if (!AnimateEntity(g_ExplosionAnimations[entity->params], entity)) {
             DestroyEntity(entity);
         }
     }
@@ -595,7 +598,7 @@ void EntityEquipItemDrop(Entity* self) {
         } else {
             FallEntity();
         }
-        CheckFieldCollision(D_us_80181890, 2);
+        CheckFieldCollision(g_PrizeDropCollisionOffsets, 2);
         break;
     case 3:
         PrizeDropFall2(1);

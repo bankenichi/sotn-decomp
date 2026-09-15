@@ -18,9 +18,10 @@ extern s32 D_us_801D169C;
 
 // HARVESTED from upstream/master src/boss/bo6/us_3E79C.c (Shaft's orb).
 // One rename: RicCreateEntFactoryFromEntity -> BO6_RicCreateEntFactoryFromEntity.
-// Needs ET_ShaftOrb, restored to include/entity.h from upstream in the same
-// commit. The ext.ILLEGAL.s16[] accesses are upstream's and are kept verbatim;
-// see the note on ET_ShaftOrb for why they are not renamed.
+// Needs ET_801C03E8, which already existed in this tree; the body only now
+// switches to it from the older placeholder-union spelling it was harvested
+// with. The old keep-verbatim comment was retracted in include/entity.h.
+// ET_ShaftOrb stays for func_us_801C0FE8 below.
 void func_us_801C03E8(Entity* self) {
     Primitive* prim; // s0
     s32 i;           // s1
@@ -69,7 +70,7 @@ void func_us_801C03E8(Entity* self) {
 #else
         if ((self->hitFlags) && (self->step == 2)) {
 #endif
-            self->ext.shaftOrb.unkTimer = 10;
+            self->ext.et_801C03E8.hitTimer = 10;
             self->step = 0xA;
         }
         self->hitFlags = 0;
@@ -113,15 +114,15 @@ void func_us_801C03E8(Entity* self) {
         self->flags |= FLAG_UNK_20000000 | FLAG_UNK_10000000 | FLAG_HAS_PRIMS;
         self->posX.i.hi = 0x80;
         self->posY.i.hi = 0x30;
-        self->ext.ILLEGAL.s16[4] = 0x400;
-        self->ext.ILLEGAL.s16[5] = 0x10;
-        self->ext.ILLEGAL.s16[6] = 0x30;
-        self->ext.ILLEGAL.s16[7] = 0xC00;
+        self->ext.et_801C03E8.orbitAngle = 0x400;
+        self->ext.et_801C03E8.orbitAngleStep = 0x10;
+        self->ext.et_801C03E8.maxTurnRate = 0x30;
+        self->ext.et_801C03E8.moveAngle = 0xC00;
         self->animSet = ANIMSET_OVL(5);
         self->animCurFrame = 0;
         self->unk5A = 0x48;
         self->palette = 0x8252;
-        self->ext.ILLEGAL.s16[0] = self->hitboxState;
+        self->ext.et_801C03E8.savedHitboxState = self->hitboxState;
         self->anim = D_us_80181E78;
         self->zPriority = RIC.zPriority + 4;
         self->step = 1;
@@ -143,21 +144,21 @@ void func_us_801C03E8(Entity* self) {
         distanceX = RIC.posX.i.hi + RIC.hitboxOffX;
         distanceY = (RIC.posY.i.hi + RIC.hitboxOffY) - 0x40;
 
-        angle = self->ext.ILLEGAL.s16[4];
+        angle = self->ext.et_801C03E8.orbitAngle;
 
         distanceX += (((rcos(angle) >> 4) * scale) >> 8);
         distanceY -= (((rsin(angle) >> 4) * scale) >> 8);
-        self->ext.ILLEGAL.s16[4] += self->ext.ILLEGAL.s16[5];
+        self->ext.et_801C03E8.orbitAngle += self->ext.et_801C03E8.orbitAngleStep;
 
         posX = distanceX - self->posX.i.hi;
         posY = distanceY - self->posY.i.hi;
         angle = ratan2(-posY, posX) & 0xFFF;
 
-        temp_s0_2 = (self->ext.ILLEGAL.s16[7] & 0xFFF);
+        temp_s0_2 = (self->ext.et_801C03E8.moveAngle & 0xFFF);
         var_v1_2 = abs(temp_s0_2 - angle);
 
-        var_a0_2 = self->ext.ILLEGAL.s16[6];
-        if (self->ext.ILLEGAL.s16[6] > var_v1_2) {
+        var_a0_2 = self->ext.et_801C03E8.maxTurnRate;
+        if (self->ext.et_801C03E8.maxTurnRate > var_v1_2) {
             var_a0_2 = var_v1_2;
         }
 
@@ -175,7 +176,7 @@ void func_us_801C03E8(Entity* self) {
                 temp_s0_2 += distance;
             }
         }
-        self->ext.ILLEGAL.s16[7] = temp_s0_2 & 0xFFF;
+        self->ext.et_801C03E8.moveAngle = temp_s0_2 & 0xFFF;
         temp_s0_5 = rcos(temp_s0_2) * 0x10;
         temp_v0_7 = rsin(temp_s0_2) * 0x10;
         self->posX.val = temp_s0_5 + self->posX.val;
@@ -189,7 +190,7 @@ void func_us_801C03E8(Entity* self) {
         }
 
         self->poseTimer++;
-        if (--self->ext.shaftOrb.unkTimer == 0) {
+        if (--self->ext.et_801C03E8.hitTimer == 0) {
             self->step = 2;
         }
 
@@ -206,12 +207,12 @@ void func_us_801C03E8(Entity* self) {
 
     if (g_api.CheckEquipmentItemCount(0x22U, 1U) != 0) {
         palette = 0x8252;
-        self->hitboxState = self->ext.ILLEGAL.s16[0];
-        self->ext.ILLEGAL.s16[1] = 1;
+        self->hitboxState = self->ext.et_801C03E8.savedHitboxState;
+        self->ext.et_801C03E8.showPrims = 1;
     } else {
         palette = 0x810D;
         self->hitboxState = 0;
-        self->ext.ILLEGAL.s16[1] = 0;
+        self->ext.et_801C03E8.showPrims = 0;
     }
     if (RIC.step == PL_S_DEAD || RIC.step == PL_S_ENDING_1) {
         self->hitboxState = 0;
@@ -230,7 +231,7 @@ void func_us_801C03E8(Entity* self) {
             if ((abs(self->posX.i.hi - RIC.posX.i.hi) < 0x20) &&
                 (RIC.step != PL_S_DEAD)) {
                 sp30 = 1;
-                if (self->ext.ILLEGAL.s16[1]) {
+                if (self->ext.et_801C03E8.showPrims) {
                     BO6_RicCreateEntFactoryFromEntity(self, 0x590021, 0);
                 }
             }
@@ -262,7 +263,7 @@ void func_us_801C03E8(Entity* self) {
             prim->r0 = prim->r1 = prim->r2 = prim->r3 = prim->g0 = prim->g1 =
                 prim->g2 = prim->g3 = prim->b0 = prim->b1 = prim->b2 = prim->b3;
         }
-        if (!self->ext.ILLEGAL.s16[1]) {
+        if (!self->ext.et_801C03E8.showPrims) {
             prim->drawMode |= DRAW_HIDE;
         }
         prim = prim->next;
@@ -315,7 +316,7 @@ void func_us_801C03E8(Entity* self) {
                 prim->x1 = ricPosX;
                 prim->y1 = ricPosY;
             }
-            if (!self->ext.ILLEGAL.s16[1]) {
+            if (!self->ext.et_801C03E8.showPrims) {
                 prim->drawMode |= DRAW_HIDE;
             }
             prim = prim->next;

@@ -1545,3 +1545,27 @@ structural blocker use a synthetic stage without a named data segment, while a
 separate live population assertion records which real stubs are currently
 approved for shim deferral. This keeps a splat-config improvement from turning
 a previously correct regression into stale policy.
+
+## 30. A measured finding is a work order, not a paragraph
+
+On 2026-09-14 `compare_matched` named exact checkable upgrades (1 ILLEGAL
+row, 3 raw-`D_` rows, 1 upgradable field) and the lead recorded them as prose
+in the roadmap instead of fixing them. The owner corrected this: any
+improvement, fix or correction the harness can name precisely must be worked
+promptly, not filed as narrative. A roadmap note may track the work; it may
+never substitute for it.
+
+Two metric defects surfaced while working those rows, and both changed the
+tool rather than the verdict:
+
+- Name matching is offset-blind across platforms. The single "upgradable"
+  field compared our PSX `HitDetection` against upstream's SATURN twin, where
+  the same-role attacker pointer sits at 0xB4, not PSX 0xB8. Renaming from
+  that evidence would have been wrong; both trees agree the slot is `unkB8`.
+  `compare_matched` now prefers the exact overlay, then any non-Saturn body,
+  and counts Saturn-only twins as skipped rather than comparable. Discovery
+  (`harvest`) still surfaces Saturn leads for unmatched work.
+- File attribution must follow the record's overlay. A lexical worktree hit
+  list puts `src/saturn/` first, so one US record compared Saturn's port
+  against upstream PSX and reported a phantom row. Both sides now resolve
+  through the record's own overlay before falling back.

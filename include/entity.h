@@ -3622,15 +3622,14 @@ typedef struct {
     /* 0x84 */ s16 castTimer;
 } ET_HellfireBeastFlamePillar;
 
-// Shaft's orb (BOSS/BO6 func_us_801C03E8). Restored from upstream/master,
+// Shaft's orb (BOSS/BO6 func_us_801C0FE8). Restored from upstream/master,
 // where it has always existed; this fork had dropped it.
 //
-// Only `unkTimer` is actually referenced by name. The body reaches everything
-// else through ext.ILLEGAL.s16[], which is upstream's own spelling and is
-// kept verbatim rather than "improved": the ILLEGAL slots land in the
-// anonymous padding below, so naming them would be inventing a layout the
-// assembly does not attest to. Ends at 0x92, inside Ext's existing extent, so
-// adding it cannot move anything.
+// RETRACTED 2026-09-14: the paragraph below claimed the placeholder-union
+// slots in func_us_801C03E8 could not be named without inventing layout.
+// ET_801C03E8 below already existed in this tree with exactly those members;
+// only the body is switching to it now. This struct stays because
+// func_us_801C0FE8 genuinely uses its timer, velocityAngle and parent.
 typedef struct {
     /* 0x7C */ s16 timer;
     /* 0x7E */ s16 velocityAngle;
@@ -3640,6 +3639,7 @@ typedef struct {
     /* 0x8C */ struct Entity* parent;
     /* 0x90 */ s16 unkTimer;
 } ET_ShaftOrb;
+
 
 typedef struct {
     /* 0x7C */ s16 skeletonPosX;

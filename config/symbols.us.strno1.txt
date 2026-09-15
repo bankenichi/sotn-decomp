@@ -16,6 +16,19 @@ g_EInitStoneSkull = 0x801806F4;
 g_EInitJackOBones = 0x80180700;
 g_EInitNovaSkeleton = 0x80180724;
 rooms = 0x80181E98;
+// Paranthropus hitbox tables for rno1/unk_34074.c, named after upstream's
+// externs in src/st/rno1/unk_34074.c. The three tables are one contiguous
+// blob (offsets A70/AF4/B78, spans 0x84/0x84/0x88); splat labeled each
+// leading short separately, so the entries below name the first label of
+// each table with its full span. Single user per table.
+bone_hitbox_offsets = 0x80181A70; // size:0x84
+bone_hitbox_dimensions = 0x80181AF4; // size:0x84
+skull_positions = 0x80181B78; // size:0x88
+// Jack O'Bones death-part rotation speeds; same evidence as rno0's entry:
+// extracted rodata matches upstream's static death_parts_rotspeeds
+// ({0x100, 0x80, 0x48, 0x20, 0x40, 0x10, 0x18, 0}) and is referenced only by
+// EntityJackOBonesDeathParts.
+death_parts_rotspeeds = 0x80181C74; // size:0x10
 EntityBackgroundBlock = 0x801A5E28;
 EntityBreakable = 0x801A6178;
 EntityBreakableDebris = 0x801A64B0;

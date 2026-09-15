@@ -49,9 +49,9 @@ void EntityGaibonLeg(Entity *self)
   }
 }
 
-extern EInit D_us_80180624;
+extern EInit g_EInitGaibonProjectile;
 
-extern u8 D_us_80181748[];
+extern u8 g_AnimSmallGaibonProjectile[];
 
 void EntitySmallGaibonProjectile(Entity* self) {
     if (self->flags & FLAG_DEAD) {
@@ -65,7 +65,7 @@ void EntitySmallGaibonProjectile(Entity* self) {
 
     switch (self->step) {
     case 0:
-        InitializeEntity(D_us_80180624);
+        InitializeEntity(g_EInitGaibonProjectile);
         self->animSet = ANIMSET_DRA(2);
         self->animCurFrame = 1;
         self->drawFlags = ENTITY_SCALEX | ENTITY_ROTATE;
@@ -78,7 +78,7 @@ void EntitySmallGaibonProjectile(Entity* self) {
 
     case 1:
         MoveEntity();
-        AnimateEntity(D_us_80181748, self);
+        AnimateEntity(g_AnimSmallGaibonProjectile, self);
         break;
     }
 }

@@ -2,9 +2,9 @@
 #include "rchi.h"
 
 // EntitySlograSpear and EntitySlograSpearProjectile each failed to build on
-// one of these names. D_us_80180600 is defined by THIS overlay at
+// one of these names. g_EInitSlograSpear is defined by THIS overlay at
 // src/st/rchi/e_init.c:94; g_Entities_224 is the shared src/st/e_imp.h:9.
-extern EInit D_us_80180600;
+extern EInit g_EInitSlograSpear;
 extern Entity g_Entities_224[];
 
 INCLUDE_ASM("st/rchi/nonmatchings/e_slogra", EntitySlogra);
@@ -12,9 +12,8 @@ INCLUDE_ASM("st/rchi/nonmatchings/e_slogra", EntitySlogra);
 #define ENTITY_ROTATE 4
 #define FLAG_DESTROY_IF_OUT_OF_CAMERA 2147483648
 #define SFX_ARROW_SHOT_A 1573
-extern s8 D_us_801815BC[];
-extern u8 D_us_801815F4[];
-extern EInit D_us_80180600;
+extern s8 g_SlograSpearHitboxes[];
+extern u8 g_SlograSpearHitboxIdx[];
 extern struct Entity;
 void InitializeEntity(u16 arg0[]);
 
@@ -25,7 +24,7 @@ void EntitySlograSpear(Entity* self) {
 
     switch (self->step) {
     case 0:
-        InitializeEntity(D_us_80180600);
+        InitializeEntity(g_EInitSlograSpear);
 
     case 1:
         slogra = self - 1;
@@ -33,8 +32,8 @@ void EntitySlograSpear(Entity* self) {
         self->posX.i.hi = slogra->posX.i.hi;
         self->posY.i.hi = slogra->posY.i.hi;
         animFrame = slogra->animCurFrame;
-        hitbox = D_us_801815BC;
-        hitbox += 4 * D_us_801815F4[animFrame];
+        hitbox = g_SlograSpearHitboxes;
+        hitbox += 4 * g_SlograSpearHitboxIdx[animFrame];
         self->hitboxOffX = *hitbox++;
         self->hitboxOffY = *hitbox++;
         self->hitboxWidth = *hitbox++;

@@ -19,14 +19,12 @@
 // OVL_EXPORT reference in the overlay to gain nothing.
 #define g_EInitParticle OVL_EXPORT(EInitParticle)
 
-// The per-item animation script table. Its storage is inside the undecompiled
-// data blob at 0x166C, so this overlay has it only as the splat symbol; upstream
-// gets the real name because it compiles e_collect's .data from C and this fork
-// does not. src/st/rno0/e_collect.c:42 declares the same array the same way.
+// The per-item animation script table. It is now named g_SubweaponAnimPrizeDrop
+// in config/symbols.us.strno0.txt (0x80181830), so the shared header below
+// links directly; the D_us_80181830 bridge this file used to carry is gone.
 //
 // g_MariaSubweaponAnimPrizeDrop needs no bridge: the header references it only
 // under VERSION_PSP, and an extern declaration that nothing uses emits neither
 // a relocation nor an undefined symbol.
-#define g_SubweaponAnimPrizeDrop D_us_80181830
 
 #include "../e_subweapon_container.h"

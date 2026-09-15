@@ -228,6 +228,25 @@ def harvest_path(base: str, overlay: str = "") -> str:
     return upstream_files(overlay).get(base) or upstream_files().get(base, "")
 
 
+def _compare_upath(base: str, overlay: str = "") -> str:
+    """Best layout-compatible upstream definition for quality comparison.
+
+    Discovery (harvest_path) may point at any platform twin, Saturn included:
+    a Saturn body is still a lead for unmatched work. Comparison is stricter:
+    it counts member spellings, so the donor must share the PSX layout.
+    Prefers the exact overlay, then any non-Saturn body, else "".
+    """
+    paths = _UF_PATHS.get(base, []) if _UF_PATHS else []
+    token = overlay.rsplit("/", 1)[-1].lower()
+    if token:
+        exact = [path for path in paths
+                 if f"/{token}/" in f"/{path.lower()}/"]
+        if exact:
+            return exact[0]
+    rest = [path for path in paths if "/saturn/" not in path]
+    return rest[0] if rest else ""
+
+
 def harvest(overlay: str = "") -> list[tuple[str, str, str]]:
     """(function, our overlay, upstream path) worth copying."""
     recs = unmatched_records()
@@ -1038,6 +1057,26 @@ def _extract(body_src: str, fn: str) -> str:
     return ""
 
 
+def _prefer_own_overlay(hits: list[str], overlay: str) -> list[str]:
+    """Order worktree definition hits for one queue record's overlay.
+
+    A lexical hit list puts src/saturn/ first, so without a preference a US
+    record would compare Saturn's port against upstream PSX. Prefer the
+    record's own overlay directory, then any non-Saturn definition.
+    """
+    token = overlay.rsplit("/", 1)[-1].lower()
+
+    def _hit_key(path: str) -> int:
+        low = path.lower()
+        if token and f"/{token}/" in f"/{low}/":
+            return 0
+        if "/saturn/" in low:
+            return 2
+        return 1
+
+    return sorted(hits, key=_hit_key)
+
+
 def compare_matched(limit: int = 0) -> int:
     """Our matched C against upstream's INDEPENDENT decompilation of the same.
 
@@ -1081,11 +1120,18 @@ def compare_matched(limit: int = 0) -> int:
 
     up = upstream_files()
     stubs = upstream_stubs()
-    rows, both = [], 0
+    rows, both, saturn_only = [], 0, 0
     for ovl, fn in ours:
         if fn in stubs or fn not in up:
             continue                    # upstream has not done this one
-        upath = up[fn]
+        upath = _compare_upath(fn, ovl)
+        if not upath:
+            # Upstream's only definition is a Saturn twin. Saturn's Entity
+            # layout differs from PSX (the attacker pointer sits at 0xB4,
+            # not 0xB8), so its member spellings are noise for a PSX body,
+            # not a quality signal. Skip the row instead of reporting it.
+            saturn_only += 1
+            continue
         utext = _extract(_git("show", f"{upstream_commit()}:{upath}"), fn)
         # Ours: find the file in the working tree that defines it.
         hit = subprocess.run(
@@ -1093,7 +1139,7 @@ def compare_matched(limit: int = 0) -> int:
              "src/"], capture_output=True, text=True, timeout=120,
             cwd=str(REPO)).stdout.split()
         otext = ""
-        for h in hit:
+        for h in _prefer_own_overlay(hit, ovl):
             otext = _extract(Path(REPO / h).read_text(errors="ignore"), fn)
             if otext:
                 break
@@ -1122,6 +1168,9 @@ def compare_matched(limit: int = 0) -> int:
         return 0
     print(f"{both} of our matched functions are ALSO decompiled upstream, "
           f"independently.\n")
+    if saturn_only:
+        print(f"  {saturn_only} Saturn-only twin(s) skipped: layout-incompatible "
+              f"for spelling comparison.\n")
     worse = [r for r in rows if r["our_unk"] > r["up_unk"]]
     better = [r for r in rows if r["our_unk"] < r["up_unk"]]
     ill = [r for r in rows if r["our_illegal"] > r["up_illegal"]]
@@ -1257,6 +1306,36 @@ def self_test() -> int:
         globals()["_US_CACHE"] = saved_stubs
         _UF_CACHE.clear()
         _UF_CACHE.update(saved_cache)
+
+    print("\ncomparison skips layout-incompatible Saturn twins")
+    saved_paths2, saved_cache2, saved_stubs2 = _UF_PATHS, dict(_UF_CACHE), _US_CACHE
+    try:
+        globals()["_UF_PATHS"] = {
+            "HitDetection": ["src/saturn/game_3b.c"],
+            "Shared": ["src/saturn/game_3b.c", "src/st/rno0/e_shared.c"],
+            "Exact": ["src/st/rno0/e_exact.c", "src/saturn/game_3b.c"]}
+        _UF_CACHE.clear()
+        ck(_compare_upath("HitDetection", "ST/RNO0") == "",
+           "a Saturn-only twin is skipped, not compared")
+        ck(_compare_upath("Shared", "ST/RNO0") == "src/st/rno0/e_shared.c",
+           "exact overlay still outranks everything")
+        ck(_compare_upath("Exact", "ST/RNO1") == "src/st/rno0/e_exact.c",
+           "a PSX twin outranks Saturn without an exact overlay")
+        ck(harvest_path("HitDetection", "ST/RNO0") == "src/saturn/game_3b.c",
+           "discovery still surfaces Saturn leads for unmatched work")
+    finally:
+        globals()["_UF_PATHS"] = saved_paths2
+        globals()["_US_CACHE"] = saved_stubs2
+        _UF_CACHE.clear()
+        _UF_CACHE.update(saved_cache2)
+
+    print("\nour side of the comparison prefers the record's overlay")
+    hits = ["src/saturn/game_0.c", "src/st/rno0/header.c",
+            "src/st/create_entity.h"]
+    ck(_prefer_own_overlay(hits, "ST/RNO0") == [
+        "src/st/rno0/header.c", "src/st/create_entity.h",
+        "src/saturn/game_0.c"],
+        "own overlay first, Saturn last")
 
     print("\ngit is reached through the repo, never the sandbox")
     src = Path(__file__).read_text(errors="ignore")

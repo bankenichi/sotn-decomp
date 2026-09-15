@@ -51,13 +51,13 @@ INCLUDE_ASM("st/rno4/nonmatchings/unk_58A30", EntityJackOBones);
 
 /* Compile-shaping declarations retained from the score-zero
    receipt after destination-scope filtering. */
-extern EInit D_us_80180BFC;
-extern u16 D_us_80182954[];
+extern EInit g_EInitJackOBones2;
+extern u16 death_parts_rotspeeds[];
 
 void EntityJackOBonesDeathParts(Entity* self) {
     if (self->step) {
         if (--self->ext.jackoBones.deathPartLife) {
-            self->rotate += D_us_80182954[self->params];
+            self->rotate += death_parts_rotspeeds[self->params];
             FallEntity();
             MoveEntity();
             return;
@@ -68,7 +68,7 @@ void EntityJackOBonesDeathParts(Entity* self) {
         self->step = 0;
         return;
     }
-    InitializeEntity(D_us_80180BFC);
+    InitializeEntity(g_EInitJackOBones2);
     self->animCurFrame = (self->params & 0xFF) + 15;
     if (self->params & 0x100) {
         self->palette += 1;
@@ -171,8 +171,8 @@ INCLUDE_ASM("st/rno4/nonmatchings/unk_58A30", EntityImp);
 
 /* Compile-shaping declarations retained from the score-zero
    receipt after destination-scope filtering. */
-extern EInit D_us_80180C38;
-extern u8 D_us_80182B90[];
+extern EInit g_EInitImpSmoke;
+extern u8 anim_imp_smoke[];
 
 /* Declarations injected by the worker: used by the candidate
    below and absent from this file. Copied verbatim from the
@@ -184,7 +184,7 @@ void EntityImpSmoke(Entity* self) {
     Entity* player;
 
     if (!self->step) {
-        InitializeEntity(D_us_80180C38);
+        InitializeEntity(g_EInitImpSmoke);
         self->zPriority = g_unkGraphicsStruct.g_zEntityCenter + 4;
         player = &PLAYER;
         self->posX.i.hi = player->posX.i.hi;
@@ -197,7 +197,7 @@ void EntityImpSmoke(Entity* self) {
         g_api_PlaySfx(SFX_BONE_THROW);
     }
     self->posY.val -= FIX(0.5);
-    if (AnimateEntity(D_us_80182B90, self) == 0) {
+    if (AnimateEntity(anim_imp_smoke, self) == 0) {
         DestroyEntity(self);
     }
 }
@@ -208,8 +208,8 @@ INCLUDE_ASM("st/rno4/nonmatchings/unk_58A30", EntityRdaiUnk33);
 
 /* Compile-shaping declarations retained from the score-zero
    receipt after destination-scope filtering. */
-extern EInit D_us_80180C50;
-extern u8 D_us_80182BF4[];
+extern EInit g_EInitImpDeathParticle;
+extern u8 g_ImpDeathParticleAnim[];
 
 void EntityImpDeathParticle(Entity* self) {
     s32 speed;
@@ -225,7 +225,7 @@ void EntityImpDeathParticle(Entity* self) {
 
     switch (self->step) {
     case 0:
-        InitializeEntity(D_us_80180C50);
+        InitializeEntity(g_EInitImpDeathParticle);
         self->facingLeft = Random() & 1;
         speed = (Random() & 0x1F) + 0x10;
         angle = Random() * 6 + 0x900;
@@ -237,7 +237,7 @@ void EntityImpDeathParticle(Entity* self) {
         self->rotate = angle;
 
     case 1:
-        AnimateEntity(D_us_80182BF4, self);
+        AnimateEntity(g_ImpDeathParticleAnim, self);
         MoveEntity();
         self->velocityX -= self->velocityX / 16;
         self->velocityY -= self->velocityY / 16;

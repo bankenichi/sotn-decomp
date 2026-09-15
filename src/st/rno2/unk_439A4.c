@@ -69,7 +69,7 @@ void EntityKarasumanFeather(Entity* self) {
 
 /* Compile-shaping declarations retained from the score-zero
    receipt after destination-scope filtering. */
-extern u8 D_us_80181D8C[16];
+extern AnimationFrame g_KarasumanRavenAbsorbAnim[];
 extern EInit D_us_80180940;
 
 void EntityKarasumanRavenAbsorb(Entity* self) {
@@ -99,7 +99,7 @@ void EntityKarasumanRavenAbsorb(Entity* self) {
 
     case 1:
         MoveEntity();
-        AnimateEntity(D_us_80181D8C, self);
+        AnimateEntity(g_KarasumanRavenAbsorbAnim, self);
         break;
 
     case 4:

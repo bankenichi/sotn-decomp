@@ -11,7 +11,7 @@ INCLUDE_ASM("st/rnz1/nonmatchings/e_cloaked_knight", EntityCloakedKnight);
 
 /* Compile-shaping declarations retained from the score-zero
    receipt after destination-scope filtering. */
-extern AnimateEntityFrame D_us_80181F24[5];
+extern AnimateEntityFrame anim_cloak[5];
 extern EInit g_EInitCloakedknight;
 
 void EntityCloakedKnightCloak(Entity* self) {
@@ -30,7 +30,7 @@ void EntityCloakedKnightCloak(Entity* self) {
 
 
     case 1:
-        AnimateEntity(D_us_80181F24, self);
+        AnimateEntity(anim_cloak, self);
         prev = self - 1;
         self->posX.i.hi = prev->posX.i.hi;
         self->posY.i.hi = prev->posY.i.hi;
@@ -93,7 +93,7 @@ void EntityCloakedKnightAura(Entity* self) {
 
 /* Compile-shaping declarations retained from the score-zero
    receipt after destination-scope filtering. */
-extern EInit D_us_80180BE8;
+extern EInit g_EInitCloakedKnightSword;
 
 void EntityCloakedKnightSword(Entity* self) {
     Entity* entity;
@@ -117,7 +117,7 @@ void EntityCloakedKnightSword(Entity* self) {
 
     switch (self->step) {
     case 0:
-        InitializeEntity(D_us_80180BE8);
+        InitializeEntity(g_EInitCloakedKnightSword);
         self->animCurFrame = 7;
         self->drawFlags = ENTITY_ROTATE;
         if (!self->params) {

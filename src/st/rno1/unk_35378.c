@@ -7,13 +7,13 @@ INCLUDE_ASM("st/rno1/nonmatchings/unk_35378", EntityJackOBones);
 
 /* Compile-shaping declarations retained from the score-zero
    receipt after destination-scope filtering. */
-extern EInit D_us_8018070C;
-extern u16 D_us_80181C74[];
+extern EInit g_EInitJackOBones2;
+extern u16 death_parts_rotspeeds[];
 
 void EntityJackOBonesDeathParts(Entity* self) {
     if (self->step) {
         if (--self->ext.jackoBones.deathPartLife) {
-            self->rotate += D_us_80181C74[self->params];
+            self->rotate += death_parts_rotspeeds[self->params];
             FallEntity();
             MoveEntity();
             return;
@@ -24,7 +24,7 @@ void EntityJackOBonesDeathParts(Entity* self) {
         self->step = 0;
         return;
     }
-    InitializeEntity(D_us_8018070C);
+    InitializeEntity(g_EInitJackOBones2);
     self->animCurFrame = (self->params & 0xFF) + 15;
     if (self->params & 0x100) {
         self->palette += 1;

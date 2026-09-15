@@ -16,6 +16,14 @@ g_EInitFlyingZombieHalf1 = 0x80180964;
 g_EInitGhostDancer = 0x80180988;
 BackgroundBlockInit = 0x801809B0;
 rooms = 0x80182390;
+// Spikes dust animation frames for rno2/e_spikes.c, named after the shared
+// header's static anim_dust. Bytes verified ({2,1}..{4,6}, POSE_END) against
+// src/st/e_spikes.h. Single user.
+anim_dust = 0x80180D30; // size:0x1C
+// Karasuman raven-absorb animation frames for rno2/unk_439A4.c, named after
+// upstream's extern in src/st/rno2/unk_439A4.c. Role verified by identical
+// use (AnimateEntity table) and frame-shaped bytes. Single user.
+g_KarasumanRavenAbsorbAnim = 0x80181D8C; // size:0x10
 ctulhu_shockwave_uvs = 0x801AF800;
 EntityBreakable = 0x801B22E4;
 EntityBreakableDebris = 0x801B2664;

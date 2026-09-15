@@ -8,7 +8,7 @@ INCLUDE_ASM("st/rno4/nonmatchings/e_killer_fish", EntityKillerFish);
 #define BLEND_ADD 32
 #define BLEND_TRANSP 16
 #define ENTITY_OPACITY 8
-extern u8 D_us_8018176C[28];
+extern u8 anim_death_puff[28];
 extern EInit g_EInitParticle;
 extern struct Entity;
 void DestroyEntity(Entity*);
@@ -33,7 +33,7 @@ void EntityKillerFishDeathPuff(Entity* self) {
     }
 
     self->posY.val += self->velocityY;
-    if (!AnimateEntity(D_us_8018176C, self)) {
+    if (!AnimateEntity(anim_death_puff, self)) {
         DestroyEntity(self);
     }
 }

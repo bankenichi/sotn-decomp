@@ -54,8 +54,8 @@ void EntityParanthropusThrownBone(Entity* self) {
 /* Compile-shaping declarations retained from the score-zero
    receipt after destination-scope filtering. */
 extern EInit g_EInitParanthropusBoneHitbox;
-extern Point16 D_us_80181A70[33];
-extern Size16 D_us_80181AF4[33];
+extern Point16 bone_hitbox_offsets[33];
+extern Size16 bone_hitbox_dimensions[33];
 
 void EntityParanthropusBoneHitbox(Entity* self) {
     Entity* paranthropus;
@@ -72,12 +72,12 @@ void EntityParanthropusBoneHitbox(Entity* self) {
         paranthropusAnimCurFrame = 0;
     }
 
-    self->hitboxOffX = D_us_80181A70[paranthropusAnimCurFrame].x;
-    self->hitboxOffY = D_us_80181A70[paranthropusAnimCurFrame].y;
+    self->hitboxOffX = bone_hitbox_offsets[paranthropusAnimCurFrame].x;
+    self->hitboxOffY = bone_hitbox_offsets[paranthropusAnimCurFrame].y;
     self->hitboxWidth =
-        D_us_80181AF4[paranthropusAnimCurFrame].width / 2;
+        bone_hitbox_dimensions[paranthropusAnimCurFrame].width / 2;
     self->hitboxHeight =
-        D_us_80181AF4[paranthropusAnimCurFrame].height / 2;
+        bone_hitbox_dimensions[paranthropusAnimCurFrame].height / 2;
     self->facingLeft = paranthropus->facingLeft;
     self->hitboxState = paranthropus->hitboxState;
     self->posX.i.hi = paranthropus->posX.i.hi;
@@ -94,7 +94,7 @@ void EntityParanthropusBoneHitbox(Entity* self) {
    receipt after destination-scope filtering. */
 #define DEATH 7
 extern EInit g_EInitInteractable;
-extern Point16 D_us_80181B78[34];
+extern Point16 skull_positions[34];
 
 void EntityParanthropusSkull(Entity* self) {
     u8 i;
@@ -114,11 +114,11 @@ void EntityParanthropusSkull(Entity* self) {
     }
 
     if (entity->facingLeft) {
-        self->posX.i.hi = (self - 2)->posX.i.hi - D_us_80181B78[i].x;
+        self->posX.i.hi = (self - 2)->posX.i.hi - skull_positions[i].x;
     } else {
-        self->posX.i.hi = (self - 2)->posX.i.hi + D_us_80181B78[i].x;
+        self->posX.i.hi = (self - 2)->posX.i.hi + skull_positions[i].x;
     }
-    self->posY.i.hi = (self - 2)->posY.i.hi + D_us_80181B78[i].y;
+    self->posY.i.hi = (self - 2)->posY.i.hi + skull_positions[i].y;
 
 
 #ifdef VERSION_US

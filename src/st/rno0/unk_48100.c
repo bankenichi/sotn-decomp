@@ -25,14 +25,14 @@ static void TryThrow(void) {
 
 INCLUDE_ASM("st/rno0/nonmatchings/unk_48100", EntityJackOBones);
 
-extern EInit D_us_80180B40;
+extern EInit g_EInitJackOBones2;
 
-extern u16 D_us_80181F00[];
+extern u16 death_parts_rotspeeds[];
 
 void EntityJackOBonesDeathParts(Entity* self) {
     if (self->step) {
         if (--self->ext.jackoBones.deathPartLife) {
-            self->rotate += D_us_80181F00[self->params];
+            self->rotate += death_parts_rotspeeds[self->params];
             FallEntity();
             MoveEntity();
             return;
@@ -43,7 +43,7 @@ void EntityJackOBonesDeathParts(Entity* self) {
         self->step = 0;
         return;
     }
-    InitializeEntity(D_us_80180B40);
+    InitializeEntity(g_EInitJackOBones2);
     self->animCurFrame = (self->params & 0xFF) + 15;
     if (self->params & 0x100) {
         self->palette += 1;
