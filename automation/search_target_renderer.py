@@ -1477,8 +1477,16 @@ def loop_regions(instructions) -> tuple[list, list]:
             if slot_dest is not None and slot_dest in top_reads:
                 refused.append("delay-hazard")
                 continue
-        if any(instructions[k].mnemonic in _CONTROL_OPS for k in range(start, branch)):
-            refused.append("inner-control")
+        inner = next((k for k in range(start, branch) if instructions[k].mnemonic in _CONTROL_OPS), None)
+        if inner is not None:
+            inner_item = instructions[inner]
+            inner_target = _branch_target_index(instructions, labels, inner)
+            if inner_item.mnemonic in {"jal", "jalr"}:
+                refused.append("call-in-loop")
+            elif inner_target is not None and inner_target < inner:
+                refused.append("nested-loop")
+            else:
+                refused.append("branch-in-loop")
             continue
         if any(instructions[k].mnemonic in _LOOP_BARRED_OPS for k in range(start, slot + 1)):
             refused.append("barred-op")

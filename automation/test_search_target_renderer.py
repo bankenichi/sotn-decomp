@@ -1282,7 +1282,7 @@ class LoopRegionTests(unittest.TestCase):
         inner = (".Ltop:\naddiu $v0, $v0, 1\n"
                  "beq $v0, $a1, .Lskip\nnop\n.Lskip:\n"
                  "bne $v0, $a0, .Ltop\nnop\njr $ra\nnop\n")
-        self.assertEqual(self._regions(inner)[1], ["inner-control"])
+        self.assertEqual(self._regions(inner)[1], ["branch-in-loop"])
         entry = ("beq $a0, $zero, .Ltop\nnop\n"
                  "addiu $v0, $zero, 0\n.Ltop:\naddiu $v0, $v0, 1\n"
                  "bne $v0, $a0, .Ltop\nnop\njr $ra\nnop\n")
@@ -1307,7 +1307,12 @@ class LoopRegionTests(unittest.TestCase):
         self.assertEqual(self._regions(mult)[1], ["barred-op"])
         call = (".Ltop:\njal TestCallee\nnop\naddiu $v0, $v0, 1\n"
                 "bne $v0, $a0, .Ltop\nnop\njr $ra\nnop\n")
-        self.assertEqual(self._regions(call)[1], ["inner-control"])
+        self.assertEqual(self._regions(call)[1], ["call-in-loop"])
+        nested_loop = (".Louter:\nnop\n.Linner:\naddiu $v0, $v0, 1\n"
+                       "bne $v0, $a0, .Linner\nnop\n"
+                       "addiu $v1, $v1, 1\n"
+                       "bne $v1, $a1, .Louter\nnop\njr $ra\nnop\n")
+        self.assertEqual(self._regions(nested_loop)[1], ["nested-loop"])
         slot_branch = (".Ltop:\naddiu $v0, $v0, 1\n"
                        "bne $v0, $a0, .Ltop\nbeq $zero, $zero, .Lfar\n"
                        "nop\n.Lfar:\njr $ra\nnop\n")
