@@ -8,7 +8,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from automation.measure_data_effect import classify_file, derive_record, instruction_count, is_pool_member, resolve_limits, size_bucket
+from automation.measure_data_effect import classify_file, derive_record, has_loop_shape, instruction_count, is_pool_member, resolve_limits, size_bucket
 
 
 class RemeasureHelperTests(unittest.TestCase):
@@ -79,6 +79,18 @@ class RemeasureHelperTests(unittest.TestCase):
         self.assertEqual(size_bucket(256), "129-256")
         self.assertEqual(size_bucket(512), "257-512")
         self.assertEqual(size_bucket(513), ">512")
+
+    def test_has_loop_shape_mirrors_renderer_rule(self):
+        straight = "addu $v0, $a0, $a1\njr $ra\nnop\n"
+        self.assertFalse(has_loop_shape(straight))
+        forward = ("beq $v0, $zero, .Lend\nnop\n"
+                   "addiu $v0, $v0, 1\n.Lend:\njr $ra\nnop\n")
+        self.assertFalse(has_loop_shape(forward))
+        loop = ("addiu $v0, $zero, 0\n.Ltop:\naddiu $v0, $v0, 1\n"
+                "bne $v0, $a0, .Ltop\nnop\njr $ra\nnop\n")
+        self.assertTrue(has_loop_shape(loop))
+        self.assertFalse(has_loop_shape(""))
+        self.assertFalse(has_loop_shape(None))
 
 
 if __name__ == "__main__":

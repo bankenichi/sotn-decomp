@@ -134,6 +134,39 @@ def size_bucket(count: int | None) -> str:
     if count <= 512:
         return "257-512"
     return ">512"
+
+
+_LOOP_BRANCHES = {"beq", "bne", "beqz", "bnez", "bltz", "bgez", "bgtz", "blez", "b", "j"}
+
+
+def has_loop_shape(text: str) -> bool:
+    """Whether any branch targets its own or an earlier label.
+
+    Mirrors the renderer refusal rule that rejects `target <= index + 1`:
+    forward branches and calls never count, malformed or unbound targets
+    never count, and unparseable input yields False instead of raising.
+    """
+    from automation.search_target_renderer import _parse_assembly
+    if not isinstance(text, str):
+        return False
+    try:
+        instructions = _parse_assembly(text)
+    except ValueError:
+        return False
+    labels = {}
+    for index, item in enumerate(instructions):
+        if item.label:
+            labels[item.label] = index
+    for index, item in enumerate(instructions):
+        if item.mnemonic not in _LOOP_BRANCHES:
+            continue
+        expected = 3 if item.mnemonic in {"beq", "bne"} else 1 if item.mnemonic in {"b", "j"} else 2
+        args = tuple(part.strip() for part in item.operands.split(",")) if item.operands else ()
+        if len(args) != expected or args[-1] not in labels:
+            continue
+        if labels[args[-1]] <= index + 1:
+            return True
+    return False
 def measure_pool(repo: Path, limit: int | None = None, limits: str = "default") -> dict:
     """Walk nonmatchings assembly and tally the g_api jalr pool.
 
@@ -168,6 +201,8 @@ def measure_pool(repo: Path, limit: int | None = None, limits: str = "default") 
         "errors": {},
         "reloc_histogram": {"g_api": 0, "d_star": 0, "g_star": 0, "linker": 0, "jtbl": 0, "other": 0},
         "size_histogram": {"<=64": 0, "65-128": 0, "129-256": 0, "257-512": 0, ">512": 0, "unparseable": 0},
+        "loop_shape": 0,
+        "loop_histogram": {"<=64": 0, "65-128": 0, "129-256": 0, "257-512": 0, ">512": 0, "unparseable": 0},
     }
     bounds = resolve_limits(limits)
     tally["limits"] = {"name": limits, "max_instructions": bounds.max_instructions if bounds is not None else 64}
@@ -187,6 +222,9 @@ def measure_pool(repo: Path, limit: int | None = None, limits: str = "default") 
         for key in tally["reloc_histogram"]:
             if classify_file(text).get(key):
                 tally["reloc_histogram"][key] += 1
+        if has_loop_shape(text):
+            tally["loop_shape"] += 1
+            tally["loop_histogram"][size_bucket(instruction_count(text))] += 1
         derived = derive_record(rel)
         if derived is None:
             tally["unrendered"] += 1
