@@ -15,13 +15,15 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
 
 _GENERIC_HI = re.compile(r"%hi\s*\(\s*([A-Za-z_][\w$.]*)(?:\s*\+\s*(?:0[xX][0-9a-fA-F]+|[0-9]+))?\s*\)")
 _GENERIC_LO = re.compile(r"%lo\s*\(\s*([A-Za-z_][\w$.]*)(?:\s*\+\s*(?:0[xX][0-9a-fA-F]+|[0-9]+))?\s*\)")
-_JALR = re.compile(r"(?m)^\s*jalr\b")
+_JALR = re.compile(r"(?m)^\s*(?:/\*.*?\*/\s*)?jalr\b")
 
 
 def _known_names(text: str) -> set[str]:

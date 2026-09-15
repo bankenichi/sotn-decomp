@@ -20,6 +20,12 @@ class RemeasureHelperTests(unittest.TestCase):
         self.assertFalse(is_pool_member(good.replace("jalr $v0", "jal $v0")))
         self.assertFalse(is_pool_member("lui $v0, %hi(g_api_OnlyHi)\njalr $v0\nnop\n"))
         self.assertFalse(is_pool_member(""))
+        splat = ("    /* 3A2B8 801BA2B8 09F84000 */  lui $v0, %hi(g_api_Test)\n"
+                 "    /* 3A2BC 801BA2BC 00000000 */  lw $v0, %lo(g_api_Test)($v0)\n"
+                 "    /* 3A2C0 801BA2C0 00000000 */  nop\n"
+                 "    /* 3A2C4 801BA2C4 09F84000 */  jalr $v0\n"
+                 "    /* 3A2C8 801BA2C8 00000000 */  nop\n")
+        self.assertTrue(is_pool_member(splat))
         self.assertFalse(is_pool_member(None))
 
     def test_classify_sorts_names_into_harness_classes(self):
