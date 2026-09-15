@@ -167,6 +167,44 @@ def has_loop_shape(text: str) -> bool:
         if labels[args[-1]] <= index + 1:
             return True
     return False
+
+
+def loop_latches(text: str) -> dict:
+    """Classify a file's backward branches by latch form.
+
+    Returns a mapping with the total count plus whether any latch is
+    conditional (do-while candidate) or unconditional (while-latch
+    candidate). Malformed, unbound, and forward targets never count, and
+    unparseable input yields zeros instead of raising.
+    """
+    from automation.search_target_renderer import _parse_assembly
+    empty = {"total": 0, "conditional": False, "unconditional": False}
+    if not isinstance(text, str):
+        return dict(empty)
+    try:
+        instructions = _parse_assembly(text)
+    except ValueError:
+        return dict(empty)
+    labels = {}
+    for index, item in enumerate(instructions):
+        if item.label:
+            labels[item.label] = index
+    found = dict(empty)
+    for index, item in enumerate(instructions):
+        if item.mnemonic not in _LOOP_BRANCHES:
+            continue
+        expected = 3 if item.mnemonic in {"beq", "bne"} else 1 if item.mnemonic in {"b", "j"} else 2
+        args = tuple(part.strip() for part in item.operands.split(",")) if item.operands else ()
+        if len(args) != expected or args[-1] not in labels:
+            continue
+        if labels[args[-1]] > index + 1:
+            continue
+        found["total"] += 1
+        if item.mnemonic in {"b", "j"}:
+            found["unconditional"] = True
+        else:
+            found["conditional"] = True
+    return found
 def measure_pool(repo: Path, limit: int | None = None, limits: str = "default") -> dict:
     """Walk nonmatchings assembly and tally the g_api jalr pool.
 
@@ -202,6 +240,9 @@ def measure_pool(repo: Path, limit: int | None = None, limits: str = "default") 
         "reloc_histogram": {"g_api": 0, "d_star": 0, "g_star": 0, "linker": 0, "jtbl": 0, "other": 0},
         "size_histogram": {"<=64": 0, "65-128": 0, "129-256": 0, "257-512": 0, ">512": 0, "unparseable": 0},
         "loop_shape": 0,
+        "single_cond_latch": 0,
+        "single_uncond_latch": 0,
+        "multi_latch": 0,
         "loop_histogram": {"<=64": 0, "65-128": 0, "129-256": 0, "257-512": 0, ">512": 0, "unparseable": 0},
     }
     bounds = resolve_limits(limits)
@@ -225,6 +266,13 @@ def measure_pool(repo: Path, limit: int | None = None, limits: str = "default") 
         if has_loop_shape(text):
             tally["loop_shape"] += 1
             tally["loop_histogram"][size_bucket(instruction_count(text))] += 1
+            latches = loop_latches(text)
+            if latches["total"] > 1:
+                tally["multi_latch"] += 1
+            elif latches["conditional"]:
+                tally["single_cond_latch"] += 1
+            elif latches["unconditional"]:
+                tally["single_uncond_latch"] += 1
         derived = derive_record(rel)
         if derived is None:
             tally["unrendered"] += 1

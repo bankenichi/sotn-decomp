@@ -8,7 +8,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from automation.measure_data_effect import classify_file, derive_record, has_loop_shape, instruction_count, is_pool_member, resolve_limits, size_bucket
+from automation.measure_data_effect import classify_file, derive_record, has_loop_shape, instruction_count, is_pool_member, loop_latches, resolve_limits, size_bucket
 
 
 class RemeasureHelperTests(unittest.TestCase):
@@ -91,6 +91,25 @@ class RemeasureHelperTests(unittest.TestCase):
         self.assertTrue(has_loop_shape(loop))
         self.assertFalse(has_loop_shape(""))
         self.assertFalse(has_loop_shape(None))
+
+    def test_loop_latches_classify_latch_forms(self):
+        do_while = ("addiu $v0, $zero, 0\n.Ltop:\naddiu $v0, $v0, 1\n"
+                    "bne $v0, $a0, .Ltop\nnop\njr $ra\nnop\n")
+        self.assertEqual(loop_latches(do_while),
+                         {"total": 1, "conditional": True, "unconditional": False})
+        while_latch = (".Ltop:\naddiu $v0, $v0, 1\n"
+                       "beq $v0, $a0, .Lexit\nnop\n"
+                       "b .Ltop\nnop\n.Lexit:\njr $ra\nnop\n")
+        self.assertEqual(loop_latches(while_latch),
+                         {"total": 1, "conditional": False, "unconditional": True})
+        nested = (".Louter:\n.Linner:\naddiu $v0, $v0, 1\n"
+                   "bne $v0, $a0, .Linner\nnop\n"
+                   "addiu $v1, $v1, 1\n"
+                   "bne $v1, $a1, .Louter\nnop\njr $ra\nnop\n")
+        self.assertEqual(loop_latches(nested)["total"], 2)
+        self.assertFalse(has_loop_shape("addu $v0, $a0, $a1\njr $ra\nnop\n"))
+        self.assertEqual(loop_latches(""), {"total": 0, "conditional": False, "unconditional": False})
+        self.assertEqual(loop_latches(None), {"total": 0, "conditional": False, "unconditional": False})
 
 
 if __name__ == "__main__":
