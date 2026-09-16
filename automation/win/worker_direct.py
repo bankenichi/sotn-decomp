@@ -3895,6 +3895,11 @@ def ext_variants_for(function: str, blob: str, limit: int = 4) -> str:
     Selection is by NAME AFFINITY and that is a real weakness: a function whose
     name shares nothing with its variant gets no list at all, and then the
     prompt asks for a name it never supplied.
+
+    Offset need backfills affinity misses below: variants covering ext
+    offsets the draft actually touches through raw Entity-base views are
+    appended after the affinity picks, using the same index the quality
+    gate resolves names from.
     """
     global _EXT_INDEX_CACHE
     if _EXT_INDEX_CACHE is None:
@@ -3927,11 +3932,51 @@ def ext_variants_for(function: str, blob: str, limit: int = 4) -> str:
             continue
         if vname.lower() in hay:
             scored.append((len(vname), vname, meta))
-    if not scored:
+    # Offset-driven backfill for the affinity miss above. The draft's raw
+    # Entity-base accesses name the exact ext offsets the model must emit
+    # (verified 2026-09-16: 13 raw casts through `part` at 0x9E/0xA0 while
+    # GH_Props, which names both, was never listed). Resolve each demanded
+    # offset through the same index the quality gate uses and append those
+    # variants after the affinity picks, deduplicated. Only NAMED fields
+    # select: unkNN/pad offsets yield nothing, so placeholder-only drafts
+    # still list nothing and the terminal unk guidance keeps applying.
+    # Affinity output is unchanged when it already covers the need.
+    have = {vname for _, vname, _ in scored[:limit]}
+    extra = []
+    try:
+        sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+        import ext_demand
+        seen = set()
+        for access in ext_demand.raw_entity_accesses(blob or ""):
+            off = access["offset"]
+            if off in seen:
+                continue
+            seen.add(off)
+            for vn, mm in variants.items():
+                if len(vn) < 4 or vn in have:
+                    continue
+                if mm.get("type") == "ET_Placeholder":
+                    continue
+                for f in mm.get("fields", []):
+                    try:
+                        foff = int(f.get("offset") or "", 16)
+                    except (TypeError, ValueError):
+                        continue
+                    nm = f.get("name") or ""
+                    if foff == off and nm and not nm.startswith("pad_") \
+                            and not re.fullmatch(r"unk[0-9A-Fa-f]+", nm):
+                        extra.append((len(vn), vn, mm))
+                        have.add(vn)
+                        break
+            if len(extra) >= 2:
+                break
+    except Exception:
+        extra = []
+    if not scored and not extra:
         return ""
     scored.sort(reverse=True)
     out = ["\n=== EXT VARIANTS (the real field names for this entity) ==="]
-    for _, vname, meta in scored[:limit]:
+    for _, vname, meta in scored[:limit] + extra[:2]:
         # WITH OFFSETS. This listed bare names until 2026-08-09, so a worker
         # asked for "the named field at ext offset 0xC" had no way to find it:
         # observed reasoning, "those are listed as field names but without

@@ -313,6 +313,17 @@ sw $v1, 0x24($sp)
           "0xC' is a lookup rather than a puzzle")
     check("pad_" not in ev, "anonymous padding is not offered as a field")
 
+    print("\noffset need backfills name-affinity misses")
+    need = ("void f(Entity* e){\n"
+            "    *(u16*)((u8*)e + 0x9E) = 1;\n"
+            "    *(u16*)((u8*)e + 0xA0) = 2;\n}")
+    ev_need = wd.ext_variants_for("func_us_80123456", need)
+    check(bool(ev_need),
+          "variants covering demanded ext offsets are listed even though "
+          "no variant name appears in the function or draft")
+    check("ET_Placeholder" not in ev_need and "ILLEGAL" not in ev_need,
+          "without ever offering the placeholder")
+
     print("\nwith no variant list, the instruction is terminal, not a hunt")
     no_ev = wd.resolve_unk_offsets(out3, have_variants=False)
     check("NO variant list was supplied" in no_ev,
