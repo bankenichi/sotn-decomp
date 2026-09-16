@@ -68,9 +68,9 @@ every one of them already had a generator that nobody was running.
 
 | | |
 |---|---|
-| Build oracle | **113 / 113** overlay SHA-1s in `config/check.us.sha` |
+| Build oracle | **112 / 113** overlay SHA-1s in `config/check.us.sha` |
 | Code decompiled | **94.1%** (8181 / 8730 functions) across 62 built binaries |
-| Queue | 983 records: **434 matched**, 365 todo, 137 escalated, 41 deferred, 6 near |
+| Queue | 983 records: **434 matched**, 363 todo, 139 escalated, 41 deferred, 6 near |
 | `INCLUDE_ASM` stubs left in `src/` | 549 (287 `boss`, 260 `st`, 2 `main`) |
 | Automation | 186 Python modules, 75 test suites plus 37 modules with their own `--self-test`, 99 connector tools, 118 diagnostics |
 
@@ -91,7 +91,7 @@ The `matched` count is *our* work, across 18 overlays. The stub count is `us` on
 | `BOSS/BO3` | 45 | 45 | 0 | 0 | 0 | 15 |
 | `BOSS/BO5` | 18 | 16 | 0 | 2 | 0 | 5 |
 | `BOSS/BO6` | 43 | 0 | 2 | 34 | 7 | 80 |
-| `BOSS/BO7` | 13 | 13 | 0 | 0 | 0 | 8 |
+| `BOSS/BO7` | 13 | 12 | 0 | 1 | 0 | 8 |
 | `BOSS/RBO1` | 14 | 14 | 0 | 0 | 0 | 6 |
 | `BOSS/RBO2` | 19 | 17 | 0 | 2 | 0 | 9 |
 | `BOSS/RBO4` | 7 | 7 | 0 | 0 | 0 | 0 |
@@ -106,7 +106,7 @@ The `matched` count is *our* work, across 18 overlays. The stub count is `us` on
 | `ST/RNO0` | 31 | 1 | 2 | 18 | 10 | 188 |
 | `ST/RNO1` | 26 | 26 | 0 | 0 | 0 | 16 |
 | `ST/RNO2` | 32 | 31 | 0 | 1 | 0 | 16 |
-| `ST/RNO4` | 62 | 62 | 0 | 0 | 0 | 22 |
+| `ST/RNO4` | 62 | 61 | 0 | 1 | 0 | 22 |
 | `ST/RNZ1` | 45 | 43 | 0 | 2 | 0 | 20 |
 | `ST/SEL` | 1 | 0 | 0 | 1 | 0 | 0 |
 
@@ -281,7 +281,7 @@ The 22 that are not:
 | `ST/RCHI` | 88.0% | 97/107 | |
 | `BOSS/RBO1` | 86.8% | 97/111 | |
 | `ST/RLIB` | 85.7% | 94/114 | |
-| `BOSS/BO7` | 84.7% | 92/105 | |
+| `BOSS/BO7` | 85.6% | 92/105 | |
 | `ST/RNO0` | 83.6% | 160/191 | |
 | `ST/RNO1` | 82.9% | 103/129 | |
 | `BOSS/BO3` | 81.6% | 100/145 | |
