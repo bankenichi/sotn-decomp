@@ -190,6 +190,58 @@ class CompileDriverTests(unittest.TestCase):
         self.assertEqual(facts["linker_declarations"]["RIC_step"]["status"], "declared")
         missing = renderer_declarations({"return_type": "void", "parameters": []}, assembly, b"int x;\n")
         self.assertEqual(missing["linker_declarations"]["RIC_step"]["status"], "declaration_missing")
+    def test_sibling_global_linker_callee_fallback_and_consensus(self):
+        from automation.search_source_context import renderer_declarations
+        g_asm = (b"lui $a1, %hi(g_Things)\naddiu $a1, $a1, %lo(g_Things)\n"
+                 b"jr $ra\nnop\n")
+        ctx = b"typedef struct { int x; } Thing;\n"
+        sib = b"extern Thing g_Things[8];\n"
+        facts = renderer_declarations({"return_type": "void", "parameters": []},
+                                      g_asm, ctx, [sib])
+        self.assertEqual(facts["global_declarations"]["g_Things"]["status"], "declared")
+        self.assertEqual(facts["global_declarations"]["g_Things"]["type"], "Thing")
+        bad = renderer_declarations({"return_type": "void", "parameters": []}, g_asm, ctx,
+                                    [sib, b"extern int g_Things;\n"])
+        self.assertEqual(bad["global_declarations"]["g_Things"]["status"],
+                         "ambiguous_declaration")
+        static = renderer_declarations({"return_type": "void", "parameters": []}, g_asm, ctx,
+                                       [b"static Thing g_Things[8];\n"])
+        self.assertEqual(static["global_declarations"]["g_Things"]["status"],
+                         "unsupported_declaration")
+        l_asm = (b"lui $v0, %hi(RIC_step)\nlhu $v0, %lo(RIC_step)($v0)\n"
+                 b"jr $ra\nnop\n")
+        l_facts = renderer_declarations({"return_type": "void", "parameters": []}, l_asm,
+                                        b"int x;\n", [b"extern unsigned short RIC_step;\n"])
+        self.assertEqual(l_facts["linker_declarations"]["RIC_step"]["status"], "declared")
+        c_asm = b"jal helper\nnop\njr $ra\nnop\n"
+        c_facts = renderer_declarations({"return_type": "void", "parameters": []}, c_asm,
+                                        b"int x;\n", [b"int helper(int v);\n"])
+        self.assertEqual(c_facts["call_declarations"]["helper"]["status"], "declared")
+        self.assertEqual(c_facts["call_declarations"]["helper"]["parameters"],
+                         [{"type": "int", "name": "v"}])
+
+    def test_header_global_callee_fallback_and_poison(self):
+        from automation.search_source_context import renderer_declarations
+        g_asm = (b"lui $a1, %hi(g_Things)\naddiu $a1, $a1, %lo(g_Things)\n"
+                 b"jr $ra\nnop\n")
+        ctx = b"typedef struct { int x; } Thing;\n"
+        facts = renderer_declarations({"return_type": "void", "parameters": []},
+                                      g_asm, ctx, [], [b"extern Thing g_Things[8];\n"])
+        self.assertEqual(facts["global_declarations"]["g_Things"]["status"], "declared")
+        split = renderer_declarations({"return_type": "void", "parameters": []}, g_asm, ctx,
+                                      [b"extern int g_Things;\n"],
+                                      [b"extern Thing g_Things[8];\n"])
+        self.assertEqual(split["global_declarations"]["g_Things"]["status"],
+                         "ambiguous_declaration")
+        static = renderer_declarations({"return_type": "void", "parameters": []}, g_asm, ctx,
+                                       [], [b"static Thing g_Things[8];\n"])
+        self.assertEqual(static["global_declarations"]["g_Things"]["status"],
+                         "unsupported_declaration")
+        c_asm = b"jal helper\nnop\njr $ra\nnop\n"
+        c_facts = renderer_declarations({"return_type": "void", "parameters": []}, c_asm,
+                                        b"int x;\n", [], [b"void helper(int);\n"])
+        self.assertEqual(c_facts["call_declarations"]["helper"]["status"], "declared")
+
     def test_api_member_projection_exact_and_refusals(self):
         from automation.search_source_context import _api_member_names, renderer_declarations
         assembly = (b"lui $v0, %hi(g_api_AllocPrimitives)\n"

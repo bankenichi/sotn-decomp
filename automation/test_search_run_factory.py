@@ -1431,6 +1431,92 @@ class SiblingCaptureTests(unittest.TestCase):
                          {"target-context-input", "target-context",
                           "target-context-sibling-input", "target-context-sibling"})
 
+    def test_declared_function_gathers_data_sibling_scopes(self):
+        (self.repo / "src" / "ovl" / "tu.c").write_text("void wanted(void);\n")
+        (self.repo / "src" / "ovl" / "data.c").write_text("extern int D_needed[4];\n")
+        (self.repo / "src" / "ovl" / "quiet.c").write_text("int quiet(void) { return 0; }\n")
+        (self.repo / "asm" / "us" / "ovl" / "tu").mkdir(parents=True)
+        (self.repo / "asm" / "us" / "ovl" / "tu" / "wanted.s").write_text(
+            "lui $a0, %hi(D_needed)\naddiu $a0, $a0, %lo(D_needed)\njr $ra\nnop\n")
+        declarations, artifacts = self._capture("us:OVL:wanted", "asm/us/ovl/tu/wanted.s")
+        self.assertEqual(declarations["context_evidence"]["status"], "declared")
+        siblings = declarations["context_evidence"]["siblings"]
+        self.assertEqual([entry["path"] for entry in siblings], ["src/ovl/data.c"])
+        self.assertEqual({category for category, _, _ in artifacts},
+                         {"target-context-input", "target-context",
+                          "target-context-sibling-input", "target-context-sibling"})
+
+    def test_combine_data_scopes_consensus(self):
+        from automation.search_source_context import _combine_data_scopes
+        own = ({"type": "int", "dims": "[4]"}, "declared")
+        self.assertEqual(_combine_data_scopes(own, []), own)
+        self.assertEqual(_combine_data_scopes(({}, "unsupported_declaration"), []),
+                         ({}, "unsupported_declaration"))
+        agreed = [({"type": "int", "dims": "[4]"}, "declared"),
+                  ({"type": "int", "dims": "[4]"}, "declared")]
+        self.assertEqual(_combine_data_scopes(({}, "declaration_missing"), agreed),
+                         ({"type": "int", "dims": "[4]"}, "declared"))
+        split = [({"type": "int", "dims": "[4]"}, "declared"),
+                 ({"type": "short", "dims": "[4]"}, "declared")]
+        self.assertEqual(_combine_data_scopes(({}, "declaration_missing"), split),
+                         ({}, "ambiguous_declaration"))
+        static = [({"type": "int", "dims": "[4]", "static": True}, "declared")]
+        self.assertEqual(_combine_data_scopes(({}, "declaration_missing"), static),
+                         ({}, "unsupported_declaration"))
+        self.assertEqual(_combine_data_scopes(({}, "declaration_missing"), []),
+                         ({}, "declaration_missing"))
+
+    def test_undeclared_function_declares_from_header_scope(self):
+        (self.repo / "src" / "ovl" / "tu.c").write_text("int tu_owner(void) { return 1; }\n")
+        (self.repo / "src" / "ovl" / "api.h").write_text("void wanted(int x);\n")
+        declarations, artifacts = self._capture("us:OVL:wanted", "asm/us/ovl/tu/wanted.s")
+        self.assertEqual(declarations["return_type"], "void")
+        self.assertEqual(declarations["parameters"], [{"type": "int", "name": "x"}])
+        headers = declarations["context_evidence"]["header_siblings"]
+        self.assertEqual([entry["path"] for entry in headers], ["src/ovl/api.h"])
+        self.assertEqual({category for category, _, _ in artifacts},
+                         {"target-context-input", "target-context",
+                          "target-context-sibling-header"})
+
+    def test_static_header_body_refuses(self):
+        (self.repo / "src" / "ovl" / "tu.c").write_text("int tu_owner(void) { return 1; }\n")
+        (self.repo / "src" / "ovl" / "impl.h").write_text("static void wanted(int x) { (void)x; }\n")
+        declarations, _ = self._capture("us:OVL:wanted", "asm/us/ovl/tu/wanted.s")
+        self.assertEqual(declarations["context_evidence"]["status"], "unsupported_declaration")
+
+    def test_declared_function_gathers_header_data_scopes(self):
+        (self.repo / "src" / "ovl" / "tu.c").write_text("void wanted(void);\n")
+        (self.repo / "src" / "ovl" / "data.h").write_text("extern int D_needed[4];\n")
+        (self.repo / "asm" / "us" / "ovl" / "tu").mkdir(parents=True)
+        (self.repo / "asm" / "us" / "ovl" / "tu" / "wanted.s").write_text(
+            "lui $a0, %hi(D_needed)\naddiu $a0, $a0, %lo(D_needed)\njr $ra\nnop\n")
+        declarations, _ = self._capture("us:OVL:wanted", "asm/us/ovl/tu/wanted.s")
+        self.assertEqual(declarations["context_evidence"]["status"], "declared")
+        headers = declarations["context_evidence"]["header_siblings"]
+        self.assertEqual([entry["path"] for entry in headers], ["src/ovl/data.h"])
+
+    def test_header_evidence_replays_and_tamper_refuses(self):
+        from automation.compiler_corpus import pipeline_identity
+        from automation.search_source_context import verify_target_context
+        (self.repo / "src" / "ovl" / "tu.c").write_text("int tu_owner(void) { return 1; }\n")
+        (self.repo / "src" / "ovl" / "api.h").write_text("void wanted(int x);\n")
+        declarations, artifacts = self._capture("us:OVL:wanted", "asm/us/ovl/tu/wanted.s")
+        store = {}
+        for _, ref, data in artifacts:
+            store[ref.path] = data
+        class StubArchive:
+            def verify(self, ref):
+                return store[ref.path]
+        identity = pipeline_identity().identity
+        verify_target_context(dict(declarations), StubArchive(), "us:OVL:wanted",
+                              identity, "asm/us/ovl/tu/wanted.s")
+        for key in list(store):
+            if key.startswith("artifacts/target-context-sibling-header/"):
+                store[key] = b"void wanted(signed long q);\n"
+        with self.assertRaises(ValueError):
+            verify_target_context(dict(declarations), StubArchive(), "us:OVL:wanted",
+                                  identity, "asm/us/ovl/tu/wanted.s")
+
     def test_sibling_ambiguity_and_missing(self):
         from automation.search_source_context import _combine_function_scopes
         (self.repo / "src" / "ovl" / "tu.c").write_text("int tu_owner(void) { return 1; }\n")

@@ -327,6 +327,32 @@ def _combine_function_scopes(own, siblings):
     return declared[0], "declared"
 
 
+def _combine_data_scopes(own, siblings):
+    """Combine owning-TU data facts with deterministic sibling results.
+
+    Mirrors _combine_function_scopes for data, global and linker facts:
+    the owning scope speaks first, a static sibling definition poisons,
+    any unsupported shape poisons, and declared siblings must agree on one
+    (type, dims) signature. First-wins by sort order alone could silently
+    pick one of two conflicting declarations.
+    """
+    if own[1] == "declared":
+        return own
+    if own[1] != "declaration_missing":
+        return {}, own[1]
+    if any(facts.get("static") for facts, status in siblings if status == "declared"):
+        return {}, "unsupported_declaration"
+    if any(status == "unsupported_declaration" for _, status in siblings):
+        return {}, "unsupported_declaration"
+    declared = [facts for facts, status in siblings if status == "declared"]
+    if not declared:
+        return {}, "declaration_missing"
+    signatures = {(d["type"], d["dims"]) for d in declared}
+    if len(signatures) != 1:
+        return {}, "ambiguous_declaration"
+    return declared[0], "declared"
+
+
 def preprocess_target_context(repo: Path, source: bytes, directory: Path, expected_identity: str, config_path: Path) -> bytes:
     from .compiler_corpus import _pipeline, _run_stage, CompilerCorpusError
     import tempfile
@@ -337,6 +363,62 @@ def preprocess_target_context(repo: Path, source: bytes, directory: Path, expect
     with tempfile.TemporaryDirectory(prefix="us-target-context-") as temporary:
         return _run_stage((*pipeline.stages[0], "-P", "-DPERMUTER", "-iquote", str(directory)), source,
                           cwd=repo, temporary_root=Path(temporary), label="target-context-preprocessor", source_name="target-context")
+
+
+def _overlay_h_sources(repo, overlay):
+    """Sorted same-overlay headers that may hold a sibling declaration."""
+    root = repo / "src" / overlay
+    if not root.is_dir():
+        return []
+    files = sorted(path.relative_to(repo).as_posix() for path in root.rglob("*.h")
+                   if path.is_file() and not path.is_symlink())
+    if len(files) > _SIBLING_FILE_CAP:
+        raise ValueError("sibling header scope exceeds bound")
+    return files
+
+
+def _has_static_function_definition(text, symbol):
+    """Whether the text defines the symbol as a static function body.
+
+    Headers carry TU-local static helpers that must never be adopted as the
+    record facts; prototypes and non-static bodies stay eligible. Depth walk
+    mirrors the declaration extractors.
+    """
+    tokens = re.compile(r'/\*.*?\*/|//[^\n]*|"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'', re.S)
+    scrubbed = tokens.sub(lambda m: "".join("\n" if ch == "\n" else " " for ch in m[0]), text)
+    pattern = re.compile(r"(?m)(?:^|(?<=[;{}]))[ \t]*static\s+[A-Za-z_][\w \t\n*]*?\b"
+                         + re.escape(symbol) + r"\s*\([^();{}]*\)\s*\{", re.S)
+    cursor, depth = 0, 0
+    for match in pattern.finditer(scrubbed):
+        prefix = scrubbed[cursor:match.start()]
+        depth += prefix.count("{") - prefix.count("}")
+        cursor = match.start()
+        if depth == 0:
+            return True
+    return False
+
+
+def _header_mention_blobs(repo, overlay, symbols, own_rel):
+    """Raw header scopes mentioning any of the symbols, in sorted order.
+
+    Headers are not translation units, so scopes stay raw: prototypes and
+    bodies extract textually and macros refuse safely downstream. Same
+    mention and byte caps as the preprocessed sibling scan.
+    """
+    blobs = []
+    for rel in _overlay_h_sources(repo, overlay):
+        if rel == own_rel:
+            continue
+        raw = (repo / rel).read_bytes()
+        if len(raw) > 8 * 1024 * 1024:
+            raise ValueError("sibling header scope exceeds archive bound")
+        if any(_mentions_symbol(raw, member) for member in symbols):
+            blobs.append((rel, raw))
+    if len(blobs) > _SIBLING_MENTION_CAP:
+        raise ValueError("sibling header mentioners exceed bound")
+    if sum(len(raw) for _, raw in blobs) > _SIBLING_BYTES_CAP:
+        raise ValueError("sibling header scopes exceed archive bound")
+    return blobs
 
 
 def _sibling_scope_blobs(repo, overlay, symbol, own_rel, compiler_identity, config_path, cache):
@@ -379,6 +461,120 @@ def _sibling_scope_blobs(repo, overlay, symbol, own_rel, compiler_identity, conf
     return results, blobs
 
 
+def _missing_member_names(assembly_text, own_text):
+    """Data-family and callee members the owning context does not declare.
+
+    Only declaration_missing members need sibling scopes; unsupported or
+    ambiguous owning shapes are terminal and stay refused without a search.
+    Caps mirror the render-time projection bounds.
+    """
+    from .search_target_renderer import _parse_assembly
+
+    members = (_data_member_names(assembly_text) + _global_member_names(assembly_text)
+               + _linker_member_names(assembly_text))
+    if len(members) > 192:
+        raise ValueError("target member declaration limit exceeded")
+    instructions = _parse_assembly(assembly_text)
+    symbols = sorted({item.operands.strip() for item in instructions
+                      if item.mnemonic == "jal" and re.fullmatch(r"[A-Za-z_]\w*", item.operands.strip())})
+    if len(symbols) > 64:
+        raise ValueError("target call declaration limit exceeded")
+    missing = [member for member in members
+               if target_data_declaration(own_text, member)[1] == "declaration_missing"]
+    missing.extend(symbol for symbol in symbols
+                   if target_declaration(own_text, symbol)[1] == "declaration_missing")
+    return missing
+
+
+def _sibling_data_blobs(repo, overlay, members, own_rel, compiler_identity, config_path, cache):
+    """Preprocessed scopes mentioning data-family or callee members.
+
+    Same overlay scope, mention caps and archive bounds as the function
+    sibling scan, keyed by member mentions instead of the function symbol.
+    Returns [(rel, raw, context)] in sorted path order.
+    """
+    from .search_run_factory import _safe_repo_file
+
+    raws = {}
+    for rel in _overlay_c_sources(repo, overlay):
+        if rel == own_rel:
+            continue
+        raw = (repo / rel).read_bytes()
+        if len(raw) > 8 * 1024 * 1024:
+            raise ValueError("sibling declaration scope exceeds archive bound")
+        if any(_mentions_symbol(raw, member) for member in members):
+            raws[rel] = raw
+    if len(raws) > _SIBLING_MENTION_CAP:
+        raise ValueError("sibling declaration mentioners exceed bound")
+    blobs, total = [], 0
+    for rel in sorted(raws):
+        if rel not in cache:
+            path = _safe_repo_file(repo, rel, "sibling declaration source")
+            context = preprocess_target_context(repo, raws[rel], path.parent,
+                                                compiler_identity, config_path)
+            if len(context) > 8 * 1024 * 1024:
+                raise ValueError("sibling declaration scope exceeds archive bound")
+            cache[rel] = (raws[rel], context)
+        _, context = cache[rel]
+        total += len(context)
+        if total > _SIBLING_BYTES_CAP:
+            raise ValueError("sibling declaration scopes exceed archive bound")
+        blobs.append((rel, cache[rel][0], context))
+    return blobs
+
+
+def _archive_sibling_blobs(blobs, evidence, artifacts):
+    """Archive sibling scopes under the sibling input/preprocessed pair."""
+    from .search_types import ArtifactRef, hash_bytes
+
+    siblings = []
+    for rel, raw_blob, context_blob in blobs:
+        entry = {}
+        for key, category, data in (("input", "target-context-sibling-input", raw_blob),
+                                    ("preprocessed", "target-context-sibling", context_blob)):
+            digest = hash_bytes(data)
+            reference = ArtifactRef(digest, "artifacts/" + category + "/" + digest[7:] + ".c",
+                                    "text/x-c", len(data))
+            entry[key] = reference.to_dict()
+            artifacts.append((category, reference, data))
+        entry["path"] = rel
+        siblings.append(entry)
+    if siblings:
+        evidence["siblings"] = siblings
+
+
+def _archive_header_blobs(blobs, evidence, artifacts):
+    """Archive raw header scopes under the header sibling category."""
+    from .search_types import ArtifactRef, hash_bytes
+
+    headers = []
+    for rel, raw in blobs:
+        digest = hash_bytes(raw)
+        reference = ArtifactRef(digest, "artifacts/target-context-sibling-header/" + digest[7:] + ".h",
+                                "text/x-c", len(raw))
+        headers.append({"path": rel, "input": reference.to_dict()})
+        artifacts.append(("target-context-sibling-header", reference, raw))
+    if headers:
+        evidence["header_siblings"] = headers
+
+
+def _header_function_results(raws, symbol):
+    """Function facts per header scope, refusing static definitions.
+
+    A static header body is TU-local and never adopts as record facts;
+    prototypes and non-static bodies extract exactly like other scopes.
+    """
+    results = []
+    for raw in raws:
+        text = raw.decode("utf-8")
+        facts, status = target_declaration(text, symbol)
+        if status == "declared" and _has_static_function_definition(text, symbol):
+            results.append(({}, "unsupported_declaration"))
+        else:
+            results.append((facts, status))
+    return results
+
+
 def capture_target_context(repo, record_id, assembly_path, compiler_identity, config_path, sibling_cache=None):
     from .search_types import ArtifactRef, hash_bytes
     from .search_run_factory import _safe_repo_file
@@ -412,19 +608,22 @@ def capture_target_context(repo, record_id, assembly_path, compiler_identity, co
     if status != "declared":
         results, blobs = _sibling_scope_blobs(repo, overlay, symbol, relative.as_posix(), compiler_identity, config_path, cache)
         facts, status = _combine_function_scopes((facts, status), results)
-        siblings = []
-        for rel, raw_blob, context_blob in blobs:
-            entry = {}
-            for key, category, data in (("input", "target-context-sibling-input", raw_blob),
-                                        ("preprocessed", "target-context-sibling", context_blob)):
-                digest = hash_bytes(data)
-                reference = ArtifactRef(digest, "artifacts/" + category + "/" + digest[7:] + ".c", "text/x-c", len(data))
-                entry[key] = reference.to_dict()
-                artifacts.append((category, reference, data))
-            entry["path"] = rel
-            siblings.append(entry)
-        if siblings:
-            evidence["siblings"] = siblings
+        _archive_sibling_blobs(blobs, evidence, artifacts)
+        if status == "declaration_missing":
+            header_blobs = _header_mention_blobs(repo, overlay, [symbol], relative.as_posix())
+            facts, status = _combine_function_scopes(
+                (facts, status), _header_function_results([raw for _, raw in header_blobs], symbol))
+            _archive_header_blobs(header_blobs, evidence, artifacts)
+    else:
+        asm_ref = _safe_repo_file(repo, assembly_path, "target context assembly")
+        asm_text = asm_ref.read_bytes().decode("utf-8")
+        missing = _missing_member_names(asm_text, context.decode("utf-8"))
+        if missing:
+            blobs = _sibling_data_blobs(repo, overlay, missing, relative.as_posix(),
+                                        compiler_identity, config_path, cache)
+            _archive_sibling_blobs(blobs, evidence, artifacts)
+            header_blobs = _header_mention_blobs(repo, overlay, missing, relative.as_posix())
+            _archive_header_blobs(header_blobs, evidence, artifacts)
     evidence["status"] = status
     return {**facts, "context_evidence": evidence}, tuple(artifacts)
 
@@ -442,13 +641,18 @@ def verify_target_context(declarations, archive, record_id, compiler_identity, a
     siblings = evidence.get("siblings", ())
     if siblings is None:
         siblings = ()
+    headers = evidence.get("header_siblings", ())
+    if headers is None:
+        headers = ()
     missing = evidence.get("status") == "source_missing"
     expected = base if missing else base | {"input", "preprocessed"}
     if siblings:
         expected = expected | {"siblings"}
+    if headers:
+        expected = expected | {"header_siblings"}
     if set(evidence) != expected:
         raise ValueError("target context fields differ")
-    if missing and siblings:
+    if missing and (siblings or headers):
         raise ValueError("missing target context carries sibling scopes")
     if (evidence["protocol"] != TARGET_CONTEXT_PROTOCOL or evidence["record_id"] != record_id
             or evidence["compiler_identity"] != compiler_identity or not record_id.startswith("us:")):
@@ -491,6 +695,24 @@ def verify_target_context(declarations, archive, record_id, compiler_identity, a
                 raise ValueError("sibling declaration scope artifact is not canonical")
             scope_values[key] = archive.verify(ref)
         sibling_results.append(target_declaration(scope_values["preprocessed"].decode("utf-8"), symbol))
+    header_blobs = []
+    for entry in headers:
+        if not isinstance(entry, Mapping):
+            raise ValueError("header declaration scope is not a mapping")
+        if set(entry) != {"path", "input"}:
+            raise ValueError("header declaration scope fields differ")
+        header_path = entry["path"]
+        if (not isinstance(header_path, str) or Path(header_path).is_absolute()
+                or ".." in Path(header_path).parts or "\\" in header_path
+                or not header_path.startswith("src/" + overlay + "/")
+                or not header_path.endswith(".h") or header_path == evidence["path"]):
+            raise ValueError("header declaration scope path differs from recipient")
+        ref = ArtifactRef.from_dict(entry["input"])
+        if (ref.path != "artifacts/target-context-sibling-header/" + ref.content_hash[7:] + ".h"
+                or ref.media_type != "text/x-c" or ref.byte_size > 8 * 1024 * 1024):
+            raise ValueError("header declaration scope artifact is not canonical")
+        header_blobs.append((header_path, archive.verify(ref)))
+    sibling_results.extend(_header_function_results([raw for _, raw in header_blobs], symbol))
     facts, status = _combine_function_scopes((facts, status), sibling_results)
     if status != evidence["status"] or {k: v for k, v in declarations.items() if k != "context_evidence"} != facts:
         raise ValueError("target declarations differ from archived context")
@@ -513,15 +735,23 @@ def verify_target_context_source(declarations, source_document):
         if (len(sibling_entries) != 1 or any(sibling_entries[0][key] != sibling["input"][key]
                                             for key in ("content_hash", "byte_size"))):
             raise ValueError("sibling declaration source differs from frozen source evidence")
+    for header in evidence.get("header_siblings", ()) or ():
+        header_entries = [item for item in source_document["files"] if item["path"] == header["path"]]
+        if (len(header_entries) != 1 or any(header_entries[0][key] != header["input"][key]
+                                           for key in ("content_hash", "byte_size"))):
+            raise ValueError("header declaration source differs from frozen source evidence")
 
 
-def renderer_declarations(declarations, assembly_bytes, context_bytes, sibling_contexts=()):
+def renderer_declarations(declarations, assembly_bytes, context_bytes, sibling_contexts=(),
+                          header_contexts=()):
     """Project direct callee ABI facts from exact US context, without donor input.
 
     This is a derived view, not a new target-evidence format. The same immutable
     assembly/context bytes drive factory seeds and later archived index loads.
     Sibling scopes arrive as archived preprocessed bytes in deterministic
-    order; data facts consult the owning context before those scopes.
+    order; header scopes arrive as raw header bytes after them. Every family
+    consults the owning context first, then all sibling scopes under one
+    single-signature consensus.
     """
     from .search_target_renderer import _parse_assembly
 
@@ -543,8 +773,13 @@ def renderer_declarations(declarations, assembly_bytes, context_bytes, sibling_c
     text = context_bytes.decode("utf-8")
     if symbols:
         callees = {}
+        header_blobs = list(header_contexts or ())
         for symbol in symbols:
-            facts, status = target_declaration(text, symbol)
+            own = target_declaration(text, symbol)
+            siblings = [target_declaration(sibling.decode("utf-8"), symbol)
+                        for sibling in sibling_contexts or ()]
+            siblings.extend(_header_function_results(header_blobs, symbol))
+            facts, status = _combine_function_scopes(own, siblings)
             callees[symbol] = {**facts, "status": status}
         result["call_declarations"] = callees
     api_members = _api_member_names(assembly_bytes.decode("utf-8"))
@@ -561,20 +796,14 @@ def renderer_declarations(declarations, assembly_bytes, context_bytes, sibling_c
         raise ValueError("target data declaration limit exceeded")
     if data_members:
         data = {}
+        header_blobs = list(header_contexts or ())
         for member in data_members:
-            facts, status = target_data_declaration(text, member)
-            if status == "declaration_missing":
-                for sibling in sibling_contexts or ():
-                    sibling_facts, sibling_status = target_data_declaration(sibling.decode("utf-8"), member)
-                    if sibling_status == "declared":
-                        if sibling_facts.get("static"):
-                            status = "unsupported_declaration"
-                        else:
-                            facts, status = sibling_facts, sibling_status
-                        break
-                    if sibling_status == "unsupported_declaration":
-                        status = sibling_status
-                        break
+            own = target_data_declaration(text, member)
+            siblings = [target_data_declaration(sibling.decode("utf-8"), member)
+                        for sibling in sibling_contexts or ()]
+            siblings.extend(target_data_declaration(raw.decode("utf-8"), member)
+                            for raw in header_blobs)
+            facts, status = _combine_data_scopes(own, siblings)
             facts = {key: value for key, value in facts.items() if key != "static"}
             data[member] = {**facts, "status": status}
         result["data_declarations"] = data
@@ -583,8 +812,14 @@ def renderer_declarations(declarations, assembly_bytes, context_bytes, sibling_c
         raise ValueError("target global declaration limit exceeded")
     if global_members:
         glob = {}
+        header_blobs = list(header_contexts or ())
         for member in global_members:
-            facts, status = target_data_declaration(text, member)
+            own = target_data_declaration(text, member)
+            siblings = [target_data_declaration(sibling.decode("utf-8"), member)
+                        for sibling in sibling_contexts or ()]
+            siblings.extend(target_data_declaration(raw.decode("utf-8"), member)
+                            for raw in header_blobs)
+            facts, status = _combine_data_scopes(own, siblings)
             facts = {key: value for key, value in facts.items() if key != "static"}
             glob[member] = {**facts, "status": status}
         result["global_declarations"] = glob
@@ -593,8 +828,14 @@ def renderer_declarations(declarations, assembly_bytes, context_bytes, sibling_c
         raise ValueError("target linker declaration limit exceeded")
     if linker_members:
         link = {}
+        header_blobs = list(header_contexts or ())
         for member in linker_members:
-            facts, status = target_data_declaration(text, member)
+            own = target_data_declaration(text, member)
+            siblings = [target_data_declaration(sibling.decode("utf-8"), member)
+                        for sibling in sibling_contexts or ()]
+            siblings.extend(target_data_declaration(raw.decode("utf-8"), member)
+                            for raw in header_blobs)
+            facts, status = _combine_data_scopes(own, siblings)
             facts = {key: value for key, value in facts.items() if key != "static"}
             link[member] = {**facts, "status": status}
         result["linker_declarations"] = link

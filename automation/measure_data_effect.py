@@ -380,9 +380,14 @@ def measure_pool(repo: Path, limit: int | None = None, limits: str = "default", 
             tally["unrendered"] += 1
             continue
         try:
-            sibling_contexts = tuple(blob for _, _, blob in blobs)
+            sibling_contexts = tuple(blob for category, _, blob in blobs
+                                     if category in ("target-context-sibling-input",
+                                                     "target-context-sibling"))
+            header_contexts = tuple(blob for category, _, blob in blobs
+                                    if category == "target-context-sibling-header")
             facts = renderer_declarations(
-                dict(declarations), (repo / rel).read_bytes(), own_context, sibling_contexts)
+                dict(declarations), (repo / rel).read_bytes(), own_context,
+                sibling_contexts, header_contexts)
             draft = deterministic_local_draft(text, symbol=record_id.split(":")[2], declarations=facts, limits=bounds)
         except Exception as exc:  # noqa: BLE001 - tally refusal classes, never raise
             _count("render:", exc)

@@ -248,3 +248,22 @@ assumption: raised-limits remeasurement `run_automation-191309-18743`
 leaves 53 files shape-blocked against 11 size-blocked at the 512-instruction
 ceiling, with zero renders and zero errors, so shapes stay ahead of
 ceilings. The run names 20 shape-blocked records as concrete next targets.
+
+## Sibling and header scopes (#318)
+
+Capture archives same-overlay .c scopes whenever a referenced member
+misses from the owning unit, plus raw header scopes for missing functions
+and members; render-time projection falls back with single-signature
+consensus and refuses static header definitions. Archive replay and source
+binding cover the header shape with no protocol bump. Fixture proof spans
+fallback, consensus, poisoning, capture archiving and tamper refusal.
+
+Default-bound pool remeasurement shows zero movement with zero errors:
+the missing symbols that matter are engine callees called but never
+declared in-overlay, same-overlay queue dependencies that are themselves
+todo, and data whose users exceed the default size cap. Scope expansion
+cannot invent what is nowhere. Raised-limits remeasurement
+`run_automation-213411-77098` with sibling scopes active still renders
+nothing with zero errors: the decl-blocked 13 do not flip, so the missing
+members are engine externs, todo-dependencies and uncapped cases, not
+overlooked same-overlay declarations.

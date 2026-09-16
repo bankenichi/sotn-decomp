@@ -1675,3 +1675,14 @@ return, nesting level or call in the span, since each would let the triple
 leak across iterations or clobber it. The backedge check needs no change
 because the model triple never enters a required binding. Full-pool effect
 is recorded in the linked outcome document.
+
+### Sibling fallback needs consensus, not first-wins
+
+Projecting the first declared sibling silently picks one side of a
+conflict, so data, global, linker and callee fallback require one
+signature across every declared sibling, mirroring the function combiner.
+Static sibling definitions poison like unsupported shapes. Sibling scopes
+are archived exactly when a referenced member misses from the owning unit,
+not only when the function itself is missing, since declaration-ready
+functions are the ones blocked on data. The archive replay needs no
+change: sibling artifacts already verify generically.

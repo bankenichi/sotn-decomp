@@ -2378,7 +2378,8 @@ def _create_instrumented_run_locked(
         from .search_source_context import renderer_declarations
         context_bytes = next((data for category, _, data in context_artifacts if category == "target-context"), None)
         sibling_contexts = tuple(data for category, _, data in context_artifacts if category == "target-context-sibling")
-        target_renderer_declarations[record_id] = renderer_declarations(declarations, assembly_bytes, context_bytes, sibling_contexts)
+        header_contexts = tuple(data for category, _, data in context_artifacts if category == "target-context-sibling-header")
+        target_renderer_declarations[record_id] = renderer_declarations(declarations, assembly_bytes, context_bytes, sibling_contexts, header_contexts)
         target_payloads[record_id] = payload
         target_bytes[record_id] = (assembly_bytes, object_bytes)
 
