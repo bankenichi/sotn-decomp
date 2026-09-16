@@ -1,5 +1,5 @@
 {
- "generated_from": "e8f49b174",
+ "generated_from": "b9d298824",
  "how_to_read": "A twin is a starting point, not an answer. Diff it against the stub's assembly before copying: sibling overlays routinely differ by one constant or one branch, and copying past that difference produces a function that is wrong in a way the build will catch but a reviewer will not. A twin under src/st/<name>.h is a SHARED implementation, so the right answer there is usually a shim, not a copy -- check shim_viable() in codebase_index.py first.",
  "regenerate": "python3 automation/asm_twin_finder.py --record",
  "twins": {
@@ -1267,42 +1267,6 @@
    "symbol": "func_us_8019ED80_from_rbo2",
    "token_twins": []
   },
-  "boss/rbo1/polarPlacePartsList": {
-   "instructions": 29,
-   "name_twins": [
-    {
-     "file": "src/boss/rbo8/unk_1546C.c",
-     "function": "polarPlacePartsList"
-    },
-    {
-     "file": "src/st/giantbro_helpers_2.h",
-     "function": "polarPlacePartsList"
-    },
-    {
-     "file": "src/st/no2/4966C.c",
-     "function": "polarPlacePartsList"
-    },
-    {
-     "file": "src/st/np3/4E04C.c",
-     "function": "polarPlacePartsList"
-    }
-   ],
-   "overlay": "boss/rbo1",
-   "shape_twins": [
-    {
-     "identical_constants": true,
-     "overlay": "boss/rbo2",
-     "symbol": "polarPlacePartsList"
-    },
-    {
-     "identical_constants": true,
-     "overlay": "boss/rbo8",
-     "symbol": "polarPlacePartsList"
-    }
-   ],
-   "symbol": "polarPlacePartsList",
-   "token_twins": []
-  },
   "boss/rbo1/polarPlacePartsWithAngvel": {
    "instructions": 37,
    "name_twins": [
@@ -1527,42 +1491,6 @@
     }
    ],
    "symbol": "func_us_8019ED80",
-   "token_twins": []
-  },
-  "boss/rbo2/polarPlacePartsList": {
-   "instructions": 29,
-   "name_twins": [
-    {
-     "file": "src/boss/rbo8/unk_1546C.c",
-     "function": "polarPlacePartsList"
-    },
-    {
-     "file": "src/st/giantbro_helpers_2.h",
-     "function": "polarPlacePartsList"
-    },
-    {
-     "file": "src/st/no2/4966C.c",
-     "function": "polarPlacePartsList"
-    },
-    {
-     "file": "src/st/np3/4E04C.c",
-     "function": "polarPlacePartsList"
-    }
-   ],
-   "overlay": "boss/rbo2",
-   "shape_twins": [
-    {
-     "identical_constants": true,
-     "overlay": "boss/rbo1",
-     "symbol": "polarPlacePartsList"
-    },
-    {
-     "identical_constants": true,
-     "overlay": "boss/rbo8",
-     "symbol": "polarPlacePartsList"
-    }
-   ],
-   "symbol": "polarPlacePartsList",
    "token_twins": []
   },
   "boss/rbo2/polarPlacePartsWithAngvel": {
@@ -1841,35 +1769,6 @@
    "overlay": "boss/rbo6",
    "shape_twins": [],
    "symbol": "EntityCutscene",
-   "token_twins": []
-  },
-  "boss/rbo6/EntityLockCamera": {
-   "instructions": 274,
-   "name_twins": [
-    {
-     "file": "src/st/e_lock_camera.h",
-     "function": "EntityLockCamera"
-    },
-    {
-     "file": "src/st/entity_lock_camera.h",
-     "function": "EntityLockCamera"
-    },
-    {
-     "file": "src/st/lib/e_lock_camera.c",
-     "function": "EntityLockCamera"
-    },
-    {
-     "file": "src/st/rcen/e_lock_camera.c",
-     "function": "EntityLockCamera"
-    },
-    {
-     "file": "src/st/st0/e_lock_camera.c",
-     "function": "EntityLockCamera"
-    }
-   ],
-   "overlay": "boss/rbo6",
-   "shape_twins": [],
-   "symbol": "EntityLockCamera",
    "token_twins": []
   },
   "boss/rbo6/PrimDecreaseBrightness": {
@@ -3255,45 +3154,6 @@
    "symbol": "func_us_80198A18_from_rbo4",
    "token_twins": []
   },
-  "st/rno2/DrawFacade": {
-   "instructions": 132,
-   "name_twins": [
-    {
-     "file": "src/st/e_background_house.h",
-     "function": "DrawFacade"
-    }
-   ],
-   "overlay": "st/rno2",
-   "shape_twins": [],
-   "symbol": "DrawFacade",
-   "token_twins": []
-  },
-  "st/rno2/DrawRoof": {
-   "instructions": 97,
-   "name_twins": [
-    {
-     "file": "src/st/e_background_house.h",
-     "function": "DrawRoof"
-    }
-   ],
-   "overlay": "st/rno2",
-   "shape_twins": [],
-   "symbol": "DrawRoof",
-   "token_twins": []
-  },
-  "st/rno2/DrawSides": {
-   "instructions": 145,
-   "name_twins": [
-    {
-     "file": "src/st/e_background_house.h",
-     "function": "DrawSides"
-    }
-   ],
-   "overlay": "st/rno2",
-   "shape_twins": [],
-   "symbol": "DrawSides",
-   "token_twins": []
-  },
   "st/rno2/Entity3DBackgroundHouse": {
    "instructions": 214,
    "name_twins": [
@@ -3563,25 +3423,6 @@
    "symbol": "EntitySpikesDamage",
    "token_twins": []
   },
-  "st/rno2/EntitySpikesDust": {
-   "instructions": 45,
-   "name_twins": [
-    {
-     "file": "src/st/e_spikes.h",
-     "function": "EntitySpikesDust"
-    }
-   ],
-   "overlay": "st/rno2",
-   "shape_twins": [
-    {
-     "identical_constants": true,
-     "overlay": "st/rnz1",
-     "symbol": "EntitySpikesDust"
-    }
-   ],
-   "symbol": "EntitySpikesDust",
-   "token_twins": []
-  },
   "st/rno2/EntitySpikesParts": {
    "instructions": 133,
    "name_twins": [
@@ -3600,6 +3441,10 @@
    "name_twins": [
     {
      "file": "src/st/e_spikes.h",
+     "function": "SpikesApplyDamage"
+    },
+    {
+     "file": "src/st/rnz1/e_spikes.c",
      "function": "SpikesApplyDamage"
     }
    ],
@@ -4151,19 +3996,6 @@
    "symbol": "EntityVenusWeedTendril",
    "token_twins": []
   },
-  "st/rno4/SetupPrimsForEntitySpriteParts": {
-   "instructions": 161,
-   "name_twins": [
-    {
-     "file": "src/st/e_venus_weed.h",
-     "function": "SetupPrimsForEntitySpriteParts"
-    }
-   ],
-   "overlay": "st/rno4",
-   "shape_twins": [],
-   "symbol": "SetupPrimsForEntitySpriteParts",
-   "token_twins": []
-  },
   "st/rno4/func_us_801A071C_from_bo3": {
    "instructions": 44,
    "name_twins": [],
@@ -4645,25 +4477,6 @@
    "symbol": "EntitySpikesDamage",
    "token_twins": []
   },
-  "st/rnz1/EntitySpikesDust": {
-   "instructions": 45,
-   "name_twins": [
-    {
-     "file": "src/st/e_spikes.h",
-     "function": "EntitySpikesDust"
-    }
-   ],
-   "overlay": "st/rnz1",
-   "shape_twins": [
-    {
-     "identical_constants": true,
-     "overlay": "st/rno2",
-     "symbol": "EntitySpikesDust"
-    }
-   ],
-   "symbol": "EntitySpikesDust",
-   "token_twins": []
-  },
   "st/rnz1/EntitySpikesParts": {
    "instructions": 176,
    "name_twins": [
@@ -4747,19 +4560,6 @@
    "overlay": "st/rnz1",
    "shape_twins": [],
    "symbol": "EntityWallGear",
-   "token_twins": []
-  },
-  "st/rnz1/SpikesApplyDamage": {
-   "instructions": 17,
-   "name_twins": [
-    {
-     "file": "src/st/e_spikes.h",
-     "function": "SpikesApplyDamage"
-    }
-   ],
-   "overlay": "st/rnz1",
-   "shape_twins": [],
-   "symbol": "SpikesApplyDamage",
    "token_twins": []
   },
   "st/rnz1/SpikesBreak": {
@@ -4898,7 +4698,7 @@
    ]
   }
  },
- "unmatched_stubs": 560,
+ "unmatched_stubs": 549,
  "version": "us",
- "with_candidates": 237
+ "with_candidates": 227
 }
