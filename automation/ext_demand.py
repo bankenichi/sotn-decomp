@@ -276,7 +276,13 @@ def analyse(files: list[Path] | None = None) -> list[dict]:
     files = _gen_files() if files is None else files
     rows = []
     for p in files:
-        code = p.read_text(encoding="utf-8", errors="replace")
+        try:
+            code = p.read_text(encoding="utf-8", errors="replace")
+        except FileNotFoundError:
+            # A concurrent suite may delete its scratch seed between the
+            # directory listing and this read; a vanished file is simply
+            # not demand evidence.
+            continue
         want = demanded_offsets(code)
         if not want:
             continue
@@ -539,6 +545,12 @@ def self_test() -> int:
     print("\nand it runs against the live tree")
     rows = analyse()
     ck(isinstance(rows, list), "analyse() returns rows")
+    import tempfile as _tf2
+    with _tf2.TemporaryDirectory() as _td:
+        _gone = Path(_td) / "gone.c"
+        _gone.write_text("int x;\n")
+        _gone.unlink()
+        ck(analyse([_gone]) == [], "a vanished file contributes no demand rows")
     if rows:
         ck(all(r["offsets"] for r in rows), "every row wants something")
         txt = report()
