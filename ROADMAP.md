@@ -18,9 +18,9 @@ mistake impossible twice.
 
 | live authority | current value |
 |---|---|
-| Build oracle | **112/113** from the artifacts on disk |
+| Build oracle | **113/113** from the artifacts on disk |
 | Decompiled | **94.1%**, 8181/8730 functions; 549 US `INCLUDE_ASM` stubs remain |
-| Queue | 983 records: 434 matched, 359 todo, 143 escalated, 41 deferred, 6 near |
+| Queue | 983 records: 434 matched, 358 todo, 143 escalated, 46 deferred, 2 near |
 | Provenance | upstream-harvest 55, shim-segment 9, shim-header 55, transplant 136, twin-port 31, permuter 18, claude-manual 6, model-fleet 58, unknown 66 |
 | Automation | 186 modules, 75 suites plus 37 module self-tests, 99 tools, 119 diagnostics |
 
@@ -36,11 +36,11 @@ This block is regenerated from the same queue, checksum manifest, linker maps, p
 
 | overlay | stubs | todo | near | escalated | deferred | matched |
 |---|---:|---:|---:|---:|---:|---:|
-| `BOSS/BO0` | 50 | 0 | 1 | 31 | 18 | 17 |
+| `BOSS/BO0` | 50 | 0 | 0 | 31 | 19 | 17 |
 | `BOSS/BO2` | 15 | 11 | 0 | 4 | 0 | 0 |
 | `BOSS/BO3` | 45 | 45 | 0 | 0 | 0 | 15 |
 | `BOSS/BO5` | 18 | 16 | 0 | 2 | 0 | 5 |
-| `BOSS/BO6` | 43 | 0 | 2 | 34 | 7 | 80 |
+| `BOSS/BO6` | 43 | 0 | 0 | 34 | 9 | 80 |
 | `BOSS/BO7` | 13 | 12 | 0 | 1 | 0 | 8 |
 | `BOSS/RBO1` | 14 | 14 | 0 | 0 | 0 | 6 |
 | `BOSS/RBO2` | 19 | 17 | 0 | 2 | 0 | 9 |
@@ -51,13 +51,13 @@ This block is regenerated from the same queue, checksum manifest, linker maps, p
 | `MAIN` | 2 | 0 | 0 | 2 | 0 | 0 |
 | `ST/RCEN` | 15 | 0 | 0 | 14 | 1 | 8 |
 | `ST/RCHI` | 10 | 0 | 0 | 7 | 3 | 5 |
-| `ST/RDAI` | 18 | 0 | 1 | 15 | 2 | 0 |
+| `ST/RDAI` | 18 | 0 | 0 | 15 | 3 | 0 |
 | `ST/RLIB` | 20 | 19 | 0 | 1 | 0 | 2 |
 | `ST/RNO0` | 31 | 1 | 2 | 18 | 10 | 188 |
 | `ST/RNO1` | 26 | 26 | 0 | 0 | 0 | 16 |
 | `ST/RNO2` | 32 | 30 | 0 | 2 | 0 | 16 |
 | `ST/RNO4` | 62 | 61 | 0 | 1 | 0 | 22 |
-| `ST/RNZ1` | 45 | 43 | 0 | 2 | 0 | 20 |
+| `ST/RNZ1` | 45 | 42 | 0 | 2 | 1 | 20 |
 | `ST/SEL` | 1 | 0 | 0 | 1 | 0 | 0 |
 
 This table is generated from the checksum manifest, required config policy, live `INCLUDE_ASM` inventory, and scheduler-owned queue. Matched-only overlays are omitted because they carry no remaining work.
@@ -1421,3 +1421,4 @@ Status: **done**, **open**, **partial**, **void** (turned out unnecessary),
 | 336 | **done** | Streaming Responses calls with idle watchdog and partial salvage. Non-streaming returns zero bytes until completion, so slow xhigh calls die with nothing and look hung. Streamed deltas keep bytes flowing, first-byte and idle deadlines distinguish dead from slow, stalled streams salvage whole functions through the existing gate, and only an HTTP 400 refusal falls back to one-shot so slow calls are never paid twice. Kill-switch RESPONSES_STREAM=0. Pinned in test_stream_salvage. |
 | 337 | **done** | Released the m2c revision executor: registered its suite in the connector allowlist and removed the unsupported-suite exclusion. Suite green at 11 tests, surface checks green. The last deliberately unreleased path is now an ordinary callable action. |
 | 338 | **done** | Live validation of streaming Responses: single Spark worker on a small record did 4/4 full compile-and-link builds through responses-stream lines, routing the record todo to near with permuter seeds preserved. No timeouts, no empties. Supervisor sweep running the near pool in legacy mode. |
+| 339 | **done** | Mechanical exhaustion pass: supervisor sweep retired EntityShaft at 10, 801C4B2C at 405, CrashBibleBeam at 60, 801BAB18 at 2495 and 801BCB9C at 15, each with re-derivation evidence on its record. The lone isolated zero (801CFD70) was landed-attempted and correctly refused at the real build with verified revert. No match, no damage. First Spark todo-to-near conversion earlier the same day. |
