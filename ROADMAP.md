@@ -20,7 +20,7 @@ mistake impossible twice.
 |---|---|
 | Build oracle | **112/113** from the artifacts on disk |
 | Decompiled | **94.1%**, 8181/8730 functions; 549 US `INCLUDE_ASM` stubs remain |
-| Queue | 983 records: 434 matched, 363 todo, 139 escalated, 41 deferred, 6 near |
+| Queue | 983 records: 434 matched, 359 todo, 143 escalated, 41 deferred, 6 near |
 | Provenance | upstream-harvest 55, shim-segment 9, shim-header 55, transplant 136, twin-port 31, permuter 18, claude-manual 6, model-fleet 58, unknown 66 |
 | Automation | 186 modules, 75 suites plus 37 module self-tests, 99 tools, 118 diagnostics |
 
@@ -37,14 +37,14 @@ This block is regenerated from the same queue, checksum manifest, linker maps, p
 | overlay | stubs | todo | near | escalated | deferred | matched |
 |---|---:|---:|---:|---:|---:|---:|
 | `BOSS/BO0` | 50 | 0 | 1 | 31 | 18 | 17 |
-| `BOSS/BO2` | 15 | 12 | 0 | 3 | 0 | 0 |
+| `BOSS/BO2` | 15 | 11 | 0 | 4 | 0 | 0 |
 | `BOSS/BO3` | 45 | 45 | 0 | 0 | 0 | 15 |
 | `BOSS/BO5` | 18 | 16 | 0 | 2 | 0 | 5 |
 | `BOSS/BO6` | 43 | 0 | 2 | 34 | 7 | 80 |
 | `BOSS/BO7` | 13 | 12 | 0 | 1 | 0 | 8 |
 | `BOSS/RBO1` | 14 | 14 | 0 | 0 | 0 | 6 |
 | `BOSS/RBO2` | 19 | 17 | 0 | 2 | 0 | 9 |
-| `BOSS/RBO4` | 7 | 7 | 0 | 0 | 0 | 0 |
+| `BOSS/RBO4` | 7 | 6 | 0 | 1 | 0 | 0 |
 | `BOSS/RBO6` | 35 | 33 | 0 | 2 | 0 | 9 |
 | `BOSS/RBO7` | 9 | 8 | 0 | 1 | 0 | 0 |
 | `BOSS/RBO8` | 19 | 17 | 0 | 2 | 0 | 5 |
@@ -52,10 +52,10 @@ This block is regenerated from the same queue, checksum manifest, linker maps, p
 | `ST/RCEN` | 15 | 0 | 0 | 14 | 1 | 8 |
 | `ST/RCHI` | 10 | 0 | 0 | 7 | 3 | 5 |
 | `ST/RDAI` | 18 | 0 | 1 | 15 | 2 | 0 |
-| `ST/RLIB` | 20 | 20 | 0 | 0 | 0 | 2 |
+| `ST/RLIB` | 20 | 19 | 0 | 1 | 0 | 2 |
 | `ST/RNO0` | 31 | 1 | 2 | 18 | 10 | 188 |
 | `ST/RNO1` | 26 | 26 | 0 | 0 | 0 | 16 |
-| `ST/RNO2` | 32 | 31 | 0 | 1 | 0 | 16 |
+| `ST/RNO2` | 32 | 30 | 0 | 2 | 0 | 16 |
 | `ST/RNO4` | 62 | 61 | 0 | 1 | 0 | 22 |
 | `ST/RNZ1` | 45 | 43 | 0 | 2 | 0 | 20 |
 | `ST/SEL` | 1 | 0 | 0 | 1 | 0 | 0 |

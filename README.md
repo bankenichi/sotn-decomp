@@ -70,7 +70,7 @@ every one of them already had a generator that nobody was running.
 |---|---|
 | Build oracle | **112 / 113** overlay SHA-1s in `config/check.us.sha` |
 | Code decompiled | **94.1%** (8181 / 8730 functions) across 62 built binaries |
-| Queue | 983 records: **434 matched**, 363 todo, 139 escalated, 41 deferred, 6 near |
+| Queue | 983 records: **434 matched**, 359 todo, 143 escalated, 41 deferred, 6 near |
 | `INCLUDE_ASM` stubs left in `src/` | 549 (287 `boss`, 260 `st`, 2 `main`) |
 | Automation | 186 Python modules, 75 test suites plus 37 modules with their own `--self-test`, 99 connector tools, 118 diagnostics |
 
@@ -87,14 +87,14 @@ The `matched` count is *our* work, across 18 overlays. The stub count is `us` on
 | overlay | stubs | todo | near | escalated | deferred | matched |
 |---|---:|---:|---:|---:|---:|---:|
 | `BOSS/BO0` | 50 | 0 | 1 | 31 | 18 | 17 |
-| `BOSS/BO2` | 15 | 12 | 0 | 3 | 0 | 0 |
+| `BOSS/BO2` | 15 | 11 | 0 | 4 | 0 | 0 |
 | `BOSS/BO3` | 45 | 45 | 0 | 0 | 0 | 15 |
 | `BOSS/BO5` | 18 | 16 | 0 | 2 | 0 | 5 |
 | `BOSS/BO6` | 43 | 0 | 2 | 34 | 7 | 80 |
 | `BOSS/BO7` | 13 | 12 | 0 | 1 | 0 | 8 |
 | `BOSS/RBO1` | 14 | 14 | 0 | 0 | 0 | 6 |
 | `BOSS/RBO2` | 19 | 17 | 0 | 2 | 0 | 9 |
-| `BOSS/RBO4` | 7 | 7 | 0 | 0 | 0 | 0 |
+| `BOSS/RBO4` | 7 | 6 | 0 | 1 | 0 | 0 |
 | `BOSS/RBO6` | 35 | 33 | 0 | 2 | 0 | 9 |
 | `BOSS/RBO7` | 9 | 8 | 0 | 1 | 0 | 0 |
 | `BOSS/RBO8` | 19 | 17 | 0 | 2 | 0 | 5 |
@@ -102,10 +102,10 @@ The `matched` count is *our* work, across 18 overlays. The stub count is `us` on
 | `ST/RCEN` | 15 | 0 | 0 | 14 | 1 | 8 |
 | `ST/RCHI` | 10 | 0 | 0 | 7 | 3 | 5 |
 | `ST/RDAI` | 18 | 0 | 1 | 15 | 2 | 0 |
-| `ST/RLIB` | 20 | 20 | 0 | 0 | 0 | 2 |
+| `ST/RLIB` | 20 | 19 | 0 | 1 | 0 | 2 |
 | `ST/RNO0` | 31 | 1 | 2 | 18 | 10 | 188 |
 | `ST/RNO1` | 26 | 26 | 0 | 0 | 0 | 16 |
-| `ST/RNO2` | 32 | 31 | 0 | 1 | 0 | 16 |
+| `ST/RNO2` | 32 | 30 | 0 | 2 | 0 | 16 |
 | `ST/RNO4` | 62 | 61 | 0 | 1 | 0 | 22 |
 | `ST/RNZ1` | 45 | 43 | 0 | 2 | 0 | 20 |
 | `ST/SEL` | 1 | 0 | 0 | 1 | 0 | 0 |
@@ -281,9 +281,9 @@ The 22 that are not:
 | `ST/RCHI` | 88.0% | 97/107 | |
 | `BOSS/RBO1` | 86.8% | 97/111 | |
 | `ST/RLIB` | 85.7% | 94/114 | |
-| `BOSS/BO7` | 85.6% | 92/105 | |
+| `BOSS/BO7` | 84.7% | 92/105 | |
 | `ST/RNO0` | 83.6% | 160/191 | |
-| `ST/RNO1` | 82.9% | 103/129 | |
+| `ST/RNO1` | 83.4% | 103/129 | |
 | `BOSS/BO3` | 81.6% | 100/145 | |
 | `BOSS/RBO8` | 81.0% | 111/130 | |
 | `BOSS/RBO2` | 79.0% | 103/122 | |
