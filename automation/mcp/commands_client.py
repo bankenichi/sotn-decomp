@@ -1040,6 +1040,7 @@ AUTOMATION_SCRIPTS = {
     "test_search_semantic_signatures.py",
     "test_search_target_renderer.py",
     "test_search_target_layout.py",
+    "test_m2c_revision_executor.py",
     "test_m2c_revision_provider.py",
     "test_m2c_revision_matrix.py",
     "test_build_attribution.py",

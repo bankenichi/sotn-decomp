@@ -41,11 +41,6 @@ sys.path.insert(0, str(MCP))
 # The PSX compiler corpus is supported through the WSL connector and therefore
 # must not be added here merely because a local shell lacks its toolchain.
 UNSUPPORTED_TOP_LEVEL_TESTS: dict[str, str] = {
-    # The concrete m2c executor suite is a paused worker-owned path, not a
-    # released connector action. Keep this exclusion explicit until that
-    # implementation is released and registered.
-    "test_m2c_revision_executor.py":
-        "m2c revision executor remains a paused unreleased connector path",
 }
 
 # Task 8.3 is intentionally limited to the live connector surfaces and its
