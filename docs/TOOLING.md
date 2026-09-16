@@ -16,7 +16,7 @@ For the mechanisms that land matches, read `automation/README.md`.
 | Decompiled | **94.1%**, 8181/8730 functions; 549 US `INCLUDE_ASM` stubs remain |
 | Queue | 983 records: 434 matched, 379 todo, 123 escalated, 41 deferred, 6 near |
 | Provenance | upstream-harvest 55, shim-segment 9, shim-header 55, transplant 136, twin-port 31, permuter 18, claude-manual 6, model-fleet 58, unknown 66 |
-| Automation | 185 modules, 75 suites plus 36 module self-tests, 99 tools, 117 diagnostics |
+| Automation | 186 modules, 75 suites plus 37 module self-tests, 99 tools, 118 diagnostics |
 
 This block is regenerated from the same queue, checksum manifest, linker maps, provenance classifier, and connector inventory as `README.md`.
 <!-- LIVE-STATUS:END -->
@@ -777,6 +777,7 @@ script supports `--help` and most support `--self-test`.
 | `transplant.py` | move a twin body mechanically; `--scan` classifies donors, `--adapt` emits a target-informed draft, `--score` ranks adaptable drafts without a game build or queue write, and `--archive-applied-score-zeros PATH` preserves ignored score receipts and exact landed bodies under the verified oracle |
 | `codebase_index.py` | the searchable index of the whole tree; shared implementations retain separate upstream and exact current shim paths, with quoted includes resolved relative to each translation unit |
 | `queue_coverage.py` | does the queue cover what is actually in the tree |
+| `missing_symbol_tally.py` | which unresolved externals queue records name per status, from classification notes; read-only |
 | `decl_coverage.py` | are the declarations a candidate needs reachable through the worker; fails closed on symbol/count/address discovery errors, recognizes prior same-file/include definitions and exact C89 implicit-call closure, records real instruction counts, and emits exact same-translation-unit earlier-definition dependencies; `--from-json` validates provenance fields before regenerating plans or atomically correcting queue evidence |
 | `data_declarations.py` | resolve raw `D_*` labels from overlay-specific retained data/rodata/bss directives and calibrated global `Entity` address aliases; ambiguous evidence is refused |
 | `ext_demand.py` | which `Ext` union variants cover generated offsets, including raw Entity-base byte-pointer views and direct `entity->ext.unkNN` accesses, and which named expressions can replace them |

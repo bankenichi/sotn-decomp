@@ -954,6 +954,8 @@ AUTOMATION_SCRIPTS = {
     "test_stream_salvage.py",
     "codebase_index.py",
     "queue_coverage.py",
+    # Tallies unresolved externals named in queue notes; read-only.
+    "missing_symbol_tally.py",
     "quality_audit.py",
     "post_match_lint.py",
     "model_codegen_audit.py",
