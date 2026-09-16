@@ -43,12 +43,15 @@ observable beyond the MCP transport deadline.
 
 ## 1. They are client-agnostic, and that is a property of the design
 
-Both servers are plain **stdio MCP servers**. They read the protocol on stdin,
-write it on stdout, and know nothing about who is on the other end. There is no
-client detection, no vendor SDK import, no `if claude:` branch, and no
-client-specific environment variable anywhere in `sotn_cmd_mcp.py`,
+Both servers are client-agnostic MCP servers. The default transport is **stdio**
+(stdin/stdout). `sotn-cmd` can also serve **streamable-http** or **sse** when
+`SOTN_CMD_TRANSPORT` is set; that path requires `SOTN_CMD_HTTP_TOKEN` (fail
+closed) and is documented under `automation/mcp/clients/grok-bot-remote.md`.
+There is no client detection, no vendor SDK import, no `if claude:` branch, and
+no client-specific environment variable anywhere in `sotn_cmd_mcp.py`,
 `sotn_local_mcp.py` or `commands_client.py`. `automation/test_connector_surfaces.py`
-asserts each of those, so it stays true rather than merely being true today.
+asserts the stdio portability properties, so they stay true rather than merely
+being true today.
 
 Three properties make a server portable in practice, and all three hold here:
 
@@ -121,6 +124,17 @@ fails closed this did not run anything unsafe, but it also meant dry-run could
 not be turned off and the reason was invisible. Both the bundle and the
 Windows-WSL snippet now pass such variables **inline in the bash command**. In
 the native snippet, `env` behaves normally.
+
+### Remote URL for Grok Bot (streamable-http)
+
+When the client cannot spawn a local process, run `sotn-cmd` with
+`SOTN_CMD_TRANSPORT=streamable-http`, set `SOTN_CMD_HTTP_TOKEN`, bind
+`FASTMCP_HOST=127.0.0.1`, put a tunnel in front, and register the public
+`https://.../mcp` URL with `Authorization: Bearer <token>`. Keep
+`SOTN_CMD_DRYRUN=1` until `list_allowed` is reviewed. Full commands:
+`automation/mcp/clients/grok-bot-remote.md`. Focused tests:
+`automation/test_http_bridge.py`.
+
 
 ## 3. The security model
 

@@ -23,6 +23,13 @@ Environment:
                    .venv python, then this interpreter if that venv is absent)
   SOTN_CMD_DRYRUN  set to 1 to return the argv WITHOUT executing (safe preview)
   SOTN_CMD_MAXOUT  max stdout/stderr chars returned (default 20000)
+  SOTN_CMD_TRANSPORT  unset/empty => stdio (default). streamable-http or sse
+                   for a token-gated HTTP bridge (see http_bridge.py).
+  SOTN_CMD_HTTP_TOKEN  required when TRANSPORT is HTTP/SSE; Authorization
+                   Bearer must match. Fail closed if unset/empty on HTTP.
+  FASTMCP_HOST / FASTMCP_PORT / FASTMCP_STREAMABLE_HTTP_PATH
+                   bind and path for HTTP mode (defaults 127.0.0.1:8000 /mcp).
+                   Keep host at 127.0.0.1 when a tunnel dials localhost.
 
 Every one of those has a working default derived from this file's own location,
 so a client that can only supply `command` and `args` -- with no `cwd` and no
@@ -1404,4 +1411,13 @@ def git_clean(path: str, confirm: bool = False, timeout: int = 300) -> dict:
 
 if __name__ == "__main__":
     _assert_registry_is_exposed()
-    mcp.run()  # stdio transport, as expected by Claude Desktop
+    # Default remains stdio when SOTN_CMD_TRANSPORT is unset/empty: call mcp.run()
+    # directly so stdio clients do not import the HTTP bridge. HTTP/SSE is opt-in
+    # via SOTN_CMD_TRANSPORT=streamable-http|sse and requires SOTN_CMD_HTTP_TOKEN
+    # (fail closed). See http_bridge.py and docs/CONNECTORS.md.
+    import os as _os  # noqa: E402
+    if not (_os.environ.get("SOTN_CMD_TRANSPORT") or "").strip():
+        mcp.run()  # stdio transport, as expected by Claude Desktop
+    else:
+        import http_bridge as _http_bridge  # noqa: E402
+        _http_bridge.run_from_env(mcp)

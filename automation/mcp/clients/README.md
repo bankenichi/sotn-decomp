@@ -1,10 +1,11 @@
 # Registering the connectors with any MCP client
 
-Both servers in `automation/mcp/` are plain **stdio MCP servers**. They read the
-protocol on stdin and write it on stdout. They contain no client detection, no
-vendor SDK, and no Claude-only code path, so every MCP client drives them the
-same way. What differs between clients is only the *config file format* and
-*where it lives*.
+Both servers in `automation/mcp/` are client-agnostic MCP servers. The default
+transport is **stdio** (stdin/stdout). An optional token-gated
+**streamable-http** (or sse) bridge exists for remote URL clients such as Grok
+Bot; see `grok-bot-remote.md`. There is no client detection, no vendor SDK, and
+no Claude-only code path. What differs between clients is the *config shape*
+and *where it lives*.
 
 This directory holds one ready-to-edit snippet per client. Full explanation,
 including the security model and what each tool does, is in `docs/CONNECTORS.md`.
@@ -35,6 +36,7 @@ to `0` on purpose.
 | `codex.config.toml` | OpenAI Codex CLI | append to `~/.codex/config.toml` |
 | `mcp_servers.native.json` | any client on Linux/macOS, or a client running *inside* WSL | the simplest form: interpreter + absolute script path |
 | `mcp_servers.windows-wsl.json` | any client on the Windows host reaching a WSL toolchain | needs the `wsl.exe` hop |
+| `grok-bot-remote.md` | Grok Bot (AddMcpServer by URL) | streamable-http + tunnel + bearer token |
 
 For Claude Desktop specifically there are also two MCPB bundles under
 `automation/mcpb/`. Those are packaging for one client and are **not** required:
