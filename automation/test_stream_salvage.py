@@ -205,6 +205,60 @@ def main() -> int:
           "the CLI backend does stream now; the old comment said otherwise "
           "and would send the next reader down the wrong path")
 
+    print("\nResponses SSE folds line by line without ever raising on junk")
+    st = {"pending": None, "texts": [], "reasoning_n": 0,
+          "done": False, "failed": "", "completed": None}
+    for line in [
+        ": keep-alive comment",
+        "",
+        "event: response.reasoning_summary_text.delta",
+        'data: {"delta": "checking offsets"}',
+        "event: response.output_text.delta",
+        'data: {"delta": "void f(void) {}"}',
+        "data: not-json{{{",
+        "event: response.completed",
+        'data: {"response": {"object": "response", "output": []}}',
+    ]:
+        wd._responses_stream_step(st, line)
+    check(st["texts"] == ["checking offsets", "void f(void) {}"],
+          "deltas accumulate in arrival order across event types")
+    check(st["reasoning_n"] == 1, "one reasoning delta counted once")
+    check(st["done"] is True, "the completed event ends the stream")
+    check("gives no stream" not in str(st), "junk lines never raise")
+
+    print("\na completed event parses exactly like a one-shot reply")
+    obj = {"output": [
+        {"type": "message",
+         "content": [{"text": "void f(void) {}"}]},
+        {"type": "reasoning", "summary": [{"text": "why"}]},
+        "not-a-dict",
+    ]}
+    texts, n = wd._responses_output_texts(obj)
+    check(texts == ["void f(void) {}", "why"],
+          "message and reasoning-summary text in order, junk skipped")
+    check(n == 1, "one reasoning item counted")
+    check(wd._responses_output_texts(None) == ([], 0),
+          "a missing body is empty, not an exception")
+    check(wd._responses_output_texts([1, 2]) == ([], 0),
+          "and so is a malformed one")
+
+    print("\na failed event ends the stream with the cause attached")
+    st2 = {"pending": None, "texts": [], "reasoning_n": 0,
+           "done": False, "failed": "", "completed": None}
+    wd._responses_stream_step(st2, "event: response.failed")
+    wd._responses_stream_step(st2, 'data: {"error": {"message": "upstream blew up"}}')
+    check(st2["done"] is True and "blew up" in st2["failed"],
+          "failure closes the stream carrying its reason")
+
+    print("\nstreaming is tried first with a one-shot fallback, not instead")
+    gen_src = inspect.getsource(wd._responses_generate)
+    check("_responses_generate_stream" in gen_src,
+          "the Responses entry point attempts the stream")
+    check("_StreamUnsupported" in gen_src,
+          "and only a refusal falls back, so a slow call is never paid twice")
+    check("RESPONSES_STREAM" in gen_src,
+          "with an env kill-switch back to the proven one-shot path")
+
     print()
     if FAILS:
         print(f"{len(FAILS)} FAILED:")

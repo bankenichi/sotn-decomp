@@ -762,9 +762,247 @@ def _uses_responses_api() -> bool:
     return "muse-spark" in _active_model().lower()
 
 
+class _StreamUnsupported(Exception):
+    """The endpoint refused a streaming Responses request (HTTP 400)."""
+
+
+def _responses_output_texts(obj) -> tuple:
+    """Message + reasoning-summary text from a Responses response object.
+
+    Shared by the one-shot and streaming paths so a `response.completed`
+    event parses byte-identically to a whole POST reply.
+    """
+    texts = []
+    reasoning_n = 0
+    try:
+        items = (obj or {}).get("output") or []
+    except (ValueError, AttributeError, TypeError):
+        return [], 0
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        if item.get("type") == "message":
+            for part in item.get("content") or []:
+                if isinstance(part, dict) and part.get("text"):
+                    texts.append(part["text"])
+        elif item.get("type") == "reasoning":
+            reasoning_n += 1
+            for part in item.get("summary") or []:
+                if isinstance(part, dict) and part.get("text"):
+                    texts.append(part["text"])
+    return texts, reasoning_n
+
+
+def _responses_stream_step(state: dict, line) -> None:
+    """Fold one SSE line into streaming state. Pure: skips junk, never raises.
+
+    state keys: pending (event awaiting its data line), texts (message and
+    reasoning-summary deltas in arrival order), reasoning_n (delta events
+    seen; approximate until a completed event replaces it), done, failed,
+    completed (the authoritative response object, if any).
+    """
+    if isinstance(line, bytes):
+        try:
+            line = line.decode("utf-8", "replace")
+        except Exception:
+            return
+    try:
+        s = line.strip()
+    except Exception:
+        return
+    if not s or s.startswith(":"):
+        return
+    if s.startswith("event:"):
+        state["pending"] = s[6:].strip()
+        return
+    if not s.startswith("data:"):
+        return
+    payload = s[5:].strip()
+    event, state["pending"] = state.get("pending"), None
+    if payload == "[DONE]":
+        state["done"] = True
+        return
+    try:
+        obj = json.loads(payload)
+    except ValueError:
+        return
+    if not isinstance(obj, dict):
+        return
+    if event == "response.output_text.delta":
+        text = obj.get("delta") or ""
+        if text:
+            state["texts"].append(text)
+    elif event == "response.reasoning_summary_text.delta":
+        text = obj.get("delta") or ""
+        if text:
+            state["texts"].append(text)
+            state["reasoning_n"] += 1
+    elif event == "response.completed":
+        state["completed"] = obj.get("response", obj)
+        state["done"] = True
+    elif event in ("response.failed", "response.incomplete", "error"):
+        detail = obj.get("error") or obj.get("response") or obj
+        try:
+            detail = json.dumps(detail)[:200]
+        except (TypeError, ValueError):
+            detail = str(detail)[:200]
+        state["failed"] = detail
+        state["done"] = True
+
+
+def _responses_generate_stream(prompt: str, effort: str, t0: float,
+                               timeout: float, url: str,
+                               payload: dict) -> str:
+    """Streaming Responses call with idle watchdog and partial salvage.
+
+    WHY NOT ONE-SHOT: a non-streaming call returns zero bytes until the
+    whole response completes, so a slow xhigh call that dies at minute N
+    leaves nothing, and an idle-killing proxy in the path is
+    indistinguishable from a hang. Streaming keeps bytes flowing (which
+    itself defeats idle timeouts), reports first-byte latency honestly,
+    and hands a stalled-but-started answer to the same complete-function
+    salvage the CLI path uses instead of binning it.
+
+    Deadlines mirror the CLI adaptive set: nothing at all within
+    NO_FIRST_BYTE_S is the 93%-dead shape and dies early; bytes flowing
+    get STREAM_IDLE_S of quiet each; the attempt budget is the hard
+    ceiling. Env-tunable like the rest; a stalled stream can never hold
+    a worker past the budget that already bounds it.
+    """
+    stream_payload = dict(payload)
+    stream_payload["stream"] = True
+    body = json.dumps(stream_payload).encode()
+    req = urllib.request.Request(url, data=body, headers=_api_headers(),
+                                 method="POST")
+    print(f"  --- responses-stream ({_active_model()}, effort={effort or 'none'}, "
+          f"prompt {len(prompt)} chars) ---", flush=True)
+    try:
+        resp = _open_with_backoff(req, min(60.0, timeout))
+    except urllib.error.HTTPError as e:
+        if getattr(e, "code", None) == 400:
+            raise _StreamUnsupported(f"stream refused: {e}")
+        el = time.time() - t0
+        emit_call({
+            "model": _active_model(), "backend": MODEL_BACKEND,
+            "api": "responses-stream", "prompt_chars": len(prompt),
+            "total_s": round(el, 1), "rc": 1, "outcome": "error",
+            "stderr_head": f"{type(e).__name__}: {e}"[:200],
+        })
+        print(f"  --- responses-stream ERROR {type(e).__name__}: {e} ---",
+              flush=True)
+        return ""
+    except Exception as e:  # noqa: BLE001
+        el = time.time() - t0
+        emit_call({
+            "model": _active_model(), "backend": MODEL_BACKEND,
+            "api": "responses-stream", "prompt_chars": len(prompt),
+            "total_s": round(el, 1), "rc": 1, "outcome": "error",
+            "stderr_head": f"{type(e).__name__}: {e}"[:200],
+        })
+        print(f"  --- responses-stream ERROR {type(e).__name__}: {e} ---",
+              flush=True)
+        return ""
+    state = {"pending": None, "texts": [], "reasoning_n": 0,
+             "done": False, "failed": "", "completed": None}
+    ttfb = None
+    last = t0
+    outcome = ""
+    while not state["done"]:
+        now = time.time()
+        if now - t0 >= timeout:
+            outcome = "hard_cap"
+            break
+        try:
+            raw = resp.readline()
+        except TimeoutError:
+            raw = None
+        except Exception as e:  # noqa: BLE001
+            outcome = f"read_error:{type(e).__name__}"
+            break
+        now = time.time()
+        if raw is None:
+            if ttfb is None and now - t0 >= min(NO_FIRST_BYTE_S, timeout):
+                outcome = "no_first_byte"
+                break
+            if ttfb is not None and now - last >= STREAM_IDLE_S:
+                outcome = "stream_idle"
+                break
+            continue
+        if raw == b"" or raw == "":
+            outcome = outcome or "eof"
+            break
+        before = len(state["texts"])
+        _responses_stream_step(state, raw)
+        if len(state["texts"]) > before:
+            if ttfb is None:
+                ttfb = now - t0
+            last = now
+    el = time.time() - t0
+    if state["failed"]:
+        emit_call({
+            "model": _active_model(), "backend": MODEL_BACKEND,
+            "api": "responses-stream", "prompt_chars": len(prompt),
+            "total_s": round(el, 1), "rc": 1, "outcome": "failed",
+            "stderr_head": state["failed"][:200],
+        })
+        print(f"  --- responses-stream FAILED: {state['failed'][:160]} ---",
+              flush=True)
+        return ""
+    if state["completed"] is not None:
+        try:
+            texts, reasoning_n = _responses_output_texts(state["completed"])
+        except (ValueError, AttributeError) as e:
+            print(f"  --- responses-stream parse fail: {e} ---", flush=True)
+            emit_call({
+                "model": _active_model(), "backend": MODEL_BACKEND,
+                "api": "responses-stream", "prompt_chars": len(prompt),
+                "total_s": round(el, 1), "rc": 1, "outcome": "parse_error",
+                "stderr_head": "completed event did not parse",
+            })
+            return ""
+    else:
+        texts, reasoning_n = state["texts"], state["reasoning_n"]
+    text = "".join(texts)
+    if outcome in ("hard_cap", "stream_idle", "read_error", "eof") \
+            and not state["completed"]:
+        # Same salvage rule as the CLI path: only a WHOLE function, never
+        # a truncation that would fail the build describing the cut.
+        salvaged = complete_function(text)
+        print(f"  --- responses-stream {outcome} after {el:.0f}s: "
+              f"{'salvaged whole function' if salvaged else 'nothing usable'} "
+              f"({len(text)} chars streamed) ---", flush=True)
+        if not salvaged:
+            emit_call({
+                "model": _active_model(), "backend": MODEL_BACKEND,
+                "api": "responses-stream", "prompt_chars": len(prompt),
+                "total_s": round(el, 1), "stream_chars": len(text), "rc": 0,
+                "reasoning_items": reasoning_n, "effort": effort or "none",
+                "outcome": outcome + "_partial" if text.strip()
+                else outcome + "_empty",
+            })
+            return ""
+        texts, text = [salvaged], salvaged
+    cleaned = _trim_to_function(clean_code(text)) if text.strip() else ""
+    out = cleaned.strip() or text
+    emit_call({
+        "model": _active_model(), "backend": MODEL_BACKEND,
+        "api": "responses-stream", "prompt_chars": len(prompt),
+        "total_s": round(el, 1), "stream_chars": len(out), "rc": 0,
+        "reasoning_items": reasoning_n, "effort": effort or "none",
+        "outcome": "produced" if out.strip() else "empty",
+    })
+    print(f"  --- responses-stream done in {el:.0f}s: {len(out)} chars, "
+          f"{reasoning_n} reasoning items ---", flush=True)
+    return out
+
+
 def _responses_generate(prompt: str, temperature: float = 0.2,
                         budget_left: float | None = None) -> str:
-    """Non-stream Zen Responses call for models that reject chat-completions."""
+    """Zen Responses call for models that reject chat-completions.
+
+    Streaming first with the one-shot path as fallback: a non-streaming
+    call returns zero bytes until the whole response completes, so a slow
+    call that dies leaves nothing and is indistinguishable from a hang."""
     del temperature  # Responses path does not take chat temperature here.
     effort = REASONING_EFFORT
     payload: dict = {
@@ -790,6 +1028,13 @@ def _responses_generate(prompt: str, temperature: float = 0.2,
                                  method="POST")
     t0 = time.time()
     timeout = GEN_TIMEOUT if budget_left is None else max(30.0, min(GEN_TIMEOUT, budget_left))
+    if os.environ.get("RESPONSES_STREAM", "1").strip().lower() not in (
+            "0", "off", "no", "false"):
+        try:
+            return _responses_generate_stream(
+                prompt, effort, t0, timeout, url, payload)
+        except _StreamUnsupported as e:
+            print(f"  --- {e}; one-shot fallback ---", flush=True)
     print(f"  --- responses ({_active_model()}, effort={effort or 'none'}, "
           f"prompt {len(prompt)} chars) ---", flush=True)
     try:
@@ -810,18 +1055,7 @@ def _responses_generate(prompt: str, temperature: float = 0.2,
     reasoning_n = 0
     try:
         j = json.loads(raw)
-        for item in j.get("output") or []:
-            if not isinstance(item, dict):
-                continue
-            if item.get("type") == "message":
-                for part in item.get("content") or []:
-                    if isinstance(part, dict) and part.get("text"):
-                        texts.append(part["text"])
-            elif item.get("type") == "reasoning":
-                reasoning_n += 1
-                for part in item.get("summary") or []:
-                    if isinstance(part, dict) and part.get("text"):
-                        texts.append(part["text"])
+        texts, reasoning_n = _responses_output_texts(j)
     except (ValueError, AttributeError) as e:
         print(f"  --- responses parse fail: {e} ---", flush=True)
         emit_call({
