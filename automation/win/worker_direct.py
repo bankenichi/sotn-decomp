@@ -775,6 +775,7 @@ WORKER_NAME = os.environ.get("WORKER_NAME", f"{socket.gethostname()}-{os.getpid(
 MAX_ATTEMPTS = int(os.environ.get("MAX_ATTEMPTS", "4"))
 GEN_TIMEOUT = float(os.environ.get("GEN_TIMEOUT", "600"))
 BUILD_TIMEOUT = float(os.environ.get("BUILD_TIMEOUT", "900"))
+# 0 = no truncation (capable hosted models that can take full asm).
 MAX_ASM_CHARS = int(os.environ.get("MAX_ASM_CHARS", "12000"))
 MAX_CTX_CHARS = int(os.environ.get("MAX_CTX_CHARS", "8000"))
 # A reasoning model can think forever on a huge function. Cap it, and skip
@@ -815,6 +816,7 @@ REASON_CAP = REASONING_MAX_TOKENS
 # right ceiling for it.
 _HOSTED = {"cli", "zen"}
 _DEFAULT_MAX_FUNC = "20000" if MODEL_BACKEND in _HOSTED else "6000"
+# 0 = never skip the model for size (pair with MAX_ASM_CHARS=0).
 MAX_FUNC_CHARS = int(os.environ.get("MAX_FUNC_CHARS", _DEFAULT_MAX_FUNC))
 # Stable marker in the notes so the next tier can find exactly these records.
 # Matching on prose would break the moment someone reworded the message.
@@ -2367,13 +2369,15 @@ def prepare(rec: dict, located) -> dict:
     if os.path.exists(p):
         _raw = compact_asm(open(p, errors="ignore").read())
         asm_full = len(_raw)
-        asm_text = _raw[:MAX_ASM_CHARS]
-        if asm_full > MAX_ASM_CHARS:
+        if MAX_ASM_CHARS > 0 and asm_full > MAX_ASM_CHARS:
             # Say it out loud. Silently handing the model 12000 of a 40000-char
             # function looks exactly like a normal run and produces confident,
             # wrong C for the half it was shown.
+            asm_text = _raw[:MAX_ASM_CHARS]
             print(f"[prep] WARNING: asm truncated {asm_full} -> {MAX_ASM_CHARS} "
                   f"chars (MAX_ASM_CHARS)", flush=True)
+        else:
+            asm_text = _raw
 
     # m2ctx.py writes ONE file, <repo>/ctx.c, with a hardcoded name.
     #
@@ -5542,7 +5546,7 @@ def process_one(dry: bool = False, only: str | None = None,
     # a permuter seed, which save_candidate already knows how to record.
     _asm_size = ctx.get("asm_full") or len(ctx["asm"])
     m2c_only = False
-    if _asm_size > MAX_FUNC_CHARS and not dry:
+    if MAX_FUNC_CHARS > 0 and _asm_size > MAX_FUNC_CHARS and not dry:
         if not (ctx.get("draft") or "").strip():
             print(f"[worker] SKIP: {_asm_size} chars of asm exceeds "
                   f"MAX_FUNC_CHARS={MAX_FUNC_CHARS} and m2c produced no "

@@ -2694,7 +2694,8 @@ def opencode_preflight(timeout: int = 90) -> dict:
 def fleet_start(workers: int = 4, max_functions: int = 0,
                 force: bool = False, backend: str = "zen",
                 cli_workers: int = 0, opencode_model: str = "",
-                reasoning: str = "", only: str = "") -> dict:
+                reasoning: str = "", only: str = "",
+                no_char_limits: bool = False) -> dict:
     """Launch detached worker_direct.py processes inside WSL.
 
     Lets the orchestrator run the volume tier without a human at a PowerShell
@@ -2715,6 +2716,11 @@ def fleet_start(workers: int = 4, max_functions: int = 0,
     llama. The old name misled a caller into starting a cli fleet on
     2026-08-09. "http" is still accepted and now resolves to "zen", because
     that is what the word describes.
+
+    no_char_limits:
+      When True, workers get MAX_ASM_CHARS=0 and MAX_FUNC_CHARS=0 so
+      prepare() does not truncate asm and large functions are still
+      sent to the model (for capable hosted models). Default False.
 
     Why mixed is worth having: the two backends fail differently. llama is free
     and unlimited but has plateaued; the Zen models may be stronger but draw on
@@ -2908,6 +2914,9 @@ def fleet_start(workers: int = 4, max_functions: int = 0,
             model_setup += f"_r=({earr}); "
             pick += '_re=${_r[$(((i-1) % ${#_r[@]}))]}; '
             env = "REASONING_EFFORT=$_re " + env
+        if no_char_limits:
+            # 0 = unlimited in worker_direct (capable models / full asm).
+            env = "MAX_ASM_CHARS=0 MAX_FUNC_CHARS=0 " + env
         parts.append(
             f"{model_setup}for i in $(seq 1 {count}); do "
             f"  {pick}"

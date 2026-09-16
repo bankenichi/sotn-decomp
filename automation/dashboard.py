@@ -344,8 +344,8 @@ ACTION_PARAMS: dict[str, dict[str, tuple[int, int]]] = {
     "permuter_start": {"slots": (1, 8), "threads": (1, 16),
                        "stall": (500, 50000), "cycles": (1, 8),
                        "max_iters": (1000, 500000)},
-    "fleet_cli_start": {"workers": (1, 8)},
-    "fleet_zen_start": {"workers": (1, 8)},
+    "fleet_cli_start": {"workers": (1, 8), "no_char_limits": (0, 1)},
+    "fleet_zen_start": {"workers": (1, 8), "no_char_limits": (0, 1)},
     "fleet_llama_start": {"workers": (1, 8)},
 }
 
@@ -481,7 +481,7 @@ def _sup_start(slots: int = 3, threads: int = 4, stall: int = 2500,
 
 def _fleet(backend: str, default_n: int):
     def go(workers: int = default_n, models: list | None = None,
-           effort: list | None = None) -> dict:
+           effort: list | None = None, no_char_limits: int = 0) -> dict:
         import commands_client as cc
         kw = {}
         # THE A/B KNOB (#111), PER WORKER. 0 keeps the worker default (`low`),
@@ -507,14 +507,17 @@ def _fleet(backend: str, default_n: int):
         # byte-identical to a fleet launched before this knob existed.
         if any(eff):
             kw["reasoning"] = ",".join("none" if e else "low" for e in eff)
-        if backend == "cli":
+        if backend in ("cli", "zen"):
             # fleet_start assigns a comma-separated list round-robin, one model
             # per worker. Passing exactly `workers` entries therefore gives each
             # worker its own model, which is the bake-off shape: same fleet,
-            # same functions, one variable.
+            # same functions, one variable. Zen uses the same list; worker_direct
+            # strips the opencode/ prefix.
             idx = models or [0]
             idx = (idx * workers)[:workers]      # pad by repeat if short
             kw["opencode_model"] = ",".join(CLI_MODELS[i][1] for i in idx)
+        if no_char_limits:
+            kw["no_char_limits"] = True
         return {"ok": True, "out": str(cc.fleet_start(workers=workers,
                                                       backend=backend, **kw))}
     return go
@@ -1430,7 +1433,8 @@ pre{margin:0;padding:8px 10px;flex:1 1 auto;min-height:0;overflow:auto;font-size
       </label>
       <button onclick="act(el('f_backend').value,fleetParams())">start</button>
       <button class=danger onclick="confirmAct('fleet_stop','Stop all fleet workers and reclaim their queue records?')">stop</button>
-      <span id=f_rows></span>
+      <label title="MAX_ASM_CHARS=0 MAX_FUNC_CHARS=0: send full asm to capable models"><input type=checkbox id=f_no_char_limits> no char limits</label>
+<span id=f_rows></span>
     </div>
     <div id=hold style="margin-bottom:8px"></div>
     <div class=cols id=fleet></div>
@@ -1514,6 +1518,8 @@ function fleetParams(){
   const bv=el('f_backend').value;
   if(bv==='fleet_cli_start'||bv==='fleet_zen_start'){
     p.models=[...el('f_rows').querySelectorAll('select.wmodel')].map(s=>+s.value);
+    // 1 = MAX_ASM_CHARS=0 MAX_FUNC_CHARS=0 for capable models (full asm).
+    if(el('f_no_char_limits').checked) p.no_char_limits=1;
   }
   return p;
 }

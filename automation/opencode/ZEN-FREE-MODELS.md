@@ -476,6 +476,13 @@ attach a stale `MODEL_API_KEY` on the zen path: an invalid key 401s free
 models that otherwise work unauthenticated. Paid Zen uses
 `OPENCODE_API_KEY` or `ZEN_API_KEY`.
 
+### Full asm (no char limits)
+
+Default `MAX_ASM_CHARS=12000` truncates assembly in `prepare()`, and
+`MAX_FUNC_CHARS` (20000 on zen) skips the model for larger functions.
+For capable models, set `MAX_ASM_CHARS=0` and `MAX_FUNC_CHARS=0`, or
+start the fleet with `no_char_limits` (dashboard checkbox / `fleet_start(..., no_char_limits=True)`).
+
 ### What the CLI backend gives up
 
 `opencode run` returns output only when the run completes, so there is no token
