@@ -1335,6 +1335,28 @@ class LoopRegionTests(unittest.TestCase):
                       "bne $v0, $a0, .Ltop\nnop\n.Lexit:\njr $ra\nnop\n")
         self.assertEqual(self._regions(join_multi)[1], ["branch-in-loop"])
 
+    def test_in_loop_return_admits_with_valid_site(self):
+        ret = ("li $v0, 0\n.Ltop:\naddiu $v0, $v0, 1\n"
+               "bne $v0, $a1, .Ldo\nnop\n"
+               "jr $ra\nnop\n"
+               ".Ldo:\nbne $v0, $a0, .Ltop\nnop\n.Lexit:\njr $ra\nnop\n")
+        admitted, refused = self._regions(ret)
+        self.assertEqual(refused, [])
+        self.assertEqual(len(admitted), 1)
+        self.assertEqual(admitted[0]["kind"], "do-while")
+        self.assertEqual(admitted[0]["returns"], [4])
+
+    def test_in_loop_return_refusals(self):
+        indirect = ("li $v0, 0\n.Ltop:\naddiu $v0, $v0, 1\n"
+                    "bne $v0, $a1, .Ldo\nnop\n"
+                    "jr $s0\nnop\n"
+                    ".Ldo:\nbne $v0, $a0, .Ltop\nnop\n.Lexit:\njr $ra\nnop\n")
+        self.assertEqual(self._regions(indirect)[1], ["return-in-loop"])
+        control_slot = ("li $v0, 0\n.Ltop:\naddiu $v0, $v0, 1\n"
+                        "jr $ra\njal foo\n"
+                        "bne $v0, $a0, .Ltop\nnop\n.Lexit:\njr $ra\nnop\n")
+        self.assertEqual(self._regions(control_slot)[1], ["return-in-loop"])
+
     def test_inner_control_and_outside_entry_refuse(self):
         bare_join = (".Ltop:\naddiu $v0, $v0, 1\n"
                      "beq $v0, $a1, .Lskip\nnop\n.Lskip:\n"
@@ -1375,10 +1397,24 @@ class LoopRegionTests(unittest.TestCase):
                        "bne $v0, $a0, .Linner\nnop\n"
                        "addiu $v1, $v1, 1\n"
                        "bne $v1, $a1, .Louter\nnop\njr $ra\nnop\n")
-        self.assertEqual(self._regions(nested_loop)[1], ["nested-loop"])
+        admitted, refused = self._regions(nested_loop)
+        self.assertEqual(refused, [])
+        self.assertEqual(len(admitted), 2)
+        self.assertEqual([region["kind"] for region in admitted], ["do-while", "do-while"])
+        self.assertEqual(admitted[0]["nested"], [1])
         slot_branch = (".Ltop:\naddiu $v0, $v0, 1\n"
                        "bne $v0, $a0, .Ltop\nbeq $zero, $zero, .Lfar\n"
                        "nop\n.Lfar:\njr $ra\nnop\n")
+
+    def test_nested_inner_break_stays_refused(self):
+        shaped = (".Louter:\naddiu $v0, $v0, 1\n"
+                  ".Linner:\naddu $v1, $v1, $v0\n"
+                  "beq $v1, $a1, .Iexit\nnop\n"
+                  "addiu $v1, $v1, 1\n"
+                  "bne $v1, $a0, .Linner\nnop\n"
+                  ".Iexit:\naddu $v0, $v0, $v1\n"
+                  "bne $v0, $a2, .Louter\nnop\njr $ra\nnop\n")
+        self.assertEqual(self._regions(shaped)[1], ["nested-loop"])
 
     def test_region_flow_tracks_order_and_fresh_loads(self):
         instructions = _parse_assembly(
@@ -1566,6 +1602,52 @@ class LoopLoweringTests(unittest.TestCase):
         self.assert_program(
             assembly, self.MULTI_DECLS,
             "int main(void) { return fn(9, 3, 9) != 3 || fn(9, 9, 2) != 2; }\n")
+
+    RET_ASM = ("li $v0, 0\n.Ltop:\naddiu $v0, $v0, 1\n"
+               "bne $v0, $a1, .Ldo\nnop\n"
+               "jr $ra\nnop\n"
+               ".Ldo:\nbne $v0, $a0, .Ltop\nnop\n.Lexit:\njr $ra\nnop\n")
+    RET_DECLS = {
+        "return_type": "unsigned int",
+        "parameters": [{"type": "unsigned int", "name": "limit"},
+                       {"type": "unsigned int", "name": "target"}],
+    }
+
+    def test_in_loop_return_renders_early_return(self):
+        source = deterministic_local_draft(
+            self.RET_ASM, symbol="fn", declarations=self.RET_DECLS)
+        self.assertIsNotNone(source)
+        self.assertIn("do {", source)
+        self.assertIn("return", source)
+
+    def test_in_loop_return_counts_host_exact(self):
+        self.assert_program(
+            self.RET_ASM, self.RET_DECLS,
+            "int main(void) { return fn(5, 3) != 3 || fn(5, 9) != 5 || fn(1, 1) != 1; }\n")
+
+    NEST_ASM = ("li $v0, 0\nli $t0, 0\n"
+                ".Louter:\nli $t1, 0\n"
+                ".Linner:\naddu $v0, $v0, $t0\n"
+                "addiu $t1, $t1, 1\n"
+                "bne $t1, $a1, .Linner\nnop\n"
+                "addiu $t0, $t0, 1\n"
+                "bne $t0, $a0, .Louter\nnop\njr $ra\nnop\n")
+    NEST_DECLS = {
+        "return_type": "unsigned int",
+        "parameters": [{"type": "unsigned int", "name": "outer_n"},
+                       {"type": "unsigned int", "name": "inner_n"}],
+    }
+
+    def test_nested_counter_renders_nested_loops(self):
+        source = deterministic_local_draft(
+            self.NEST_ASM, symbol="fn", declarations=self.NEST_DECLS)
+        self.assertIsNotNone(source)
+        self.assertEqual(source.count("do {"), 2)
+
+    def test_nested_counter_counts_host_exact(self):
+        self.assert_program(
+            self.NEST_ASM, self.NEST_DECLS,
+            "int main(void) { return fn(4, 3) != 18 || fn(1, 5) != 0 || fn(3, 2) != 6; }\n")
 
     def test_loop_call_refuses_clobbered_values_and_unsafe_frames(self):
         from automation.search_source_context import renderer_declarations

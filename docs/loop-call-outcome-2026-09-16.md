@@ -159,3 +159,39 @@ multi-exit file-votes fall from 27 to 17, branch-in-loop rises from 87 to 92
 (deferred join-plus-multi composition), nonlocal-exit rises from 26 to 28
 (shared but nonlocal exits now surfacing). Structural admission holds at 164
 files with 39 declared files over the size cap and 7 without declarations.
+
+## In-loop returns (#312)
+
+An in-loop `jr $ra` is a return-exit: admission records validated return
+sites (plain `jr $ra` with a non-control delay slot inside the body) and
+lowering reuses the ordinary return preconditions, return address intact and
+callee-saved state restored, at each site. The return emits directly; later
+straight-line code in that segment is dynamically unreachable and marked
+visited. Split continuations, nonlocal exits and the per-exit merge rules are
+unchanged. Indirect jumps and control delay slots still refuse return-in-loop.
+
+Fixture proof: region tests for admission, indirect-jump and control-slot
+refusals; a host-executed conditional early-return loop verified against both
+the early and the latch exit.
+
+## Nested loops (#313)
+
+Inner backward latches with fully contained spans lower recursively:
+the admission pre-scan records inner spans whose branches never escape,
+skips them in the outer control scan, exempts nested starts from the
+outside-entry check, and refuses outer joins that land inside a span.
+Lowering delegates to the loop lowerer at nested starts with save and
+restore of carrier maps, the active region and the loop flag; ancestor
+carrier storage is shared so every level sees one binding. Inner spans with
+escaping branches stay refused as nested-loop.
+
+Fixture proof: the canonical nested fixture now admits two regions; a
+boundary test keeps inner-break composition refused; a host-executed nested
+counter is arithmetically exact.
+
+Default-bound pool remeasurement `run_automation-181430-70861` completed
+with zero errors over the same 260 active files and zero complete renders:
+nested-loop file-votes fall from 29 to 17, structural admission rises from
+164 to 165 files, and newly admitted regions expose later blocks
+(branch-in-loop 92 to 94, nonlocal-exit 28 to 32, size-blocked declared 39
+to 45). Refusals move downstream as designed.

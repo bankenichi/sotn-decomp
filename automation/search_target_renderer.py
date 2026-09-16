@@ -1507,11 +1507,50 @@ def loop_regions(instructions, *, allow_calls=False) -> tuple[list, list]:
             kind = "do-break"
         else:
             kind = "do-while" if not exits else "do-break"
+        nested = []
+        for k in range(start + 1, branch):
+            inner = instructions[k]
+            if inner.mnemonic not in _COND_BRANCHES | {"b", "j"}:
+                continue
+            inner_target = _branch_target_index(instructions, labels, k)
+            if inner_target is None or not start <= inner_target < k:
+                continue
+            inner_slot = k + 1
+            if inner_slot >= branch or inner_slot >= len(instructions):
+                continue
+            if instructions[inner_slot].mnemonic in _CONTROL_OPS:
+                continue
+            contained = True
+            for j in range(inner_target, inner_slot + 1):
+                if j == k:
+                    continue
+                op_j = instructions[j].mnemonic
+                if op_j == "jal":
+                    continue
+                if op_j in _COND_BRANCHES | {"b", "j", "jr", "jalr"}:
+                    tgt = _branch_target_index(instructions, labels, j)
+                    if tgt is None or not inner_target <= tgt <= inner_slot:
+                        contained = False
+                        break
+            if not contained:
+                continue
+            nested.append((inner_target, k))
+        nested_spans = sorted((ns, nb + 1) for (ns, nb) in nested)
+        for x in range(len(nested_spans)):
+            for y in range(x + 1, len(nested_spans)):
+                (aa, bb), (cc, dd) = nested_spans[x], nested_spans[y]
+                if cc <= bb < dd:
+                    nested_spans = []
+                    break
+        nested_starts = {ns for (ns, ne) in nested_spans}
         inner_bad = None
         inner_reason = "branch-in-loop"
         joins = set()
+        returns = []
         for k in range(start, branch):
             item_k = instructions[k]
+            if any(ns <= k <= ne for (ns, ne) in nested_spans):
+                continue
             if item_k.mnemonic not in _CONTROL_OPS or k in exits:
                 continue
             inner_target = _branch_target_index(instructions, labels, k)
@@ -1521,7 +1560,14 @@ def loop_regions(instructions, *, allow_calls=False) -> tuple[list, list]:
                     continue
                 inner_reason = "call-in-loop"
             elif item_k.mnemonic == "jr":
-                inner_reason = "return-in-loop"
+                jr_regs = [_canonical_reg(part.strip())
+                           for part in (item_k.operands or "").split(",")]
+                if (jr_regs != ["ra"] or not k + 1 < branch
+                        or instructions[k + 1].mnemonic in _CONTROL_OPS):
+                    inner_reason = "return-in-loop"
+                else:
+                    returns.append(k)
+                    continue
             elif inner_target is not None and inner_target < k:
                 inner_reason = "nested-loop"
             elif (item_k.mnemonic in _COND_BRANCHES and inner_target is not None
@@ -1530,7 +1576,8 @@ def loop_regions(instructions, *, allow_calls=False) -> tuple[list, list]:
             elif (item_k.mnemonic in _COND_BRANCHES and inner_target is not None
                     and k + 1 < inner_target <= (exits[0] if exits and k < exits[0] else branch)
                     and instructions[k + 1].mnemonic not in _CONTROL_OPS
-                    and instructions[inner_target - 1].mnemonic not in _CONTROL_OPS):
+                    and instructions[inner_target - 1].mnemonic not in _CONTROL_OPS
+                    and not any(ns <= inner_target <= ne for (ns, ne) in nested_spans)):
                 joins.add(k)
                 continue
             inner_bad = k
@@ -1560,10 +1607,13 @@ def loop_regions(instructions, *, allow_calls=False) -> tuple[list, list]:
         for j, other in enumerate(instructions):
             if j == branch or j in joins or other.mnemonic not in _COND_BRANCHES | {"b", "j"}:
                 continue
+            if any(ns <= j <= ne for (ns, ne) in nested_spans):
+                continue
             other_target = _branch_target_index(instructions, labels, j)
             if other_target is None:
                 continue
-            if other_target == start or start < other_target <= slot:
+            if other_target == start or (start < other_target <= slot
+                                         and other_target not in nested_starts):
                 outside = True
                 break
         if outside:
@@ -1571,7 +1621,8 @@ def loop_regions(instructions, *, allow_calls=False) -> tuple[list, list]:
             continue
         admitted.append({"start": start, "branch": branch, "slot": slot,
                          "kind": kind, "exit": exits[0] if exits else None,
-                         "exits": list(exits)})
+                         "exits": list(exits), "returns": list(returns),
+                         "nested": [ns for (ns, ne) in nested_spans]})
     return admitted, refused
 
 
@@ -2255,23 +2306,7 @@ def _leaf_body(instructions, parameters, return_type, callees=None, layouts=None
                 index += 2
                 continue
             if op == "jr":
-                if len(args) != 1 or register(args[0]) != "ra":
-                    raise ValueError("indirect jump")
-                if values["ra"] != "@entry-ra":
-                    raise ValueError("return address not restored")
-                step(index + 1, values, lines, indent)
-                if values["stack_offset"] != 0 or any(values[name] != "@entry-" + name for name in preserved):
-                    raise ValueError("callee-saved state not restored")
-                if return_type == "void":
-                    result = "return;"
-                elif return_type in layouts:
-                    result = "return " + pointer_expression(values["v0"], layouts[return_type]["canonical"]) + ";"
-                else:
-                    value = value_for(values, "v0")
-                    if not re.fullmatch(r"[0-9]+", value) and return_type in {"int", "signed int", "s32", "s16", "s8", "short", "signed short", "signed char"}:
-                        value = "(int)(" + value + ")"
-                    result = "return " + value + ";"
-                return lines + [indent + result]
+                return lines + [indent + emit_return(index, values, lines, indent)]
             expected = 3 if op in {"beq", "bne"} else 1 if op in {"b", "j"} else 2
             if len(args) != expected or args[-1] not in labels:
                 raise ValueError("unbound branch target")
@@ -2443,6 +2478,30 @@ def _leaf_body(instructions, parameters, return_type, callees=None, layouts=None
         lines.append(indent + "}")
         return merged
 
+    def emit_return(index, values, lines, indent):
+        """Shared function-return lowering for path ends and in-loop returns.
+
+        Enforces the ordinary return preconditions wherever the return sits:
+        the return address must be intact and callee-saved state restored.
+        """
+        item = instructions[index]
+        args = operands(item)
+        if len(args) != 1 or register(args[0]) != "ra":
+            raise ValueError("indirect jump")
+        if values["ra"] != "@entry-ra":
+            raise ValueError("return address not restored")
+        step(index + 1, values, lines, indent)
+        if values["stack_offset"] != 0 or any(values[name] != "@entry-" + name for name in preserved):
+            raise ValueError("callee-saved state not restored")
+        if return_type == "void":
+            return "return;"
+        if return_type in layouts:
+            return "return " + pointer_expression(values["v0"], layouts[return_type]["canonical"]) + ";"
+        value = value_for(values, "v0")
+        if not re.fullmatch(r"[0-9]+", value) and return_type in {"int", "signed int", "s32", "s16", "s8", "short", "signed short", "signed char"}:
+            value = "(int)(" + value + ")"
+        return "return " + value + ";"
+
     def branch_condition(index, values, lines, indent, *, negate=False):
         item = instructions[index]
         args = operands(item)
@@ -2457,6 +2516,9 @@ def _leaf_body(instructions, parameters, return_type, callees=None, layouts=None
     def _lower_segment(lo, hi, values, lines, indent, labels):
         index = lo
         while index < hi:
+            if index in region_by_start and region_by_start[index] is not active_region[0]:
+                index = _lower_loop(region_by_start[index], values, lines, indent, labels)
+                continue
             budget[0] -= 1
             if budget[0] < 0:
                 raise ValueError("path expansion limit")
@@ -2468,6 +2530,15 @@ def _leaf_body(instructions, parameters, return_type, callees=None, layouts=None
                 lower_call(index, values, lines, indent)
                 index += 2
                 continue
+            if item.mnemonic == "jr":
+                if index + 1 >= hi:
+                    raise ValueError("return crosses segment boundary")
+                visited.add(index)
+                lines.append(indent + emit_return(index, values, lines, indent))
+                # An unconditional return ends this path; later straight-line
+                # code in the segment is dynamically unreachable.
+                visited.update(range(index + 2, hi))
+                return
             if item.mnemonic in _COND_BRANCHES:
                 target = _branch_target_index(instructions, labels, index)
                 if target is None or not index + 1 < target <= hi:
@@ -2523,6 +2594,10 @@ def _leaf_body(instructions, parameters, return_type, callees=None, layouts=None
                 step(slot, current, body_lines, body_indent)
             return current, exit_states, condition, body_lines
 
+        saved_region = active_region[0]
+        saved_materialize = dict(materialize)
+        saved_active = loop_active[0]
+        active_region[0] = region
         loop_active[0] = True
         try:
             # Discover true live-ins using the ordinary interpreter, including
@@ -2544,6 +2619,11 @@ def _leaf_body(instructions, parameters, return_type, callees=None, layouts=None
                            if isinstance(value, _PointerValue)
                            or isinstance(value, str) and "@" not in value}
             for reg in sorted(((required | initialized) & writes) & writable):
+                if reg in materialize:
+                    # An ancestor loop already owns carrier storage for this
+                    # register; share it so every nesting level sees one binding.
+                    values[reg] = materialize[reg]
+                    continue
                 entry = values.get(reg)
                 if isinstance(entry, _PointerValue):
                     ctype, text = entry.kind, entry.expression
@@ -2596,11 +2676,14 @@ def _leaf_body(instructions, parameters, return_type, callees=None, layouts=None
             visited.update(range(start, slot + 1))
         finally:
             materialize.clear()
-            loop_active[0] = False
+            materialize.update(saved_materialize)
+            active_region[0] = saved_region
+            loop_active[0] = saved_active
         return slot + 1
 
     materialize: dict = {}
     loop_active = [False]
+    active_region = [None]
     loop_admitted, loop_refused = loop_regions(instructions, allow_calls=True)
     if loop_refused:
         return None

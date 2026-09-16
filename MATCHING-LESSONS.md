@@ -1627,3 +1627,28 @@ multi-exit, and join-plus-multi composition stays refused until each shape is
 proven separately. Fixture proof is host-executed do-break and while-form
 loops with either break firing, plus region tests for admission and each
 refusal. Full-pool effect is recorded in the linked outcome document.
+
+### In-loop returns reuse the ordinary return checks
+
+An in-loop `jr $ra` needs no new value kind: it is a return-exit. The
+ordinary return already requires an intact return address and restored
+callee-saved state, which is exactly the condition that makes an early return
+valid, so the same helper lowers path ends and loop-body sites. Later
+straight-line code in that segment is dynamically unreachable and marked
+visited rather than lowered. Indirect jumps and control delay slots refuse.
+A control slot can also break the enclosing join shape first, which correctly
+reports branch-in-loop at the earlier site. Full-pool effect is recorded in
+the linked outcome document.
+
+### Nested loops share ancestor carrier storage
+
+A nested loop that installed its own carrier temporary for a register the
+outer loop already carried broke the outer backedge check: the outer binding
+changed to the inner temporary, so entry and backedge bindings disagreed and
+every nested render refused. The fix reuses ancestor carrier storage when the
+register is already materialized, so all levels read and write one binding
+and each level backedge check passes independently. Ancestor materialize
+maps, the active region and the loop flag save and restore around the nested
+call with the same stack discipline as temporaries. Inner spans with branches
+that escape the span stay refused as nested-loop until deeper composition is
+proven; the first new evidence is a host-executed nested counter.

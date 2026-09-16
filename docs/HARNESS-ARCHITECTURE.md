@@ -105,9 +105,9 @@ direct/API calls through the ordinary call ABI, separates carrier storage from
 register validity, captures predicates before delay slots, and checks live-ins
 at the backedge. Multi-exit joins admit forward exits sharing one continuation
 immediately after the loop, each with its own predicate snapshot, delay slot
-and break, merging only bindings valid on every exit path. See `docs/loop-call-outcome-2026-09-16.md` for the retracted
+and break, merging only bindings valid on every exit path. Validated in-loop returns emit through the ordinary return checks. Contained nested loops lower recursively sharing ancestor carrier storage. See `docs/loop-call-outcome-2026-09-16.md` for the retracted
 diagnosis and regression evidence. Refused: loop stack writes, nonlocal exits,
-split-continuation multi-exit, join-plus-multi composition, nesting, return-in-loop, in-loop switch dispatch, bigger ceilings
+split-continuation multi-exit, join-plus-multi composition, escaping inner spans, in-loop switch dispatch, bigger ceilings
 for the 69 size-blocked files.
 
 Measurement lives in `measure_data_effect.py`: 283-file g_api jalr pool,

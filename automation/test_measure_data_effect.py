@@ -133,6 +133,18 @@ class RemeasureHelperTests(unittest.TestCase):
                  "beq $v0, $a2, .Lexit\nnop\n"
                  "bne $v0, $a0, .Ltop\nnop\n.Lexit:\njr $ra\nnop\n")
         self.assertEqual(loop_region_summary(multi), (1, 1, set()))
+        ret = ("li $v0, 0\n.Ltop:\naddiu $v0, $v0, 1\n"
+               "bne $v0, $a1, .Ldo\nnop\n"
+               "jr $ra\nnop\n"
+               ".Ldo:\nbne $v0, $a0, .Ltop\nnop\n.Lexit:\njr $ra\nnop\n")
+        self.assertEqual(loop_region_summary(ret), (1, 0, set()))
+        nest = (".Louter:\nli $t1, 0\n"
+                ".Linner:\naddu $v0, $v0, $t0\n"
+                "addiu $t1, $t1, 1\n"
+                "bne $t1, $a1, .Linner\nnop\n"
+                "addiu $t0, $t0, 1\n"
+                "bne $t0, $a0, .Louter\nnop\njr $ra\nnop\n")
+        self.assertEqual(loop_region_summary(nest), (2, 0, set()))
 
 
 
