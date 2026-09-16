@@ -53,15 +53,25 @@ def rec(rid, status):
             "tier": 0, "iterations": 0, "notes": ""}
 
 
-def run_next(qpath, *extra):
+def run_next(qpath, *extra, coverage_rows=None):
     """`scheduler.py next` against a throwaway queue. Returns the parsed record.
 
     SOTN_QUEUE is set to a file that ALREADY HAS CONTENT, which matters:
     scheduler.py migrates the legacy in-repo queue into an empty target on
     import and then refuses every mutating command against the result. An
     empty temp file would make this whole suite test the refusal path.
+
+    coverage_rows, when given as [(id, instructions), ...], is written to a
+    throwaway coverage file selected through SOTN_DECL_COVERAGE, so
+    --small-first tests never touch the live 410KB corpus.
     """
     env = dict(os.environ, SOTN_QUEUE=qpath)
+    if coverage_rows is not None:
+        cpath = os.path.join(os.path.dirname(qpath), "coverage.json")
+        with open(cpath, "w", encoding="utf-8") as f:
+            json.dump([{"id": rid, "instructions": n}
+                       for rid, n in coverage_rows], f)
+        env["SOTN_DECL_COVERAGE"] = cpath
     p = subprocess.run(
         [sys.executable, os.path.join(HERE, "scheduler.py"), "next",
          "--worker", "test-targeted"] + list(extra),
@@ -189,6 +199,58 @@ def scheduler_behaviour(tmp):
     check(got.get("claimed_from") == "todo", "still records claimed_from")
 
 
+def small_first_ordering(tmp):
+    """--small-first claims by instruction count for bounded probes.
+
+    WHY: coverage rank prefers declaration-rich giants, so a bounded probe
+    spends its whole cap before a small record is ever claimed, and
+    requeued giants get served straight back. Small-first gives the fast
+    signal first without touching the default order.
+    """
+    qpath = os.path.join(tmp, "queue-small.jsonl")
+    cov = [("us:ST/RDAI:func_big", 1500), ("us:ST/RDAI:func_small", 50)]
+
+    print("\n--small-first claims the smallest function first")
+    write_queue(qpath, [
+        rec("us:ST/RDAI:func_big", "todo"),
+        rec("us:ST/RDAI:func_small", "todo"),
+    ])
+    got = run_next(qpath, "--small-first", coverage_rows=cov)
+    check(got.get("id") == "us:ST/RDAI:func_small",
+          f"smallest claims first ({got.get('id')!r})")
+
+    print("\nwithout it the ordinary coverage rank still rules")
+    write_queue(qpath, [
+        rec("us:ST/RDAI:func_big", "todo"),
+        rec("us:ST/RDAI:func_small", "todo"),
+    ])
+    got = run_next(qpath, coverage_rows=cov)
+    check(got.get("id") == "us:ST/RDAI:func_big",
+          f"file order decides ties at equal rank ({got.get('id')!r})")
+
+    print("\nrecords missing from coverage keep rank order, never strand")
+    write_queue(qpath, [
+        rec("us:ST/RDAI:func_big", "todo"),
+        rec("us:ST/RDAI:func_nocov", "todo"),
+    ])
+    got = run_next(qpath, "--small-first",
+                   coverage_rows=[("us:ST/RDAI:func_big", 1500)])
+    check(got.get("id") == "us:ST/RDAI:func_big",
+          f"sized records sort before unsized ones ({got.get('id')!r})")
+
+    print("\ndeferred-last still outranks small-first")
+    small = rec("us:ST/RDAI:func_small", "deferred")
+    small["notes"] = "TIER_HANDOFF_TOO_LARGE: asm 12000 chars > 6000"
+    write_queue(qpath, [
+        rec("us:ST/RDAI:func_big", "todo"),
+        small,
+    ])
+    got = run_next(qpath, "--small-first", "--include-deferred",
+                   "--max-func-chars", "20000", coverage_rows=cov)
+    check(got.get("id") == "us:ST/RDAI:func_big",
+          f"a small handoff record still waits behind todo ({got.get('id')!r})")
+
+
 def run_report(qpath, *extra):
     env = dict(os.environ, SOTN_QUEUE=qpath)
     return subprocess.run(
@@ -293,6 +355,8 @@ def scheduler_structure():
           "and no other subcommand does")
     check('pn.add_argument("--allowlist"' in src,
           "next also takes the fleet's todo-pool allowlist")
+    check('pn.add_argument("--small-first"' in src,
+          "and the small-first probe ordering")
 
 
 def priority_identity():
@@ -352,6 +416,8 @@ def worker_structure():
           "and `once` supplies it")
     check('_next_args += ["--allowlist", ",".join(allowlist)]' in src,
           "fleet loops forward their subset through the separate allowlist")
+    check('_next_args += ["--small-first"]' in src,
+          "and forward small-first ordering when the fleet asks for it")
 
     print("\n`loop --only` is not offered, because it would not mean anything")
     # A loop with a fixed id either re-claims the record it just reported or
@@ -432,6 +498,7 @@ def main():
     with tempfile.TemporaryDirectory() as tmp:
         scheduler_behaviour(tmp)
         release_keeps_the_note(tmp)
+        small_first_ordering(tmp)
     scheduler_structure()
     priority_identity()
     worker_structure()

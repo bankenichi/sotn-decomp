@@ -280,6 +280,42 @@ def _load_priority() -> dict:
         return {}
 
 
+COVERAGE_FILE = REPO / "automation" / "decl-coverage.us.json"
+
+
+def _load_sizes() -> dict:
+    """Instruction counts per queue id for small-first probe ordering.
+
+    Shape of automation/decl-coverage.us.json: a list of row dicts with
+    "id" and "instructions" keys, produced by decl_coverage.py alongside
+    priority.us.json. SOTN_DECL_COVERAGE overrides the path so tests can
+    point at a fixture file instead of the live 410KB corpus.
+
+    Missing or unreadable file, or a record with no row, means "no
+    opinion" for that record: it sorts after sized records and keeps the
+    ordinary rank order among itself, so a stale or absent corpus can
+    never strand work, only decline to reorder it.
+    """
+    override = os.environ.get("SOTN_DECL_COVERAGE", "")
+    path = Path(override) if override else COVERAGE_FILE
+    try:
+        rows = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    out = {}
+    if isinstance(rows, list):
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            try:
+                n = int(row.get("instructions", 0))
+            except (TypeError, ValueError):
+                continue
+            if row.get("id") and n > 0:
+                out[row["id"]] = n
+    return out
+
+
 def priority_for(priority: dict, record: dict) -> dict:
     """Return one record's hints without collapsing equal function names.
 
@@ -449,6 +485,10 @@ def cmd_next(args):
         if not todo:
             return records, None
 
+        # Loaded once per claim, not per record: the corpus is 410KB and
+        # key() runs once per todo record.
+        sizes = _load_sizes() if getattr(args, "small_first", False) else {}
+
         def key(r):
             p = priority_for(prio, r)
             # Ordering, outermost first:
@@ -460,7 +500,18 @@ def cmd_next(args):
             #      prompt that drops empty for size, not capability.
             #   2. blocked last within a tier. Raw D_ addresses nothing names are
             #      a structural failure (MATCHING-LESSONS.md 1a) no model fixes.
-            #   3. then declaration-coverage rank.
+            #   3. then declaration-coverage rank. --small-first inserts
+            #      instruction count between 2 and 3: smallest functions claim
+            #      first for bounded probes, where fast signal beats coverage
+            #      order. Records with no coverage row sort after sized ones
+            #      and keep rank order, so the flag degrades instead of
+            #      stranding.
+            if getattr(args, "small_first", False):
+                return (1 if r["id"] in deferred_ids else 0,
+                        1 if p.get("blocked") else 0,
+                        0 if r["id"] in sizes else 1,
+                        sizes.get(r["id"], 0),
+                        p.get("rank", 1_000_000))
             return (1 if r["id"] in deferred_ids else 0,
                     1 if p.get("blocked") else 0,
                     p.get("rank", 1_000_000))
@@ -1054,6 +1105,12 @@ def main():
                     help="filter the ordinary todo pool to these exact ids. "
                          "Never claims escalated, deferred, near, matched, or "
                          "unlisted todo records; intended for fleet subsets")
+    pn.add_argument("--small-first", action="store_true",
+                    help="claim smallest-instruction functions first within "
+                         "each tier instead of declaration-coverage rank. "
+                         "Counts come from decl-coverage.us.json; records "
+                         "with no row keep rank order. For bounded probes, "
+                         "where fast signal beats coverage order")
     pn.set_defaults(func=cmd_next)
 
     pr = sub.add_parser("report")

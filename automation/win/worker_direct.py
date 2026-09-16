@@ -924,6 +924,11 @@ _HOSTED = {"cli", "zen"}
 _DEFAULT_MAX_FUNC = "20000" if MODEL_BACKEND in _HOSTED else "6000"
 # 0 = never skip the model for size (pair with MAX_ASM_CHARS=0).
 MAX_FUNC_CHARS = int(os.environ.get("MAX_FUNC_CHARS", _DEFAULT_MAX_FUNC))
+# Claim smallest-instruction functions first instead of coverage rank, for
+# bounded probes where fast signal beats coverage order. Off by default so
+# ordinary fleets keep the measured coverage order.
+SMALL_FIRST = os.environ.get("SMALL_FIRST", "").strip().lower() in (
+    "1", "true", "yes")
 # Stable marker in the notes so the next tier can find exactly these records.
 # Matching on prose would break the moment someone reworded the message.
 DEFER_TOO_LARGE = "TIER_HANDOFF_TOO_LARGE"
@@ -1305,6 +1310,8 @@ def claim_next(only: str | None = None,
         _next_args += ["--only", only]
     elif allowlist:
         _next_args += ["--allowlist", ",".join(allowlist)]
+    if SMALL_FIRST:
+        _next_args += ["--small-first"]
     raw = sched(*_next_args)
     line = [l for l in raw.splitlines() if l.strip().startswith("{")]
     if not line:
@@ -3883,6 +3890,34 @@ def precedent_for(function: str, src_rel: str, limit: int = 2) -> str:
     return "\n".join(out) + "\n"
 
 
+def _covering_variants(off: int, variants: dict, have: set) -> list:
+    """Distinct variants with a NAMED field at entity offset `off`.
+
+    Pure selection step behind the offset backfill, factored out so it is
+    unit-testable without the live index: pass any variants dict. The
+    placeholder type, short names, already-listed variants, and unkNN/pad
+    fields never select. Order follows the index, first match wins downstream.
+    """
+    found = []
+    for vn, mm in variants.items():
+        if len(vn) < 4 or vn in have:
+            continue
+        if mm.get("type") == "ET_Placeholder":
+            continue
+        for f in mm.get("fields", []):
+            try:
+                foff = int(f.get("offset") or "", 16)
+            except (TypeError, ValueError):
+                continue
+            nm = f.get("name") or ""
+            if foff == off and nm and not nm.startswith("pad_") \
+                    and not re.fullmatch(r"unk[0-9A-Fa-f]+", nm):
+                found.append((vn, mm, nm))
+                have.add(vn)
+                break
+    return found
+
+
 def ext_variants_for(function: str, blob: str, limit: int = 4) -> str:
     """Named ext-variant field lists relevant to this function.
 
@@ -3951,35 +3986,32 @@ def ext_variants_for(function: str, blob: str, limit: int = 4) -> str:
     # unchanged when it already covers the need.
     have = {vname for _, vname, _ in scored[:limit]}
     extra = []
+    notes = []
     try:
         sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
         import ext_demand
         for off in ext_demand.demanded_offsets(blob or ""):
-            for vn, mm in variants.items():
-                if len(vn) < 4 or vn in have:
-                    continue
-                if mm.get("type") == "ET_Placeholder":
-                    continue
-                for f in mm.get("fields", []):
-                    try:
-                        foff = int(f.get("offset") or "", 16)
-                    except (TypeError, ValueError):
-                        continue
-                    nm = f.get("name") or ""
-                    if foff == off and nm and not nm.startswith("pad_") \
-                            and not re.fullmatch(r"unk[0-9A-Fa-f]+", nm):
-                        extra.append((len(vn), vn, mm))
-                        have.add(vn)
-                        break
-            if len(extra) >= 2:
+            namings = _covering_variants(off, variants, have)
+            if not namings:
+                continue
+            for _vn, _mm, _nm in namings[:2]:
+                extra.append((len(_vn), _vn, _mm))
+            if len(namings) > 1:
+                (_v1, _, _f1), (_v2, _, _f2) = namings[0], namings[1]
+                notes.append(
+                    f"  0x{off:02X} is {_f1} in ext.{_v1} but {_f2} in "
+                    f"ext.{_v2}; use the variant matching this entity's "
+                    f"type, never both in one function")
+            if len(extra) >= 4:
                 break
     except Exception:
         extra = []
+        notes = []
     if not scored and not extra:
         return ""
     scored.sort(reverse=True)
     out = ["\n=== EXT VARIANTS (the real field names for this entity) ==="]
-    for _, vname, meta in scored[:limit] + extra[:2]:
+    for _, vname, meta in scored[:limit] + extra[:4]:
         # WITH OFFSETS. This listed bare names until 2026-08-09, so a worker
         # asked for "the named field at ext offset 0xC" had no way to find it:
         # observed reasoning, "those are listed as field names but without
@@ -3996,6 +4028,7 @@ def ext_variants_for(function: str, blob: str, limit: int = 4) -> str:
             continue
         out.append(f"ext.{vname} ({meta.get('type','?')}), "
                    f"as entity offsets: " + ", ".join(fields[:14]))
+    out.extend(notes)
     return "\n".join(out) + "\n" if len(out) > 1 else ""
 
 

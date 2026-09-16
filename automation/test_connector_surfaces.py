@@ -1062,6 +1062,11 @@ def main() -> int:
     check("GEN_TIMEOUT=3600" in csrc and "ATTEMPT_BUDGET=3600" in csrc,
           "no_timeout lifts both the socket deadline and the per-attempt "
           "budget instead of a knob the launcher drops")
+    import inspect as _inspect
+    check("small_first" in _inspect.signature(_cc_mod.fleet_start).parameters,
+          "fleet_start takes the small-first probe ordering")
+    check("SMALL_FIRST=1" in csrc,
+          "and it reaches worker env instead of dying at validation")
     mcpw = (pathlib.Path(__file__).parent / "mcp" /
             "sotn_cmd_mcp.py").read_text(encoding="utf-8")
     check("full_power=full_power" in mcpw

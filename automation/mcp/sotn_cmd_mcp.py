@@ -282,7 +282,8 @@ def fleet_start(workers: int = 4, max_functions: int = 0,
                 no_char_limits: bool = False,
                 no_timeout: bool = False,
                 no_output_token_limit: bool = False,
-                full_power: bool = False) -> dict:
+                full_power: bool = False,
+                small_first: bool = False) -> dict:
     """Launch detached volume workers in WSL. Returns immediately.
 
     backend picks the model tier:
@@ -341,9 +342,14 @@ def fleet_start(workers: int = 4, max_functions: int = 0,
     drops it runs a capped fleet behind a full-power request, which is
     exactly the silent-no-op failure above. Default False.
 
+    small_first claims smallest-instruction functions first instead of
+    declaration-coverage rank, for bounded probes where fast signal beats
+    coverage order. Default False.
+
     Total workers 1-16 = generations in flight. apply/build/verify is lock-
     serialised, so beyond ~4 the extras mostly queue. llama workers need
-    llama-server started with --parallel >= that count.
+    llama-server started with --parallel >= that count. max_functions is
+    PER WORKER, not fleet-wide: size bounded probes accordingly.
 
     only is an optional comma-separated allowlist of exact queue ids. It filters
     the scheduler's normal todo pool before ranking and claiming. Escalated,
@@ -366,7 +372,8 @@ def fleet_start(workers: int = 4, max_functions: int = 0,
                           no_char_limits=no_char_limits,
                           no_timeout=no_timeout,
                           no_output_token_limit=no_output_token_limit,
-                          full_power=full_power)
+                          full_power=full_power,
+                          small_first=small_first)
 
 
 @mcp.tool()

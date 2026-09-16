@@ -2698,7 +2698,8 @@ def fleet_start(workers: int = 4, max_functions: int = 0,
                 no_char_limits: bool = False,
                 no_timeout: bool = False,
                 no_output_token_limit: bool = False,
-                full_power: bool = False) -> dict:
+                full_power: bool = False,
+                small_first: bool = False) -> dict:
     """Launch detached worker_direct.py processes inside WSL.
 
     Lets the orchestrator run the volume tier without a human at a PowerShell
@@ -2765,6 +2766,15 @@ def fleet_start(workers: int = 4, max_functions: int = 0,
     Total workers is generations in flight. apply/build/verify is serialised by
     a lock, so beyond ~4 the extras mostly queue. llama-server must be started
     with --parallel >= the llama worker count or generation serialises too.
+
+    max_functions is PER WORKER, not fleet-wide: workers=2 with
+    max_functions=4 processes up to 8 functions. Size bounded probes
+    accordingly, or the batch doubles past what was ordered.
+
+    small_first claims smallest-instruction functions first instead of
+    declaration-coverage rank, for bounded probes where fast signal beats
+    coverage order. Deferred-last and blocked-last still apply; records
+    with no coverage row keep rank order. Default False.
 
     only is a comma-separated allowlist of exact queue ids. It filters the
     scheduler's ordinary todo pool before ranking and claiming. Escalated,
@@ -2965,6 +2975,8 @@ def fleet_start(workers: int = 4, max_functions: int = 0,
             # Match the lifted socket/attempt budgets so FUNC_BUDGET is not
             # the surprise ceiling on a 30K-char xhigh Responses call.
             env = "FUNC_BUDGET=7200 " + env
+        if small_first:
+            env = "SMALL_FIRST=1 " + env
         parts.append(
             f"{model_setup}for i in $(seq 1 {count}); do "
             f"  {pick}"

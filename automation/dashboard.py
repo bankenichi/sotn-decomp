@@ -345,11 +345,13 @@ ACTION_PARAMS: dict[str, dict[str, tuple[int, int]]] = {
     "fleet_cli_start": {"workers": (1, 8), "no_char_limits": (0, 1),
                           "no_timeout": (0, 1),
                           "no_output_token_limit": (0, 1),
-                          "full_power": (0, 1)},
+                          "full_power": (0, 1),
+                          "small_first": (0, 1)},
     "fleet_zen_start": {"workers": (1, 8), "no_char_limits": (0, 1),
                         "no_timeout": (0, 1),
                         "no_output_token_limit": (0, 1),
-                        "full_power": (0, 1)},
+                        "full_power": (0, 1),
+                        "small_first": (0, 1)},
     "fleet_llama_start": {"workers": (1, 8)},
 }
 
@@ -488,7 +490,7 @@ def _fleet(backend: str, default_n: int):
     def go(workers: int = default_n, models: list | None = None,
            effort: list | None = None, no_char_limits: int = 0,
            no_timeout: int = 0, no_output_token_limit: int = 0,
-           full_power: int = 0) -> dict:
+           full_power: int = 0, small_first: int = 0) -> dict:
         import commands_client as cc
         kw = {}
         # THE A/B KNOB (#111), PER WORKER. 0 keeps the worker default (`low`),
@@ -540,6 +542,8 @@ def _fleet(backend: str, default_n: int):
                 kw["no_timeout"] = True
             if no_output_token_limit:
                 kw["no_output_token_limit"] = True
+        if small_first:
+            kw["small_first"] = True
         return {"ok": True, "out": str(cc.fleet_start(workers=workers,
                                                       backend=backend, **kw))}
     return go
@@ -1456,6 +1460,7 @@ pre{margin:0;padding:8px 10px;flex:1 1 auto;min-height:0;overflow:auto;font-size
       <button onclick="act(el('f_backend').value,fleetParams())">start</button>
       <button class=danger onclick="confirmAct('fleet_stop','Stop all fleet workers and reclaim their queue records?')">stop</button>
       <label title="For large funcs + capable models: no asm/func char caps, no socket/attempt timeouts (FUNC_BUDGET=7200), no output-token caps"><input type=checkbox id=f_full_power> full power</label>
+      <label title="Claim smallest-instruction functions first instead of coverage rank"><input type=checkbox id=f_small_first> small first</label>
 <span id=f_rows></span>
     </div>
     <div id=hold style="margin-bottom:8px"></div>
@@ -1553,6 +1558,8 @@ function fleetParams(){
     p.models=[...el('f_rows').querySelectorAll('select.wmodel')].map(s=>+s.value);
     // Master switch: chars + timeouts + output tokens + FUNC_BUDGET=7200.
     if(el('f_full_power').checked) p.full_power=1;
+    // Smallest-first claim order for bounded probes.
+    if(el('f_small_first').checked) p.small_first=1;
   }
   return p;
 }
@@ -2089,6 +2096,8 @@ def self_test() -> int:
     ck("prevM" in PAGE and "select.wmodel" in PAGE,
        "model and effort are preserved by class, not by a flat index that "
        "would hand worker 2's model the effort from worker 1")
+    ck("f_small_first" in PAGE and "p.small_first=1" in PAGE,
+       "the small-first checkbox reaches fleetParams instead of rendering dead")
     for act in ("fleet_zen_start", "fleet_cli_start", "fleet_llama_start"):
         clean, err = validate_params(act, {"workers": 2, "effort": [1, 0]})
         ck(not err and clean.get("effort") == [1, 0],
@@ -2097,6 +2106,10 @@ def self_test() -> int:
     ck(bad, f"and refuses a value with no meaning ({bad!r})")
     _c, bad = validate_params("fleet_zen_start", {"workers": 2, "effort": 1})
     ck(bad, f"a bare int is an error, not a silently broadcast value ({bad!r})")
+    for act in ("fleet_zen_start", "fleet_cli_start"):
+        clean, err = validate_params(act, {"workers": 2, "small_first": 1})
+        ck(not err and clean.get("small_first") == 1,
+           f"{act} accepts small-first probe ordering")
 
     if allowed is not None:
         import inspect
