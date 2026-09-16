@@ -22,7 +22,7 @@ mistake impossible twice.
 | Decompiled | **94.1%**, 8181/8730 functions; 549 US `INCLUDE_ASM` stubs remain |
 | Queue | 983 records: 434 matched, 379 todo, 123 escalated, 41 deferred, 6 near |
 | Provenance | upstream-harvest 55, shim-segment 9, shim-header 55, transplant 136, twin-port 31, permuter 18, claude-manual 6, model-fleet 58, unknown 66 |
-| Automation | 185 modules, 75 suites plus 36 module self-tests, 99 tools, 116 diagnostics |
+| Automation | 185 modules, 75 suites plus 36 module self-tests, 99 tools, 117 diagnostics |
 
 This block is regenerated from the same queue, checksum manifest, linker maps, provenance classifier, and connector inventory as `README.md`.
 <!-- LIVE-STATUS:END -->
@@ -1392,3 +1392,5 @@ Status: **done**, **open**, **partial**, **void** (turned out unnecessary),
 | 315 | **done** | Jump-over-else joins for #302: conditional heads with a straight then-arm ending in an unconditional forward jump over a vetted else arm lower to if/else with join temps assigned at each arm end. Straight-line dead tails, nested intersections and escaping else branches stay refused. Fixture proof is a host-executed else accumulation loop plus span tests. Default-bound pool remeasurement is complete with zero errors: branch-in-loop 94 to 48, structural admission 165 to 179, zero renders. |
 
 | 316 | **done** | Paired multiply/divide in straight-line loops for #302: HI/LO triples fold inline per iteration, so paired producer/consumer spans with no forks, exits, returns, nesting or calls admit. Unpaired triples and fork-crossing state stay refused. Fixture proof is a host-executed multiply-accumulate loop plus admission tests. Default-bound pool remeasurement is complete with zero errors: barred-op 29 to 24, structural admission holding at 179, zero renders. |
+
+| 317 | **done** | Bridge gate fixes at owner direction: registered test_http_bridge.py in the run_automation allowlist so the connector parity check passes, and made the suite report a skip with exit zero when starlette is unavailable instead of crashing at import. Full checks still run under automation/mcp/.venv/bin/python. The missing starlette install in the root venv and the unregistered grok-bot client doc stay with the bridge owner. |

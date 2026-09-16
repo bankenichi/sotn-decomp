@@ -1095,6 +1095,9 @@ AUTOMATION_SCRIPTS = {
     "matched_audit.py",
     # Runs every test_*.py and reports one table. Read-only.
     "run_selftests.py",
+    # HTTP bridge checks. Needs the mcp venv for starlette and FastMCP;
+    # under the root venv the suite reports a skip and exits zero.
+    "test_http_bridge.py",
 }
 
 # Compatibility for generated inventory and older clients. New code and public

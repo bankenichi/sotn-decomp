@@ -8,6 +8,7 @@ Does not need the full decomp toolchain. Covers:
 
 Run (WSL, repo mcp venv):
   automation/mcp/.venv/bin/python automation/test_http_bridge.py
+Under any other interpreter the suite reports a skip and exits zero.
 """
 from __future__ import annotations
 
@@ -20,7 +21,12 @@ from pathlib import Path
 MCP = Path(__file__).resolve().parent / "mcp"
 sys.path.insert(0, str(MCP))
 
-import http_bridge as hb  # noqa: E402
+try:
+    import http_bridge as hb  # noqa: E402
+    _HAVE_BRIDGE_DEPS = True
+except ImportError:
+    hb = None  # type: ignore
+    _HAVE_BRIDGE_DEPS = False
 
 FAILS: list[str] = []
 
@@ -210,6 +216,9 @@ def test_live_bearer_http() -> None:
 
 
 def main() -> int:
+    if not _HAVE_BRIDGE_DEPS:
+        print("SKIPPED: starlette is unavailable; rerun with automation/mcp/.venv/bin/python")
+        return 0
     test_transport_selection()
     test_token_fail_closed()
     test_bearer_helpers()
