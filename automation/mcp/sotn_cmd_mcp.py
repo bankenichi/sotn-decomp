@@ -325,9 +325,10 @@ def fleet_start(workers: int = 4, max_functions: int = 0,
     drops the flag the dashboard sends, which is the same silent-no-op
     failure mode as a rejected reasoning value. Default False.
 
-    no_timeout passes GEN_TIMEOUT=3600 to workers so slow xhigh Responses
-    calls are bounded by the function budget instead of the default 600s
-    socket deadline. Default False.
+    no_timeout passes GEN_TIMEOUT=3600 and ATTEMPT_BUDGET=3600 to workers so
+    slow xhigh Responses calls are bounded by the function budget instead
+    of the default 600s socket deadline and the 90s per-attempt budget,
+    which binds first. Default False.
 
     Total workers 1-16 = generations in flight. apply/build/verify is lock-
     serialised, so beyond ~4 the extras mostly queue. llama workers need

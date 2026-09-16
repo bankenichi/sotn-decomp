@@ -1444,7 +1444,7 @@ pre{margin:0;padding:8px 10px;flex:1 1 auto;min-height:0;overflow:auto;font-size
       <button onclick="act(el('f_backend').value,fleetParams())">start</button>
       <button class=danger onclick="confirmAct('fleet_stop','Stop all fleet workers and reclaim their queue records?')">stop</button>
       <label title="MAX_ASM_CHARS=0 MAX_FUNC_CHARS=0: send full asm to capable models"><input type=checkbox id=f_no_char_limits> no char limits</label>
-      <label title="GEN_TIMEOUT=3600: no client socket deadline, function budget still bounds attempts"><input type=checkbox id=f_no_timeout> no timeout</label>
+      <label title="GEN_TIMEOUT=3600 ATTEMPT_BUDGET=3600: no client or per-attempt deadline, function budget still bounds attempts"><input type=checkbox id=f_no_timeout> no timeout</label>
 <span id=f_rows></span>
     </div>
     <div id=hold style="margin-bottom:8px"></div>
@@ -1542,8 +1542,9 @@ function fleetParams(){
     p.models=[...el('f_rows').querySelectorAll('select.wmodel')].map(s=>+s.value);
     // 1 = MAX_ASM_CHARS=0 MAX_FUNC_CHARS=0 for capable models (full asm).
     if(el('f_no_char_limits').checked) p.no_char_limits=1;
-    // 1 = GEN_TIMEOUT=3600, so slow xhigh calls are bounded by the function
-    // budget instead of the socket deadline.
+    // 1 = GEN_TIMEOUT=3600 and ATTEMPT_BUDGET=3600, so slow xhigh calls are
+    // bounded by the function budget instead of the socket or per-attempt
+    // deadlines.
     if(el('f_no_timeout').checked) p.no_timeout=1;
   }
   return p;

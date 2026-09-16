@@ -1059,9 +1059,9 @@ def main() -> int:
           f"(got {spark['reasoning']!r})")
     csrc = (pathlib.Path(__file__).parent / "mcp" /
             "commands_client.py").read_text(encoding="utf-8")
-    check("GEN_TIMEOUT=3600" in csrc,
-          "no_timeout maps to a socket deadline above any function budget "
-          "instead of a knob the launcher drops")
+    check("GEN_TIMEOUT=3600" in csrc and "ATTEMPT_BUDGET=3600" in csrc,
+          "no_timeout lifts both the socket deadline and the per-attempt "
+          "budget instead of a knob the launcher drops")
     _worker = (pathlib.Path(__file__).parent / "win" /
                "worker_direct.py").read_text(encoding="utf-8")
     check('os.environ.get("REASONING_EFFORT", "none")' in _worker,

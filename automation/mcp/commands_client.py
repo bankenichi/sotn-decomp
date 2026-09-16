@@ -2724,12 +2724,14 @@ def fleet_start(workers: int = 4, max_functions: int = 0,
       sent to the model (for capable hosted models). Default False.
 
     no_timeout:
-      When True, workers get GEN_TIMEOUT=3600 so the client-side socket
-      deadline never fires first on slow xhigh Responses calls. This is
-      not the absence of a deadline: every model call site takes
-      min(GEN_TIMEOUT, budget_left), so the function budget stays the
-      only real ceiling. Keep the value above any FUNC_BUDGET the fleet
-      runs with. Default False.
+      When True, workers get GEN_TIMEOUT=3600 and ATTEMPT_BUDGET=3600 so
+      the client-side socket deadline never fires first on slow xhigh
+      Responses calls. This is not the absence of a deadline: the attempt
+      loop passes budget_left=min(ATTEMPT_BUDGET, FUNC_BUDGET remainder)
+      and every model call site takes min() with it, so the function
+      budget stays the only real ceiling. GEN_TIMEOUT alone is not
+      enough, because the 90s per-attempt budget binds first. Keep both
+      values above any FUNC_BUDGET the fleet runs with. Default False.
 
     Why mixed is worth having: the two backends fail differently. llama is free
     and unlimited but has plateaued; the Zen models may be stronger but draw on
@@ -2938,12 +2940,15 @@ def fleet_start(workers: int = 4, max_functions: int = 0,
             # 0 = unlimited in worker_direct (capable models / full asm).
             env = "MAX_ASM_CHARS=0 MAX_FUNC_CHARS=0 " + env
         if no_timeout:
-            # Not the absence of a deadline: min() with budget_left at every
-            # call site keeps the function budget as the only real ceiling.
-            # Must stay above any FUNC_BUDGET in use; measured 2026-09-16,
-            # spark xhigh needs 112s before the first byte on a trivial
-            # prompt and far longer on 30K-char decomp prompts.
-            env = "GEN_TIMEOUT=3600 " + env
+            # Not the absence of a deadline: the attempt loop passes
+            # budget_left=min(ATTEMPT_BUDGET, FUNC_BUDGET remainder) and
+            # every call site takes min() with it, so the function budget
+            # stays the only real ceiling. GEN_TIMEOUT alone is not enough:
+            # the 90s per-attempt budget binds first and is what killed the
+            # 2026-09-16 spark xhigh attempts. Measured then, spark xhigh
+            # needs 112s before the first byte on a trivial prompt and far
+            # longer on 30K-char decomp prompts.
+            env = "GEN_TIMEOUT=3600 ATTEMPT_BUDGET=3600 " + env
         parts.append(
             f"{model_setup}for i in $(seq 1 {count}); do "
             f"  {pick}"
