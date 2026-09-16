@@ -280,3 +280,5 @@ make_build -> verify_build                        # always
 
 Then update `ROADMAP.md`, commit with explicit paths, run the complete pre-push
 gate in constraint 13, and push to `origin` only through the background job.
+
+26. **A negative measurement is a decision point, not a detour.** When measured evidence contradicts an explicit owner order, stop and report the choice before doing adjacent work. Routing around the result with unrequested scope burns the session and hides the decision.

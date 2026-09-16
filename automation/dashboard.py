@@ -114,6 +114,11 @@ CLI_MODELS = [
     ("ling-3.0-tiny-free  UNTESTED", "opencode/ling-3.0-tiny-free"),
     ("laguna-s-2.1-free  UNTESTED", "opencode/laguna-s-2.1-free"),
     ("longcat-2.0-free  UNTESTED", "opencode/longcat-2.0-free"),
+    # Muse Spark answers tiny prompts through the CLI but returns zero bytes
+    # on real decomp prompts at 60s and 300s, and Zen refuses the id outright.
+    # Selectable so the failure is reproducible from the UI, never a default.
+    ("muse-spark-1.3-contributor-free  CLI tiny-only; dead on real prompts",
+     "opencode/muse-spark-1.3-contributor-free"),
 
     # hy3-free is GONE from OpenCode Zen, not merely bad. Its 16 recorded calls
     # produced 0 candidates, 0 empties and 0 timeouts, i.e. every one failed
