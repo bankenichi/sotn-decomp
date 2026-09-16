@@ -342,8 +342,10 @@ ACTION_PARAMS: dict[str, dict[str, tuple[int, int]]] = {
     "permuter_start": {"slots": (1, 8), "threads": (1, 16),
                        "stall": (500, 50000), "cycles": (1, 8),
                        "max_iters": (1000, 500000)},
-    "fleet_cli_start": {"workers": (1, 8), "no_char_limits": (0, 1)},
-    "fleet_zen_start": {"workers": (1, 8), "no_char_limits": (0, 1)},
+    "fleet_cli_start": {"workers": (1, 8), "no_char_limits": (0, 1),
+                          "no_timeout": (0, 1)},
+    "fleet_zen_start": {"workers": (1, 8), "no_char_limits": (0, 1),
+                        "no_timeout": (0, 1)},
     "fleet_llama_start": {"workers": (1, 8)},
 }
 
@@ -480,7 +482,8 @@ def _sup_start(slots: int = 3, threads: int = 4, stall: int = 2500,
 
 def _fleet(backend: str, default_n: int):
     def go(workers: int = default_n, models: list | None = None,
-           effort: list | None = None, no_char_limits: int = 0) -> dict:
+           effort: list | None = None, no_char_limits: int = 0,
+           no_timeout: int = 0) -> dict:
         import commands_client as cc
         kw = {}
         # THE A/B KNOB (#111), PER WORKER. 0 keeps the worker default (`low`),
@@ -520,6 +523,11 @@ def _fleet(backend: str, default_n: int):
             kw["opencode_model"] = ",".join(CLI_MODELS[i][1] for i in idx)
         if no_char_limits:
             kw["no_char_limits"] = True
+        if no_timeout:
+            # GEN_TIMEOUT=3600 downstream: the function budget stays the only
+            # real deadline. For slow xhigh Responses calls that outthink the
+            # default 600s socket cap.
+            kw["no_timeout"] = True
         return {"ok": True, "out": str(cc.fleet_start(workers=workers,
                                                       backend=backend, **kw))}
     return go
@@ -1436,6 +1444,7 @@ pre{margin:0;padding:8px 10px;flex:1 1 auto;min-height:0;overflow:auto;font-size
       <button onclick="act(el('f_backend').value,fleetParams())">start</button>
       <button class=danger onclick="confirmAct('fleet_stop','Stop all fleet workers and reclaim their queue records?')">stop</button>
       <label title="MAX_ASM_CHARS=0 MAX_FUNC_CHARS=0: send full asm to capable models"><input type=checkbox id=f_no_char_limits> no char limits</label>
+      <label title="GEN_TIMEOUT=3600: no client socket deadline, function budget still bounds attempts"><input type=checkbox id=f_no_timeout> no timeout</label>
 <span id=f_rows></span>
     </div>
     <div id=hold style="margin-bottom:8px"></div>
@@ -1533,6 +1542,9 @@ function fleetParams(){
     p.models=[...el('f_rows').querySelectorAll('select.wmodel')].map(s=>+s.value);
     // 1 = MAX_ASM_CHARS=0 MAX_FUNC_CHARS=0 for capable models (full asm).
     if(el('f_no_char_limits').checked) p.no_char_limits=1;
+    // 1 = GEN_TIMEOUT=3600, so slow xhigh calls are bounded by the function
+    // budget instead of the socket deadline.
+    if(el('f_no_timeout').checked) p.no_timeout=1;
   }
   return p;
 }

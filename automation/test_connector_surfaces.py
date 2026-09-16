@@ -1042,7 +1042,7 @@ def main() -> int:
         spark = _cc_mod.fleet_start(
             workers=1, reasoning="xhigh",
             opencode_model="opencode/muse-spark-1.3-contributor-free",
-            no_char_limits=True)
+            no_char_limits=True, no_timeout=True)
     finally:
         _cc_mod.DRYRUN = _was
 
@@ -1057,6 +1057,11 @@ def main() -> int:
     check(spark["reasoning"] == "xhigh",
           f"spark xhigh survives the gate instead of raising Rejected "
           f"(got {spark['reasoning']!r})")
+    csrc = (pathlib.Path(__file__).parent / "mcp" /
+            "commands_client.py").read_text(encoding="utf-8")
+    check("GEN_TIMEOUT=3600" in csrc,
+          "no_timeout maps to a socket deadline above any function budget "
+          "instead of a knob the launcher drops")
     _worker = (pathlib.Path(__file__).parent / "win" /
                "worker_direct.py").read_text(encoding="utf-8")
     check('os.environ.get("REASONING_EFFORT", "none")' in _worker,

@@ -2695,7 +2695,8 @@ def fleet_start(workers: int = 4, max_functions: int = 0,
                 force: bool = False, backend: str = "zen",
                 cli_workers: int = 0, opencode_model: str = "",
                 reasoning: str = "", only: str = "",
-                no_char_limits: bool = False) -> dict:
+                no_char_limits: bool = False,
+                no_timeout: bool = False) -> dict:
     """Launch detached worker_direct.py processes inside WSL.
 
     Lets the orchestrator run the volume tier without a human at a PowerShell
@@ -2721,6 +2722,14 @@ def fleet_start(workers: int = 4, max_functions: int = 0,
       When True, workers get MAX_ASM_CHARS=0 and MAX_FUNC_CHARS=0 so
       prepare() does not truncate asm and large functions are still
       sent to the model (for capable hosted models). Default False.
+
+    no_timeout:
+      When True, workers get GEN_TIMEOUT=3600 so the client-side socket
+      deadline never fires first on slow xhigh Responses calls. This is
+      not the absence of a deadline: every model call site takes
+      min(GEN_TIMEOUT, budget_left), so the function budget stays the
+      only real ceiling. Keep the value above any FUNC_BUDGET the fleet
+      runs with. Default False.
 
     Why mixed is worth having: the two backends fail differently. llama is free
     and unlimited but has plateaued; the Zen models may be stronger but draw on
@@ -2928,6 +2937,13 @@ def fleet_start(workers: int = 4, max_functions: int = 0,
         if no_char_limits:
             # 0 = unlimited in worker_direct (capable models / full asm).
             env = "MAX_ASM_CHARS=0 MAX_FUNC_CHARS=0 " + env
+        if no_timeout:
+            # Not the absence of a deadline: min() with budget_left at every
+            # call site keeps the function budget as the only real ceiling.
+            # Must stay above any FUNC_BUDGET in use; measured 2026-09-16,
+            # spark xhigh needs 112s before the first byte on a trivial
+            # prompt and far longer on 30K-char decomp prompts.
+            env = "GEN_TIMEOUT=3600 " + env
         parts.append(
             f"{model_setup}for i in $(seq 1 {count}); do "
             f"  {pick}"

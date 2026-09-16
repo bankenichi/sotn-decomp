@@ -279,7 +279,8 @@ def fleet_start(workers: int = 4, max_functions: int = 0,
                 force: bool = False, backend: str = "zen",
                 cli_workers: int = 0, opencode_model: str = "",
                 reasoning: str = "", only: str = "",
-                no_char_limits: bool = False) -> dict:
+                no_char_limits: bool = False,
+                no_timeout: bool = False) -> dict:
     """Launch detached volume workers in WSL. Returns immediately.
 
     backend picks the model tier:
@@ -324,6 +325,10 @@ def fleet_start(workers: int = 4, max_functions: int = 0,
     drops the flag the dashboard sends, which is the same silent-no-op
     failure mode as a rejected reasoning value. Default False.
 
+    no_timeout passes GEN_TIMEOUT=3600 to workers so slow xhigh Responses
+    calls are bounded by the function budget instead of the default 600s
+    socket deadline. Default False.
+
     Total workers 1-16 = generations in flight. apply/build/verify is lock-
     serialised, so beyond ~4 the extras mostly queue. llama workers need
     llama-server started with --parallel >= that count.
@@ -346,7 +351,8 @@ def fleet_start(workers: int = 4, max_functions: int = 0,
                           cli_workers=cli_workers,
                           opencode_model=opencode_model,
                           reasoning=reasoning, only=only,
-                          no_char_limits=no_char_limits)
+                          no_char_limits=no_char_limits,
+                          no_timeout=no_timeout)
 
 
 @mcp.tool()
