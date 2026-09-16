@@ -301,7 +301,8 @@ sw $v1, 0x24($sp)
     check(len(notes3) == 3, f"all three conversions reported ({len(notes3)})")
     check(wd.clean_draft(out3)[0] == out3, "still idempotent")
 
-    check(wd.ext_variants_for("EntityFoo", ill) == "",
+    ev_ill = wd.ext_variants_for("EntityFoo", ill)
+    check("ET_Placeholder" not in ev_ill and "ILLEGAL" not in ev_ill,
           "the placeholder is never listed as an available variant, even "
           "though the draft mentions it by name")
 

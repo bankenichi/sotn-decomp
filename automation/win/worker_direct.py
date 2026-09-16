@@ -3932,26 +3932,26 @@ def ext_variants_for(function: str, blob: str, limit: int = 4) -> str:
             continue
         if vname.lower() in hay:
             scored.append((len(vname), vname, meta))
-    # Offset-driven backfill for the affinity miss above. The draft's raw
-    # Entity-base accesses name the exact ext offsets the model must emit
-    # (verified 2026-09-16: 13 raw casts through `part` at 0x9E/0xA0 while
-    # GH_Props, which names both, was never listed). Resolve each demanded
-    # offset through the same index the quality gate uses and append those
-    # variants after the affinity picks, deduplicated. Only NAMED fields
-    # select: unkNN/pad offsets yield nothing, so placeholder-only drafts
-    # still list nothing and the terminal unk guidance keeps applying.
-    # Affinity output is unchanged when it already covers the need.
+    # Offset-driven backfill for the affinity miss above. The draft's
+    # demanded ext offsets (unkNN placeholders, ILLEGAL indices and raw
+    # Entity-base views alike) name the exact fields the model must emit;
+    # affinity misses them whenever the function name shares nothing with
+    # the variant (verified 2026-09-16: 13 raw casts through `part` at
+    # 0x9E/0xA0 while GH_Props, which names both, was never listed).
+    # Triggering on raw views alone is not enough: drafts predominantly
+    # show unkNN, and the model needs the name either way, so every
+    # demanded offset counts. Resolve each through the same index the
+    # quality gate uses and append those variants after the affinity
+    # picks, deduplicated. Only NAMED fields select, so the placeholder
+    # itself is never offered; unkNN offsets resolve like raw ones because
+    # the model needs the name either way. Affinity output is
+    # unchanged when it already covers the need.
     have = {vname for _, vname, _ in scored[:limit]}
     extra = []
     try:
         sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
         import ext_demand
-        seen = set()
-        for access in ext_demand.raw_entity_accesses(blob or ""):
-            off = access["offset"]
-            if off in seen:
-                continue
-            seen.add(off)
+        for off in ext_demand.demanded_offsets(blob or ""):
             for vn, mm in variants.items():
                 if len(vn) < 4 or vn in have:
                     continue
