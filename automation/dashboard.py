@@ -343,9 +343,13 @@ ACTION_PARAMS: dict[str, dict[str, tuple[int, int]]] = {
                        "stall": (500, 50000), "cycles": (1, 8),
                        "max_iters": (1000, 500000)},
     "fleet_cli_start": {"workers": (1, 8), "no_char_limits": (0, 1),
-                          "no_timeout": (0, 1)},
+                          "no_timeout": (0, 1),
+                          "no_output_token_limit": (0, 1),
+                          "full_power": (0, 1)},
     "fleet_zen_start": {"workers": (1, 8), "no_char_limits": (0, 1),
-                        "no_timeout": (0, 1)},
+                        "no_timeout": (0, 1),
+                        "no_output_token_limit": (0, 1),
+                        "full_power": (0, 1)},
     "fleet_llama_start": {"workers": (1, 8)},
 }
 
@@ -483,7 +487,8 @@ def _sup_start(slots: int = 3, threads: int = 4, stall: int = 2500,
 def _fleet(backend: str, default_n: int):
     def go(workers: int = default_n, models: list | None = None,
            effort: list | None = None, no_char_limits: int = 0,
-           no_timeout: int = 0) -> dict:
+           no_timeout: int = 0, no_output_token_limit: int = 0,
+           full_power: int = 0) -> dict:
         import commands_client as cc
         kw = {}
         # THE A/B KNOB (#111), PER WORKER. 0 keeps the worker default (`low`),
@@ -504,11 +509,13 @@ def _fleet(backend: str, default_n: int):
         # otherwise round-robin a short list, and a 2-entry list across 3
         # workers means w3 silently repeats w1 -- an unbalanced experiment that
         # still looks deliberate in the log.
-        eff = effort or [0]
-        eff = (eff * workers)[:workers]
-        # All-default sends nothing at all, keeping the untouched path
-        # byte-identical to a fleet launched before this knob existed.
-        if any(eff):
+        # effort index 0 is "low", NOT "unset". `any(eff)` wrongly skipped
+        # [0,0,...] and left workers on REASONING_EFFORT default (`none`),
+        # which is how Muse fleets ran effort=none on 2026-09-16.
+        # Always emit when the UI/connector sent an effort list.
+        if effort is not None:
+            eff = list(effort) or [0]
+            eff = (eff * workers)[:workers]
             kw["reasoning"] = ",".join(
                 "xhigh" if e == 2 else ("none" if e == 1 else "low")
                 for e in eff)
@@ -521,13 +528,18 @@ def _fleet(backend: str, default_n: int):
             idx = models or [0]
             idx = (idx * workers)[:workers]      # pad by repeat if short
             kw["opencode_model"] = ",".join(CLI_MODELS[i][1] for i in idx)
-        if no_char_limits:
-            kw["no_char_limits"] = True
-        if no_timeout:
-            # GEN_TIMEOUT=3600 downstream: the function budget stays the only
-            # real deadline. For slow xhigh Responses calls that outthink the
-            # default 600s socket cap.
-            kw["no_timeout"] = True
+        if full_power:
+            kw["full_power"] = True
+        else:
+            if no_char_limits:
+                kw["no_char_limits"] = True
+            if no_timeout:
+                # GEN_TIMEOUT=3600 downstream: the function budget stays the only
+                # real deadline. For slow xhigh Responses calls that outthink the
+                # default 600s socket cap.
+                kw["no_timeout"] = True
+            if no_output_token_limit:
+                kw["no_output_token_limit"] = True
         return {"ok": True, "out": str(cc.fleet_start(workers=workers,
                                                       backend=backend, **kw))}
     return go
@@ -1443,8 +1455,7 @@ pre{margin:0;padding:8px 10px;flex:1 1 auto;min-height:0;overflow:auto;font-size
       </label>
       <button onclick="act(el('f_backend').value,fleetParams())">start</button>
       <button class=danger onclick="confirmAct('fleet_stop','Stop all fleet workers and reclaim their queue records?')">stop</button>
-      <label title="MAX_ASM_CHARS=0 MAX_FUNC_CHARS=0: send full asm to capable models"><input type=checkbox id=f_no_char_limits> no char limits</label>
-      <label title="GEN_TIMEOUT=3600 ATTEMPT_BUDGET=3600: no client or per-attempt deadline, function budget still bounds attempts"><input type=checkbox id=f_no_timeout> no timeout</label>
+      <label title="For large funcs + capable models: no asm/func char caps, no socket/attempt timeouts (FUNC_BUDGET=7200), no output-token caps"><input type=checkbox id=f_full_power> full power</label>
 <span id=f_rows></span>
     </div>
     <div id=hold style="margin-bottom:8px"></div>
@@ -1540,12 +1551,8 @@ function fleetParams(){
   const bv=el('f_backend').value;
   if(bv==='fleet_cli_start'||bv==='fleet_zen_start'){
     p.models=[...el('f_rows').querySelectorAll('select.wmodel')].map(s=>+s.value);
-    // 1 = MAX_ASM_CHARS=0 MAX_FUNC_CHARS=0 for capable models (full asm).
-    if(el('f_no_char_limits').checked) p.no_char_limits=1;
-    // 1 = GEN_TIMEOUT=3600 and ATTEMPT_BUDGET=3600, so slow xhigh calls are
-    // bounded by the function budget instead of the socket or per-attempt
-    // deadlines.
-    if(el('f_no_timeout').checked) p.no_timeout=1;
+    // Master switch: chars + timeouts + output tokens + FUNC_BUDGET=7200.
+    if(el('f_full_power').checked) p.full_power=1;
   }
   return p;
 }

@@ -2696,7 +2696,9 @@ def fleet_start(workers: int = 4, max_functions: int = 0,
                 cli_workers: int = 0, opencode_model: str = "",
                 reasoning: str = "", only: str = "",
                 no_char_limits: bool = False,
-                no_timeout: bool = False) -> dict:
+                no_timeout: bool = False,
+                no_output_token_limit: bool = False,
+                full_power: bool = False) -> dict:
     """Launch detached worker_direct.py processes inside WSL.
 
     Lets the orchestrator run the volume tier without a human at a PowerShell
@@ -2936,9 +2938,14 @@ def fleet_start(workers: int = 4, max_functions: int = 0,
             model_setup += f"_r=({earr}); "
             pick += '_re=${_r[$(((i-1) % ${#_r[@]}))]}; '
             env = "REASONING_EFFORT=$_re " + env
+        if full_power:
+            no_char_limits = True
+            no_timeout = True
+            no_output_token_limit = True
         if no_char_limits:
             # 0 = unlimited in worker_direct (capable models / full asm).
-            env = "MAX_ASM_CHARS=0 MAX_FUNC_CHARS=0 " + env
+            if "MAX_ASM_CHARS=0" not in env:
+                env = "MAX_ASM_CHARS=0 MAX_FUNC_CHARS=0 " + env
         if no_timeout:
             # Not the absence of a deadline: the attempt loop passes
             # budget_left=min(ATTEMPT_BUDGET, FUNC_BUDGET remainder) and
@@ -2948,7 +2955,16 @@ def fleet_start(workers: int = 4, max_functions: int = 0,
             # 2026-09-16 spark xhigh attempts. Measured then, spark xhigh
             # needs 112s before the first byte on a trivial prompt and far
             # longer on 30K-char decomp prompts.
-            env = "GEN_TIMEOUT=3600 ATTEMPT_BUDGET=3600 " + env
+            if "GEN_TIMEOUT=3600" not in env:
+                env = "GEN_TIMEOUT=3600 ATTEMPT_BUDGET=3600 " + env
+        if no_output_token_limit:
+            # Omit max_output_tokens / max_tokens so Muse can finish reasoning
+            # and still emit content.
+            env = "CONTENT_MAX_TOKENS=0 REASONING_MAX_TOKENS=0 " + env
+        if full_power:
+            # Match the lifted socket/attempt budgets so FUNC_BUDGET is not
+            # the surprise ceiling on a 30K-char xhigh Responses call.
+            env = "FUNC_BUDGET=7200 " + env
         parts.append(
             f"{model_setup}for i in $(seq 1 {count}); do "
             f"  {pick}"

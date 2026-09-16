@@ -172,6 +172,7 @@ REASONING_EFFORT = os.environ.get("REASONING_EFFORT", "none").strip().lower()
 # resolving when the axe fell.
 REASONING_MAX_TOKENS = int(os.environ.get("REASONING_MAX_TOKENS",
                                           os.environ.get("REASON_CAP", "9000")))
+# 0 = uncapped output tokens (omit max_output_tokens / max_tokens caps).
 CONTENT_MAX_TOKENS = int(os.environ.get("CONTENT_MAX_TOKENS", "4000"))
 
 
@@ -192,15 +193,23 @@ def thinking_params() -> dict:
     stops it thinking forever, and reuses the thinking instead of binning it.
     """
     if REASONING_EFFORT in ("none", "off", "0"):
-        return dict(NO_THINKING, max_tokens=CONTENT_MAX_TOKENS)
-    return {
+        out = dict(NO_THINKING)
+        if CONTENT_MAX_TOKENS > 0:
+            out["max_tokens"] = CONTENT_MAX_TOKENS
+        return out
+    out = {
         "reasoning_effort": REASONING_EFFORT,
-        "reasoning_budget": REASONING_MAX_TOKENS,
         "chat_template_kwargs": {"enable_thinking": True},
-        # Headroom so content cannot be starved even if the server lets
-        # thinking run to the ceiling.
-        "max_tokens": REASONING_MAX_TOKENS + CONTENT_MAX_TOKENS,
     }
+    if REASONING_MAX_TOKENS > 0:
+        out["reasoning_budget"] = REASONING_MAX_TOKENS
+    # Headroom so content cannot be starved even if the server lets
+    # thinking run to the ceiling. 0/0 means omit the cap entirely.
+    if REASONING_MAX_TOKENS > 0 or CONTENT_MAX_TOKENS > 0:
+        out["max_tokens"] = max(REASONING_MAX_TOKENS, 0) + max(CONTENT_MAX_TOKENS, 0)
+        if out["max_tokens"] <= 0:
+            del out["max_tokens"]
+    return out
 # Optional bearer token. Local llama-server needs none, but any hosted
 # OpenAI-compatible endpoint (OpenCode Zen, NVIDIA build.nvidia.com, OpenRouter)
 # will reject unauthenticated requests. Set MODEL_API_KEY to switch providers
@@ -758,19 +767,21 @@ def _responses_generate(prompt: str, temperature: float = 0.2,
     """Non-stream Zen Responses call for models that reject chat-completions."""
     del temperature  # Responses path does not take chat temperature here.
     effort = REASONING_EFFORT
-    max_out = CONTENT_MAX_TOKENS
     payload: dict = {
         "model": _active_model(),
         "input": [
             {"role": "system", "content": SYSTEM},
             {"role": "user", "content": prompt},
         ],
-        "max_output_tokens": (
-            REASONING_MAX_TOKENS + CONTENT_MAX_TOKENS
-            if effort not in ("none", "off", "0", "")
-            else CONTENT_MAX_TOKENS
-        ),
     }
+    # 0 = uncapped: omit max_output_tokens so Muse can finish reasoning AND
+    # still emit content (measured 2026-09-16: capped Responses came back
+    # status=incomplete with an empty output array).
+    if REASONING_MAX_TOKENS > 0 or CONTENT_MAX_TOKENS > 0:
+        if effort not in ("none", "off", "0", ""):
+            payload["max_output_tokens"] = REASONING_MAX_TOKENS + CONTENT_MAX_TOKENS
+        elif CONTENT_MAX_TOKENS > 0:
+            payload["max_output_tokens"] = CONTENT_MAX_TOKENS
     if effort not in ("none", "off", "0", ""):
         payload["reasoning"] = {"effort": effort}
     body = json.dumps(payload).encode()
@@ -889,6 +900,7 @@ MAX_CTX_CHARS = int(os.environ.get("MAX_CTX_CHARS", "8000"))
 # _force_code rather than thrown away. Same value as
 # REASONING_MAX_TOKENS so the request we send and the limit we enforce
 # cannot drift apart.
+# 0 disables the reason-cap abort (pair with uncapped tokens).
 REASON_CAP = REASONING_MAX_TOKENS
 # Largest function this tier will attempt, in chars of assembly.
 #
@@ -3083,7 +3095,7 @@ def llama_echo(prompt: str, temperature: float = 0.2,
                     if why:
                         aborted = f"degenerate reasoning: {why}"
                         break
-                    if n_reason > REASON_CAP:
+                    if REASON_CAP > 0 and n_reason > REASON_CAP:
                         aborted = (f"reasoning exceeded {REASON_CAP} tokens "
                                    f"with no code produced")
                         break

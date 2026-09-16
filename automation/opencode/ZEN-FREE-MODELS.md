@@ -483,6 +483,10 @@ Default `MAX_ASM_CHARS=12000` truncates assembly in `prepare()`, and
 For capable models, set `MAX_ASM_CHARS=0` and `MAX_FUNC_CHARS=0`, or
 start the fleet with `no_char_limits` (dashboard checkbox / `fleet_start(..., no_char_limits=True)`).
 
+### Full power
+
+Dashboard **full power** (or `fleet_start(..., full_power=True)`) enables no char limits, no timeout, and no output-token limit together, and sets `FUNC_BUDGET=7200`. Use for Muse xhigh on large functions.
+
 ### What the CLI backend gives up
 
 `opencode run` returns output only when the run completes, so there is no token
