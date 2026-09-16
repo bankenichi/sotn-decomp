@@ -325,6 +325,21 @@ sw $v1, 0x24($sp)
     check("ET_Placeholder" not in ev_need and "ILLEGAL" not in ev_need,
           "without ever offering the placeholder")
 
+    print("\nvariant disambiguation is decided, not first-in-file luck")
+    fake = {
+        "Alpha": {"type": "ET_A", "fields": [
+            {"offset": "0x9E", "name": "length"}]},
+        "Beta": {"type": "ET_B", "fields": [
+            {"offset": "0x9E", "name": "other"}]},
+        "Junk": {"type": "ET_C", "fields": [
+            {"offset": "0x9E", "name": "unk9E"}]},
+        "Pad": {"type": "ET_Placeholder", "fields": [
+            {"offset": "0x9E", "name": "length"}]},
+    }
+    got = wd._covering_variants(0x9E, fake, set())
+    check([v for v, _, _ in got] == ["Alpha", "Beta"],
+          f"both namings surface with unk and placeholder excluded ({got})")
+
     print("\nwith no variant list, the instruction is terminal, not a hunt")
     no_ev = wd.resolve_unk_offsets(out3, have_variants=False)
     check("NO variant list was supplied" in no_ev,
