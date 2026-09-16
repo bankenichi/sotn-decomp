@@ -467,6 +467,15 @@ scripts do not break. `llama` is that path, pointed at a local llama-server.
 `MODEL_API_KEY` exists for hosted OpenAI-compatible endpoints and is NOT needed
 for zen or for the CLI route; leave it unset.
 
+### `x-opencode-session` (required since ~2026-09-05)
+
+Zen free models return HTTP 400 `MissingSessionID` without an
+`x-opencode-session` header. `worker_direct.py` and `probe_provider.py`
+send a process-stable value (override with `ZEN_SESSION_ID`). Do **not**
+attach a stale `MODEL_API_KEY` on the zen path: an invalid key 401s free
+models that otherwise work unauthenticated. Paid Zen uses
+`OPENCODE_API_KEY` or `ZEN_API_KEY`.
+
 ### What the CLI backend gives up
 
 `opencode run` returns output only when the run completes, so there is no token

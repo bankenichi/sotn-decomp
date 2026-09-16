@@ -73,6 +73,11 @@ CLIENT_HEADERS = {
     "User-Agent": "opencode/1.18.12",
     "x-opencode-client": "cli",
 }
+# Zen free requires x-opencode-session since ~2026-09-05 (MissingSessionID).
+_PROBE_SESSION_ID = (
+    os.environ.get("ZEN_SESSION_ID", "").strip()
+    or f"sotn-probe-{os.getpid()}"
+)
 
 # Anything that looks like a credential is replaced before it can reach a log
 # file or this tool's stdout.
@@ -145,8 +150,15 @@ def probe_http(url: str, model: str, timeout: float = 60.0,
     }
     payload.update(extra or {})
     body = json.dumps(payload).encode()
-    key = os.environ.get("MODEL_API_KEY") or os.environ.get("OPENCODE_API_KEY")
+    # Zen free: session header required; invalid MODEL_API_KEY 401s free
+    # models that work unauthenticated. Prefer OPENCODE_API_KEY / ZEN_API_KEY.
+    key = (
+        os.environ.get("OPENCODE_API_KEY")
+        or os.environ.get("ZEN_API_KEY")
+        or ""
+    ).strip()
     headers = dict(CLIENT_HEADERS)
+    headers["x-opencode-session"] = _PROBE_SESSION_ID
     if key:
         headers["Authorization"] = f"Bearer {key}"
 
@@ -197,6 +209,88 @@ def probe_http(url: str, model: str, timeout: float = 60.0,
         rec.update(status=e.code, total_s=round(time.time() - t0, 2),
                    headers={k.lower(): v for k, v in (e.headers or {}).items()
                             if k.lower().startswith(("x-", "retry", "ratelimit"))},
+                   body_head=redact(raw[:600]),
+                   verdict=f"HTTP {e.code} — the provider REFUSED and said so")
+    except (urllib.error.URLError, socket.timeout, ssl.SSLError, OSError) as e:
+        rec.update(status=None, total_s=round(time.time() - t0, 2),
+                   error=f"{type(e).__name__}: {e}",
+                   verdict="NO HTTP RESPONSE AT ALL — never got a status line")
+    return rec
+
+
+def probe_responses(url: str, model: str, timeout: float = 60.0,
+                    max_tokens: int = 8, ask: str | None = None,
+                    effort: str | None = None) -> dict:
+    """One direct request to the Responses API (/v1/responses).
+
+    Zen serves some models (the muse-spark contributor tiers) ONLY here;
+    the chat-completions shape answers 401 for the same id. Reporting
+    mirrors probe_http so the two legs stay comparable.
+    """
+    ask = ask or "Reply with the word ok."
+    base = url.rstrip("/")
+    if base.endswith("/v1"):
+        base = base[:-len("/v1")]
+    endpoint = base + "/v1/responses"
+    payload: dict = {"model": model, "input": ask,
+                 "max_output_tokens": max_tokens}
+    if effort:
+        payload["reasoning"] = {"effort": effort}
+    body = json.dumps(payload).encode()
+    # Zen free: session header required; invalid MODEL_API_KEY 401s free
+    # models that work unauthenticated. Prefer OPENCODE_API_KEY / ZEN_API_KEY.
+    key = (
+        os.environ.get("OPENCODE_API_KEY")
+        or os.environ.get("ZEN_API_KEY")
+        or ""
+    ).strip()
+    headers = dict(CLIENT_HEADERS)
+    headers["x-opencode-session"] = _PROBE_SESSION_ID
+    if key:
+        headers["Authorization"] = f"Bearer {key}"
+    rec: dict = {"model": model, "api": "responses",
+             "effort": effort, "authenticated": bool(key)}
+    t0 = time.time()
+    req = urllib.request.Request(endpoint, data=body,
+                                 headers=headers, method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            rec["connect_s"] = round(time.time() - t0, 2)
+            rec["status"] = r.status
+            first = r.read(1)
+            rec["ttfb_s"] = round(time.time() - t0, 2)
+            raw = (first + r.read()).decode("utf-8", "replace")
+            rec["total_s"] = round(time.time() - t0, 2)
+            rec["body_chars"] = len(raw)
+            rec["body_head"] = redact(raw[:600])
+            rec["verdict"] = ("ANSWERED" if raw.strip()
+                              else "CONNECTED BUT EMPTY BODY")
+            try:
+                j = json.loads(raw)
+                texts, thinking = [], 0
+                for item in j.get("output") or []:
+                    if not isinstance(item, dict):
+                        continue
+                    if item.get("type") == "message":
+                        for part in item.get("content") or []:
+                            if isinstance(part, dict) and "text" in part:
+                                texts.append(part["text"])
+                    elif item.get("type") == "reasoning":
+                        thinking += 1
+                rec["output_text_chars"] = sum(map(len, texts))
+                rec["reasoning_items"] = thinking
+                rec["output_head"] = redact(" ".join(texts)[:300])
+                if texts and not "".join(texts).strip():
+                    rec["verdict"] = "CONNECTED BUT EMPTY OUTPUT"
+            except (ValueError, AttributeError):
+                pass
+    except urllib.error.HTTPError as e:
+        raw = ""
+        try:
+            raw = e.read().decode("utf-8", "replace")
+        except Exception:                                    # noqa: BLE001
+            pass
+        rec.update(status=e.code, total_s=round(time.time() - t0, 2),
                    body_head=redact(raw[:600]),
                    verdict=f"HTTP {e.code} — the provider REFUSED and said so")
     except (urllib.error.URLError, socket.timeout, ssl.SSLError, OSError) as e:
@@ -479,6 +573,9 @@ def main() -> int:
     ap.add_argument("--repeat", type=int, default=1)
     ap.add_argument("--http-only", action="store_true")
     ap.add_argument("--cli-only", action="store_true")
+    ap.add_argument("--responses", action="store_true",
+                    help="probe the Responses API (/v1/responses) instead of "
+                         "chat-completions; the only route serving some tiers")
     ap.add_argument("--worker", action="store_true",
                     help="drive worker_direct's own generation path (bounded "
                          "reasoning + force-code), not a bare HTTP request")
@@ -495,7 +592,7 @@ def main() -> int:
                          "suspect the timeout is actually killing.")
     ap.add_argument("--extra", help="JSON merged into the request body, for "
                                     "testing reasoning switches")
-    ap.add_argument("--effort", choices=("none", "low", "medium", "high"),
+    ap.add_argument("--effort", choices=("none", "low", "medium", "high", "xhigh"),
                     help="bounded reasoning: send reasoning_effort plus a "
                          "reasoning_budget, so the model may think but cannot "
                          "spend the whole completion doing it")
@@ -542,7 +639,12 @@ def main() -> int:
         murl = base_url(load_config())
         req = urllib.request.Request(murl + "/models",
                                      headers=dict(CLIENT_HEADERS))
-        key = os.environ.get("MODEL_API_KEY") or os.environ.get("OPENCODE_API_KEY")
+        key = (
+            os.environ.get("OPENCODE_API_KEY")
+            or os.environ.get("ZEN_API_KEY")
+            or ""
+        ).strip()
+        req.add_header("x-opencode-session", _PROBE_SESSION_ID)
         if key:
             req.add_header("Authorization", f"Bearer {key}")
         try:
@@ -703,6 +805,22 @@ def main() -> int:
     for model in picks:
         for i in range(a.repeat):
             if not a.cli_only:
+                if a.responses:
+                    r = probe_responses(url, model, timeout=a.timeout,
+                                        max_tokens=a.max_tokens,
+                                        ask=real_ask(a), effort=a.effort)
+                    r["kind"] = "responses"; results.append(r)
+                    print(f"\n[responses {i+1}/{a.repeat}] {model} effort={a.effort}")
+                    print(f"  status {r.get('status')}  "
+                          f"ttfb {r.get('ttfb_s')}  total {r.get('total_s')}s")
+                    if r.get("error"):
+                        print(f"  error {r['error']}")
+                    if r.get("body_head"):
+                        print(f"  body {r['body_head'][:300]}")
+                    if r.get("output_head"):
+                        print(f"  output {r['output_head'][:300]}")
+                    print(f"  -> {r.get('verdict')}")
+                    continue
                 r = probe_http(url, model, timeout=a.timeout,
                                max_tokens=a.max_tokens,
                                prompt_chars=a.prompt_chars,

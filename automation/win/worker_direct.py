@@ -97,6 +97,15 @@ ZEN_URL = os.environ.get("ZEN_BASE_URL", "https://opencode.ai/zen/v1")
 # identifies clients this way; without them we would be a different, anonymous
 # client and would not be measuring the service the fleet actually uses.
 ZEN_HEADERS = {"User-Agent": "opencode/1.18.12", "x-opencode-client": "cli"}
+# Since ~2026-09-05 Zen free rejects requests without x-opencode-session
+# (HTTP 400 MissingSessionID: "OpenCode's free tier can only be used in
+# OpenCode"). Measured 2026-09-16: mimo-v2.5-free returns 200 with this
+# header alone; Muse Responses (low and xhigh) likewise. Override with
+# ZEN_SESSION_ID to pin affinity across worker restarts.
+_ZEN_SESSION_ID = (
+    os.environ.get("ZEN_SESSION_ID", "").strip()
+    or f"sotn-fleet-{socket.gethostname()}-{os.getpid()}"
+)
 
 # THE SINGLE HIGHEST-VALUE SETTING IN THIS FILE.
 #
@@ -717,7 +726,18 @@ def _api_headers() -> dict:
     h = {"Content-Type": "application/json"}
     if MODEL_BACKEND == "zen":
         h.update(ZEN_HEADERS)
-    if MODEL_API_KEY:
+        h["x-opencode-session"] = _ZEN_SESSION_ID
+        # Zen free works without Authorization once the session header is
+        # present. A stale/invalid MODEL_API_KEY still 401s (measured
+        # 2026-09-16). Prefer OPENCODE_API_KEY / ZEN_API_KEY for paid Zen;
+        # leave MODEL_API_KEY for non-zen hosted endpoints.
+        zen_key = (
+            os.environ.get("OPENCODE_API_KEY", "").strip()
+            or os.environ.get("ZEN_API_KEY", "").strip()
+        )
+        if zen_key:
+            h["Authorization"] = f"Bearer {zen_key}"
+    elif MODEL_API_KEY:
         h["Authorization"] = f"Bearer {MODEL_API_KEY}"
     return h
 
