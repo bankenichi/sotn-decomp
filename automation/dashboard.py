@@ -357,11 +357,13 @@ ACTION_PARAMS: dict[str, dict[str, tuple[int, int]]] = {
 # A single value for the whole fleet can only run one arm at a time, and two
 # consecutive runs confound the arm with the tree state, the queue contents and
 # the time of day. Per worker, both arms claim from the same queue at the same
-# moment and claim order does the randomising. 0 = the worker default (`low`),
-# 1 = thinking off, 2 = xhigh (Responses-path muse-spark only). Medium and
-# high stay refused: Zen 503s on medium, 500s on high, and ignores
-# reasoning_budget. Range-checked like
-# everything else here, so a typo is an error rather than a silent default.
+# moment and claim order does the randomising. 0 = low, 1 = none (off),
+# 2 = xhigh (Responses-path muse-spark only). Index 0 is always sent as
+# REASONING_EFFORT=low: omitting it used to look like "worker default (low)"
+# while worker_direct actually defaults to none. Medium and high stay refused:
+# Zen 503s on medium, 500s on high, and ignores reasoning_budget.
+# Range-checked like everything else here, so a typo is an error rather
+# than a silent default.
 ACTION_LIST_PARAMS: dict[str, dict[str, tuple[int, int, int]]] = {
     "fleet_cli_start": {"models": (0, len(CLI_MODELS) - 1, 8),
                         "effort": (0, 2, 8)},
@@ -486,13 +488,12 @@ def _fleet(backend: str, default_n: int):
            no_timeout: int = 0) -> dict:
         import commands_client as cc
         kw = {}
-        # THE A/B KNOB (#111), PER WORKER. 0 keeps the worker default (`low`),
-        # 1 turns thinking off at the API level, 2 is xhigh for Responses-path
-        # muse-spark only. Indices rather than strings
-        # because the dashboard's control vocabulary is numeric ranges, and
-        # medium/high are not real: Zen 503s on medium, 500s on high, and
-        # ignores reasoning_budget, so a free-text field here would invite
-        # settings that read as configured and do nothing.
+        # THE A/B KNOB (#111), PER WORKER. 0 is low, 1 turns thinking off,
+        # 2 is xhigh for Responses-path muse-spark only. Indices rather than
+        # strings because the dashboard's control vocabulary is numeric
+        # ranges, and medium/high are not real: Zen 503s on medium, 500s on
+        # high, and ignores reasoning_budget, so a free-text field here would
+        # invite settings that read as configured and do nothing.
         #
         # Per worker is the entire point. One setting for the whole fleet can
         # only run one arm per launch, and comparing two launches compares the
@@ -504,14 +505,15 @@ def _fleet(backend: str, default_n: int):
         # otherwise round-robin a short list, and a 2-entry list across 3
         # workers means w3 silently repeats w1 -- an unbalanced experiment that
         # still looks deliberate in the log.
+        #
+        # Always send the list. `if any(eff)` used to drop an all-zero
+        # (UI "low") payload, fleet_start then omitted REASONING_EFFORT, and
+        # every worker defaulted to none. 0/1/2 must stay distinguishable.
         eff = effort or [0]
         eff = (eff * workers)[:workers]
-        # All-default sends nothing at all, keeping the untouched path
-        # byte-identical to a fleet launched before this knob existed.
-        if any(eff):
-            kw["reasoning"] = ",".join(
-                "xhigh" if e == 2 else ("none" if e == 1 else "low")
-                for e in eff)
+        kw["reasoning"] = ",".join(
+            "xhigh" if e == 2 else ("none" if e == 1 else "low")
+            for e in eff)
         if backend in ("cli", "zen"):
             # fleet_start assigns a comma-separated list round-robin, one model
             # per worker. Passing exactly `workers` entries therefore gives each
@@ -1503,7 +1505,7 @@ function renderWorkerRows(){
   // arm per launch, and comparing two launches compares the arm plus whatever
   // changed between them. Set w1 to none and w2 to low and the comparison is
   // controlled: claim order, not the experimenter, decides who gets what.
-  const EFF='<option value=2>xhigh</option><option value=0>low</option><option value=1>none (off)</option>';
+  const EFF='<option value=0 selected>low</option><option value=1>none (off)</option><option value=2>xhigh</option>';
   let h='';
   for(let i=0;i<n;i++){
     h+=`<label>w${i+1} `;
@@ -2077,6 +2079,8 @@ def self_test() -> int:
     # A/B a comparison of two runs instead of a comparison of two settings.
     ck("class=weffort" in PAGE and "none (off)" in PAGE,
        "each worker row carries its own effort picker, labelled in words")
+    ck("value=0 selected>low" in PAGE,
+       "the picker defaults to low so a new row cannot silently be xhigh")
     ck("select.weffort" in PAGE and "p.effort=[" in PAGE,
        "and fleetParams collects them as a list, in row order")
     ck("prevM" in PAGE and "select.wmodel" in PAGE,
@@ -2111,9 +2115,18 @@ def self_test() -> int:
                "a short list is padded to the worker count here, so it cannot "
                "be round-robined into an unbalanced experiment downstream")
             out = _fleet("llama", 2)(workers=2, effort=[0, 0])["out"]
-            ck("worker default" in out,
-               "all-default sends nothing, leaving the untouched path "
-               "byte-identical to a fleet launched before this knob existed")
+            ck("'reasoning': 'low,low'" in out,
+               "UI low (index 0) always sends REASONING_EFFORT=low, never "
+               "omits the env and collapses to the worker default of none")
+            out = _fleet("zen", 4)(workers=2, effort=[2, 1], models=[0, 0])["out"]
+            ck("'reasoning': 'xhigh,none'" in out,
+               "xhigh and none stay distinct from low on the same fleet")
+            out = _fleet("zen", 4)(workers=3, effort=[0], models=[0])["out"]
+            ck("'reasoning': 'low,low,low'" in out,
+               "a short all-low list is padded to low, not silently dropped")
+            out = _fleet("zen", 4)(workers=2, models=[0, 0])["out"]
+            ck("'reasoning': 'low,low'" in out,
+               "omitting effort is the same as UI low, not worker-default none")
         finally:
             _cc.DRYRUN = _prev_dry
             if _prev_mod is None:
@@ -2127,6 +2140,10 @@ def self_test() -> int:
         ck("_sel" in csrc and "_re=" in csrc,
            "with an index separate from the model array, so 2 models x 2 "
            "efforts across 4 workers covers all four combinations")
+        import inspect as _insp
+        _fleet_src = _insp.getsource(_fleet)
+        ck("if any(eff):" not in _fleet_src and 'kw["reasoning"]' in _fleet_src,
+           "all-zero UI low is no longer dropped as a falsey list")
 
     print("\nzen is selectable, not just startable from a connector call")
     ck("fleet_zen_start" in ACTIONS, "the action exists")

@@ -173,6 +173,13 @@ REASONING_EFFORT = os.environ.get("REASONING_EFFORT", "none").strip().lower()
 REASONING_MAX_TOKENS = int(os.environ.get("REASONING_MAX_TOKENS",
                                           os.environ.get("REASON_CAP", "9000")))
 CONTENT_MAX_TOKENS = int(os.environ.get("CONTENT_MAX_TOKENS", "4000"))
+# Muse Responses still spends reasoning tokens at effort=none (measured
+# 2026-09-16: xhigh/256 returned incomplete with reasoning_tokens≈253 and an
+# empty output array; the same prompt at 4000 completed). CONTENT_MAX alone
+# starves the message. Floor high enough that xhigh can finish a message
+# after reasoning on a real asm prompt; override if a provider cap is lower.
+MUSE_RESPONSES_MIN_OUTPUT_TOKENS = int(os.environ.get(
+    "MUSE_RESPONSES_MIN_OUTPUT_TOKENS", "32000"))
 
 
 def thinking_params() -> dict:
@@ -753,26 +760,117 @@ def _uses_responses_api() -> bool:
     return "muse-spark" in _active_model().lower()
 
 
+def _responses_effort_is_off(effort: str) -> bool:
+    return (effort or "none").strip().lower() in ("none", "off", "0", "")
+
+
+def _responses_max_output_tokens(effort: str, model: str = "") -> int:
+    """Total /v1/responses budget, including reasoning tokens.
+
+    Measured 2026-09-16 on muse-spark-1.3-contributor-free: effort=xhigh with
+    max_output_tokens=256 returned status=incomplete, reason=max_output_tokens,
+    empty output, usage.reasoning_tokens around 253. The same prompt at 4000
+    completed with a message output_text part. Muse still spends reasoning
+    tokens at effort=none, so CONTENT_MAX alone starves the message. Always
+    include reasoning headroom for muse, and floor at
+    MUSE_RESPONSES_MIN_OUTPUT_TOKENS so xhigh on a real asm prompt cannot
+    spend the whole budget thinking.
+    """
+    name = (model or _active_model()).lower()
+    headroom = REASONING_MAX_TOKENS + CONTENT_MAX_TOKENS
+    if "muse-spark" in name:
+        return max(headroom, MUSE_RESPONSES_MIN_OUTPUT_TOKENS)
+    if _responses_effort_is_off(effort):
+        return CONTENT_MAX_TOKENS
+    return headroom
+
+
+def _responses_part_text(part) -> str:
+    """Text from a Responses content part, including type=output_text."""
+    if isinstance(part, str):
+        return part
+    if not isinstance(part, dict):
+        return ""
+    text = part.get("text")
+    return text if isinstance(text, str) else ""
+
+
+def parse_responses_output(payload: dict) -> dict:
+    """Pull message text and diagnostics out of a Responses JSON body.
+
+    Zen completed replies put the answer in message content parts with
+    type=output_text and a `text` key (measured 2026-09-16). Incomplete
+    replies can have an empty output array while still reporting status,
+    incomplete_details.reason, and usage.output_tokens_details.reasoning_tokens.
+    Top-level output_text is a convenience fallback, not a substitute for
+    walking output when both are present.
+    """
+    texts: list[str] = []
+    reasoning_n = 0
+    for item in payload.get("output") or []:
+        if not isinstance(item, dict):
+            continue
+        kind = item.get("type")
+        if kind == "message":
+            content = item.get("content")
+            if isinstance(content, str):
+                texts.append(content)
+            else:
+                for part in content or []:
+                    piece = _responses_part_text(part)
+                    if piece:
+                        texts.append(piece)
+        elif kind in ("output_text", "text"):
+            piece = _responses_part_text(item)
+            if piece:
+                texts.append(piece)
+        elif kind == "reasoning":
+            reasoning_n += 1
+            for part in item.get("summary") or []:
+                piece = _responses_part_text(part)
+                if piece:
+                    texts.append(piece)
+    text = "".join(texts)
+    convenience = payload.get("output_text")
+    if not text.strip() and isinstance(convenience, str):
+        text = convenience
+    usage = payload.get("usage")
+    incomplete = payload.get("incomplete_details")
+    return {
+        "text": text,
+        "reasoning_n": reasoning_n,
+        "status": payload.get("status"),
+        "incomplete_details": incomplete if isinstance(incomplete, dict) else None,
+        "usage": usage if isinstance(usage, dict) else None,
+    }
+
+
+def _responses_payload(prompt: str, effort: str | None = None,
+                       model: str | None = None) -> dict:
+    """JSON body for Zen /v1/responses. Isolated so tests can inspect it."""
+    effort = (effort if effort is not None else REASONING_EFFORT) or "none"
+    model = model or _active_model()
+    payload: dict = {
+        "model": model,
+        "input": [
+            {"role": "system", "content": SYSTEM},
+            {"role": "user", "content": prompt},
+        ],
+        "max_output_tokens": _responses_max_output_tokens(effort, model),
+    }
+    if not _responses_effort_is_off(effort):
+        # summary=auto is the OpenAI Responses field for a readable reasoning
+        # summary; Zen ignored unknown fields on the 2026-09-16 probes.
+        payload["reasoning"] = {"effort": effort, "summary": "auto"}
+    return payload
+
+
 def _responses_generate(prompt: str, temperature: float = 0.2,
                         budget_left: float | None = None) -> str:
     """Non-stream Zen Responses call for models that reject chat-completions."""
     del temperature  # Responses path does not take chat temperature here.
     effort = REASONING_EFFORT
-    max_out = CONTENT_MAX_TOKENS
-    payload: dict = {
-        "model": _active_model(),
-        "input": [
-            {"role": "system", "content": SYSTEM},
-            {"role": "user", "content": prompt},
-        ],
-        "max_output_tokens": (
-            REASONING_MAX_TOKENS + CONTENT_MAX_TOKENS
-            if effort not in ("none", "off", "0", "")
-            else CONTENT_MAX_TOKENS
-        ),
-    }
-    if effort not in ("none", "off", "0", ""):
-        payload["reasoning"] = {"effort": effort}
+    payload = _responses_payload(prompt, effort=effort)
     body = json.dumps(payload).encode()
     url = _base_url() + "/responses"
     req = urllib.request.Request(url, data=body, headers=_api_headers(),
@@ -780,6 +878,7 @@ def _responses_generate(prompt: str, temperature: float = 0.2,
     t0 = time.time()
     timeout = GEN_TIMEOUT if budget_left is None else max(30.0, min(GEN_TIMEOUT, budget_left))
     print(f"  --- responses ({_active_model()}, effort={effort or 'none'}, "
+          f"max_output_tokens={payload['max_output_tokens']}, "
           f"prompt {len(prompt)} chars) ---", flush=True)
     try:
         with _open_with_backoff(req, timeout) as r:
@@ -790,49 +889,56 @@ def _responses_generate(prompt: str, temperature: float = 0.2,
             "model": _active_model(), "backend": MODEL_BACKEND,
             "api": "responses", "prompt_chars": len(prompt),
             "total_s": round(el, 1), "rc": 1, "outcome": "error",
+            "max_output_tokens": payload["max_output_tokens"],
             "stderr_head": f"{type(e).__name__}: {e}"[:200],
         })
         print(f"  --- responses ERROR {type(e).__name__}: {e} ---", flush=True)
         return ""
     el = time.time() - t0
-    texts: list[str] = []
-    reasoning_n = 0
     try:
         j = json.loads(raw)
-        for item in j.get("output") or []:
-            if not isinstance(item, dict):
-                continue
-            if item.get("type") == "message":
-                for part in item.get("content") or []:
-                    if isinstance(part, dict) and part.get("text"):
-                        texts.append(part["text"])
-            elif item.get("type") == "reasoning":
-                reasoning_n += 1
-                for part in item.get("summary") or []:
-                    if isinstance(part, dict) and part.get("text"):
-                        texts.append(part["text"])
-    except (ValueError, AttributeError) as e:
+        parsed = parse_responses_output(j)
+    except (ValueError, AttributeError, TypeError) as e:
         print(f"  --- responses parse fail: {e} ---", flush=True)
         emit_call({
             "model": _active_model(), "backend": MODEL_BACKEND,
             "api": "responses", "prompt_chars": len(prompt),
             "total_s": round(el, 1), "rc": 1, "outcome": "parse_error",
+            "max_output_tokens": payload["max_output_tokens"],
             "stderr_head": raw[:200],
         })
         return ""
-    text = "".join(texts)
+    text = parsed["text"]
+    reasoning_n = parsed["reasoning_n"]
+    status = parsed["status"]
+    incomplete = parsed["incomplete_details"]
+    usage = parsed["usage"]
     # Prefer a C function if the blob has prose around it.
     cleaned = _trim_to_function(clean_code(text)) if text.strip() else ""
     out = cleaned.strip() or text
+    empty = not out.strip()
+    if empty and status == "incomplete":
+        outcome = "incomplete"
+    elif empty:
+        outcome = "empty"
+    else:
+        outcome = "produced"
     emit_call({
         "model": _active_model(), "backend": MODEL_BACKEND,
         "api": "responses", "prompt_chars": len(prompt),
         "total_s": round(el, 1), "stream_chars": len(out), "rc": 0,
         "reasoning_items": reasoning_n, "effort": effort or "none",
-        "outcome": "produced" if out.strip() else "empty",
+        "outcome": outcome,
+        "status": status,
+        "incomplete_details": incomplete,
+        "usage": usage,
+        "max_output_tokens": payload["max_output_tokens"],
     })
     print(f"  --- responses done in {el:.0f}s: {len(out)} chars, "
           f"{reasoning_n} reasoning items ---", flush=True)
+    if empty or status == "incomplete":
+        print(f"  --- responses status={status!r} incomplete={incomplete!r} "
+              f"usage={usage!r} ---", flush=True)
     return out
 
 

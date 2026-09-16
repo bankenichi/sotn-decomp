@@ -2752,8 +2752,10 @@ def fleet_start(workers: int = 4, max_functions: int = 0,
     and the tree is in one state for the whole run. Two consecutive fleets
     would confound the arm with everything that changed between them.
 
-    reasoning accepts "low" (the worker default), "none"/"off"/"0", and
-    "xhigh". "xhigh" is Responses-path only: the muse-spark contributor
+    reasoning accepts "low", "none"/"off"/"0", and
+    "xhigh". Empty omits REASONING_EFFORT so the worker default (none) stays.
+    Dashboard effort 0 is "low", not empty: omitting it used to collapse UI
+    low onto worker none. "xhigh" is Responses-path only: the muse-spark contributor
     tiers serve Zen /v1/responses, measured 2026-09-16 returning HTTP 200
     for effort low and xhigh, while the same id on /chat/completions is
     the wrong shape. Chat-completions models have no xhigh measurement,
@@ -2929,8 +2931,9 @@ def fleet_start(workers: int = 4, max_functions: int = 0,
         # lengths, and 2 models x 2 efforts across 4 workers only covers all
         # four combinations if the indices are separate.
         #
-        # Empty means "do not set it", so the default path is byte-identical
-        # to before and an unrelated fleet cannot be silently re-tuned.
+        # Empty means "do not set it", so a connector call with no reasoning
+        # list still gets the worker default (none). The dashboard always
+        # sends the mapped list, including low for index 0.
         if efforts:
             earr = " ".join(shlex.quote(e) for e in efforts)
             model_setup += f"_r=({earr}); "

@@ -406,6 +406,13 @@ override intentionally permits escalated and deferred records, so a persistent
 loop reclaims its own failures. A subset never claims any non-todo status or an
 unlisted todo record.
 
+Dashboard fleet effort 0 is `low`, always sent as `REASONING_EFFORT=low`.
+Omitting the env used to look like "worker default (low)" while
+`worker_direct.py` defaults to `none`, which is how a UI low fleet logged
+effort=none. Muse Spark still spends reasoning tokens at effort=none on
+`/v1/responses`; `max_output_tokens` must include reasoning headroom or the
+reply comes back `status=incomplete` with an empty `output` array.
+
 `job_status.elapsed_s` **includes queue wait**. Jobs are exclusive. The same call
 has measured 82s and 271s. It is not a runtime.
 
