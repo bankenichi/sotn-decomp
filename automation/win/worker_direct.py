@@ -2556,7 +2556,7 @@ SYSTEM = (
     "identical machine code.\n"
     "OUTPUT: only C. No markdown fences, no prose outside the code. Keep the "
     "exact function name. Use real project types (Entity*, s16/u16/s32), not "
-    "the draft's '?'. Invent no helper functions.\n"
+    "the draft's '?'. Invent no helper functions or declarations.\n"
     "QUALITY (a byte match is the floor; review rejects code that hides "
     "structure):\n"
     "- Never declare an extern for a raw address that already has a meaning. "
@@ -2583,8 +2583,10 @@ SYSTEM = (
     "declaration after a statement is a hard error. No `for (int i`.\n"
     "- No libc: no rand/memcpy/printf. Only symbols from DECLARATIONS or the "
     "draft.\n"
-    "DECLARATIONS section is ground truth: copy those lines verbatim above your "
-    "function, match their types exactly. For `extern T NAME[];` pass `NAME`, "
+    "DECLARATIONS section is ground truth: match those types exactly, but do "
+    "not re-emit them. Emit only the single target function definition and "
+    "nothing else at file scope: no externs, no helpers, no data. For "
+    "`extern T NAME[];` pass `NAME`, "
     "never `&NAME`.\n"
     "ANNOTATE (comments and local names cannot change codegen, so they are "
     "free):\n"
@@ -5034,7 +5036,12 @@ def review_gate(ctx: dict, fn: str, code: str) -> list[str]:
         src = virtual_apply(ctx, fn, code)
         if not src:
             return []
-        rc = _review_checks_module()
+        try:
+            rc = _review_checks_module()
+        except Exception as e:
+            print(f"  !! review checks module failed to load, gate skipped: "
+                  f"{type(e).__name__}: {str(e)[:160]}", flush=True)
+            return []
         path = Path(win_path(ctx["src_rel"]))
         out = []
         for key in _REVIEW_GATE_CHECKS:
@@ -5052,11 +5059,11 @@ def review_gate(ctx: dict, fn: str, code: str) -> list[str]:
                     out.append(f"{f['check']}: {f['detail']}. FIX: {f['fix']}")
             except Exception as e:
                 print(f"  ~~ review check {key} errored, ignored: "
-                      f"{type(e).__name__}", flush=True)
+                      f"{type(e).__name__}: {str(e)[:160]}", flush=True)
         return out
     except Exception as e:
-        print(f"  ~~ review gate unavailable, ignored: {type(e).__name__}",
-              flush=True)
+        print(f"  ~~ review gate unavailable, ignored: {type(e).__name__}: "
+              f"{str(e)[:160]}", flush=True)
         return []
 
 
