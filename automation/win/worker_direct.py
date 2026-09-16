@@ -2037,7 +2037,10 @@ def save_matched(rec: dict, code: str, attempt: int, detail: str,
         path = landing_path(rec)
         os.makedirs(os.path.dirname(path), exist_ok=True)
         model = OPENCODE_MODEL if MODEL_BACKEND == "cli" else _active_model()
-        replacement = _declare_used_symbols(original, code, ctx["src_rel"]) + code
+        replacement = _declare_used_symbols(
+            original, code, ctx["src_rel"],
+            overlay=_overlay_of_src(ctx["src_rel"]),
+            asm_text=_retained_asm_text(ctx)) + code
         newline = "\r\n" if "\r\n" in original else "\n"
         replacement = replacement.replace("\r\n", "\n").replace("\n", newline)
         verdict = _archive_verdict(detail)
@@ -5055,7 +5058,9 @@ def virtual_apply(ctx: dict, fn: str, code: str,
     # gate inspected a file without them it would report link and linkage
     # findings about a state that is never built.
     body = _prepare_candidate_body(original, code, fn, ctx["src_rel"],
-                                   support_declarations=support_declarations)
+                                   support_declarations=support_declarations,
+                                   overlay=_overlay_of_src(ctx["src_rel"]),
+                                   asm_text=_retained_asm_text(ctx))
     return pattern.sub(lambda _m: body.replace("\r\n", "\n"), original, count=1)
 
 
@@ -5281,8 +5286,60 @@ def _symbol_visible_in_scope(text: str, name: str) -> bool:
         or _object_declared_in_text(bare, name))
 
 
+def _overlay_of_src(src_rel: str) -> str:
+    """src/boss/rbo6/unk_17804.c -> BOSS/RBO6 for the retained-data index.
+
+    Empty for files outside any overlay, in which case the data lookup
+    falls back to its unique-match consensus rather than guessing.
+    """
+    d = _overlay_dir_of(src_rel)
+    return d[4:].upper() if d.startswith("src/") else ""
+
+
+def _retained_asm_text(ctx: dict) -> str:
+    """Target assembly text for access-typed data declarations, or "".
+
+    Best-effort read of the record's own asm file. The injector must
+    never fail a candidate on a helper read, so every failure here
+    means default directive-unit types downstream.
+    """
+    try:
+        rel = (ctx.get("asm_file") or "").replace("\\", "/")
+        if not rel:
+            return ""
+        with open(os.path.join(WIN_REPO, *rel.split("/")),
+                  encoding="utf-8", errors="replace") as f:
+            return f.read()
+    except OSError:
+        return ""
+
+
+def _retained_data_declaration(name: str, overlay: str, asm_text: str) -> str:
+    """A retained-data extern for `name`, or "".
+
+    Mirrors the prompt-time lookup_declarations fallback: repo grep first
+    (handled by the caller), then overlay-specific retained data assembly
+    with exact section, directive width and byte span. With a known
+    overlay only an exact-overlay record qualifies, because retained data
+    is overlay-local and a unique cross-overlay hit would name a different
+    object, the same failure class as lifting another overlay's EInit.
+    Ambiguous or absent labels are refused, never guessed.
+    """
+    try:
+        if overlay:
+            exact = _data_declarations.build_index().get(
+                (overlay.strip("/").upper(), name))
+            if exact is None:
+                return ""
+        return _data_declarations.declaration(
+            name, overlay=overlay, asm_text=asm_text)
+    except Exception:
+        return ""
+
+
 def _declare_used_symbols(original: str, code: str, src_rel: str,
-                          fn: str = "", visible_extra: str = "") -> str:
+                          fn: str = "", visible_extra: str = "",
+                          overlay: str = "", asm_text: str = "") -> str:
     """Declarations this candidate needs that its destination file lacks.
 
     The twelve records this exists for each escalated on ONE undeclared
@@ -5298,6 +5355,8 @@ def _declare_used_symbols(original: str, code: str, src_rel: str,
         if _symbol_visible_in_scope(visible, name):
             continue          # already visible before the exact insertion point
         decl = _symbol_declaration(name, src_rel)
+        if not decl and name.startswith("D_"):
+            decl = _retained_data_declaration(name, overlay, asm_text)
         if decl:
             out.append(decl)
         if len(out) >= _MAX_INJECTED:
@@ -5367,12 +5426,14 @@ def _validated_support_declarations(declarations: list[str] | None) -> list[str]
 
 def _prepare_candidate_body(original: str, code: str, fn: str,
                             src_rel: str,
-                            support_declarations: list[str] | None = None) -> str:
+                            support_declarations: list[str] | None = None,
+                            overlay: str = "", asm_text: str = "") -> str:
     exact = _candidate_function_only(code, fn)
     support = _validated_support_declarations(support_declarations)
     support_text = "\n".join(support)
     derived = _declare_used_symbols(
-        original, exact, src_rel, fn=fn, visible_extra=support_text)
+        original, exact, src_rel, fn=fn, visible_extra=support_text,
+        overlay=overlay, asm_text=asm_text)
     retained = ""
     if support:
         retained = (
@@ -5400,7 +5461,9 @@ def apply_code(ctx: dict, fn: str, code: str,
     # exactly the function that needs it.
     body = _prepare_candidate_body(
         original, code, fn, ctx["src_rel"],
-        support_declarations=support_declarations)
+        support_declarations=support_declarations,
+        overlay=_overlay_of_src(ctx["src_rel"]),
+        asm_text=_retained_asm_text(ctx))
     # The model emits LF; convert the insert to the file's own convention.
     body = body.replace("\r\n", "\n").replace("\n", nl)
     if not journal_write(ctx["src_rel"], original):  # BEFORE the write, not after
@@ -5447,7 +5510,9 @@ def apply_code_batch(
                 f"INCLUDE_ASM stub for {fn} not found in {src_rel}")
         body = _prepare_candidate_body(
             updated[src_rel], code, fn, src_rel,
-            support_declarations=support_declarations)
+            support_declarations=support_declarations,
+            overlay=_overlay_of_src(src_rel),
+            asm_text=_retained_asm_text(ctx))
         body = body.replace("\r\n", "\n").replace("\n", newlines[src_rel])
         updated[src_rel] = pattern.sub(lambda _m: body, updated[src_rel], count=1)
 

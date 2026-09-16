@@ -411,6 +411,30 @@ def main():
         ["D_us_DEADBEEF"], overlay="BOSS/BO6", asm_text="")
     check(not refused, f"an absent retained label is still refused ({refused})")
 
+    print("\napply-time injection covers retained data, not just code symbols")
+    injected = wd._declare_used_symbols(
+        '#include "rbo6.h"\nINCLUDE_ASM("x", F);\n',
+        "void F(void){ x = D_us_8018063C[0]; }",
+        "src/boss/rbo6/unk_17804.c", overlay="BOSS/RBO6",
+        asm_text="lbu $v0, %lo(D_us_8018063C)($at)")
+    check("extern u8 D_us_8018063C[];" in injected,
+          f"the retained byte label resolves where the tree grep finds "
+          f"nothing in-overlay ({injected!r})")
+    foreign = wd._declare_used_symbols(
+        '#include "rno1.h"\nINCLUDE_ASM("x", F);\n',
+        "void F(void){ x = D_us_8018063C[0]; }",
+        "src/st/rno1/unk_34074.c", overlay="ST/RNO1",
+        asm_text="lbu $v0, %lo(D_us_8018063C)($at)")
+    check("D_us_8018063C" not in foreign,
+          f"a label with no record in that overlay injects nothing "
+          f"({foreign!r})")
+    absent = wd._declare_used_symbols(
+        '#include "rbo6.h"\nINCLUDE_ASM("x", F);\n',
+        "void F(void){ x = D_us_DEADBEEF[0]; }",
+        "src/boss/rbo6/unk_17804.c", overlay="BOSS/RBO6", asm_text="")
+    check("D_us_DEADBEEF" not in absent,
+          f"an absent retained label still injects nothing ({absent!r})")
+
     print("\nthe live tree really does not declare func_us_801B171C")
     # This is the premise of the whole fix. If someone later adds a real
     # prototype, this flips and the branch above takes over -- correctly, but
