@@ -356,8 +356,9 @@ ACTION_PARAMS: dict[str, dict[str, tuple[int, int]]] = {
 # consecutive runs confound the arm with the tree state, the queue contents and
 # the time of day. Per worker, both arms claim from the same queue at the same
 # moment and claim order does the randomising. 0 = the worker default (`low`),
-# 1 = thinking off; two values because only two are real, since Zen 503s on
-# medium, 500s on high, and ignores reasoning_budget. Range-checked like
+# 1 = thinking off, 2 = xhigh (Responses-path muse-spark only). Medium and
+# high stay refused: Zen 503s on medium, 500s on high, and ignores
+# reasoning_budget. Range-checked like
 # everything else here, so a typo is an error rather than a silent default.
 ACTION_LIST_PARAMS: dict[str, dict[str, tuple[int, int, int]]] = {
     "fleet_cli_start": {"models": (0, len(CLI_MODELS) - 1, 8),
@@ -483,9 +484,10 @@ def _fleet(backend: str, default_n: int):
         import commands_client as cc
         kw = {}
         # THE A/B KNOB (#111), PER WORKER. 0 keeps the worker default (`low`),
-        # 1 turns thinking off at the API level. Indices rather than strings
+        # 1 turns thinking off at the API level, 2 is xhigh for Responses-path
+        # muse-spark only. Indices rather than strings
         # because the dashboard's control vocabulary is numeric ranges, and
-        # only two values are real: Zen 503s on medium, 500s on high, and
+        # medium/high are not real: Zen 503s on medium, 500s on high, and
         # ignores reasoning_budget, so a free-text field here would invite
         # settings that read as configured and do nothing.
         #

@@ -278,7 +278,8 @@ def candidate_publish(
 def fleet_start(workers: int = 4, max_functions: int = 0,
                 force: bool = False, backend: str = "zen",
                 cli_workers: int = 0, opencode_model: str = "",
-                reasoning: str = "", only: str = "") -> dict:
+                reasoning: str = "", only: str = "",
+                no_char_limits: bool = False) -> dict:
     """Launch detached volume workers in WSL. Returns immediately.
 
     backend picks the model tier:
@@ -313,6 +314,16 @@ def fleet_start(workers: int = 4, max_functions: int = 0,
     automation/opencode/ZEN-FREE-MODELS.md. Pass a comma-separated list to
     round-robin one model per worker, which is how a bake-off is run.
 
+    reasoning is a comma-separated per-worker list: "none"/"off"/"0", "low",
+    or "xhigh". "xhigh" is Responses-path only (muse-spark tiers, measured
+    2026-09-16); chat-completions models have no xhigh measurement. Empty
+    keeps the worker default (none).
+
+    no_char_limits passes MAX_ASM_CHARS=0 and MAX_FUNC_CHARS=0 to workers so
+    large functions are still sent in full. Without it the MCP path silently
+    drops the flag the dashboard sends, which is the same silent-no-op
+    failure mode as a rejected reasoning value. Default False.
+
     Total workers 1-16 = generations in flight. apply/build/verify is lock-
     serialised, so beyond ~4 the extras mostly queue. llama workers need
     llama-server started with --parallel >= that count.
@@ -334,7 +345,8 @@ def fleet_start(workers: int = 4, max_functions: int = 0,
     return cc.fleet_start(workers, max_functions, force=force, backend=backend,
                           cli_workers=cli_workers,
                           opencode_model=opencode_model,
-                          reasoning=reasoning, only=only)
+                          reasoning=reasoning, only=only,
+                          no_char_limits=no_char_limits)
 
 
 @mcp.tool()

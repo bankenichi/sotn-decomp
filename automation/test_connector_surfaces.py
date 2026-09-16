@@ -1039,6 +1039,10 @@ def main() -> int:
         subset = _cc_mod.fleet_start(
             workers=2, only=("us:ST/RNO4:func_us_801C8C54,"
                              "us:ST/RNO4:LoadFerrymanGateTiles"))
+        spark = _cc_mod.fleet_start(
+            workers=1, reasoning="xhigh",
+            opencode_model="opencode/muse-spark-1.3-contributor-free",
+            no_char_limits=True)
     finally:
         _cc_mod.DRYRUN = _was
 
@@ -1050,6 +1054,9 @@ def main() -> int:
     check(subset["only"] == ["us:ST/RNO4:func_us_801C8C54",
                               "us:ST/RNO4:LoadFerrymanGateTiles"],
           f"fleet plan preserves the exact queue-id subset ({subset['only']!r})")
+    check(spark["reasoning"] == "xhigh",
+          f"spark xhigh survives the gate instead of raising Rejected "
+          f"(got {spark['reasoning']!r})")
     _worker = (pathlib.Path(__file__).parent / "win" /
                "worker_direct.py").read_text(encoding="utf-8")
     check('os.environ.get("REASONING_EFFORT", "none")' in _worker,

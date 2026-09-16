@@ -2741,8 +2741,13 @@ def fleet_start(workers: int = 4, max_functions: int = 0,
     and the tree is in one state for the whole run. Two consecutive fleets
     would confound the arm with everything that changed between them.
 
-    reasoning accepts "low" (the worker default) and "none"/"off"/"0". Nothing
-    else: Zen answers 503 to medium, 500 to high, and ignores reasoning_budget.
+    reasoning accepts "low" (the worker default), "none"/"off"/"0", and
+    "xhigh". "xhigh" is Responses-path only: the muse-spark contributor
+    tiers serve Zen /v1/responses, measured 2026-09-16 returning HTTP 200
+    for effort low and xhigh, while the same id on /chat/completions is
+    the wrong shape. Chat-completions models have no xhigh measurement,
+    so keep them on low or none. Zen answers 503 to medium and 500 to
+    high, and ignores reasoning_budget.
 
     Total workers is generations in flight. apply/build/verify is serialised by
     a lock, so beyond ~4 the extras mostly queue. llama-server must be started
@@ -2787,14 +2792,17 @@ def fleet_start(workers: int = 4, max_functions: int = 0,
     # the other would confound the arm with everything that changed in between,
     # which is the whole failure this experiment is meant to avoid.
     efforts = [e.strip().lower() for e in (reasoning or "").split(",") if e.strip()]
-    # Only the two values the provider actually distinguishes. `medium` is
-    # HTTP 503 on Zen and `high` is HTTP 500, and reasoning_budget is ignored
+    # The values the provider actually distinguishes. `medium` is HTTP 503
+    # on Zen and `high` is HTTP 500, and reasoning_budget is ignored
     # outright, so anything else would be a knob that reads as configured and
-    # does nothing -- the failure mode this project keeps finding.
-    bad = [e for e in efforts if e not in ("none", "off", "0", "low")]
+    # does nothing -- the failure mode this project keeps finding. `xhigh`
+    # is Responses-path only (muse-spark tiers, measured 2026-09-16); it is
+    # passed through as REASONING_EFFORT and unmeasured on chat-completions.
+    bad = [e for e in efforts if e not in ("none", "off", "0", "low", "xhigh")]
     if bad:
         raise Rejected(f"reasoning entries must be 'none'/'off'/'0' (the "
-                       f"default) or explicit 'low'; Zen 503s on medium and "
+                       f"default), explicit 'low', or 'xhigh' (Responses-path "
+                       f"models only); Zen 503s on medium and "
                        f"500s on high. Rejected: {', '.join(sorted(set(bad)))}")
 
     subset = []
@@ -2899,7 +2907,10 @@ def fleet_start(workers: int = 4, max_functions: int = 0,
         # false` and produces 0 reasoning tokens, so the OFF arm is real
         # rather than a flag the provider ignores. Everything finer --
         # reasoning_budget, medium, high -- is ignored or errors on Zen, which
-        # is why this is a two-value experiment and not a sweep.
+        # is why plain chat-completions fleets stay a two-value experiment and
+        # not a sweep. `xhigh` is the one exception and it is Responses-path
+        # only (muse-spark tiers): worker_direct passes REASONING_EFFORT
+        # straight into the /v1/responses payload there.
         #
         # Its own bash array, indexed by worker number like the model array, so
         # ONE fleet can run both arms. `_r` and `_re` rather than reusing `_m`

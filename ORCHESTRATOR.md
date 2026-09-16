@@ -16,7 +16,7 @@ evidence, not active instructions.
 |---|---|
 | Build oracle | **113/113** from the artifacts on disk |
 | Decompiled | **94.1%**, 8181/8730 functions; 549 US `INCLUDE_ASM` stubs remain |
-| Queue | 983 records: 434 matched, 367 todo, 123 escalated, 53 deferred, 6 near |
+| Queue | 983 records: 434 matched, 378 todo, 124 escalated, 41 deferred, 6 near |
 | Provenance | upstream-harvest 55, shim-segment 9, shim-header 55, transplant 136, twin-port 31, permuter 18, claude-manual 6, model-fleet 58, unknown 66 |
 | Automation | 186 modules, 75 suites plus 37 module self-tests, 99 tools, 118 diagnostics |
 
