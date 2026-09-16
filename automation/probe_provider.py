@@ -216,7 +216,7 @@ def probe_cli(model: str, timeout: float = 90.0, ask: str | None = None) -> dict
     """
     exe = os.environ.get("OPENCODE_BIN", "opencode")
     argv = [exe, "run", "--model", f"opencode/{model}", "--agent", "raw",
-            "--auto", "--log-level", "DEBUG", "--print-logs"]
+            "--auto", "--log-level", "debug", "--print-logs"]
     env = dict(os.environ)
     env.setdefault("OPENCODE_CONFIG", str(CONFIG))
     rec = {"model": model, "argv": " ".join(argv)}
@@ -482,6 +482,8 @@ def main() -> int:
     ap.add_argument("--worker", action="store_true",
                     help="drive worker_direct's own generation path (bounded "
                          "reasoning + force-code), not a bare HTTP request")
+    ap.add_argument("--backend", choices=("zen", "llama", "cli"), default=None,
+                    help="worker backend for --worker; defaults to the worker default")
     ap.add_argument("--timeout", type=float, default=60.0)
     ap.add_argument("--max-tokens", type=int, default=8)
     ap.add_argument("--prompt-chars", type=int, default=0,
@@ -678,6 +680,8 @@ def main() -> int:
         print(f"\nwrote {out}")
         return 0
     if a.worker:
+        if a.backend:
+            os.environ["MODEL_BACKEND"] = a.backend
         ask = real_ask(a) or "Reply with the word ok."
         for model in picks:
             r = probe_worker(model, ask, timeout=a.timeout)
