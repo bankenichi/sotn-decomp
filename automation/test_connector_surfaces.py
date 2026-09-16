@@ -1062,6 +1062,12 @@ def main() -> int:
     check("GEN_TIMEOUT=3600" in csrc and "ATTEMPT_BUDGET=3600" in csrc,
           "no_timeout lifts both the socket deadline and the per-attempt "
           "budget instead of a knob the launcher drops")
+    mcpw = (pathlib.Path(__file__).parent / "mcp" /
+            "sotn_cmd_mcp.py").read_text(encoding="utf-8")
+    check("full_power=full_power" in mcpw
+          and "no_output_token_limit=no_output_token_limit" in mcpw,
+          "the MCP wrapper forwards full power instead of running a capped "
+          "fleet behind a full-power request")
     _worker = (pathlib.Path(__file__).parent / "win" /
                "worker_direct.py").read_text(encoding="utf-8")
     check('os.environ.get("REASONING_EFFORT", "none")' in _worker,

@@ -280,7 +280,9 @@ def fleet_start(workers: int = 4, max_functions: int = 0,
                 cli_workers: int = 0, opencode_model: str = "",
                 reasoning: str = "", only: str = "",
                 no_char_limits: bool = False,
-                no_timeout: bool = False) -> dict:
+                no_timeout: bool = False,
+                no_output_token_limit: bool = False,
+                full_power: bool = False) -> dict:
     """Launch detached volume workers in WSL. Returns immediately.
 
     backend picks the model tier:
@@ -330,6 +332,15 @@ def fleet_start(workers: int = 4, max_functions: int = 0,
     of the default 600s socket deadline and the 90s per-attempt budget,
     which binds first. Default False.
 
+    no_output_token_limit omits max_output_tokens/max_tokens so Muse can
+    finish reasoning and still emit content. Default False.
+
+    full_power is the dashboard switch: no_char_limits, no_timeout and
+    no_output_token_limit together (plus FUNC_BUDGET=7200). It must be
+    forwarded here, not reimplemented: an MCP wrapper that accepts and
+    drops it runs a capped fleet behind a full-power request, which is
+    exactly the silent-no-op failure above. Default False.
+
     Total workers 1-16 = generations in flight. apply/build/verify is lock-
     serialised, so beyond ~4 the extras mostly queue. llama workers need
     llama-server started with --parallel >= that count.
@@ -353,7 +364,9 @@ def fleet_start(workers: int = 4, max_functions: int = 0,
                           opencode_model=opencode_model,
                           reasoning=reasoning, only=only,
                           no_char_limits=no_char_limits,
-                          no_timeout=no_timeout)
+                          no_timeout=no_timeout,
+                          no_output_token_limit=no_output_token_limit,
+                          full_power=full_power)
 
 
 @mcp.tool()
