@@ -1434,7 +1434,75 @@ def _same_exit_target(instructions, labels, exits) -> bool:
         _branch_target_index(instructions, labels, k) == first for k in exits[1:])
 
 
-def loop_regions(instructions, *, allow_calls=False) -> tuple[list, list]:
+def _join_problem(instructions, labels, k, exits, branch, nested_spans):
+    """Why a loop-body conditional branch is not an admittable join span.
+
+    Returns None when the bare-if shape lowers exactly, "crossing" when it
+    cuts across the loop exit, else a short reason. Pure helper shared by
+    admission and measurement so the census subdivision cannot drift.
+    """
+    item_k = instructions[k]
+    inner_target = _branch_target_index(instructions, labels, k)
+    if item_k.mnemonic not in _COND_BRANCHES or inner_target is None:
+        return "leaves-segment"
+    if exits and k < exits[0] < inner_target:
+        return "crossing"
+    bound = exits[0] if exits and k < exits[0] else branch
+    if not k + 1 < inner_target <= bound:
+        return "out-of-segment"
+    if (instructions[k + 1].mnemonic in _CONTROL_OPS
+            or instructions[inner_target - 1].mnemonic in _CONTROL_OPS):
+        return "control-adjacent"
+    if any(ns <= inner_target <= ne for (ns, ne) in nested_spans):
+        return "nested-target"
+    return None
+
+
+def _else_span(instructions, labels, k, branch, nested_spans):
+    """Span of a jump-over-else join headed at a loop-body branch.
+
+    Returns (target, jump, end) when a conditional branch at k is followed
+    by a straight then-arm ending in an unconditional forward jump over a
+    vetted else arm, else None. Nested control in the then-arm and escaping
+    branches in the else arm stay deferred. Pure helper.
+    """
+    target = _branch_target_index(instructions, labels, k)
+    if target is None or not k + 1 < target:
+        return None
+    jump = None
+    for m in range(k + 2, branch):
+        if any(ns <= m <= ne for (ns, ne) in nested_spans):
+            return None
+        op = instructions[m].mnemonic
+        if op in ("b", "j"):
+            end = _branch_target_index(instructions, labels, m)
+            if end is None or not target < end <= branch:
+                return None
+            if m + 1 >= len(instructions):
+                return None
+            if instructions[m + 1].mnemonic in _CONTROL_OPS:
+                return None
+            jump = m
+            break
+        if op in _COND_BRANCHES | {"jr"}:
+            return None
+    if jump is None:
+        return None
+    for m in range(jump + 2, target):
+        if instructions[m].mnemonic != "nop" or instructions[m].operands:
+            return None
+    for m in range(target, end):
+        if any(ns <= m <= ne for (ns, ne) in nested_spans):
+            return None
+        op = instructions[m].mnemonic
+        if op in _COND_BRANCHES | {"b", "j"}:
+            tgt = _branch_target_index(instructions, labels, m)
+            if tgt is None or not target <= tgt <= end:
+                return None
+    return (target, jump, end)
+
+
+def loop_regions(instructions, *, allow_calls=False, detail=None) -> tuple[list, list]:
     """Admitted do-while regions plus refusal reasons for a function.
 
     Pure structural helper shared by lowering and measurement. Calls may be
@@ -1547,9 +1615,13 @@ def loop_regions(instructions, *, allow_calls=False) -> tuple[list, list]:
         inner_reason = "branch-in-loop"
         joins = set()
         returns = []
+        else_heads = {}
+        else_jumps = set()
         for k in range(start, branch):
             item_k = instructions[k]
             if any(ns <= k <= ne for (ns, ne) in nested_spans):
+                continue
+            if k in else_jumps:
                 continue
             if item_k.mnemonic not in _CONTROL_OPS or k in exits:
                 continue
@@ -1570,29 +1642,60 @@ def loop_regions(instructions, *, allow_calls=False) -> tuple[list, list]:
                     continue
             elif inner_target is not None and inner_target < k:
                 inner_reason = "nested-loop"
-            elif (item_k.mnemonic in _COND_BRANCHES and inner_target is not None
-                    and exits and k < exits[0] < inner_target):
-                inner_reason = "crossing-branch"
-            elif (item_k.mnemonic in _COND_BRANCHES and inner_target is not None
-                    and k + 1 < inner_target <= (exits[0] if exits and k < exits[0] else branch)
-                    and instructions[k + 1].mnemonic not in _CONTROL_OPS
-                    and instructions[inner_target - 1].mnemonic not in _CONTROL_OPS
-                    and not any(ns <= inner_target <= ne for (ns, ne) in nested_spans)):
-                joins.add(k)
-                continue
+            elif item_k.mnemonic in _COND_BRANCHES and inner_target is not None:
+                ed = _else_span(instructions, labels, k, branch, nested_spans)
+                if ed is not None:
+                    else_heads[k] = ed
+                    else_jumps.add(ed[1])
+                    continue
+                problem = _join_problem(instructions, labels, k, exits, branch, nested_spans)
+                if problem == "crossing":
+                    inner_reason = "crossing-branch"
+                elif problem is None:
+                    joins.add(k)
+                    continue
+                elif detail is not None:
+                    detail.append(("branch-in-loop", problem))
+            elif detail is not None and item_k.mnemonic in {"b", "j"}:
+                detail.append(("branch-in-loop", "unconditional-out"))
             inner_bad = k
             break
         if inner_bad is not None:
             refused.append(inner_reason)
             continue
-        if len(exits) > 1 and joins:
+        if len(exits) > 1 and (joins or else_heads):
             # Join-plus-multi-exit composition is deferred; each shape is
             # proven separately first.
+            if detail is not None:
+                detail.append(("branch-in-loop", "multi-composition"))
             refused.append("branch-in-loop")
             continue
-        if any(instructions[k].mnemonic in _LOOP_BARRED_OPS for k in range(start, slot + 1)):
+        lattice = [k for k in range(start, slot + 1)
+                   if instructions[k].mnemonic in _LOOP_BARRED_OPS]
+        if lattice and (joins or else_heads or exits or returns or nested_spans):
+            # HI/LO state cannot cross a fork, exit, return or nesting level.
             refused.append("barred-op")
             continue
+        if lattice and any(instructions[k].mnemonic in {"jal", "jalr"}
+                            for k in range(start, slot + 1)):
+            # Calls invalidate the pending multiply triple.
+            refused.append("barred-op")
+            continue
+        if lattice:
+            producers = {"mult", "multu", "div", "divu"}
+            consumers = {"mflo", "mfhi"}
+            paired = True
+            for i, k in enumerate(lattice):
+                if instructions[k].mnemonic in consumers:
+                    if not any(instructions[j].mnemonic in producers for j in lattice[:i]):
+                        paired = False
+                        break
+                elif not any(instructions[j].mnemonic in consumers for j in lattice[i + 1:]):
+                    paired = False
+                    break
+            if not paired:
+                refused.append("barred-op")
+                continue
         if start > 0 and instructions[start - 1].mnemonic in _CONTROL_OPS:
             refused.append("delay-entry")
             continue
@@ -1605,7 +1708,7 @@ def loop_regions(instructions, *, allow_calls=False) -> tuple[list, list]:
             continue
         outside = False
         for j, other in enumerate(instructions):
-            if j == branch or j in joins or other.mnemonic not in _COND_BRANCHES | {"b", "j"}:
+            if j == branch or j in joins or j in else_heads or j in else_jumps or other.mnemonic not in _COND_BRANCHES | {"b", "j"}:
                 continue
             if any(ns <= j <= ne for (ns, ne) in nested_spans):
                 continue
@@ -1622,7 +1725,8 @@ def loop_regions(instructions, *, allow_calls=False) -> tuple[list, list]:
         admitted.append({"start": start, "branch": branch, "slot": slot,
                          "kind": kind, "exit": exits[0] if exits else None,
                          "exits": list(exits), "returns": list(returns),
-                         "nested": [ns for (ns, ne) in nested_spans]})
+                         "nested": [ns for (ns, ne) in nested_spans],
+                         "elses": {k: {"target": ed[0], "jump": ed[1], "end": ed[2]} for (k, ed) in else_heads.items()}})
     return admitted, refused
 
 
@@ -2502,6 +2606,55 @@ def _leaf_body(instructions, parameters, return_type, callees=None, layouts=None
             value = "(int)(" + value + ")"
         return "return " + value + ";"
 
+    def _merge_else(then_values, then_lines, else_values, else_lines, lines, indent, negcond):
+        # If/else merger for jump-over-else joins: both arms are non-empty,
+        # so join temps are declared without initialization and assigned at
+        # each arm end. Sharing _merge_states here is unsound: its pre-init
+        # protocol needs an empty taken arm whose texts exist before the fork.
+        merged = LoopValues({}, then_values.entry_reads, then_values.writes, set())
+        then_assigns, else_assigns = [], []
+        left_state, right_state = dict(then_values), dict(else_values)
+        for key in sorted(left_state.keys() | right_state.keys()):
+            if key not in left_state or key not in right_state:
+                if key in _JOIN_SPECIAL_KEYS or key.startswith("stack:"):
+                    if key not in {"ra", "mul"} and not key.startswith("stack:"):
+                        raise ValueError("join diverges on machine state")
+                continue
+            left, right = left_state[key], right_state[key]
+            if left == right and type(left) is type(right):
+                dict.__setitem__(merged, key, left)
+                if key in then_values.inherited | else_values.inherited:
+                    merged.inherited.add(key)
+                continue
+            if key == "ra":
+                dict.__setitem__(merged, key, "@call-return")
+                continue
+            if key in _JOIN_SPECIAL_KEYS or key.startswith("stack:"):
+                raise ValueError("join diverges on machine state")
+            if isinstance(left, _PointerValue) or isinstance(right, _PointerValue):
+                if (not isinstance(left, _PointerValue) or not isinstance(right, _PointerValue)
+                        or left.kind != right.kind):
+                    raise ValueError("join diverges on value kind")
+                kind, then_text, else_text = left.kind, left.expression, right.expression
+            else:
+                kind, then_text, else_text = "unsigned int", left, right
+            if "@" in then_text or "@" in else_text:
+                raise ValueError("join cannot materialize a marker")
+            if key in then_values.inherited | else_values.inherited:
+                then_values.entry_reads.add(key)
+            temp = new_temporary("join_", kind)
+            then_assigns.append(indent + "    " + temp + " = " + then_text + ";")
+            else_assigns.append(indent + "    " + temp + " = " + else_text + ";")
+            dict.__setitem__(merged, key, _PointerValue(kind, temp) if isinstance(left, _PointerValue) else temp)
+        lines.append(indent + "if (" + negcond + ") {")
+        lines.extend(then_lines)
+        lines.extend(then_assigns)
+        lines.append(indent + "} else {")
+        lines.extend(else_lines)
+        lines.extend(else_assigns)
+        lines.append(indent + "}")
+        return merged
+
     def branch_condition(index, values, lines, indent, *, negate=False):
         item = instructions[index]
         args = operands(item)
@@ -2541,6 +2694,20 @@ def _leaf_body(instructions, parameters, return_type, callees=None, layouts=None
                 return
             if item.mnemonic in _COND_BRANCHES:
                 target = _branch_target_index(instructions, labels, index)
+                ed = (active_region[0] or {}).get("elses", {}).get(index)
+                if ed is not None and ed["end"] <= hi:
+                    e_target, e_jump, e_end = ed["target"], ed["jump"], ed["end"]
+                    visited.add(index)
+                    negcond = branch_condition(index, values, lines, indent, negate=True)
+                    step(index + 1, values, lines, indent)
+                    then_state, else_state = values.copy(), values.copy()
+                    then_lines, else_lines = [], []
+                    _lower_segment(index + 2, e_jump, then_state, then_lines, indent + "    ", labels)
+                    step(e_jump + 1, then_state, then_lines, indent + "    ")
+                    _lower_segment(e_target, e_end, else_state, else_lines, indent + "    ", labels)
+                    values.adopt(_merge_else(then_state, then_lines, else_state, else_lines, lines, indent, negcond))
+                    index = e_end
+                    continue
                 if target is None or not index + 1 < target <= hi:
                     raise ValueError("inner branch leaves its segment")
                 visited.add(index)

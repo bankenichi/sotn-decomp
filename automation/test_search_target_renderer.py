@@ -1416,6 +1416,67 @@ class LoopRegionTests(unittest.TestCase):
                   "bne $v0, $a2, .Louter\nnop\njr $ra\nnop\n")
         self.assertEqual(self._regions(shaped)[1], ["nested-loop"])
 
+    def test_branch_detail_subdivides_join_failures(self):
+        jump_out = (".Ltop:\naddiu $v0, $v0, 1\n"
+                    "b .Lfar\nnop\naddiu $v1, $v1, 1\n"
+                    "bne $v0, $a0, .Ltop\nnop\n.Lfar:\njr $ra\nnop\n")
+        detail = []
+        self.assertEqual(loop_regions(_parse_assembly(jump_out), detail=detail)[1], ["branch-in-loop"])
+        self.assertEqual(detail, [("branch-in-loop", "unconditional-out")])
+        adjacent = (".Ltop:\naddiu $v0, $v0, 1\n"
+                    "beq $v0, $a1, .Lskip\njal foo\n.Lskip:\n"
+                    "bne $v0, $a0, .Ltop\nnop\njr $ra\nnop\n")
+        detail = []
+        self.assertEqual(loop_regions(_parse_assembly(adjacent), detail=detail)[1], ["branch-in-loop"])
+        self.assertEqual(detail, [("branch-in-loop", "control-adjacent")])
+        past_exit = (".Ltop:\naddiu $v0, $v0, 1\n"
+                     "beq $v0, $a2, .Lexit\nnop\n"
+                     "beq $v0, $a1, .Lslot\nnop\n"
+                     "bne $v0, $a0, .Ltop\n.Lslot:\nnop\n.Lexit:\njr $ra\nnop\n")
+        detail = []
+        self.assertEqual(loop_regions(_parse_assembly(past_exit), detail=detail)[1], ["branch-in-loop"])
+        self.assertEqual(detail, [("branch-in-loop", "out-of-segment")])
+        join_multi = (".Ltop:\naddiu $v0, $v0, 1\n"
+                      "beq $v0, $a1, .Lskip\nnop\n.Lskip:\n"
+                      "beq $v0, $a2, .Lexit\nnop\n"
+                      "beq $v0, $a3, .Lexit\nnop\n"
+                      "bne $v0, $a0, .Ltop\nnop\n.Lexit:\njr $ra\nnop\n")
+        detail = []
+        self.assertEqual(loop_regions(_parse_assembly(join_multi), detail=detail)[1], ["branch-in-loop"])
+        self.assertEqual(detail, [("branch-in-loop", "multi-composition")])
+
+    def test_else_join_admits_with_spans(self):
+        shape = (".Ltop:\naddiu $v0, $v0, 1\n"
+                   "beq $v0, $a1, .Lelse\nnop\n"
+                   "addiu $v1, $v1, 1\n"
+                   "b .Lend\nnop\n"
+                   ".Lelse:\naddiu $v1, $v1, 2\n"
+                   ".Lend:\naddu $v0, $v0, $v1\n"
+                   "bne $v0, $a0, .Ltop\nnop\njr $ra\nnop\n")
+        admitted, refused = self._regions(shape)
+        self.assertEqual(refused, [])
+        self.assertEqual(len(admitted), 1)
+        self.assertEqual(list(admitted[0]["elses"]), [1])
+        ed = admitted[0]["elses"][1]
+        self.assertEqual((ed["target"], ed["jump"], ed["end"]), (6, 4, 7))
+
+    def test_paired_multiply_admits_without_forks(self):
+        paired = (".Ltop:\nmult $a0, $a1\nmflo $v0\n"
+                    "addu $v1, $v1, $v0\naddiu $a2, $a2, -1\n"
+                    "bnez $a2, .Ltop\nnop\njr $ra\nnop\n")
+        admitted, refused = self._regions(paired)
+        self.assertEqual(refused, [])
+        self.assertEqual(len(admitted), 1)
+        lone = (".Ltop:\nmflo $v0\n"
+                "addu $v1, $v1, $v0\naddiu $a2, $a2, -1\n"
+                "bnez $a2, .Ltop\nnop\njr $ra\nnop\n")
+        self.assertEqual(self._regions(lone)[1], ["barred-op"])
+        forked = (".Ltop:\nmult $a0, $a1\nmflo $v0\n"
+                  "beq $v0, $zero, .Lskip\nnop\n.Lskip:\n"
+                  "addu $v1, $v1, $v0\naddiu $a2, $a2, -1\n"
+                  "bnez $a2, .Ltop\nnop\njr $ra\nnop\n")
+        self.assertEqual(self._regions(forked)[1], ["barred-op"])
+
     def test_region_flow_tracks_order_and_fresh_loads(self):
         instructions = _parse_assembly(
             "li $v0, 5\nlw $v1, 0($a0)\nsw $v1, 0($a1)\n"
@@ -1648,6 +1709,51 @@ class LoopLoweringTests(unittest.TestCase):
         self.assert_program(
             self.NEST_ASM, self.NEST_DECLS,
             "int main(void) { return fn(4, 3) != 18 || fn(1, 5) != 0 || fn(3, 2) != 6; }\n")
+
+    ELSE_ASM = ("li $v0, 0\nli $v1, 0\n.Ltop:\nmove $v1, $zero\n"
+                "beq $v0, $a1, .Lelse\nnop\n"
+                "addiu $v1, $v1, 1\n"
+                "b .Lend\nnop\n"
+                ".Lelse:\naddiu $v1, $v1, 2\n"
+                ".Lend:\naddu $v0, $v0, $v1\n"
+                "bne $v0, $a0, .Ltop\nnop\njr $ra\nnop\n")
+    ELSE_DECLS = {
+        "return_type": "unsigned int",
+        "parameters": [{"type": "unsigned int", "name": "limit"},
+                       {"type": "unsigned int", "name": "choice"}],
+    }
+
+    def test_else_join_renders_if_else(self):
+        source = deterministic_local_draft(
+            self.ELSE_ASM, symbol="fn", declarations=self.ELSE_DECLS)
+        self.assertIsNotNone(source)
+        self.assertIn("else", source)
+
+    def test_else_join_counts_host_exact(self):
+        self.assert_program(
+            self.ELSE_ASM, self.ELSE_DECLS,
+            "int main(void) { return fn(5, 3) != 5 || fn(4, 9) != 4 || fn(2, 2) != 2; }\n")
+
+    MULT_ASM = ("li $v0, 0\nli $v1, 0\n.Ltop:\naddiu $v1, $v1, 1\n"
+                "mult $a0, $v1\nmflo $t0\n"
+                "addu $v0, $v0, $t0\n"
+                "bne $v1, $a1, .Ltop\nnop\njr $ra\nnop\n")
+    MULT_DECLS = {
+        "return_type": "unsigned int",
+        "parameters": [{"type": "unsigned int", "name": "base"},
+                       {"type": "unsigned int", "name": "n"}],
+    }
+
+    def test_multiply_accumulate_renders_product(self):
+        source = deterministic_local_draft(
+            self.MULT_ASM, symbol="fn", declarations=self.MULT_DECLS)
+        self.assertIsNotNone(source)
+        self.assertIn("*", source)
+
+    def test_multiply_accumulate_counts_host_exact(self):
+        self.assert_program(
+            self.MULT_ASM, self.MULT_DECLS,
+            "int main(void) { return fn(3, 4) != 30 || fn(5, 1) != 5 || fn(2, 3) != 12; }\n")
 
     def test_loop_call_refuses_clobbered_values_and_unsafe_frames(self):
         from automation.search_source_context import renderer_declarations

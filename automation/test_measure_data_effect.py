@@ -145,6 +145,10 @@ class RemeasureHelperTests(unittest.TestCase):
                 "addiu $t0, $t0, 1\n"
                 "bne $t0, $a0, .Louter\nnop\njr $ra\nnop\n")
         self.assertEqual(loop_region_summary(nest), (2, 0, set()))
+        paired = (".Ltop:\nmult $a0, $a1\nmflo $v0\n"
+                  "addu $v1, $v1, $v0\naddiu $a2, $a2, -1\n"
+                  "bnez $a2, .Ltop\nnop\njr $ra\nnop\n")
+        self.assertEqual(loop_region_summary(paired), (1, 0, set()))
 
 
 
@@ -170,7 +174,8 @@ class RemeasureHelperTests(unittest.TestCase):
                                      "blocked_size": 0,
                                      "stale_matched": 0, "queue_missing": 0,
                                      "unrendered": 0,
-                                     "undeclared": 0, "reasons": {}})
+                                     "undeclared": 0, "reasons": {},
+                                     "branch_detail": {}})
             with self.assertRaises(SystemExit):
                 main(["--offset", "-1"])
 

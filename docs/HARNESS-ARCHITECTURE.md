@@ -18,7 +18,7 @@ in each case so you can tell a deliberate choice from an accident.
 | Decompiled | **94.1%**, 8181/8730 functions; 549 US `INCLUDE_ASM` stubs remain |
 | Queue | 983 records: 434 matched, 379 todo, 123 escalated, 41 deferred, 6 near |
 | Provenance | upstream-harvest 55, shim-segment 9, shim-header 55, transplant 136, twin-port 31, permuter 18, claude-manual 6, model-fleet 58, unknown 66 |
-| Automation | 183 modules, 74 suites plus 36 module self-tests, 99 tools, 116 diagnostics |
+| Automation | 185 modules, 75 suites plus 36 module self-tests, 99 tools, 116 diagnostics |
 
 This block is regenerated from the same queue, checksum manifest, linker maps, provenance classifier, and connector inventory as `README.md`.
 <!-- LIVE-STATUS:END -->
@@ -105,7 +105,7 @@ direct/API calls through the ordinary call ABI, separates carrier storage from
 register validity, captures predicates before delay slots, and checks live-ins
 at the backedge. Multi-exit joins admit forward exits sharing one continuation
 immediately after the loop, each with its own predicate snapshot, delay slot
-and break, merging only bindings valid on every exit path. Validated in-loop returns emit through the ordinary return checks. Contained nested loops lower recursively sharing ancestor carrier storage. See `docs/loop-call-outcome-2026-09-16.md` for the retracted
+and break, merging only bindings valid on every exit path. Validated in-loop returns emit through the ordinary return checks. Contained nested loops lower recursively sharing ancestor carrier storage. Jump-over-else joins lower to if/else with temps assigned at each arm end. See `docs/loop-call-outcome-2026-09-16.md` for the retracted
 diagnosis and regression evidence. Refused: loop stack writes, nonlocal exits,
 split-continuation multi-exit, join-plus-multi composition, escaping inner spans, in-loop switch dispatch, bigger ceilings
 for the 69 size-blocked files.

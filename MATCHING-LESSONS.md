@@ -1652,3 +1652,26 @@ maps, the active region and the loop flag save and restore around the nested
 call with the same stack discipline as temporaries. Inner spans with branches
 that escape the span stay refused as nested-loop until deeper composition is
 proven; the first new evidence is a host-executed nested counter.
+
+### Jump-over-else joins carry temps on both arms
+
+Every branch-in-loop file in the pool involves an unconditional forward
+jump, not a bare-if shape failure: the dominant shape is a then-arm ending
+in a jump over an else arm. The dual-arm merger declares join temps without
+initialization and assigns them at each arm end. Reusing the bare-if merger
+is unsound there because its pre-init protocol needs an empty taken arm
+whose texts exist before the fork. The admitted jump itself must be skipped
+in the main control scan like the head, or the construct refuses itself.
+Full-pool effect is recorded in the linked outcome document.
+
+### Paired HI/LO triples need no carried state
+
+Multiply and divide latch HI/LO without emitting C, and each mflo/mfhi
+folds the product into an expression inline, so a producer consumed later in
+the same straight-line iteration is already sound: no value crosses the
+backedge. Admission only checks pairing (every consumer preceded by a
+producer, every producer followed by a consumer) and refuses any fork, exit,
+return, nesting level or call in the span, since each would let the triple
+leak across iterations or clobber it. The backedge check needs no change
+because the model triple never enters a required binding. Full-pool effect
+is recorded in the linked outcome document.

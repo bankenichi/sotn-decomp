@@ -22,7 +22,7 @@ mistake impossible twice.
 | Decompiled | **94.1%**, 8181/8730 functions; 549 US `INCLUDE_ASM` stubs remain |
 | Queue | 983 records: 434 matched, 379 todo, 123 escalated, 41 deferred, 6 near |
 | Provenance | upstream-harvest 55, shim-segment 9, shim-header 55, transplant 136, twin-port 31, permuter 18, claude-manual 6, model-fleet 58, unknown 66 |
-| Automation | 183 modules, 74 suites plus 36 module self-tests, 99 tools, 116 diagnostics |
+| Automation | 185 modules, 75 suites plus 36 module self-tests, 99 tools, 116 diagnostics |
 
 This block is regenerated from the same queue, checksum manifest, linker maps, provenance classifier, and connector inventory as `README.md`.
 <!-- LIVE-STATUS:END -->
@@ -1385,4 +1385,10 @@ Status: **done**, **open**, **partial**, **void** (turned out unnecessary),
 
 | 312 | **done** | In-loop returns for #302: validated jr-ra sites lower through the ordinary return preconditions with the delay slot executed and the return emitted inline. Indirect jumps and control delay slots still refuse. Fixture proof is a host-executed conditional early-return loop plus region admission and refusal tests. Default-bound pool remeasurement is complete with zero errors and zero renders: return-in-loop votes hold at 3, those files fail other checks first. |
 
-| 313 | **in progress** | Nested loops for #302: containment-checked inner spans lower recursively with ancestor carrier storage shared across levels and save/restore of materialize maps, the active region and the loop flag. Inner spans with escaping branches stay refused. Fixture proof is a host-executed nested counter plus admission and boundary tests. Default-bound pool remeasurement is complete with zero errors: nested-loop 29 to 17, structural admission 164 to 165, zero renders. |
+| 313 | **done** | Nested loops for #302: containment-checked inner spans lower recursively with ancestor carrier storage shared across levels and save/restore of materialize maps, the active region and the loop flag. Inner spans with escaping branches stay refused. Fixture proof is a host-executed nested counter plus admission and boundary tests. Default-bound pool remeasurement is complete with zero errors: nested-loop 29 to 17, structural admission 164 to 165, zero renders. |
+
+| 314 | **done** | Branch-in-loop subdivision for #302: the shared join-shape diagnostic reports unconditional-out for every one of the 94 branch-in-loop files, with multi-composition twice and no bare-if shape failure. Jump-over-else joins are the next slice. |
+
+| 315 | **done** | Jump-over-else joins for #302: conditional heads with a straight then-arm ending in an unconditional forward jump over a vetted else arm lower to if/else with join temps assigned at each arm end. Straight-line dead tails, nested intersections and escaping else branches stay refused. Fixture proof is a host-executed else accumulation loop plus span tests. Default-bound pool remeasurement is complete with zero errors: branch-in-loop 94 to 48, structural admission 165 to 179, zero renders. |
+
+| 316 | **done** | Paired multiply/divide in straight-line loops for #302: HI/LO triples fold inline per iteration, so paired producer/consumer spans with no forks, exits, returns, nesting or calls admit. Unpaired triples and fork-crossing state stay refused. Fixture proof is a host-executed multiply-accumulate loop plus admission tests. Default-bound pool remeasurement is complete with zero errors: barred-op 29 to 24, structural admission holding at 179, zero renders. |

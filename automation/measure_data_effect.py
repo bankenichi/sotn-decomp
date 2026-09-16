@@ -304,6 +304,7 @@ def measure_pool(repo: Path, limit: int | None = None, limits: str = "default", 
         "blocked_shape_ids": [],
         "admitted_blocked_size": 0,
         "loop_reasons": {},
+        "branch_detail": {},
         "loop_histogram": {"<=64": 0, "65-128": 0, "129-256": 0, "257-512": 0, ">512": 0, "unparseable": 0},
     }
     bounds = resolve_limits(limits)
@@ -338,6 +339,16 @@ def measure_pool(repo: Path, limit: int | None = None, limits: str = "default", 
             tally["while_admitted_files"] += 1
         for reason in reasons:
             tally["loop_reasons"][reason] = tally["loop_reasons"].get(reason, 0) + 1
+        if "branch-in-loop" in reasons:
+            try:
+                from automation.search_target_renderer import _parse_assembly as _pa
+                from automation.search_target_renderer import loop_regions as _lr
+                detail = []
+                _lr(_pa(text), allow_calls=True, detail=detail)
+                for _sub in {sub for (_r, sub) in detail}:
+                    tally["branch_detail"][_sub] = tally["branch_detail"].get(_sub, 0) + 1
+            except ValueError as exc:
+                _count("branch-detail:", exc)
         if has_loop_shape(text):
             tally["loop_shape"] += 1
             tally["loop_histogram"][size_bucket(instruction_count(text))] += 1
@@ -420,7 +431,8 @@ def main(argv=None) -> int:
               "shape_ids": sorted(tally["blocked_shape_ids"]),
               "stale_matched": tally["stale_matched"], "queue_missing": tally["queue_missing"],
               "unrendered": tally["unrendered"],
-              "undeclared": tally["undeclared"], "reasons": tally["loop_reasons"]}
+              "undeclared": tally["undeclared"], "reasons": tally["loop_reasons"],
+              "branch_detail": tally["branch_detail"]}
     print("DIGEST " + json.dumps(digest, sort_keys=True))
     return 0
 

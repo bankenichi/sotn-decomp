@@ -195,3 +195,56 @@ nested-loop file-votes fall from 29 to 17, structural admission rises from
 164 to 165 files, and newly admitted regions expose later blocks
 (branch-in-loop 92 to 94, nonlocal-exit 28 to 32, size-blocked declared 39
 to 45). Refusals move downstream as designed.
+
+## Jump-over-else joins (#315)
+
+The branch-in-loop subdivision reports an unconditional forward jump for
+every one of the 94 files, with no bare-if shape failure: the shape is a
+then-arm ending in a jump over an else arm. Admission records the head,
+jump and end spans, skips both in the outside-entry scan, and defers
+straight-line dead tails, nested intersections and escaping else branches.
+Lowering emits if/else with join temps assigned at each arm end. The
+admitted jump is skipped in the main control scan like the head.
+
+Fixture proof: span tests plus a host-executed else accumulation loop
+checked against both arm choices and the latch exit.
+
+Default-bound pool remeasurement `run_automation-184535-70861` completed
+with zero errors over the same 260 active files and zero complete renders:
+branch-in-loop file-votes fall from 94 to 48, structural admission rises
+from 165 to 179 files, and newly admitted regions expose later blocks
+(size-blocked declared 45 to 64, barred-op 25 to 29, frame-adjust 4 to 7).
+Refusals move downstream as designed.
+
+## Paired multiply/divide (#316)
+
+HI/LO triples fold inline per iteration, so paired producer/consumer spans
+with no forks, exits, returns, nesting levels or calls admit; the model
+triple never enters a required binding, so the backedge check needs no
+change. Unpaired triples and fork-crossing state stay refused as barred-op.
+
+Fixture proof: region tests for paired, lone-consumer and forked triples;
+a host-executed multiply-accumulate loop verified arithmetically exact.
+
+Default-bound pool remeasurement `run_automation-190032-70861` completed
+with zero errors over the same 260 active files and zero complete renders:
+barred-op file-votes fall from 29 to 24 with structural admission holding at
+179 files.
+
+## Loop-track closure: what stays refused and why
+
+The remaining refusal classes have no bounded structural fix and are
+deferred with cause, not parked silently. Split-continuation multi-exit
+needs one break per continuation, which is goto or latch duplication.
+Nonlocal exit needs the break path to skip tail code the latch path
+executes, which is goto or tail restructuring. Unpaired or fork-crossing
+HI/LO triples would carry model state across the backedge. Escaping nested
+spans, join-plus-multi composition and exits inside arms are deferred
+compositions. In-loop switch dispatch is absent from the pool: every
+in-loop jump-register sits in three files, and unbound indirect calls stay
+refused by design for lack of callee facts. Undeclared files belong to the
+declaration-evidence track. Size ceilings are decided by measurement, not
+assumption: raised-limits remeasurement `run_automation-191309-18743`
+leaves 53 files shape-blocked against 11 size-blocked at the 512-instruction
+ceiling, with zero renders and zero errors, so shapes stay ahead of
+ceilings. The run names 20 shape-blocked records as concrete next targets.
