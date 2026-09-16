@@ -759,6 +759,9 @@ DIAGNOSTICS = [
      "--limit 10 --limits default",
      "loop-shape, latch-form and refusal-reason histograms with DIGEST line "
      "for shard merging; read-only"),
+    ("Missing externals tally", "missing_symbol_tally.py", "",
+     "unresolved externals named in todo, deferred and escalated notes; "
+     "read-only"),
 ]
 
 
