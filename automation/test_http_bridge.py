@@ -6,9 +6,14 @@ Does not need the full decomp toolchain. Covers:
   - token fail-closed when HTTP transport is selected
   - bearer accept / reject against a live streamable-http app
 
-Run (WSL, repo mcp venv):
+Always runs under the repo MCP venv (starlette / FastMCP live there):
   automation/mcp/.venv/bin/python automation/test_http_bridge.py
-Under any other interpreter the suite reports a skip and exits zero.
+If launched under any other interpreter, the suite re-execs that MCP
+python. A missing MCP venv is a hard failure (never skip/pass).
+
+Do not compare resolved sys.executable paths: both repo venvs symlink
+to the same /usr/bin/python3.12, so resolve() falsely looks equal.
+Use sys.prefix instead.
 """
 from __future__ import annotations
 
@@ -18,15 +23,30 @@ import threading
 import time
 from pathlib import Path
 
-MCP = Path(__file__).resolve().parent / "mcp"
-sys.path.insert(0, str(MCP))
+_MCP_DIR = Path(__file__).resolve().parent / "mcp"
+_MCP_VENV = _MCP_DIR / ".venv"
+_MCP_PYTHON = _MCP_VENV / (
+    "Scripts/python.exe" if os.name == "nt" else "bin/python"
+)
 
-try:
-    import http_bridge as hb  # noqa: E402
-    _HAVE_BRIDGE_DEPS = True
-except ImportError:
-    hb = None  # type: ignore
-    _HAVE_BRIDGE_DEPS = False
+
+def _ensure_mcp_venv() -> None:
+    """Re-exec under automation/mcp/.venv; fail closed if it is missing."""
+    if not _MCP_PYTHON.is_file():
+        raise SystemExit(
+            f"MCP venv python missing at {_MCP_PYTHON}; "
+            "install automation/mcp/requirements.txt into automation/mcp/.venv "
+            "before running test_http_bridge.py"
+        )
+    if Path(sys.prefix).resolve() != _MCP_VENV.resolve():
+        os.execv(str(_MCP_PYTHON), [str(_MCP_PYTHON), *sys.argv])
+
+
+_ensure_mcp_venv()
+
+sys.path.insert(0, str(_MCP_DIR))
+
+import http_bridge as hb  # noqa: E402
 
 FAILS: list[str] = []
 
@@ -216,9 +236,6 @@ def test_live_bearer_http() -> None:
 
 
 def main() -> int:
-    if not _HAVE_BRIDGE_DEPS:
-        print("SKIPPED: starlette is unavailable; rerun with automation/mcp/.venv/bin/python")
-        return 0
     test_transport_selection()
     test_token_fail_closed()
     test_bearer_helpers()
