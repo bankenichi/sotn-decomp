@@ -97,6 +97,12 @@ os.environ.setdefault("SOTN_PYTHON", sys.executable)
 # count of fabricated field/type names per answer: the thing that breaks the
 # build. Ordered best first so the default pick is the measured best.
 CLI_MODELS = [
+    # Default: Muse Spark on Zen Responses. Measured 2026-09-16: with
+    # x-opencode-session, /v1/responses accepts effort=low and xhigh (HTTP 200);
+    # chat/completions is the wrong shape for this id. Prefer xhigh + no char
+    # limits. Not in the 2026-08-03 battery ranking below.
+    ("muse-spark-1.3-contributor-free  Zen Responses; xhigh OK",
+     "opencode/muse-spark-1.3-contributor-free"),
     ("big-pickle  BEST: 18/18, 0.8 invented, 40s", "opencode/big-pickle"),
     ("mimo-v2.5-free  18/18, 0.9 invented, 67s", "opencode/mimo-v2.5-free"),
     ("deepseek-v4-flash-free  18/18, 1.1 inv, 35s",
@@ -106,19 +112,11 @@ CLI_MODELS = [
     ("north-mini-code-free  DEAD: HTTP 401 on all 18",
      "opencode/north-mini-code-free"),
     # Free and live per GET /models, but never in opencode.json, so the
-    # battery never tested them. CORRECTION: an earlier comment here claimed
-    # ling-3.0-flash-free had been dropped from the catalogue. It has not --
-    # it is still served; ling-3.0-tiny-free is an ADDITIONAL model, not a
-    # replacement. Untested is not the same as bad, and the labels say which.
+    # battery never tested them. Untested is not the same as bad.
     ("ling-3.0-flash-free  UNTESTED", "opencode/ling-3.0-flash-free"),
     ("ling-3.0-tiny-free  UNTESTED", "opencode/ling-3.0-tiny-free"),
     ("laguna-s-2.1-free  UNTESTED", "opencode/laguna-s-2.1-free"),
     ("longcat-2.0-free  UNTESTED", "opencode/longcat-2.0-free"),
-    # Muse Spark answers tiny prompts through the CLI but returns zero bytes
-    # on real decomp prompts at 60s and 300s, and Zen refuses the id outright.
-    # Selectable so the failure is reproducible from the UI, never a default.
-    ("muse-spark-1.3-contributor-free  CLI tiny-only; dead on real prompts",
-     "opencode/muse-spark-1.3-contributor-free"),
 
     # hy3-free is GONE from OpenCode Zen, not merely bad. Its 16 recorded calls
     # produced 0 candidates, 0 empties and 0 timeouts, i.e. every one failed
@@ -363,13 +361,13 @@ ACTION_PARAMS: dict[str, dict[str, tuple[int, int]]] = {
 # everything else here, so a typo is an error rather than a silent default.
 ACTION_LIST_PARAMS: dict[str, dict[str, tuple[int, int, int]]] = {
     "fleet_cli_start": {"models": (0, len(CLI_MODELS) - 1, 8),
-                        "effort": (0, 1, 8)},
+                        "effort": (0, 2, 8)},
     # zen rotates the same Zen model list, one per worker, like cli.
     "fleet_zen_start": {"models": (0, len(CLI_MODELS) - 1, 8),
-                        "effort": (0, 1, 8)},
+                        "effort": (0, 2, 8)},
     # llama takes no per-worker model, but it IS a reasoning-distilled model,
     # so the effort comparison is meaningful on it too.
-    "fleet_llama_start": {"effort": (0, 1, 8)},
+    "fleet_llama_start": {"effort": (0, 2, 8)},
 }
 
 
@@ -506,7 +504,9 @@ def _fleet(backend: str, default_n: int):
         # All-default sends nothing at all, keeping the untouched path
         # byte-identical to a fleet launched before this knob existed.
         if any(eff):
-            kw["reasoning"] = ",".join("none" if e else "low" for e in eff)
+            kw["reasoning"] = ",".join(
+                "xhigh" if e == 2 else ("none" if e == 1 else "low")
+                for e in eff)
         if backend in ("cli", "zen"):
             # fleet_start assigns a comma-separated list round-robin, one model
             # per worker. Passing exactly `workers` entries therefore gives each
@@ -1426,8 +1426,8 @@ pre{margin:0;padding:8px 10px;flex:1 1 auto;min-height:0;overflow:auto;font-size
                             oninput="renderWorkerRows()"></label>
       <label>backend
         <select id=f_backend onchange="renderWorkerRows()">
+          <option value=fleet_zen_start selected>zen (direct http)</option>
           <option value=fleet_cli_start>opencode cli</option>
-          <option value=fleet_zen_start>zen (direct http)</option>
           <option value=fleet_llama_start>local llama</option>
         </select>
       </label>
@@ -1492,7 +1492,7 @@ function renderWorkerRows(){
   // arm per launch, and comparing two launches compares the arm plus whatever
   // changed between them. Set w1 to none and w2 to low and the comparison is
   // controlled: claim order, not the experimenter, decides who gets what.
-  const EFF='<option value=0>low</option><option value=1>none (off)</option>';
+  const EFF='<option value=2>xhigh</option><option value=0>low</option><option value=1>none (off)</option>';
   let h='';
   for(let i=0;i<n;i++){
     h+=`<label>w${i+1} `;
@@ -1506,6 +1506,17 @@ function renderWorkerRows(){
   // worker 2's model the effort value from worker 1.
   box.querySelectorAll('select.wmodel').forEach((s,i)=>{ if(prevM[i]!==undefined) s.value=prevM[i]; });
   box.querySelectorAll('select.weffort').forEach((s,i)=>{ if(prevE[i]!==undefined) s.value=prevE[i]; });
+  // Muse Spark wants xhigh on Zen Responses; other models keep low/none A/B.
+  box.querySelectorAll('select.wmodel').forEach((ms)=>{
+    const sync=()=>{
+      const ef=ms.parentElement.querySelector('select.weffort');
+      if(!ef) return;
+      const t=ms.options[ms.selectedIndex]?ms.options[ms.selectedIndex].text:'';
+      if(/muse-spark/i.test(t)) ef.value='2';
+    };
+    ms.onchange=sync;
+    sync();
+  });
 }
 
 function fleetParams(){
@@ -1969,8 +1980,12 @@ def self_test() -> int:
     # even offered by Zen any more. Assert the CURRENT invariant instead.
     ck(any("invented" in n for n, _ in CLI_MODELS),
        "labels carry the measured INVENTED rate, which is what breaks builds")
-    ck("big-pickle" in CLI_MODELS[0][1],
-       "the default is the battery winner: 18/18 answered, 0.8 invented")
+    ck("muse-spark" in CLI_MODELS[0][1],
+       "the default is Muse Spark (Zen Responses / xhigh)")
+    ck("Zen Responses" in CLI_MODELS[0][0],
+       "Muse label names the Responses transport, not the old dead CLI note")
+    ck("big-pickle" in CLI_MODELS[1][1],
+       "battery winner remains second for A/B against Muse")
     ck(any("DEAD" in n for n, _ in CLI_MODELS),
        "a model that returns HTTP 401 on every call is labelled DEAD rather "
        "than left looking selectable")
@@ -2056,7 +2071,7 @@ def self_test() -> int:
         clean, err = validate_params(act, {"workers": 2, "effort": [1, 0]})
         ck(not err and clean.get("effort") == [1, 0],
            f"{act} accepts a mixed per-worker list")
-    _c, bad = validate_params("fleet_zen_start", {"workers": 2, "effort": [2]})
+    _c, bad = validate_params("fleet_zen_start", {"workers": 2, "effort": [3]})
     ck(bad, f"and refuses a value with no meaning ({bad!r})")
     _c, bad = validate_params("fleet_zen_start", {"workers": 2, "effort": 1})
     ck(bad, f"a bare int is an error, not a silently broadcast value ({bad!r})")
@@ -2100,7 +2115,10 @@ def self_test() -> int:
 
     print("\nzen is selectable, not just startable from a connector call")
     ck("fleet_zen_start" in ACTIONS, "the action exists")
-    ck("fleet_zen_start>zen" in PAGE, "and the dropdown offers it")
+    ck("value=fleet_zen_start" in PAGE and "zen (direct http)" in PAGE,
+       "and the dropdown offers it")
+    ck("fleet_zen_start selected" in PAGE,
+       "zen is the default backend option")
     ck(PAGE.count("fleet_zen_start") >= 3,
        "option, model-picker gate and start gate all know about it; gating "
        "only on fleet_cli_start hid the per-worker model rows for zen runs")

@@ -742,6 +742,100 @@ def _api_headers() -> dict:
     return h
 
 
+
+def _uses_responses_api() -> bool:
+    """Muse Spark contributor tiers are served on Zen /v1/responses only.
+
+    Measured 2026-09-16: bare muse-spark-*-contributor-free returns HTTP 200
+    on /responses (with x-opencode-session) for effort low and xhigh; the same
+    id on /chat/completions is 500 / wrong shape.
+    """
+    return "muse-spark" in _active_model().lower()
+
+
+def _responses_generate(prompt: str, temperature: float = 0.2,
+                        budget_left: float | None = None) -> str:
+    """Non-stream Zen Responses call for models that reject chat-completions."""
+    del temperature  # Responses path does not take chat temperature here.
+    effort = REASONING_EFFORT
+    max_out = CONTENT_MAX_TOKENS
+    payload: dict = {
+        "model": _active_model(),
+        "input": [
+            {"role": "system", "content": SYSTEM},
+            {"role": "user", "content": prompt},
+        ],
+        "max_output_tokens": (
+            REASONING_MAX_TOKENS + CONTENT_MAX_TOKENS
+            if effort not in ("none", "off", "0", "")
+            else CONTENT_MAX_TOKENS
+        ),
+    }
+    if effort not in ("none", "off", "0", ""):
+        payload["reasoning"] = {"effort": effort}
+    body = json.dumps(payload).encode()
+    url = _base_url() + "/responses"
+    req = urllib.request.Request(url, data=body, headers=_api_headers(),
+                                 method="POST")
+    t0 = time.time()
+    timeout = GEN_TIMEOUT if budget_left is None else max(30.0, min(GEN_TIMEOUT, budget_left))
+    print(f"  --- responses ({_active_model()}, effort={effort or 'none'}, "
+          f"prompt {len(prompt)} chars) ---", flush=True)
+    try:
+        with _open_with_backoff(req, timeout) as r:
+            raw = r.read().decode("utf-8", "replace")
+    except Exception as e:  # noqa: BLE001
+        el = time.time() - t0
+        emit_call({
+            "model": _active_model(), "backend": MODEL_BACKEND,
+            "api": "responses", "prompt_chars": len(prompt),
+            "total_s": round(el, 1), "rc": 1, "outcome": "error",
+            "stderr_head": f"{type(e).__name__}: {e}"[:200],
+        })
+        print(f"  --- responses ERROR {type(e).__name__}: {e} ---", flush=True)
+        return ""
+    el = time.time() - t0
+    texts: list[str] = []
+    reasoning_n = 0
+    try:
+        j = json.loads(raw)
+        for item in j.get("output") or []:
+            if not isinstance(item, dict):
+                continue
+            if item.get("type") == "message":
+                for part in item.get("content") or []:
+                    if isinstance(part, dict) and part.get("text"):
+                        texts.append(part["text"])
+            elif item.get("type") == "reasoning":
+                reasoning_n += 1
+                for part in item.get("summary") or []:
+                    if isinstance(part, dict) and part.get("text"):
+                        texts.append(part["text"])
+    except (ValueError, AttributeError) as e:
+        print(f"  --- responses parse fail: {e} ---", flush=True)
+        emit_call({
+            "model": _active_model(), "backend": MODEL_BACKEND,
+            "api": "responses", "prompt_chars": len(prompt),
+            "total_s": round(el, 1), "rc": 1, "outcome": "parse_error",
+            "stderr_head": raw[:200],
+        })
+        return ""
+    text = "".join(texts)
+    # Prefer a C function if the blob has prose around it.
+    cleaned = _trim_to_function(clean_code(text)) if text.strip() else ""
+    out = cleaned.strip() or text
+    emit_call({
+        "model": _active_model(), "backend": MODEL_BACKEND,
+        "api": "responses", "prompt_chars": len(prompt),
+        "total_s": round(el, 1), "stream_chars": len(out), "rc": 0,
+        "reasoning_items": reasoning_n, "effort": effort or "none",
+        "outcome": "produced" if out.strip() else "empty",
+    })
+    print(f"  --- responses done in {el:.0f}s: {len(out)} chars, "
+          f"{reasoning_n} reasoning items ---", flush=True)
+    return out
+
+
 def _open_with_backoff(req, timeout: float):
     """urlopen with retry on 429 and 5xx.
 
@@ -2752,6 +2846,9 @@ def _force_code(orig_prompt: str, analysis: str,
         # when running on the CLI. (This used to say the CLI has no stream to
         # watch; it has had one since Popen streaming landed.)
         return _opencode_run(f"{sys_msg}\n\n{user}")
+    if MODEL_BACKEND == "zen" and _uses_responses_api():
+        return _responses_generate(f"{sys_msg}\n\n{user}",
+                                   budget_left=timeout)
     body = json.dumps({
         "model": _active_model(),
         "messages": [{"role": "system", "content": sys_msg},
@@ -2878,6 +2975,8 @@ def llama_echo(prompt: str, temperature: float = 0.2,
     """
     if MODEL_BACKEND == "cli":
         return _opencode_run(prompt, timeout=budget_left)
+    if MODEL_BACKEND == "zen" and _uses_responses_api():
+        return _responses_generate(prompt, temperature, budget_left)
     body = json.dumps({
         "model": _active_model(),
         "messages": [{"role": "system", "content": SYSTEM},
