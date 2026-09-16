@@ -1517,6 +1517,61 @@ class SiblingCaptureTests(unittest.TestCase):
             verify_target_context(dict(declarations), StubArchive(), "us:OVL:wanted",
                                   identity, "asm/us/ovl/tu/wanted.s")
 
+    def test_shared_stage_header_declares_across_overlays(self):
+        (self.repo / "src" / "ovl" / "tu.c").write_text("int tu_owner(void) { return 1; }\n")
+        (self.repo / "src" / "st").mkdir(parents=True)
+        (self.repo / "src" / "st" / "shared.h").write_text("void wanted(int x);\n")
+        declarations, _ = self._capture("us:OVL:wanted", "asm/us/ovl/tu/wanted.s")
+        self.assertEqual(declarations["return_type"], "void")
+        headers = declarations["context_evidence"]["header_siblings"]
+        self.assertEqual([entry["path"] for entry in headers], ["src/st/shared.h"])
+
+    def test_psp_shared_header_stays_excluded(self):
+        (self.repo / "src" / "ovl" / "tu.c").write_text("int tu_owner(void) { return 1; }\n")
+        (self.repo / "src" / "st").mkdir(parents=True)
+        (self.repo / "src" / "st" / "shared_psp.h").write_text("void wanted(int x);\n")
+        declarations, _ = self._capture("us:OVL:wanted", "asm/us/ovl/tu/wanted.s")
+        self.assertEqual(declarations["context_evidence"]["status"], "declaration_missing")
+        self.assertNotIn("header_siblings", declarations["context_evidence"])
+
+    def test_shared_header_path_verifies_and_forgery_refuses(self):
+        from automation.compiler_corpus import pipeline_identity
+        from automation.search_source_context import verify_target_context
+        (self.repo / "src" / "ovl" / "tu.c").write_text("int tu_owner(void) { return 1; }\n")
+        (self.repo / "src" / "st").mkdir(parents=True)
+        (self.repo / "src" / "st" / "shared.h").write_text("void wanted(int x);\n")
+        declarations, artifacts = self._capture("us:OVL:wanted", "asm/us/ovl/tu/wanted.s")
+        store = {}
+        for _, ref, data in artifacts:
+            store[ref.path] = data
+        class StubArchive:
+            def verify(self, ref):
+                return store[ref.path]
+        identity = pipeline_identity().identity
+        verify_target_context(dict(declarations), StubArchive(), "us:OVL:wanted",
+                              identity, "asm/us/ovl/tu/wanted.s")
+        forged = dict(declarations)
+        forged_evidence = dict(declarations["context_evidence"])
+        forged_headers = [dict(entry) for entry in forged_evidence["header_siblings"]]
+        forged_headers[0]["path"] = "src/evil/x.h"
+        forged_evidence["header_siblings"] = forged_headers
+        forged["context_evidence"] = forged_evidence
+        with self.assertRaises(ValueError):
+            verify_target_context(forged, StubArchive(), "us:OVL:wanted",
+                                  identity, "asm/us/ovl/tu/wanted.s")
+
+    def test_header_overflow_skips_without_failing_capture(self):
+        (self.repo / "src" / "ovl" / "tu.c").write_text("void wanted(void);\n")
+        (self.repo / "asm" / "us" / "ovl" / "tu").mkdir(parents=True)
+        (self.repo / "asm" / "us" / "ovl" / "tu" / "wanted.s").write_text(
+            "lui $a0, %hi(D_needed)\naddiu $a0, $a0, %lo(D_needed)\njr $ra\nnop\n")
+        for index in range(33):
+            (self.repo / "src" / "ovl" / f"noisy{index:02d}.h").write_text(
+                "extern int D_needed[4];\n")
+        declarations, _ = self._capture("us:OVL:wanted", "asm/us/ovl/tu/wanted.s")
+        self.assertEqual(declarations["context_evidence"]["status"], "declared")
+        self.assertNotIn("header_siblings", declarations["context_evidence"])
+
     def test_sibling_ambiguity_and_missing(self):
         from automation.search_source_context import _combine_function_scopes
         (self.repo / "src" / "ovl" / "tu.c").write_text("int tu_owner(void) { return 1; }\n")

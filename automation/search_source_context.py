@@ -398,6 +398,25 @@ def _has_static_function_definition(text, symbol):
     return False
 
 
+def _shared_stage_headers(repo):
+    """Top-level shared stage headers outside any single overlay.
+
+    Same-overlay scans structurally miss stage-common helpers such as the
+    animate, step and collision routines that boss and stage records alike
+    call without declaring. PSP variants carry other-platform signatures
+    and stay excluded. Bounded like the overlay scan.
+    """
+    root = repo / "src" / "st"
+    if not root.is_dir():
+        return []
+    files = sorted(path.relative_to(repo).as_posix() for path in root.glob("*.h")
+                   if path.is_file() and not path.is_symlink()
+                   and not path.name.endswith("_psp.h"))
+    if len(files) > _SIBLING_FILE_CAP:
+        raise ValueError("shared stage header scope exceeds bound")
+    return files
+
+
 def _header_mention_blobs(repo, overlay, symbols, own_rel):
     """Raw header scopes mentioning any of the symbols, in sorted order.
 
@@ -406,7 +425,7 @@ def _header_mention_blobs(repo, overlay, symbols, own_rel):
     mention and byte caps as the preprocessed sibling scan.
     """
     blobs = []
-    for rel in _overlay_h_sources(repo, overlay):
+    for rel in list(_overlay_h_sources(repo, overlay)) + _shared_stage_headers(repo):
         if rel == own_rel:
             continue
         raw = (repo / rel).read_bytes()
@@ -610,20 +629,31 @@ def capture_target_context(repo, record_id, assembly_path, compiler_identity, co
         facts, status = _combine_function_scopes((facts, status), results)
         _archive_sibling_blobs(blobs, evidence, artifacts)
         if status == "declaration_missing":
-            header_blobs = _header_mention_blobs(repo, overlay, [symbol], relative.as_posix())
-            facts, status = _combine_function_scopes(
-                (facts, status), _header_function_results([raw for _, raw in header_blobs], symbol))
-            _archive_header_blobs(header_blobs, evidence, artifacts)
+            try:
+                header_blobs = _header_mention_blobs(repo, overlay, [symbol], relative.as_posix())
+            except ValueError:
+                # Additive fallback only: an over-wide header scope must leave
+                # the .c verdict exactly as it was, never fail the capture.
+                header_blobs = []
+            if header_blobs:
+                facts, status = _combine_function_scopes(
+                    (facts, status), _header_function_results([raw for _, raw in header_blobs], symbol))
+                _archive_header_blobs(header_blobs, evidence, artifacts)
     else:
         asm_ref = _safe_repo_file(repo, assembly_path, "target context assembly")
         asm_text = asm_ref.read_bytes().decode("utf-8")
         missing = _missing_member_names(asm_text, context.decode("utf-8"))
         if missing:
-            blobs = _sibling_data_blobs(repo, overlay, missing, relative.as_posix(),
-                                        compiler_identity, config_path, cache)
-            _archive_sibling_blobs(blobs, evidence, artifacts)
-            header_blobs = _header_mention_blobs(repo, overlay, missing, relative.as_posix())
-            _archive_header_blobs(header_blobs, evidence, artifacts)
+            try:
+                blobs = _sibling_data_blobs(repo, overlay, missing, relative.as_posix(),
+                                            compiler_identity, config_path, cache)
+                _archive_sibling_blobs(blobs, evidence, artifacts)
+                header_blobs = _header_mention_blobs(repo, overlay, missing, relative.as_posix())
+                _archive_header_blobs(header_blobs, evidence, artifacts)
+            except ValueError:
+                # Same additive-only rule: bound overflows skip gathering and
+                # keep the owning-unit verdict instead of failing the file.
+                pass
     evidence["status"] = status
     return {**facts, "context_evidence": evidence}, tuple(artifacts)
 
@@ -702,9 +732,13 @@ def verify_target_context(declarations, archive, record_id, compiler_identity, a
         if set(entry) != {"path", "input"}:
             raise ValueError("header declaration scope fields differ")
         header_path = entry["path"]
+        header_in_overlay = isinstance(header_path, str) and header_path.startswith("src/" + overlay + "/")
+        header_shared = (isinstance(header_path, str) and header_path.startswith("src/st/")
+                         and "/" not in header_path[len("src/st/"):]
+                         and not header_path.endswith("_psp.h"))
         if (not isinstance(header_path, str) or Path(header_path).is_absolute()
                 or ".." in Path(header_path).parts or "\\" in header_path
-                or not header_path.startswith("src/" + overlay + "/")
+                or not (header_in_overlay or header_shared)
                 or not header_path.endswith(".h") or header_path == evidence["path"]):
             raise ValueError("header declaration scope path differs from recipient")
         ref = ArtifactRef.from_dict(entry["input"])

@@ -1686,3 +1686,24 @@ are archived exactly when a referenced member misses from the owning unit,
 not only when the function itself is missing, since declaration-ready
 functions are the ones blocked on data. The archive replay needs no
 change: sibling artifacts already verify generically.
+
+### Missing symbols live one scope wider than the overlay
+
+Same-overlay scans cannot find stage-common helpers: AnimateEntity lives
+as a body in src/st/animate_entity.h and SetStep, SetSubStep and the
+collision routines live in src/st/st_common.h, called from stage and boss
+overlays alike without declaration. Extending the header mention scan to
+top-level shared stage headers keeps the same caps, consensus and static
+poison; PSP variants stay excluded as other-platform signatures. Names
+shared across scopes with different signatures, like the one-arg shared
+SetStep against two-arg static copies, refuse as ambiguous instead of
+adopting the wrong entity.
+
+### Additive scopes must degrade, never fail
+
+Widening the header mention scan to shared stage headers overflowed the
+mention cap on popular names and turned fourteen previously successful
+captures into errors. New scopes gathered as fallback must skip on bound
+overflow and keep the old verdict: the cap bounds cost, and exceeding it
+means the name was unresolvable by consensus anyway. Loud refusal stays
+for the required path, where a missing scope changes the verdict itself.
