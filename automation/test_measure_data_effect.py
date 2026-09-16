@@ -172,6 +172,8 @@ class RemeasureHelperTests(unittest.TestCase):
                                      "while_admitted": 0, "blocked_decl": 0,
                                      "blocked_shape": 0, "shape_ids": [],
                                      "blocked_size": 0,
+                                     "nonlocal_exit_ids": [],
+                                     "multi_exit_ids": [],
                                      "stale_matched": 0, "queue_missing": 0,
                                      "unrendered": 0,
                                      "undeclared": 0, "reasons": {},

@@ -267,3 +267,14 @@ cannot invent what is nowhere. Raised-limits remeasurement
 nothing with zero errors: the decl-blocked 13 do not flip, so the missing
 members are engine externs, todo-dependencies and uncapped cases, not
 overlooked same-overlay declarations.
+
+## Exit-shape classification (C0): ladders not plausible
+
+Per-reason specimen lists (nonlocal_exit_ids, multi_exit_ids, capped at
+20 like shape_ids) plus manual review of four shape-blocked files show
+the multi-exit votes come from switch-case forests and cutscene state
+machines whose exits target shared function epilogues. Shared epilogues
+cannot nest, so else-if ladders have no specimens; remaining
+branch-in-loop votes are epilogue jumps and continue-to-latch shapes, and
+the clean loops inside those files are blocked by undeclared callees and
+data relocations. C1 is a no-go and the exit refusals stand.

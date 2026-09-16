@@ -302,6 +302,8 @@ def measure_pool(repo: Path, limit: int | None = None, limits: str = "default", 
         "admitted_blocked_decl": 0,
         "admitted_blocked_shape": 0,
         "blocked_shape_ids": [],
+        "nonlocal_exit_ids": [],
+        "multi_exit_ids": [],
         "admitted_blocked_size": 0,
         "loop_reasons": {},
         "branch_detail": {},
@@ -339,6 +341,11 @@ def measure_pool(repo: Path, limit: int | None = None, limits: str = "default", 
             tally["while_admitted_files"] += 1
         for reason in reasons:
             tally["loop_reasons"][reason] = tally["loop_reasons"].get(reason, 0) + 1
+        if derived is not None:
+            if "nonlocal-exit" in reasons and len(tally["nonlocal_exit_ids"]) < 20:
+                tally["nonlocal_exit_ids"].append(derived[0])
+            if "multi-exit" in reasons and len(tally["multi_exit_ids"]) < 20:
+                tally["multi_exit_ids"].append(derived[0])
         if "branch-in-loop" in reasons:
             try:
                 from automation.search_target_renderer import _parse_assembly as _pa
@@ -434,6 +441,8 @@ def main(argv=None) -> int:
               "blocked_decl": tally["admitted_blocked_decl"], "blocked_shape": tally["admitted_blocked_shape"],
               "blocked_size": tally["admitted_blocked_size"],
               "shape_ids": sorted(tally["blocked_shape_ids"]),
+              "nonlocal_exit_ids": sorted(tally["nonlocal_exit_ids"]),
+              "multi_exit_ids": sorted(tally["multi_exit_ids"]),
               "stale_matched": tally["stale_matched"], "queue_missing": tally["queue_missing"],
               "unrendered": tally["unrendered"],
               "undeclared": tally["undeclared"], "reasons": tally["loop_reasons"],
