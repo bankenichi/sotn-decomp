@@ -132,19 +132,19 @@ history rather than anyone's recollection:
 
 | source | count | share | what it means |
 |---|---|---|---|
-| upstream-harvest | 55 | 12% | upstream had already decompiled it; copied and verified here, **not** produced by this fork |
+| upstream-harvest | 69 | 15% | upstream had already decompiled it; copied and verified here, **not** produced by this fork |
 | shim-segment | 9 | 2% | shared header plus splat segment work |
 | shim-header | 55 | 12% | body copied from a shared header |
 | transplant | 136 | 30% | transplant.py moved a twin body in mechanically |
 | twin-port | 31 | 7% | ported from a sibling overlay or RIC, by hand |
-| permuter | 26 | 6% | decomp-permuter search reached 0 |
+| permuter | 18 | 4% | decomp-permuter search reached 0 |
 | claude-manual | 6 | 1% | written or repaired by hand |
 | model-fleet | 58 | 13% | an OpenCode or llama worker wrote it |
-| unknown | 72 | 16% | evidence insufficient; **not** a guess |
+| unknown | 66 | 15% | evidence insufficient; **not** a guess |
 
 Two things this table is honest about, because a progress number that flatters itself is useless for deciding what to build next:
 
-- **72 of 448 are unattributed, and that is not shrinking on its own.** 3 were overwritten outright by a build receipt (`scheduler.py report` replaces `notes` wholesale); the other 69 carry no method evidence this tool will accept, which is a weaker claim than saying they are empty. Recoverable going forward, not for these records; `match_provenance.py --unknown` lists them.
+- **66 of 448 are unattributed, and that is not shrinking on its own.** 3 were overwritten outright by a build receipt (`scheduler.py report` replaces `notes` wholesale); the other 63 carry no method evidence this tool will accept, which is a weaker claim than saying they are empty. Recoverable going forward, not for these records; `match_provenance.py --unknown` lists them.
 - **The categories overlap.** Each match is counted once, by whichever step was DECISIVE. The model fleet is sole author of 58 but contributed to 149; a model draft the permuter drove to zero counts as `permuter`, deliberately, because crediting the model would overstate the fleet.
 - **`transplant` is separate from `twin-port` on purpose.** Both move a body from a sibling overlay, but a twin-port had its divergences worked out by hand while a transplant was placed mechanically with the substitutions derived from an asm diff. They need different follow-up, so they are not pooled.
 <!-- PROVENANCE:END -->
