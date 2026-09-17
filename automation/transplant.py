@@ -2334,12 +2334,59 @@ def _expected_path_change_failures(
     return missing, unchanged
 
 
+def _parse_candidate_method(raw: str) -> tuple[str | None, str | None]:
+    """(METHOD, generator) from a published candidate header, or (None, None).
+
+    The stable candidate view carries `method : METHOD=X` plus a `generator :`
+    line naming the producer. The landing report must repeat the METHOD so
+    match_provenance.py can attribute the match; a note without it reads as
+    unknown no matter how the body was actually produced (measured 2026-09-17:
+    14 upstream-harvest landings counted as permuter/unknown).
+    """
+    method = None
+    generator = None
+    for line in (raw or "").splitlines():
+        item = line.strip()
+        if item.startswith("method : METHOD="):
+            method = item.split("method : METHOD=", 1)[1].strip()
+        elif item.startswith("generator:"):
+            generator = item.split("generator:", 1)[1].strip()
+    return method or None, generator or None
+
+
+def _receipt_method(row: dict) -> tuple[str | None, str | None]:
+    """METHOD/generator for a landing row, read off its stable candidate.
+
+    Never raises: a missing or unreadable candidate is reported as unrecorded
+    at the call site rather than breaking the landing.
+    """
+    try:
+        stable = artifact_store.candidate_path(row["record_id"], REPO)
+        if not stable.is_file():
+            return None, None
+        return _parse_candidate_method(
+            stable.read_text(encoding="utf-8", errors="ignore"))
+    except (OSError, ValueError, KeyError):
+        return None, None
+
+
 def _report_score_zero_match(row: dict, verdict: str) -> None:
     """Publish one verified score-zero result through scheduler's proof gate."""
+    method, generator = _receipt_method(row)
+    if method:
+        method_note = f"METHOD={method}"
+        if generator:
+            method_note += f" via {generator}"
+    else:
+        # Explicit, never silent: match_provenance.py counts a method-less
+        # note as unknown, and an unattributed harvest miscredits the
+        # fork's machinery for upstream's work.
+        method_note = ("method=unrecorded "
+                       "(stable candidate header has no METHOD)")
     evidence = {
         "notes": (
-            f"deterministic score-zero landing receipt={row['receipt']} "
-            f"source={row['source']}"),
+            f"{method_note}; deterministic score-zero landing "
+            f"receipt={row['receipt']} source={row['source']}"),
         "proof": f"{verdict}; receipt={row['receipt']}",
     }
     result = subprocess.run(
@@ -2596,7 +2643,9 @@ def land_score_zero_batches(apply: bool, overlay: str = "",
 
     print("\n=== score-zero oracle results ===")
     for row in matched:
-        print(f"RESULT {row['record_id']} MATCHED receipt={row['receipt']}")
+        method, _generator = _receipt_method(row)
+        print(f"RESULT {row['record_id']} MATCHED receipt={row['receipt']} "
+              f"method={method or 'unrecorded'}")
     for row, verdict in rejected:
         print(f"RESULT {row['record_id']} NOT_MATCHED receipt={row['receipt']} "
               f"verdict={verdict}")
@@ -4045,6 +4094,70 @@ def self_test() -> int:
        "reconciliation compares the archived and applied function bodies")
     ck("queue_report" not in reconciliation_src,
        "reconciliation is read-only until the consolidated oracle is reviewed")
+
+    print("\nlanding reports carry the candidate METHOD for provenance")
+    ck(_parse_candidate_method(
+        "/* UPSTREAM CANDIDATE\n"
+        "   method : METHOD=UPSTREAM-HARVEST\n"
+        "   generator: upstream-harvest-v4-test\n"
+        "   record : us:ST/TEST:FixtureFunction\n */\n"
+        "void FixtureFunction(void) {}")
+       == ("UPSTREAM-HARVEST", "upstream-harvest-v4-test"),
+       "the stable header yields METHOD and generator")
+    ck(_parse_candidate_method("void FixtureFunction(void) {}")
+       == (None, None),
+       "a body with no header yields no method rather than a guess")
+    captured_report = {}
+    real_run = subprocess.run
+    real_candidate_path = artifact_store.candidate_path
+
+    class _FakeCandidate:
+        def __init__(self, text):
+            self._text = text
+        def is_file(self):
+            return self._text is not None
+        def read_text(self, encoding="utf-8", errors="ignore"):
+            return self._text
+
+    def _fake_run(argv, **kwargs):
+        captured_report["input"] = kwargs.get("input", "")
+
+        class _Done:
+            returncode = 0
+            stdout = ""
+            stderr = ""
+        return _Done()
+
+    fixture_row = {
+        "record_id": "us:ST/TEST:FixtureFunction",
+        "receipt": "nonmatchings/test/adapt-score.json",
+        "source": "src/st/test/file.c",
+    }
+    try:
+        subprocess.run = _fake_run
+        artifact_store.candidate_path = lambda _rid, _root: _FakeCandidate(
+            "/* UPSTREAM CANDIDATE\n"
+            "   method : METHOD=UPSTREAM-HARVEST\n"
+            "   generator: upstream-harvest-v4-test\n */\n")
+        _report_score_zero_match(fixture_row, "GREEN: fixture oracle")
+        sent = json.loads(captured_report["input"])
+        ck("METHOD=UPSTREAM-HARVEST" in sent["notes"]
+           and "upstream-harvest-v4-test" in sent["notes"],
+           "the queue note repeats the candidate METHOD and generator",
+           sent["notes"][:160])
+        artifact_store.candidate_path = lambda _rid, _root: _FakeCandidate(None)
+        _report_score_zero_match(fixture_row, "GREEN: fixture oracle")
+        sent_missing = json.loads(captured_report["input"])
+        ck("method=unrecorded" in sent_missing["notes"],
+           "a missing header is reported explicitly, never silently omitted",
+           sent_missing["notes"][:160])
+    finally:
+        subprocess.run = real_run
+        artifact_store.candidate_path = real_candidate_path
+    ck("method={" in src[
+        src.index("def land_score_zero_batches"):
+        src.index("def list_applied_score_zeros")],
+       "batch RESULT lines echo the method for the manual follow-up report")
 
     print("\na constant the C reaches through a MACRO is rewritten as an arg")
     # ANIMSET_OVL(x) is `(x) | 0x8000`, so ANIMSET_OVL(1) assembles to -0x7FFF.

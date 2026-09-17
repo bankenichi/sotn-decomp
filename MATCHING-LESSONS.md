@@ -1707,3 +1707,34 @@ captures into errors. New scopes gathered as fallback must skip on bound
 overflow and keep the old verdict: the cap bounds cost, and exceeding it
 means the name was unresolvable by consensus anyway. Loud refusal stays
 for the required path, where a missing scope changes the verdict itself.
+
+## 32. A landing that does not write the method destroys the provenance
+
+On 2026-09-17 the score-zero batch landing matched 14 upstream-harvest v4
+bodies and recorded them with method-less notes ("score-zero oracle landing
+..."). `match_provenance.py` had nothing to match, so it fell back to stale
+evidence: 8 records carried permuter history (`iterations > 0` is hard
+permuter evidence) and 6 had no keyword at all. The living docs then reported
+permuter 26 / unknown 72 instead of 18 / 66, and the error looked like a
+classifier defect. It was not: the evidence was never written.
+
+Two compounding defects in `automation/transplant.py`:
+
+1. `land_score_zero_batches` never reports to the queue at all; reporting is
+   a manual follow-up, so provenance depends on whatever prose the operator
+   happens to write.
+2. `_report_score_zero_match` (the single-mode path) wrote receipt and source
+   but no METHOD, although every published stable candidate carries
+   `method : METHOD=X` in its header.
+
+The fix propagates the header METHOD into every landing note (explicit
+`method=unrecorded` when the header lacks one, never silent), echoes
+`method=` on batch RESULT lines for the manual follow-up, and pins all three
+in the self-test. Upstream-harvest outranks everything in `_PRECEDENCE` by
+design, so registering the method corrects attribution without disturbing
+genuine permuter or model evidence, which stays on as contributors.
+
+Rule, matching the classifier's own comment: register the method WITH the
+method. Any path that lands a body must write the METHOD marker in the same
+step; a follow-up human pass over hundreds of records is not a backstop, it
+is how 14 correct landings became 14 wrong attributions.
