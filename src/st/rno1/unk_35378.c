@@ -74,7 +74,41 @@ INCLUDE_RODATA("st/rno1/nonmatchings/unk_35378", D_us_801A5DDC);
 
 INCLUDE_ASM("st/rno1/nonmatchings/unk_35378", EntityNovaSkeleton);
 
-INCLUDE_ASM("st/rno1/nonmatchings/unk_35378", EntityBladeSoldierDeathParts);
+/* Compile-shaping declarations retained from the score-zero
+   receipt after destination-scope filtering. */
+extern s16 D_us_80181DE0[];
+extern EInit g_EInitNovaSkeleton;
+void MoveEntity(void);
+
+void EntityBladeSoldierDeathParts(Entity* self) {
+    if (self->step) {
+        if (--self->ext.nova.deathPartLife) {
+            self->rotate += D_us_80181DE0[self->params];
+            FallEntity();
+            MoveEntity();
+            return;
+        }
+
+        self->entityId = E_EXPLOSION;
+        self->pfnUpdate = EntityExplosion;
+        self->params = 0;
+        self->step = 0;
+        return;
+    }
+
+    InitializeEntity(g_EInitNovaSkeleton);
+    self->hitboxState = 0;
+    self->flags |=
+        FLAG_DESTROY_IF_OUT_OF_CAMERA | FLAG_DESTROY_IF_BARELY_OUT_OF_CAMERA |
+        FLAG_UNK_00200000 | FLAG_UNK_2000;
+    self->animCurFrame = self->params + 0x1D;
+    self->drawFlags = ENTITY_ROTATE;
+
+    if (self->facingLeft) {
+        self->velocityX = -self->velocityX;
+    }
+}
+
 
 INCLUDE_ASM("st/rno1/nonmatchings/unk_35378", EntityNovaLaser);
 
