@@ -5636,30 +5636,221 @@ def _declare_used_symbols(original: str, code: str, src_rel: str,
             "   overlay's. */\n" + "\n".join(out) + "\n\n")
 
 
-def _candidate_function_only(code: str, fn: str) -> str:
-    """Accept exactly one target function and reject seed-only scaffolding."""
+# Preprocessor macros decided for span detection. VERSION_* follows the
+# existing US-build convention from upstream_harvest._mask_inactive_us;
+# STAGE_IS_*/BOSS_IS_* come from the destination overlay header, read, never
+# derived (bo0.h defines STAGE_IS_NO2, not STAGE_IS_BO0). Anything else stays
+# unknown and its branches are kept, which is exactly the legacy behaviour.
+_PP_PLATFORM_DEFAULTS = {"VERSION_US": True, "VERSION_PSP": False,
+                         "VERSION_HD": False, "VERSION_PC": False}
+
+_RX_PP_DIRECTIVE = re.compile(
+    r"^[ \t]*#[ \t]*(if|ifdef|ifndef|elif|else|endif)\b(.*)$")
+_RX_PP_TOKEN = re.compile(
+    r"defined\s*\([A-Za-z_]\w*\)|&&|\|\||!|\(|\)|[A-Za-z_]\w*")
+_RX_PP_DEFINED = re.compile(r"defined\s*\(\s*([A-Za-z_]\w*)\s*\)")
+_RX_PP_NAME = re.compile(r"[A-Za-z_]\w*")
+_RX_STAGE_DEFINE = re.compile(
+    r"^[ \t]*#[ \t]*define[ \t]+(STAGE_IS_[A-Za-z0-9_]+|BOSS_IS_[A-Za-z0-9_]+)\b",
+    re.M)
+
+
+def _eval_pp_condition(expr: str, values: dict[str, bool]) -> bool | None:
+    """Three-valued evaluation of a preprocessor condition.
+
+    True/False when decided, None when an unknown macro (or anything outside
+    the &&/||/!/defined/parenthesis grammar) leaves it open. Unknown never
+    guesses: callers keep both branches.
+    """
+    tokens = _RX_PP_TOKEN.findall(expr or "")
+    if "".join(tokens) != re.sub(r"\s+", "", expr or ""):
+        return None
+    pos = 0
+
+    def peek() -> str:
+        return tokens[pos] if pos < len(tokens) else ""
+
+    def parse_atom() -> bool | None:
+        nonlocal pos
+        tok = peek()
+        if not tok:
+            raise ValueError("empty condition")
+        pos += 1
+        if tok == "(":
+            val = parse_or()
+            if peek() != ")":
+                raise ValueError("unbalanced parenthesis")
+            pos += 1
+            return val
+        if tok == "!":
+            val = parse_atom()
+            return None if val is None else (not val)
+        defined_match = _RX_PP_DEFINED.fullmatch(tok)
+        if defined_match:
+            return values.get(defined_match.group(1))
+        if _RX_PP_NAME.fullmatch(tok):
+            return values.get(tok)
+        raise ValueError(f"unexpected {tok!r}")
+
+    def parse_and() -> bool | None:
+        nonlocal pos
+        left = parse_atom()
+        while peek() == "&&":
+            pos += 1
+            right = parse_atom()
+            if left is False or right is False:
+                left = False
+            elif left is True and right is True:
+                left = True
+            else:
+                left = None
+        return left
+
+    def parse_or() -> bool | None:
+        nonlocal pos
+        left = parse_and()
+        while peek() == "||":
+            pos += 1
+            right = parse_and()
+            if left is True or right is True:
+                left = True
+            elif left is False and right is False:
+                left = False
+            else:
+                left = None
+        return left
+
+    try:
+        result = parse_or()
+    except (ValueError, IndexError):
+        return None
+    return result if pos == len(tokens) else None
+
+
+def _blank_pp_line(line: str) -> str:
+    return "".join("\n" if char == "\n" else " " for char in line)
+
+
+def _mask_inactive_pp_branches(text: str,
+                               values: dict[str, bool]) -> str | None:
+    """Blank conditionally-dead lines for brace matching, preserving offsets.
+
+    A branch the values decide against becomes spaces (newlines kept), so a
+    span found in the mask maps back onto the original text. Branches no
+    value decides stay, exactly the legacy behaviour. Returns None on any
+    structurally unbalanced directive sequence so the caller falls back
+    instead of misdetecting.
+    """
+    lines = (text or "").splitlines(keepends=True)
+    out: list[str] = []
+    active = True
+    stack: list[list] = []  # [parent_active, taken]
+    for line in lines:
+        directive = _RX_PP_DIRECTIVE.match(line)
+        if not directive:
+            out.append(line if active else _blank_pp_line(line))
+            continue
+        kind, tail = directive.group(1), directive.group(2)
+        if kind in ("if", "ifdef", "ifndef"):
+            if kind == "ifdef":
+                cond = _eval_pp_condition(f"defined({tail.strip()})", values)
+            elif kind == "ifndef":
+                sub = _eval_pp_condition(f"defined({tail.strip()})", values)
+                cond = None if sub is None else (not sub)
+            else:
+                cond = _eval_pp_condition(tail, values)
+            parent = active
+            taken = cond is True
+            stack.append([parent, taken])
+            active = bool(parent and taken)
+            out.append(_blank_pp_line(line))
+        elif kind in ("elif", "else"):
+            if not stack:
+                return None
+            parent, taken = stack[-1]
+            if kind == "else":
+                live = parent and not taken
+                stack[-1][1] = True
+            else:
+                if taken:
+                    live = False
+                else:
+                    sub = _eval_pp_condition(tail, values)
+                    live = parent and (sub is not False)
+                    if sub is True:
+                        stack[-1][1] = True
+            active = bool(live)
+            out.append(_blank_pp_line(line))
+        else:  # endif
+            if not stack:
+                return None
+            parent, _taken = stack.pop()
+            active = bool(parent)
+            out.append(_blank_pp_line(line))
+    return "".join(out)
+
+
+def _stage_defines_for_src(src_rel: str) -> dict[str, bool] | None:
+    """{STAGE_IS_*, BOSS_IS_*} the destination overlay header defines.
+
+    Ground truth from the repo, never guessed: src/st/rnz1/unk_3BE58.c reads
+    src/st/rnz1/rnz1.h, which defines STAGE_IS_RNZ1. None when the file is
+    not overlay-shaped or the header is absent, in which case span detection
+    keeps its legacy behaviour exactly.
+    """
+    try:
+        parts = (src_rel or "").replace("\\", "/").split("/")
+        if len(parts) < 4 or parts[0] != "src":
+            return None
+        header = "/".join(parts[:-1]) + "/" + parts[-2] + ".h"
+        with open(win_path(header), encoding="utf-8",
+                  errors="replace") as handle:
+            text = handle.read()
+    except OSError:
+        return None
+    return {name: True for name in _RX_STAGE_DEFINE.findall(text)}
+
+
+def _candidate_function_only(code: str, fn: str,
+                             defines: dict[str, bool] | None = None) -> str:
+    """Accept exactly one target function and reject seed-only scaffolding.
+
+    `defines` optionally names preprocessor macros true for the destination
+    (read off its overlay header, never guessed). Span DETECTION then ignores
+    conditionally-dead branches, which upstream files require whenever an
+    #if/#else opens braces on both arms and closes once after the #endif;
+    EXTRACTION still slices the original text, so preserved conditionals
+    reach the candidate store untouched. Without defines the legacy
+    whole-text count applies exactly.
+    """
     masked = _strip_comments_and_strings(code)
+    probe = masked
+    if defines is not None:
+        narrowed = _mask_inactive_pp_branches(
+            masked, {**_PP_PLATFORM_DEFAULTS, **defines})
+        if narrowed is not None:
+            probe = narrowed
     match = re.search(
         rf"(?m)^[ \t]*(?:static\s+)?[A-Za-z_][\w \t\r\n\*]*"
         rf"\b{re.escape(fn)}\s*\([^;{{]*\)\s*\{{",
-        masked)
+        probe)
     if match is None:
         raise RuntimeError(f"candidate has no definition of {fn}")
     start = match.start()
-    brace = masked.index("{", match.start())
+    brace = probe.index("{", match.start())
     depth = 0
     end = -1
-    for index in range(brace, len(masked)):
-        if masked[index] == "{":
+    for index in range(brace, len(probe)):
+        if probe[index] == "{":
             depth += 1
-        elif masked[index] == "}":
+        elif probe[index] == "}":
             depth -= 1
             if depth == 0:
                 end = index + 1
                 break
     if end < 0:
         raise RuntimeError(f"candidate definition of {fn} has unbalanced braces")
-    residual = masked[:start] + masked[end:]
+    residual = probe[:start] + probe[end:]
     if residual.strip():
         raise RuntimeError(
             f"candidate for {fn} contains file-scope scaffolding; only the "
@@ -5695,7 +5886,8 @@ def _prepare_candidate_body(original: str, code: str, fn: str,
                             src_rel: str,
                             support_declarations: list[str] | None = None,
                             overlay: str = "", asm_text: str = "") -> str:
-    exact = _candidate_function_only(code, fn)
+    exact = _candidate_function_only(
+        code, fn, defines=_stage_defines_for_src(src_rel))
     support = _validated_support_declarations(support_declarations)
     support_text = "\n".join(support)
     derived = _declare_used_symbols(

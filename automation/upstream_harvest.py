@@ -496,6 +496,26 @@ def publish_ids(data: object) -> list[str]:
     return ids
 
 
+def _publish_one_record(record_id: str, apply: bool,
+                        records: dict[str, tuple[str, str]]) -> str:
+    """Publish one record, converting any crash into a counted failure.
+
+    A batch publishes hundreds of records; one malformed candidate must not
+    abort the rest. Measured 2026-09-17: EntityRelicOrb and
+    EntityValhallaKnight each killed their whole publish batch this way.
+    publish() writes nothing before virtual_apply succeeds, so a crash here
+    leaves no partial artifact behind, and the resume check makes a rerun
+    pick up exactly where the batch stopped.
+    """
+    try:
+        rc = publish(record_id, apply, records)
+    except Exception as exc:                      # noqa: BLE001
+        return f"FAILED {record_id}: {type(exc).__name__}: {exc}"
+    if rc:
+        return f"FAILED {record_id}: publish returned {rc}"
+    return "published"
+
+
 def publish_file(path_text: str, apply: bool = False,
                  overlay: str = "") -> int:
     """Publish every harvestable unmatched ID named by one JSON input.
@@ -589,11 +609,12 @@ def publish_file(path_text: str, apply: bool = False,
             continue
         attempted += 1
         print(f"\n[{attempted}] {record_id}", flush=True)
-        rc = publish(record_id, apply, records)
-        if rc:
-            failed += 1
-        else:
+        outcome = _publish_one_record(record_id, apply, records)
+        if outcome == "published":
             published += 1
+        else:
+            print(outcome, flush=True)
+            failed += 1
     print(f"\nSUMMARY {published} published, {resumed} already current, "
           f"{skipped} not harvestable, {failed} failed from "
           f"{len(selected)} selected unmatched IDs")
@@ -1286,6 +1307,29 @@ def self_test() -> int:
     except ValueError:
         rejected_bad_batch = True
     ck(rejected_bad_batch, "non-string batch IDs are rejected")
+
+    print("\none bad record cannot abort the publish batch")
+    calls = []
+    real_publish = globals()["publish"]
+
+    def _flaky(record_id, apply, records):
+        calls.append(record_id)
+        if len(calls) == 1:
+            raise RuntimeError(
+                "candidate definition of Boom has unbalanced braces")
+        return 0
+
+    try:
+        globals()["publish"] = _flaky
+        first = _publish_one_record("us:ST/TEST:Boom", True, {})
+        second = _publish_one_record("us:ST/TEST:Good", True, {})
+    finally:
+        globals()["publish"] = real_publish
+    ck(first.startswith("FAILED us:ST/TEST:Boom: RuntimeError:"),
+       "a crashing record becomes a counted failure", first)
+    ck(second == "published"
+       and calls == ["us:ST/TEST:Boom", "us:ST/TEST:Good"],
+       "the batch continues after it")
 
     print("\noverlay-local definitions outrank same-named global helpers")
     saved_paths, saved_cache, saved_stubs = _UF_PATHS, dict(_UF_CACHE), _US_CACHE

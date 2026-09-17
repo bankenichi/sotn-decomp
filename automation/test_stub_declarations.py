@@ -446,6 +446,37 @@ def main():
     except Exception as e:                      # noqa: BLE001
         print(f"  skip  could not reach the tree to confirm ({e})")
 
+    print("\nsplit-brace conditionals resolve by destination defines")
+    # Upstream files open braces on both arms of an #if/#else and close once
+    # after the #endif (EntityValhallaKnight). Whole-text counting never
+    # returns to zero there; the destination overlay decides which arm lives.
+    split = ('void Target(void) {\n'
+             '    int posX = 1;\n'
+             '#if defined(STAGE_IS_ARE) || defined(STAGE_IS_RNZ1)\n'
+             '    if (posX > 0x70) {\n'
+             '#else\n'
+             '    if (posX > 0x60) {\n'
+             '#endif\n'
+             '    }\n'
+             '}\n')
+    refused = False
+    try:
+        wd._candidate_function_only(split, "Target")
+    except RuntimeError as exc:
+        refused = "unbalanced braces" in str(exc)
+    check(refused, "without destination defines the split arms still refuse")
+    got = wd._candidate_function_only(
+        split, "Target", defines={"STAGE_IS_RNZ1": True})
+    check(got.count("if (posX") == 2 and got.endswith("}\n"),
+          f"with defines the span resolves and both arms survive ({got!r})")
+    check(wd._mask_inactive_pp_branches("int x;\n#else\n", {}) is None,
+          "a structurally unbalanced directive falls back instead of guessing")
+    rnz1 = wd._stage_defines_for_src("src/st/rnz1/unk_3BE58.c")
+    check(bool(rnz1) and rnz1.get("STAGE_IS_RNZ1") is True,
+          f"the destination overlay header is ground truth ({rnz1})")
+    check(wd._stage_defines_for_src("src/st/test.c") is None,
+          "a non-overlay path keeps the legacy behaviour exactly")
+
     print()
     if FAILS:
         print(f"{len(FAILS)} FAILED:")
