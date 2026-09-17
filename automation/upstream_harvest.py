@@ -314,9 +314,10 @@ def show(fn: str) -> int:
     return 0
 
 
-def _candidate_body(source: str, base: str, target: str) -> str:
+def _candidate_body(source: str, base: str, target: str,
+                    defines: dict[str, bool] | None = None) -> str:
     """Extract one body with the visibility required by a live queue symbol."""
-    body = _extract(source, base)
+    body = _extract(source, base, defines)
     if not body:
         return ""
     if target != base:
@@ -351,10 +352,6 @@ def publish(record_id: str, apply: bool = False,
         print(f"cannot resolve {REF}; run git_fetch first")
         return 1
     source = _git("show", f"{ref}:{path}")
-    body = _candidate_body(source, base, fn)
-    if not body:
-        print(f"could not extract {base} from {path}")
-        return 1
     import permuter_supervisor as ps  # type: ignore
     found = ps.find_stub(fn, overlay)
     if found is None:
@@ -364,6 +361,11 @@ def publish(record_id: str, apply: bool = False,
     target_rel = target_path.resolve().relative_to(REPO.resolve()).as_posix()
     sys.path.insert(0, str(REPO / "automation" / "win"))
     import worker_direct as wd  # type: ignore
+    body = _candidate_body(
+        source, base, fn, wd._stage_defines_for_src(target_rel))
+    if not body:
+        print(f"could not extract {base} from {path}")
+        return 1
     ctx = {"src_rel": target_rel, "asm_rel": asm_rel}
     whole = wd.virtual_apply(ctx, fn, body)
     if not whole:
@@ -1039,7 +1041,8 @@ def _mask_inactive_us(text: str) -> str:
     return "".join(out)
 
 
-def _extract(body_src: str, fn: str) -> str:
+def _extract(body_src: str, fn: str,
+             defines: dict[str, bool] | None = None) -> str:
     """The single function `fn` out of a whole .c file, or ''. """
     sys.path.insert(0, str(REPO / "automation"))
     try:
@@ -1061,6 +1064,22 @@ def _extract(body_src: str, fn: str) -> str:
     # copy only to locate the definition and its closing brace.
     us_source = _mask_inactive_us(body_src)
     text = _mask_c_noncode(us_source)
+    if defines is not None:
+        # Span detection only. A split-brace #if/#else (both arms open, one
+        # shared close) never balances under whole-text counting, so the
+        # matcher below runs to end of file and swallows sibling functions
+        # (measured on EntityValhallaKnight: func_us_801C8954 came along).
+        # The slice still comes from the fully preserved text.
+        sys.path.insert(0, str(REPO / "automation" / "win"))
+        try:
+            import worker_direct as wd                        # type: ignore
+        except ImportError:                                   # pragma: no cover
+            wd = None
+        if wd is not None:
+            probe = wd._mask_inactive_pp_branches(
+                text, {**wd._PP_PLATFORM_DEFAULTS, **defines})
+            if probe is not None:
+                text = probe
     for m in mt.RX_FUNC_HEAD.finditer(text):
         if m.group(1) != fn:
             continue
@@ -1496,6 +1515,22 @@ def self_test() -> int:
     ck(static_body.startswith("void target_from_src") and
        "target_from_src();" in static_body,
        "a queued suffix is applied and partial-tree external visibility is kept")
+    split_source = (
+        "void First(void) {\n"
+        "    int posX = 1;\n"
+        "#if defined(STAGE_IS_ARE) || defined(STAGE_IS_RNZ1)\n"
+        "    if (posX > 0x70) {\n"
+        "#else\n"
+        "    if (posX > 0x60) {\n"
+        "#endif\n"
+        "    }\n"
+        "}\n"
+        "void Second(void) {}\n")
+    split_body = _extract(
+        split_source, "First", {"STAGE_IS_RNZ1": True})
+    ck(split_body.count("if (posX") == 2 and "void Second" not in split_body,
+       "destination defines keep a split-brace function from swallowing "
+       f"its sibling ({split_body!r})")
 
     print("\nthe comparison metric is the one our own metrics cannot see")
     # Both sides match the same asm, so semantics agree and only naming can
