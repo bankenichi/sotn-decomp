@@ -546,13 +546,162 @@ INCLUDE_ASM("boss/bo0/nonmatchings/3053C", func_us_801B7C44);
 
 INCLUDE_ASM("boss/bo0/nonmatchings/3053C", func_us_801B7CC8);
 
-INCLUDE_ASM("boss/bo0/nonmatchings/3053C", func_us_801B8794);
+void func_us_801B8794(Primitive* prim) {
+    switch (prim->p1) {
+    case 0:
+        prim->type = PRIM_LINE_G2;
+        prim->x0 = prim->x1 = Random() & 0x3F;
+        prim->y0 = 0x100;
+        prim->y1 = (Random() & 0x1F) + 0x120;
+        prim->y2 = (Random() & 0xF) + 0x10;
+        prim->r0 = 0;
+        prim->g0 = 0xFF;
+        prim->b0 = 0xFF;
+        prim->r1 = 0;
+        prim->g1 = 0xFF;
+        prim->b1 = 0xFF;
+        prim->priority = 0xC8;
+        prim->drawMode = DRAW_UNK_40 | DRAW_TPAGE | DRAW_TRANSP;
+        prim->p1++;
+        // fallthrough
 
-INCLUDE_ASM("boss/bo0/nonmatchings/3053C", func_us_801B888C);
+    case 1:
+        prim->y0 -= prim->y2;
+        prim->y1 -= prim->y2;
+        if (prim->y1 < 0x40) {
+            prim->p3 = 0;
+            prim->drawMode = DRAW_HIDE;
+        }
+        break;
+    }
+}
 
-INCLUDE_ASM("boss/bo0/nonmatchings/3053C", func_us_801B8970);
 
-INCLUDE_ASM("boss/bo0/nonmatchings/3053C", func_us_801B8B64);
+void func_us_801B888C(Primitive* prim) {
+    switch (prim->p1) {
+    case 0:
+        prim->type = PRIM_GT4;
+        prim->tpage = 0x1A;
+        prim->clut = 0x194;
+        prim->u0 = prim->u2 = 0;
+        prim->u1 = prim->u3 = 0x20;
+        prim->v0 = prim->v1 = 0x60;
+        prim->v2 = prim->v3 = 0x80;
+        prim->x0 = prim->x2 = 0;
+        prim->x1 = prim->x3 = 0x40;
+        prim->y0 = prim->y1 = 0x100;
+        prim->y2 = prim->y3 = 0x100;
+        prim->priority = 0xC8;
+        prim->drawMode = DRAW_UNK_40 | DRAW_TPAGE2 | DRAW_TPAGE | DRAW_TRANSP;
+        prim->p1++;
+        // fallthrough
+
+    case 1:
+        prim->y0 = prim->y1 -= 16;
+        if (prim->y0 == 64) {
+            prim->p3 = 0;
+            prim->drawMode = DRAW_HIDE;
+        }
+        return;
+    }
+}
+
+
+/* Compile-shaping declarations retained from the score-zero
+   receipt after destination-scope filtering. */
+#define LOH(x) (*(s16*)&(x))
+#define LOW(x) (*(s32*)&(x))
+void UnkPolyFunc0(Primitive* prim);
+void UnkPrimHelper(Primitive* prim);
+
+void func_us_801B8970(Primitive* prim) {
+    switch (prim->next->u2) {
+    case 0:
+        prim->type = PRIM_G4;
+        prim->priority = 0xCE;
+        prim->drawMode = DRAW_UNK02;
+        prim->p3 |= 0x30;
+        LOW(prim->next->r1) = ((Random() & 0xF) * -0x2000) - 0x2000;
+        prim->next->b3 = 0;
+        LOH(prim->next->r2) = (Random() & 7) + 4;
+        LOH(prim->next->b2) = (Random() & 7) + 4;
+        prim->next->x2 = 0x1000;
+        prim->next->y2 = 0x1000;
+        prim->next->tpage = 0;
+        prim->next->x3 = 0;
+        prim->next->y3 = 0;
+        prim->next->u2 = 1;
+        break;
+
+    case 1:
+        prim->next->y3 += (((Random() & 3) + 2) << 6);
+        prim->next->x3 += 0x40;
+        LOH(prim->next->tpage) += 0x40;
+        prim->next->x2 -= 0x20;
+        prim->next->y2 = prim->next->x2;
+        if (prim->next->x2 < 0xC00) {
+            prim->next->b3 = (u8)((s32)(0xFFF - prim->next->x2) >> 4);
+        }
+        if (prim->next->x2 < 0x100) {
+            UnkPolyFunc0(prim);
+            return;
+        }
+        break;
+    }
+
+    UnkPrimHelper(prim);
+    prim->b0 = prim->b1 = prim->b2 = prim->b3 = 0;
+}
+
+
+/* Compile-shaping declarations retained from the score-zero
+   receipt after destination-scope filtering. */
+#define LOH(x) (*(s16*)&(x))
+#define LOW(x) (*(s32*)&(x))
+void UnkPolyFunc0(Primitive* prim);
+void UnkPrimHelper(Primitive* prim);
+
+void func_us_801B8B64(Primitive* prim) {
+    switch (prim->next->u2) {
+    case 0:
+        prim->type = PRIM_G4;
+        prim->priority = 0xAE;
+        prim->drawMode = DRAW_UNK02;
+        prim->p3 |= 0x30;
+        LOW(prim->next->r1) = (((Random() & 0xF) * -0x4000) - 0x2000);
+        prim->next->b3 = 0;
+        LOH(prim->next->r2) = (Random() & 7) + 6;
+        LOH(prim->next->b2) = (Random() & 7) + 6;
+        prim->next->x2 = 0x1000;
+        prim->next->y2 = 0x1000;
+        prim->next->tpage = 0;
+        prim->next->x3 = 0;
+        prim->next->y3 = 0;
+        prim->next->u2 = 1;
+        break;
+
+    case 1:
+        LOW(prim->next->r1) -= 0x4000;
+        prim->next->y3 += ((Random() & 3) + 2) << 6;
+        prim->next->x3 += 0x40;
+        LOH(prim->next->tpage) += 0x40;
+        prim->next->x2 -= 0x40;
+        prim->next->y2 = prim->next->x2;
+
+        prim->next->b3 = (prim->next->x2 >> 4) / 2;
+        if (prim->next->x2 < 0x100) {
+            UnkPolyFunc0(prim);
+            return;
+        }
+        break;
+    }
+
+    UnkPrimHelper(prim);
+    prim->r0 = prim->r1 = prim->r2 / 2;
+    prim->g0 = prim->g1 = prim->g2 / 2;
+    prim->b0 = prim->b1 = prim->b2 / 2;
+}
+
 
 INCLUDE_ASM("boss/bo0/nonmatchings/3053C", func_us_801B8D8C);
 
