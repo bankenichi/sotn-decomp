@@ -457,7 +457,42 @@ void EntityGreyPuff(Entity* self) {
 
 
 
-INCLUDE_ASM("st/rno4/nonmatchings/unk_44B0C", EntityIntenseExplosion);
+/* Compile-shaping declarations retained from the score-zero
+   receipt after destination-scope filtering. */
+#define FIX(x) ((s32)((x) * 65536.0))
+#define PAL_FLAG(x) ((x) | PAL_UNK_FLAG)
+extern EInit g_EInitParticle;
+
+void EntityIntenseExplosion(Entity* self) {
+    if (!self->step) {
+        InitializeEntity(g_EInitParticle);
+        self->palette = PAL_FLAG(PAL_UNK_170);
+        self->animSet = 5;
+        self->animCurFrame = 1;
+        self->blendMode = BLEND_ADD | BLEND_TRANSP;
+        if (self->params & 0xF0) {
+            self->palette = PAL_FLAG(PAL_UNK_195);
+            self->blendMode = BLEND_TRANSP;
+        }
+        if (self->params & 0xFF00) {
+            self->zPriority = (u16)((self->params & 0xFF00) >> 8);
+        }
+        self->zPriority += 8;
+        return;
+    }
+
+    self->poseTimer++;
+    self->posY.val -= FIX(0.25);
+
+    if (!((u16)self->poseTimer & 1)) {
+        self->animCurFrame++;
+    }
+
+    if (self->poseTimer >= 0x25) {
+        DestroyEntity(self);
+    }
+}
+
 
 /* Compile-shaping declarations retained from the score-zero
    receipt after destination-scope filtering. */
