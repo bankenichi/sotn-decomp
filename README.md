@@ -69,12 +69,12 @@ every one of them already had a generator that nobody was running.
 | | |
 |---|---|
 | Build oracle | **113 / 113** overlay SHA-1s in `config/check.us.sha` |
-| Code decompiled | **94.1%** (8181 / 8730 functions) across 62 built binaries |
-| Queue | 983 records: **434 matched**, 358 todo, 143 escalated, 46 deferred, 2 near |
-| `INCLUDE_ASM` stubs left in `src/` | 549 (287 `boss`, 260 `st`, 2 `main`) |
+| Code decompiled | **94.1%** (8195 / 8730 functions) across 62 built binaries |
+| Queue | 983 records: **448 matched**, 350 todo, 140 escalated, 43 deferred, 2 near |
+| `INCLUDE_ASM` stubs left in `src/` | 535 (280 `boss`, 253 `st`, 2 `main`) |
 | Automation | 186 Python modules, 75 test suites plus 37 modules with their own `--self-test`, 99 connector tools, 119 diagnostics |
 
-The `matched` count is *our* work, across 18 overlays. The stub count is `us` only: it excludes `saturn` and the `_psp` trees, which the queue and the oracle also exclude. Counting every `.c` under `src/` instead gives 3020, most of it a Saturn port by an external team.
+The `matched` count is *our* work, across 19 overlays. The stub count is `us` only: it excludes `saturn` and the `_psp` trees, which the queue and the oracle also exclude. Counting every `.c` under `src/` instead gives 3006, most of it a Saturn port by an external team.
 <!-- STATUS:END -->
 
 <!-- WORK-SCOPE:BEGIN -->
@@ -86,7 +86,7 @@ The `matched` count is *our* work, across 18 overlays. The stub count is `us` on
 
 | overlay | stubs | todo | near | escalated | deferred | matched |
 |---|---:|---:|---:|---:|---:|---:|
-| `BOSS/BO0` | 50 | 0 | 0 | 31 | 19 | 17 |
+| `BOSS/BO0` | 46 | 0 | 0 | 28 | 18 | 21 |
 | `BOSS/BO2` | 15 | 11 | 0 | 4 | 0 | 0 |
 | `BOSS/BO3` | 45 | 45 | 0 | 0 | 0 | 15 |
 | `BOSS/BO5` | 18 | 16 | 0 | 2 | 0 | 5 |
@@ -96,18 +96,18 @@ The `matched` count is *our* work, across 18 overlays. The stub count is `us` on
 | `BOSS/RBO2` | 19 | 17 | 0 | 2 | 0 | 9 |
 | `BOSS/RBO4` | 7 | 6 | 0 | 1 | 0 | 0 |
 | `BOSS/RBO6` | 35 | 33 | 0 | 2 | 0 | 9 |
-| `BOSS/RBO7` | 9 | 8 | 0 | 1 | 0 | 0 |
-| `BOSS/RBO8` | 19 | 17 | 0 | 2 | 0 | 5 |
+| `BOSS/RBO7` | 8 | 7 | 0 | 1 | 0 | 1 |
+| `BOSS/RBO8` | 17 | 16 | 0 | 1 | 0 | 7 |
 | `MAIN` | 2 | 0 | 0 | 2 | 0 | 0 |
-| `ST/RCEN` | 15 | 0 | 0 | 14 | 1 | 8 |
-| `ST/RCHI` | 10 | 0 | 0 | 7 | 3 | 5 |
+| `ST/RCEN` | 14 | 0 | 0 | 14 | 0 | 9 |
+| `ST/RCHI` | 9 | 0 | 0 | 7 | 2 | 6 |
 | `ST/RDAI` | 18 | 0 | 0 | 15 | 3 | 0 |
 | `ST/RLIB` | 20 | 19 | 0 | 1 | 0 | 2 |
 | `ST/RNO0` | 31 | 1 | 2 | 18 | 10 | 188 |
-| `ST/RNO1` | 26 | 26 | 0 | 0 | 0 | 16 |
+| `ST/RNO1` | 23 | 23 | 0 | 0 | 0 | 19 |
 | `ST/RNO2` | 32 | 30 | 0 | 2 | 0 | 16 |
-| `ST/RNO4` | 62 | 61 | 0 | 1 | 0 | 22 |
-| `ST/RNZ1` | 45 | 42 | 0 | 2 | 1 | 20 |
+| `ST/RNO4` | 61 | 60 | 0 | 1 | 0 | 23 |
+| `ST/RNZ1` | 44 | 40 | 0 | 3 | 1 | 21 |
 | `ST/SEL` | 1 | 0 | 0 | 1 | 0 | 0 |
 
 This table is generated from the checksum manifest, required config policy, live `INCLUDE_ASM` inventory, and scheduler-owned queue. Matched-only overlays are omitted because they carry no remaining work.
@@ -132,20 +132,20 @@ history rather than anyone's recollection:
 
 | source | count | share | what it means |
 |---|---|---|---|
-| upstream-harvest | 55 | 13% | upstream had already decompiled it; copied and verified here, **not** produced by this fork |
+| upstream-harvest | 55 | 12% | upstream had already decompiled it; copied and verified here, **not** produced by this fork |
 | shim-segment | 9 | 2% | shared header plus splat segment work |
-| shim-header | 55 | 13% | body copied from a shared header |
-| transplant | 136 | 31% | transplant.py moved a twin body in mechanically |
+| shim-header | 55 | 12% | body copied from a shared header |
+| transplant | 136 | 30% | transplant.py moved a twin body in mechanically |
 | twin-port | 31 | 7% | ported from a sibling overlay or RIC, by hand |
-| permuter | 18 | 4% | decomp-permuter search reached 0 |
+| permuter | 26 | 6% | decomp-permuter search reached 0 |
 | claude-manual | 6 | 1% | written or repaired by hand |
 | model-fleet | 58 | 13% | an OpenCode or llama worker wrote it |
-| unknown | 66 | 15% | evidence insufficient; **not** a guess |
+| unknown | 72 | 16% | evidence insufficient; **not** a guess |
 
 Two things this table is honest about, because a progress number that flatters itself is useless for deciding what to build next:
 
-- **66 of 434 are unattributed, and that is not shrinking on its own.** 3 were overwritten outright by a build receipt (`scheduler.py report` replaces `notes` wholesale); the other 63 carry no method evidence this tool will accept, which is a weaker claim than saying they are empty. Recoverable going forward, not for these records; `match_provenance.py --unknown` lists them.
-- **The categories overlap.** Each match is counted once, by whichever step was DECISIVE. The model fleet is sole author of 58 but contributed to 143; a model draft the permuter drove to zero counts as `permuter`, deliberately, because crediting the model would overstate the fleet.
+- **72 of 448 are unattributed, and that is not shrinking on its own.** 3 were overwritten outright by a build receipt (`scheduler.py report` replaces `notes` wholesale); the other 69 carry no method evidence this tool will accept, which is a weaker claim than saying they are empty. Recoverable going forward, not for these records; `match_provenance.py --unknown` lists them.
+- **The categories overlap.** Each match is counted once, by whichever step was DECISIVE. The model fleet is sole author of 58 but contributed to 149; a model draft the permuter drove to zero counts as `permuter`, deliberately, because crediting the model would overstate the fleet.
 - **`transplant` is separate from `twin-port` on purpose.** Both move a body from a sibling overlay, but a twin-port had its divergences worked out by hand while a transplant was placed mechanically with the substitutions derived from an asm diff. They need different follow-up, so they are not pooled.
 <!-- PROVENANCE:END -->
 
@@ -266,7 +266,7 @@ is regenerated by `automation/readme_status.py --write`.
 <!-- COMPLETION:BEGIN -->
 *Generated by `automation/readme_status.py`. Do not edit by hand; run the tool.*
 
-**Overall: 94.1% of code decompiled** (8181 of 8730 functions), across 62 built binaries.
+**Overall: 94.1% of code decompiled** (8195 of 8730 functions), across 62 built binaries.
 
 **40 binaries are at 100%:** `BIN/RIC`, `BIN/WEAPON0`, `BOSS/BO1`, `BOSS/BO4`, `BOSS/MAR`, `BOSS/RBO0`, `BOSS/RBO3`, `BOSS/RBO5`, `DRA.BIN`, `SERVANT/TT_000`, `SERVANT/TT_001`, `SERVANT/TT_002`, `SERVANT/TT_003`, `SERVANT/TT_004`, `ST/ARE`, `ST/CAT`, `ST/CEN`, `ST/CHI`, `ST/DAI`, `ST/DRE`, `ST/LIB`, `ST/MAD`, `ST/NO0`, `ST/NO1`, `ST/NO2`, `ST/NO3`, `ST/NO4`, `ST/NP3`, `ST/NZ0`, `ST/NZ1`, `ST/RARE`, `ST/RCAT`, `ST/RNO3`, `ST/RNZ0`, `ST/RTOP`, `ST/RWRP`, `ST/SEL`, `ST/ST0`, `ST/TOP`, `ST/WRP`
 
@@ -275,27 +275,27 @@ The 22 that are not:
 | binary | code | functions | |
 |---|---:|---:|---|
 | `SLUS_000.67` | 98.3% | 515/517 | |
-| `BOSS/RBO7` | 97.9% | 91/100 | |
+| `BOSS/RBO7` | 97.9% | 92/100 | |
 | `BOSS/RBO4` | 94.4% | 91/98 | |
-| `ST/RCEN` | 88.4% | 102/117 | |
-| `ST/RCHI` | 88.0% | 97/107 | |
+| `ST/RCEN` | 88.4% | 103/117 | |
+| `ST/RCHI` | 88.0% | 98/107 | |
 | `BOSS/RBO1` | 86.8% | 97/111 | |
 | `ST/RLIB` | 85.7% | 94/114 | |
 | `BOSS/BO7` | 84.7% | 92/105 | |
 | `ST/RNO0` | 83.6% | 160/191 | |
-| `ST/RNO1` | 82.9% | 103/129 | |
+| `ST/RNO1` | 83.1% | 106/129 | |
+| `BOSS/RBO8` | 82.1% | 113/130 | |
 | `BOSS/BO3` | 81.6% | 100/145 | |
-| `BOSS/RBO8` | 81.0% | 111/130 | |
 | `BOSS/RBO2` | 79.0% | 103/122 | |
 | `BOSS/BO5` | 77.5% | 109/127 | |
 | `ST/RNO2` | 75.9% | 106/138 | |
 | `BOSS/RBO6` | 75.6% | 91/126 | |
 | `BOSS/BO2` | 74.9% | 102/117 | |
+| `BOSS/BO0` | 74.4% | 140/186 | |
 | `BOSS/BO6` | 74.4% | 194/237 | |
-| `BOSS/BO0` | 73.6% | 136/186 | |
 | `ST/RDAI` | 72.6% | 112/130 | |
-| `ST/RNZ1` | 70.3% | 116/161 | |
-| `ST/RNO4` | 64.2% | 95/157 | |
+| `ST/RNZ1` | 70.4% | 117/161 | |
+| `ST/RNO4` | 64.6% | 96/157 | |
 <!-- COMPLETION:END -->
 
 Two caveats, because a percentage invites over-reading:

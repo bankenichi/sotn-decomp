@@ -19,9 +19,9 @@ mistake impossible twice.
 | live authority | current value |
 |---|---|
 | Build oracle | **113/113** from the artifacts on disk |
-| Decompiled | **94.1%**, 8181/8730 functions; 549 US `INCLUDE_ASM` stubs remain |
-| Queue | 983 records: 434 matched, 358 todo, 143 escalated, 46 deferred, 2 near |
-| Provenance | upstream-harvest 55, shim-segment 9, shim-header 55, transplant 136, twin-port 31, permuter 18, claude-manual 6, model-fleet 58, unknown 66 |
+| Decompiled | **94.1%**, 8195/8730 functions; 535 US `INCLUDE_ASM` stubs remain |
+| Queue | 983 records: 448 matched, 350 todo, 140 escalated, 43 deferred, 2 near |
+| Provenance | upstream-harvest 55, shim-segment 9, shim-header 55, transplant 136, twin-port 31, permuter 26, claude-manual 6, model-fleet 58, unknown 72 |
 | Automation | 186 modules, 75 suites plus 37 module self-tests, 99 tools, 119 diagnostics |
 
 This block is regenerated from the same queue, checksum manifest, linker maps, provenance classifier, and connector inventory as `README.md`.
@@ -36,7 +36,7 @@ This block is regenerated from the same queue, checksum manifest, linker maps, p
 
 | overlay | stubs | todo | near | escalated | deferred | matched |
 |---|---:|---:|---:|---:|---:|---:|
-| `BOSS/BO0` | 50 | 0 | 0 | 31 | 19 | 17 |
+| `BOSS/BO0` | 46 | 0 | 0 | 28 | 18 | 21 |
 | `BOSS/BO2` | 15 | 11 | 0 | 4 | 0 | 0 |
 | `BOSS/BO3` | 45 | 45 | 0 | 0 | 0 | 15 |
 | `BOSS/BO5` | 18 | 16 | 0 | 2 | 0 | 5 |
@@ -46,18 +46,18 @@ This block is regenerated from the same queue, checksum manifest, linker maps, p
 | `BOSS/RBO2` | 19 | 17 | 0 | 2 | 0 | 9 |
 | `BOSS/RBO4` | 7 | 6 | 0 | 1 | 0 | 0 |
 | `BOSS/RBO6` | 35 | 33 | 0 | 2 | 0 | 9 |
-| `BOSS/RBO7` | 9 | 8 | 0 | 1 | 0 | 0 |
-| `BOSS/RBO8` | 19 | 17 | 0 | 2 | 0 | 5 |
+| `BOSS/RBO7` | 8 | 7 | 0 | 1 | 0 | 1 |
+| `BOSS/RBO8` | 17 | 16 | 0 | 1 | 0 | 7 |
 | `MAIN` | 2 | 0 | 0 | 2 | 0 | 0 |
-| `ST/RCEN` | 15 | 0 | 0 | 14 | 1 | 8 |
-| `ST/RCHI` | 10 | 0 | 0 | 7 | 3 | 5 |
+| `ST/RCEN` | 14 | 0 | 0 | 14 | 0 | 9 |
+| `ST/RCHI` | 9 | 0 | 0 | 7 | 2 | 6 |
 | `ST/RDAI` | 18 | 0 | 0 | 15 | 3 | 0 |
 | `ST/RLIB` | 20 | 19 | 0 | 1 | 0 | 2 |
 | `ST/RNO0` | 31 | 1 | 2 | 18 | 10 | 188 |
-| `ST/RNO1` | 26 | 26 | 0 | 0 | 0 | 16 |
+| `ST/RNO1` | 23 | 23 | 0 | 0 | 0 | 19 |
 | `ST/RNO2` | 32 | 30 | 0 | 2 | 0 | 16 |
-| `ST/RNO4` | 62 | 61 | 0 | 1 | 0 | 22 |
-| `ST/RNZ1` | 45 | 42 | 0 | 2 | 1 | 20 |
+| `ST/RNO4` | 61 | 60 | 0 | 1 | 0 | 23 |
+| `ST/RNZ1` | 44 | 40 | 0 | 3 | 1 | 21 |
 | `ST/SEL` | 1 | 0 | 0 | 1 | 0 | 0 |
 
 This table is generated from the checksum manifest, required config policy, live `INCLUDE_ASM` inventory, and scheduler-owned queue. Matched-only overlays are omitted because they carry no remaining work.
