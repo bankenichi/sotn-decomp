@@ -19,7 +19,7 @@ mistake impossible twice.
 | live authority | current value |
 |---|---|
 | Build oracle | **113/113** from the artifacts on disk |
-| Decompiled | **94.1%**, 8195/8730 functions; 535 US `INCLUDE_ASM` stubs remain |
+| Decompiled | **94.9%**, 8222/8691 functions; 535 US `INCLUDE_ASM` stubs remain |
 | Queue | 983 records: 448 matched, 350 todo, 140 escalated, 43 deferred, 2 near |
 | Provenance | upstream-harvest 69, shim-segment 9, shim-header 55, transplant 136, twin-port 31, permuter 18, claude-manual 6, model-fleet 58, unknown 66 |
 | Automation | 186 modules, 75 suites plus 37 module self-tests, 99 tools, 119 diagnostics |
@@ -1423,3 +1423,4 @@ Status: **done**, **open**, **partial**, **void** (turned out unnecessary),
 | 338 | **done** | Live validation of streaming Responses: single Spark worker on a small record did 4/4 full compile-and-link builds through responses-stream lines, routing the record todo to near with permuter seeds preserved. No timeouts, no empties. Supervisor sweep running the near pool in legacy mode. |
 | 339 | **done** | Mechanical exhaustion pass: supervisor sweep retired EntityShaft at 10, 801C4B2C at 405, CrashBibleBeam at 60, 801BAB18 at 2495 and 801BCB9C at 15, each with re-derivation evidence on its record. The lone isolated zero (801CFD70) was landed-attempted and correctly refused at the real build with verified revert. No match, no damage. First Spark todo-to-near conversion earlier the same day. |
 | 340 | **done** | Finished the interrupted score-zero landing run_automation-180623-87758: 14 upstream-harvest v4 bodies recorded with proof and landed across 10 source files (BO0 x4, RBO7, RBO8 x2, RCEN, RCHI, RNZ1, RNO4, RNO1 x3) at 113/113; 4 rejected with evidence (three DrawLaserRing share one systematic 8-byte overshoot; 801B9028 diverges from the shared header). Provenance correction re-reported all 14 with METHOD=UPSTREAM-HARVEST after they first classified as permuter/unknown; transplant.py now propagates the candidate METHOD into every landing note with self-test pins. |
+| 341 | **done** | Ignore `.cursor/` in `.gitignore` as local IDE/MCP workspace state, same class as `.zcode/`, so it stops showing as untracked dirt. |

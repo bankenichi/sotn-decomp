@@ -76,3 +76,7 @@ ORCHESTRATOR.local.md
 # the repo root). Local agent scratch, never evidence; the push audit rejects
 # exactly this class of path.
 .zcode/
+
+# Cursor client per-workspace state (MCP config the IDE writes into the
+# repo root). Same class as .zcode/: local agent scratch, never evidence.
+.cursor/
