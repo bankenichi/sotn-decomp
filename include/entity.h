@@ -1894,9 +1894,11 @@ typedef struct {
 
 // ====== CHI ENTITIES ======
 // CHI Room3, Top, Demon Switch Wall
+// Retail stores the prim pointer at 0x7C (E_DemonSwitchWall PREP_TO_OPEN)
+// and counts the open shake with a u32 at 0x80 (unsigned mod-8 test).
 typedef struct {
-    /* 0x7C */ char pad_7C[0x4];
-    /* 0x80 */ s32 unk80;
+    /* 0x7C */ struct Primitive* prim;
+    /* 0x80 */ u32 unk80;
 } ET_DemonSwitchWall;
 
 // CHI Unused Debug Cerberus Gate
