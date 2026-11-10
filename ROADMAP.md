@@ -19,10 +19,10 @@ mistake impossible twice.
 | live authority | current value |
 |---|---|
 | Build oracle | **113/113** from the artifacts on disk |
-| Decompiled | **94.9%**, 8222/8691 functions; 535 US `INCLUDE_ASM` stubs remain |
-| Queue | 983 records: 448 matched, 350 todo, 140 escalated, 43 deferred, 2 near |
-| Provenance | upstream-harvest 69, shim-segment 9, shim-header 55, transplant 136, twin-port 31, permuter 18, claude-manual 6, model-fleet 58, unknown 66 |
-| Automation | 186 modules, 75 suites plus 37 module self-tests, 99 tools, 119 diagnostics |
+| Decompiled | **94.1%**, 8200/8730 functions; 535 US `INCLUDE_ASM` stubs remain |
+| Queue | 983 records: 453 matched, 345 todo, 140 escalated, 43 deferred, 2 near |
+| Provenance | upstream-harvest 69, shim-segment 9, shim-header 55, transplant 136, twin-port 36, permuter 18, claude-manual 6, model-fleet 58, unknown 66 |
+| Automation | 187 modules, 75 suites plus 37 module self-tests, 99 tools, 119 diagnostics |
 
 This block is regenerated from the same queue, checksum manifest, linker maps, provenance classifier, and connector inventory as `README.md`.
 <!-- LIVE-STATUS:END -->
@@ -41,7 +41,7 @@ This block is regenerated from the same queue, checksum manifest, linker maps, p
 | `BOSS/BO3` | 45 | 45 | 0 | 0 | 0 | 15 |
 | `BOSS/BO5` | 18 | 16 | 0 | 2 | 0 | 5 |
 | `BOSS/BO6` | 43 | 0 | 0 | 34 | 9 | 80 |
-| `BOSS/BO7` | 13 | 12 | 0 | 1 | 0 | 8 |
+| `BOSS/BO7` | 13 | 7 | 0 | 1 | 0 | 13 |
 | `BOSS/RBO1` | 14 | 14 | 0 | 0 | 0 | 6 |
 | `BOSS/RBO2` | 19 | 17 | 0 | 2 | 0 | 9 |
 | `BOSS/RBO4` | 7 | 6 | 0 | 1 | 0 | 0 |
@@ -1425,3 +1425,5 @@ Status: **done**, **open**, **partial**, **void** (turned out unnecessary),
 | 340 | **done** | Finished the interrupted score-zero landing run_automation-180623-87758: 14 upstream-harvest v4 bodies recorded with proof and landed across 10 source files (BO0 x4, RBO7, RBO8 x2, RCEN, RCHI, RNZ1, RNO4, RNO1 x3) at 113/113; 4 rejected with evidence (three DrawLaserRing share one systematic 8-byte overshoot; 801B9028 diverges from the shared header). Provenance correction re-reported all 14 with METHOD=UPSTREAM-HARVEST after they first classified as permuter/unknown; transplant.py now propagates the candidate METHOD into every landing note with self-test pins. |
 | 341 | **done** | Ignore `.cursor/` in `.gitignore` as local IDE/MCP workspace state, same class as `.zcode/`, so it stops showing as untracked dirt. |
 | 342 | **done** | Recorded the 2026-09-17 Grok harvest-session failure as `docs/audit/2026-09-17-worthless-model.md` and AGENTS.md constraint 27: 0 of 212 ordered landings, dest reconstruction against copy-paste, restore aimed at `origin/master` while on `automation/instrumented-search`, about 70% of monthly quota burned. |
+| 343 | **done** | REA-readiness record and US stub recovery plan produced from a read-only session (docs/REA-STUB-RECOVERY-PLAN.md): 538 raw stubs join to 166 harvest, 40 name-twin, 42 shape/token-twin, 46 donor-named and 244 raw orphans; live generator's 535 excludes SERVANT/FNAME (HD-only). REA deep providers observed unavailable for MIPS PSX on this Windows host (typed target_unavailable; Windows Ghidra P0 admission set excludes MIPS, Kuna excludes MIPS everywhere); enablement instead executed 2026-11-02 as the WSL2 Ghidra headless pilot recorded in section 6 of the plan, 231/231 stub targets decompiled across six overlays. Wave 0 twin/shim regeneration is in current scope; waves 1 to 4 remain owner-resumed matching-lane work; the first wave 0-style landings are recorded under task 344. |
+| 344 | **done** | Landed the BO7 pilot from the recovery plan: five INCLUDE_ASM stubs replaced with byte-identical C in place and in retail order, EntityBigRedFireball (donor src/boss/bo3/e_misc.c), EntityDemonSwitch and EntityDemonSwitchWall (src/st/chi/en_demon_switch_wall.c), EntityBreakableWallDebris and EntityBreakableWall (US donor src/st/chi/en_breakable_wall.c, not chi_psp). Donor statement order copied verbatim in schedule-sensitive blocks; four init and idle order fixes applied with per-symbol asm_diff as the arbiter. Proof: asm_diff(overlay=bo7) score CURRENT (0) on all five, verify_build(us) 113/113 OK on incremental job make_build-091210-32, BO7.BIN sha1 dba86dc3b2709e37de651ad929ae29166a86f045 matching config/splat.us.bobo7.yaml. Queue records reported matched with proof and keep_note. Remaining in BO7: 8 INCLUDE_ASM stubs (EntityCerberusGateDebug, EntityBreakable and EntityBreakableDebris in unk_13258.c, five func_us orphans 80194D3C, 801959E0, 80195AF0, 80195C50, 801963D8 in unk_14CE0.c). |

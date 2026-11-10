@@ -13,10 +13,10 @@ For the mechanisms that land matches, read `automation/README.md`.
 | live authority | current value |
 |---|---|
 | Build oracle | **113/113** from the artifacts on disk |
-| Decompiled | **94.9%**, 8222/8691 functions; 535 US `INCLUDE_ASM` stubs remain |
-| Queue | 983 records: 448 matched, 350 todo, 140 escalated, 43 deferred, 2 near |
-| Provenance | upstream-harvest 69, shim-segment 9, shim-header 55, transplant 136, twin-port 31, permuter 18, claude-manual 6, model-fleet 58, unknown 66 |
-| Automation | 186 modules, 75 suites plus 37 module self-tests, 99 tools, 119 diagnostics |
+| Decompiled | **94.1%**, 8200/8730 functions; 535 US `INCLUDE_ASM` stubs remain |
+| Queue | 983 records: 453 matched, 345 todo, 140 escalated, 43 deferred, 2 near |
+| Provenance | upstream-harvest 69, shim-segment 9, shim-header 55, transplant 136, twin-port 36, permuter 18, claude-manual 6, model-fleet 58, unknown 66 |
+| Automation | 187 modules, 75 suites plus 37 module self-tests, 99 tools, 119 diagnostics |
 
 This block is regenerated from the same queue, checksum manifest, linker maps, provenance classifier, and connector inventory as `README.md`.
 <!-- LIVE-STATUS:END -->
@@ -877,6 +877,48 @@ assembly, live stubs, path collisions, and whole-file assembly ownership.
 | `search_repo` | search the tree. **Pass `regex=True` for alternation**; without it the pattern is literal and an alternation silently matches nothing |
 
 All four are confined to the repository and refuse paths inside `.git`.
+
+Two sharper edges observed on 2026-11-04, from the BO7 pilot session:
+
+* The boundary is repo-visible paths only, not repo-machine paths. An
+  absolute harness path, such as one into the harness `tool-output`
+  directory, is outside the tree entirely; `read_file` on such a path once
+  killed the connector MCP process outright instead of returning a typed
+  error. Never hand connector file tools a path outside the repository, and
+  keep harness-side scratch viewable only harness-side.
+* `write_file` is whole-file overwrite only. It cannot express a surgical
+  insertion inside a large file, and section 7a documents the workaround in
+  use while that stays true.
+
+## 7a. Surgical writes through `coding-assistant.run_python`
+
+Recorded 2026-11-04, after this route carried the BO7 pilot's in-place source
+edits during a connector outage. `run_python` runs on the Windows host with
+normal filesystem access, so it reaches files the scoped connector tools
+cannot serve and can express edits `write_file` cannot (that one overwrites
+whole files). Use it as a gated workaround, not a replacement surface:
+
+1. Back up the original to approved scratch before the first write.
+2. Guard every replacement with a count of exactly one on the search string,
+   and refuse an ambiguous match instead of choosing one.
+3. Respect the file's line endings: read with `newline=''`, try the LF form
+   of the search string first, fall back to the CRLF form, and write with
+   `newline=''` in both cases so the file's own endings are preserved.
+4. Verify connector-side after every write: cross-check the edit through
+   `read_file` or `git_diff` so the WSL view confirms what the Windows side
+   wrote, and only then run the build.
+
+Two Python quirks in this harness cost real retries before they were written
+down:
+
+* Helper functions declared with `def` vanish between split execution scopes
+  on the harness side. Keep scripts flat, top-level statements only, or wrap
+  the body in `exec(code, globals())` so definitions land in global scope.
+* The script text travels inside the calling agent's JS template literal, so
+  every control character a Python string literal must receive, the
+  backslash-and-letter pairs among them, has to be doubled per layer, or the
+  literal terminates the script before it runs. Assembling content by
+  concatenating `chr(92)` pieces sidesteps the whole class.
 
 ## 8. Packaging
 
