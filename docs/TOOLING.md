@@ -336,7 +336,7 @@ All of it goes through the connector. Push to `origin` only.
 
 | tool | when to call it |
 |---|---|
-| `git_state` | first thing in a session: branch, HEAD, upstream, dirty summary in one call |
+| `git_state` | first thing in a session, and again in the same turn as any `git_reset` or `git_checkout_path`: branch, HEAD, upstream, dirty summary. If you cannot quote `branch.head` and `branch.upstream` from that result, you do not know the branch. 2026-09-17: Grok restored toward `origin/master` while HEAD was `automation/instrumented-search`. See `docs/audit/2026-09-17-worthless-model.md` |
 | `git_status` | the short listing |
 | `git_add` | staging. **One explicit path per call.** This is the default |
 | `git_add_all` | effectively never; it sweeps harness scratch into your commit |
@@ -366,7 +366,7 @@ All of it goes through the connector. Push to `origin` only.
 | `git_rm_cached` | untrack without deleting, for scratch that got committed |
 | `git_restore` | discard changes. Refuses on orphaned `src/` work |
 | `git_restore_from_head` | restore a path from HEAD |
-| `git_reset` | unstage, or move the branch |
+| `git_reset` | unstage, or move the branch. Hard reset to `origin/master` is wrong unless `git_state` shows that is this branch's upstream |
 | `git_clean` | remove untracked files. Read the dry run first |
 | `git_stash_push` | park work |
 | `git_stash_pop` | unpark it |
@@ -379,7 +379,12 @@ All of it goes through the connector. Push to `origin` only.
 **On `git_checkout_path` and adoption:** a clean destination is recoverable but
 not safe. Adopting `src/st/e_armor_lord.h` from upstream broke ARE's link on
 contact, because the fork already carried an older copy that ARE and NO1 compile.
-Check every consumer of a header before adopting it.
+Check every consumer of a header before adopting it. Do not adopt entire dest
+overlay directories, dest `include/`, or splat configs from `upstream/master`
+onto a dest-ahead branch. Same-path dest files on Xeeynamo are not drop-in here.
+Copy the named files from the named ref. 2026-09-17 wholesale dest-dir checkout
+from `upstream/master` broke the tree on C99 and dest include names; see
+`docs/audit/2026-09-17-worthless-model.md`.
 
 ## 5. Long actions, the fleet, and jobs
 

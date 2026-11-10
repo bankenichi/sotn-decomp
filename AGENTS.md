@@ -147,6 +147,7 @@ qualification gate is implemented and explicitly accepted.
 | which tool to call, and when not to | `docs/TOOLING.md` |
 | how the connectors work and how to install them anywhere | `docs/CONNECTORS.md` |
 | what has already gone wrong, and why | `MATCHING-LESSONS.md` |
+| why Grok's 2026-09-17 harvest session was worthless | `docs/audit/2026-09-17-worthless-model.md` |
 | how the harness is built | `docs/HARNESS-ARCHITECTURE.md` |
 | how to drive the harness day to day | `docs/harness-control.md`, `automation/README.md` |
 | how to dispatch work | `ORCHESTRATOR.md` |
@@ -282,3 +283,4 @@ Then update `ROADMAP.md`, commit with explicit paths, run the complete pre-push
 gate in constraint 13, and push to `origin` only through the background job.
 
 26. **A negative measurement is a decision point, not a detour.** When measured evidence contradicts an explicit owner order, stop and report the choice before doing adjacent work. Routing around the result with unrequested scope burns the session and hides the decision.
+27. **Name the current branch before any git mutation, and copy files instead of reconstructing dest C.** On 2026-09-17 Grok burned most of a monthly quota, landed 0 of 212 ordered harvest functions, reconstructed dest overlays against an explicit copy-and-paste order, then aimed restore at `origin/master` while HEAD was `automation/instrumented-search`. `git_state` is already the first call in `docs/TOOLING.md`; if that result is not in the same turn as `git_reset` or `git_checkout_path`, you do not know the branch. Copy means whole files from the named ref on the branch you are on, not invented TUs and not wholesale dest dirs from `upstream/master`. After "stop scoring" / "no harness", do not start a lander. Full record: `docs/audit/2026-09-17-worthless-model.md`.

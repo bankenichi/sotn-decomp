@@ -379,6 +379,7 @@ second hand-maintained overlay list.
 | `docs/NAMING.md`, `docs/STYLE.md` | conventions |
 | `ROADMAP.md` | direction, plus the ledger of every task ever opened |
 | `docs/loop-call-outcome-2026-09-16.md` | loop and per-iteration-call outcome: landed slices, tallies, broken invariants, ordered next steps |
+| `docs/audit/2026-09-17-worthless-model.md` | why the 2026-09-17 Grok harvest session was worthless: 0 of 212 landed, wrong remote, quota burned |
 
 A standing rule across all of them: **when a claim turns out to be wrong it is
 retracted in place, with the measurement that disproved it.** Several documents
