@@ -120,7 +120,213 @@ void func_us_80195AF0(Entity* self) {
 // bits drive the rig: bit 1 arms it once the player is close, bit 2 fires
 // the defeat TimeAttack record, bit 4 switches the fade over to
 // PrimDecreaseBrightness once the pillar sequence has finished.
-INCLUDE_ASM("boss/bo7/nonmatchings/unk_14CE0", func_us_80195C50);
+void func_us_80195C50(Entity* self) {
+    Entity* entity;
+    Entity* first;
+    s32 primIndex;
+    s32 i;
+    s16 tpage;
+    u8 uVal;
+    s32 pVal;
+    s32 vVal;
+    s16 xAcc;
+    s32 w1;
+    s32 w2;
+    s32 posX;
+    s32 posY;
+    Primitive* prim;
+    DR_ENV* drEnv;
+    RECT clip;
+    DRAWENV drawEnv;
+
+    switch (self->step) {
+    case 0:
+        InitializeEntity(g_EInitInteractable);
+        self->flags |= FLAG_UNK_10000;
+        primIndex = g_api.AllocPrimitives(PRIM_GT4, 7);
+        if (primIndex == -1) {
+            self->step = 0;
+            return;
+        }
+        self->flags |= FLAG_HAS_PRIMS;
+        self->primIndex = primIndex;
+        prim = &g_PrimBuf[primIndex];
+        drEnv = g_api.func_800EDB08((POLY_GT4*)prim);
+        if (!drEnv) {
+            g_api.FreePrimitives(primIndex);
+            self->step = 0;
+            self->flags &= ~FLAG_HAS_PRIMS;
+            return;
+        } else {
+            prim->type = PRIM_ENV;
+            prim->drawMode = DRAW_HIDE;
+            prim = prim->next;
+            drEnv = g_api.func_800EDB08((POLY_GT4*)prim);
+            if (prim == NULL) {
+                g_api.FreePrimitives(primIndex);
+                self->step = 0;
+                self->flags &= ~FLAG_HAS_PRIMS;
+                return;
+            }
+        }
+        i = 0;
+        tpage = 0x110;
+        uVal = 0x3F;
+        pVal = 0x10;
+        vVal = 0xF0;
+        xAcc = 0x40;
+        prim->type = PRIM_ENV;
+        prim->drawMode = DRAW_HIDE;
+        prim = prim->next;
+        self->ext.et_801B0930.prim7C = prim;
+        prim->type = PRIM_G4;
+        prim->r0 = prim->g0 = prim->b0 = 0;
+        w1 = LOW(prim->r0);
+        prim->x1 = prim->x3 = 0x42;
+        prim->y2 = prim->y3 = 0xB0;
+        prim->r2 = 0xFF;
+        prim->g2 = prim->b2 = 0;
+        w2 = LOW(prim->r2);
+        prim->x0 = prim->x2 = 0;
+        prim->y0 = prim->y1 = 0;
+        prim->priority = 0xF;
+        prim->drawMode = DRAW_DEFAULT;
+        LOW(prim->r1) = w1;
+        LOW(prim->r3) = w2;
+        prim = prim->next;
+        for (; i < 4; i++) {
+            prim->tpage = tpage;
+            if (i & 1) {
+                prim->u0 = prim->u2 = uVal;
+                prim->u1 = prim->u3 = 0;
+            } else {
+                prim->u0 = prim->u2 = 0;
+                prim->u1 = prim->u3 = uVal;
+            }
+            prim->x0 = prim->x2 = i * 0x40;
+            prim->priority = 0x13;
+            prim->v0 = prim->v1 = pVal;
+            prim->v2 = prim->v3 = vVal;
+            prim->x1 = prim->x3 = xAcc;
+            prim->y0 = prim->y1 = pVal;
+            prim->y2 = prim->y3 = vVal;
+            prim->drawMode = DRAW_DEFAULT;
+            prim = prim->next;
+            xAcc += 0x40;
+        }
+        g_api.PlaySfx(SFX_BOSS_LARGE_FLAMES);
+        /* fallthrough */
+    case 1:
+        posX = PLAYER.posX.i.hi + g_Tilemap.scrollX.i.hi;
+        if ((u32)(posX - 0x41) < 0x17F) {
+            D_us_80180848 |= 1;
+            self->step++;
+        }
+        if (g_Timer % 95 == 0) {
+            g_api.PlaySfx(SFX_BOSS_LARGE_FLAMES);
+        }
+        break;
+
+    case 2:
+        if (g_Timer % 95 == 0) {
+            g_api.PlaySfx(SFX_BOSS_LARGE_FLAMES);
+        }
+        posX = PLAYER.posX.i.hi + g_Tilemap.scrollX.i.hi;
+        if ((u32)(posX - 0x81) < 0xFF) {
+            g_api.TimeAttackController(TIMEATTACK_EVENT_CERBERUS_DEFEAT, TIMEATTACK_SET_VISITED);
+            stopMusicFlag = 1;
+            currentMusicId = 0x31D;
+            D_us_80180848 |= 2;
+            self->step++;
+        }
+        break;
+
+    case 3:
+        if (!g_api.func_80131F68()) {
+            stopMusicFlag = 0;
+            g_api.PlaySfx(currentMusicId);
+            self->step++;
+        }
+        /* fallthrough */
+    case 4:
+        if (D_us_80180848 & 4) {
+            g_api.TimeAttackController(TIMEATTACK_EVENT_CERBERUS_DEFEAT, TIMEATTACK_SET_RECORD);
+            g_api.PlaySfx(0x90);
+            currentMusicId = 0x319;
+            self->step++;
+        }
+        break;
+
+    case 5:
+        if (D_us_80180848 & 8) {
+            self->step++;
+        }
+        break;
+
+    case 6:
+        posX = 0x100 - g_Tilemap.scrollX.i.hi;
+        posY = 0x80 - g_Tilemap.scrollY.i.hi;
+        first = &g_Entities[160];
+        entity = AllocEntity(first, first + 32);
+        if (entity != NULL) {
+            CreateEntityFromEntity(E_LIFE_UPSPAWN, self, entity);
+            entity->posX.i.hi = posX;
+            entity->posY.i.hi = posY;
+            entity->params = 5;
+            stopMusicFlag = 1;
+            currentMusicId = 0x319;
+            D_us_80180848 |= 0x10;
+            self->step++;
+        }
+        /* fallthrough */
+    case 7:
+        if (!g_api.func_80131F68()) {
+            stopMusicFlag = 0;
+            g_api.PlaySfx(currentMusicId);
+            self->step++;
+        }
+        break;
+    }
+
+    prim = &g_PrimBuf[self->primIndex];
+    drawEnv = g_CurrentBuffer->draw;
+    drawEnv.isbg = 1;
+    clip.w = 0x7F;
+    drawEnv.r0 = 0;
+    drawEnv.g0 = 0;
+    drawEnv.b0 = 0;
+    clip.x = 0;
+    clip.y = 0x100;
+    clip.h = 0xFF;
+    drawEnv.clip = clip;
+    drawEnv.ofs[0] = 0;
+    drawEnv.ofs[1] = 0x100;
+    SetDrawEnv((DR_ENV*)LOW(prim->r1), &drawEnv);
+    prim->priority = 0xE;
+    prim->drawMode = DRAW_DEFAULT;
+    prim = prim->next;
+    prim->priority = 0x11;
+    prim->drawMode = DRAW_UNK_800;
+
+    prim = self->ext.et_801B0930.prim7C;
+    self->rotate += 0x100;
+    if (D_us_80180848 & 4) {
+        PrimDecreaseBrightness(prim, 4);
+    } else {
+        prim->g2 = abs((rcos(self->rotate) << 7) >> 12);
+        LOW(prim->r3) = LOW(prim->r2);
+    }
+    if ((D_us_80180848 & 4) == 0 && (g_Timer & 3) == 0) {
+        entity = AllocEntity(&g_Entities[224], &g_Entities[256]);
+        if (entity != NULL) {
+            CreateEntityFromCurrentEntity(E_UNK_20, entity);
+            entity->posX.i.hi = (Random() & 0x3F) + 0xA;
+            entity->posY.i.hi = 0xB0;
+            entity->zPriority = 0x10;
+            entity->params = 0;
+        }
+    }
+}
 
 typedef struct {
     u16 animSet;
