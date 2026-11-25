@@ -4222,6 +4222,21 @@ typedef struct {
     /* 0x90 */ s16 timer1;
 } ET_801B0930;
 
+// BO7's Cerberus main update, func_us_80194D3C. The timer paces the lunge
+// and the fire burst; the three bytes at 0x84 are the player-distance
+// flag, the rotating spawn parameter and the fire-burst spawn counter.
+// This ends at 0x88 and Ext already runs to 0xB7, so adding the member
+// cannot move anything.
+typedef struct {
+    /* 0x7C */ u32 : 32;
+    /* 0x80 */ s16 timer;
+    /* 0x82 */ u16 : 16;
+    /* 0x84 */ u8 distanceFlag;
+    /* 0x85 */ u8 spawnParams;
+    /* 0x86 */ u8 spawnTimer;
+    /* 0x87 */ u8 : 8;
+} ET_80194D3C;
+
 typedef struct {
     /* 0x7C */ struct Primitive* prim;
     /* 0x80 */ s32 velocityX;
@@ -4662,6 +4677,7 @@ typedef union { // offset=0x7C
     ET_Dodo dodo;
     ET_B0_Unk b0Unk;
     ET_801B0930 et_801B0930;
+    ET_80194D3C et_80194D3C;
     ET_801A3FD4 et_801A3FD4;
     ET_801C03E8 et_801C03E8;
     ET_Shaft shaft;

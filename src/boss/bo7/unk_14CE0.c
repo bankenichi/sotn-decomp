@@ -26,7 +26,463 @@ bool func_us_80194338_from_rbo0(s16* offsets) {
 
 
 
-INCLUDE_ASM("boss/bo7/nonmatchings/unk_14CE0", func_us_80194D3C);
+extern EInit g_EInitCerberos;
+extern Entity g_Entities_128[];
+extern Entity g_Entities_160[];
+extern Entity g_Entities_192[];
+extern s16 D_us_801806D8[];
+// The three fire-arc spawn offsets form one table of (x, y) pairs. The retail
+// data file splits the table at the first y into two labels (D_us_801806F0 at
+// the first x, D_us_801806F2 two bytes later), but the retail object's
+// references resolve to the same addresses either way: the pair form encodes
+// the y access as %lo(D_us_801806F0)+2, which the linker resolves to exactly
+// %lo(D_us_801806F2). Reading pairs is also the form that reproduces the
+// retail instruction sequence, because splitting the table into two arrays
+// makes gcc hoist a pointer walk and spill an extra callee-saved register.
+typedef struct {
+    u16 x;
+    u16 y;
+} Unk801806F0;
+
+extern Unk801806F0 D_us_801806F0[];
+extern u8 D_us_801806FC[];
+extern u8 D_us_80180708[];
+extern u8 D_us_8018071C[];
+extern u8 D_us_8018072C[];
+extern u8 D_us_8018073C[];
+extern u8 D_us_80180748[];
+extern u8 D_us_80180754[];
+extern u8 D_us_80180760[];
+extern u8 D_us_8018076C[];
+extern u8 D_us_80180778[];
+extern u8 D_us_80180788[];
+extern u8 D_us_801807E4[];
+extern u8 D_us_8018081C[];
+extern u16 g_pads_1_pressed;
+extern u32 g_Timer;
+extern s32 D_us_80180848;
+
+void CreateEntityFromEntity(u16 entityId, Entity* ent1, Entity* ent2);
+void PlaySfxPositional(s32 arg0);
+
+// Cerberus main update. Step 0/2 wake up and wait for the fight trigger,
+// step 3 paces and picks an attack from the player's distance, step 4/9
+// lunge, step 5 lays a fire wall, step 6 breathes fire, step 8 is the
+// death animation, step 0xA bites, step 0xB charges, and step 0xFF is a
+// frame-stepping debugger. ext.et_80194D3C.timer paces the timed steps,
+// distanceFlag remembers whether the player was close, spawnParams
+// rotates the fire-breath emitters and spawnTimer counts the burst.
+void func_us_80194D3C(Entity* self) {
+    Entity* entity;
+    s32 posX;
+    s32 side;
+    s32 i;
+
+    // Getting hit by anything with this flag forces the death sequence,
+    // except while already in it.
+    if ((self->flags & 0x100) && self->step != 8) {
+        SetStep(8);
+    }
+
+    switch (self->step) {
+    case 0:
+        InitializeEntity(g_EInitCerberos);
+        self->hitboxState = 0;
+        SetStep(2);
+        /* fallthrough */
+    case 2:
+        AnimateEntity(D_us_801806FC, self);
+        // D_us_80180848 bit 1 is set by the pillar-of-fire entity once the
+        // player is close enough to start the fight.
+        if (D_us_80180848 & 2) {
+            self->hitboxState = 3;
+            SetStep(3);
+        }
+        break;
+
+    case 3:
+        if (!self->step_s) {
+            self->ext.et_80194D3C.timer = 0x40;
+            self->step_s++;
+        }
+        if (!AnimateEntity(D_us_80180708, self)) {
+            PlaySfxPositional(SFX_WARG_GROWL);
+        }
+        // Track whether the player is in bite range. The two thresholds
+        // differ so the flag does not chatter at the boundary.
+        if (GetDistanceToPlayerX() < 0x68) {
+            self->ext.et_80194D3C.distanceFlag = 1;
+        }
+        if (GetDistanceToPlayerX() >= 0x81) {
+            self->ext.et_80194D3C.distanceFlag = 0;
+        }
+        if (GetDistanceToPlayerX() >= 0x31) {
+            self->facingLeft = (GetSideToPlayer() & 1) ^ 1;
+        }
+        MoveEntity();
+        // Drift toward the player while pacing.
+        if (self->facingLeft == self->ext.et_80194D3C.distanceFlag) {
+            self->velocityX = -0x8000;
+        } else {
+            self->velocityX = 0x8000;
+        }
+        if (--self->ext.et_80194D3C.timer == 0) {
+            // Reuse the spawn variable for the player address instead of
+            // declaring a local. Retail holds &g_Entities in $s0 from here to
+            // the end of the function and reuses that same register for the
+            // AllocEntity spawns in steps 5, 6 and 8, which only happens if
+            // both are one variable. A separate local becomes its own allocno
+            // with too few references to outrank posX, so posX takes $s0 and
+            // the player address is pushed to $s3.
+            entity = &PLAYER;
+
+            // Freeze the pacing position before the arena-relative checks.
+            // SetStep clears the pose fields, so read the position first.
+            posX = self->posX.i.hi + g_Tilemap.scrollX.i.hi;
+            SetStep(0xA);
+            if (self->facingLeft) {
+                posX = 0x200 - posX;
+            }
+            side = (GetSideToPlayer() & 1) ^ 1;
+            if (posX < 0xD0 && self->facingLeft == side) {
+                SetStep(9);
+            }
+            if (abs(posX) >= 0x51 && self->facingLeft != side) {
+                SetStep(9);
+            }
+            if (posX >= 0x141 && self->facingLeft == side) {
+                SetStep(6);
+            }
+            if (posX >= 0x181 && self->facingLeft == side) {
+                SetStep(4);
+            }
+            // A bat or a grounded player below the arena centre is a free
+            // hit, so go straight to the fire wall.
+            if ((g_Player.status & PLAYER_STATUS_BAT_FORM) ||
+                (entity->posY.i.hi < 0xA0 &&
+                 (g_Player.vram_flag & TOUCHING_GROUND))) {
+                SetStep(5);
+            }
+        }
+        break;
+
+    case 0xB:
+        switch (self->step_s) {
+        case 0:
+            if (!AnimateEntity(D_us_8018071C, self)) {
+                if (self->facingLeft) {
+                    self->velocityX = -0x60000;
+                } else {
+                    self->velocityX = 0x60000;
+                }
+                self->ext.et_80194D3C.timer = 0x40;
+                self->step_s++;
+            }
+            break;
+        case 1:
+            MoveEntity();
+            self->velocityX -= self->velocityX >> 6;
+            if (--self->ext.et_80194D3C.timer == 0) {
+                SetStep(3);
+            }
+            break;
+        }
+        break;
+
+    case 5:
+        switch (self->step_s) {
+        case 0:
+            if (!AnimateEntity(D_us_80180754, self)) {
+                SetSubStep(1);
+            }
+            break;
+        case 1:
+            if (!AnimateEntity(D_us_80180748, self)) {
+                PlaySfxPositional(SFX_WARG_ATTACK);
+                PlaySfxPositional(SFX_SHAFT_FIRE_ATTACK);
+                self->ext.et_80194D3C.timer = 0x80;
+                SetSubStep(2);
+            }
+            break;
+        case 2:
+            // Every fourth frame, launch one of the three fire arcs.
+            if ((self->ext.et_80194D3C.timer & 3) == 0) {
+                for (i = 0; i < 3; i++) {
+                    entity = AllocEntity(
+                        &g_Entities_128[0],
+                        &g_Entities_128[0x4680 / sizeof(Entity)]);
+                    if (entity != NULL) {
+                        CreateEntityFromEntity(E_UNK_1E, self, entity);
+                        if (self->facingLeft) {
+                            entity->posX.i.hi -= D_us_801806F0[i].x;
+                        } else {
+                            entity->posX.i.hi += D_us_801806F0[i].x;
+                        }
+                        entity->posY.i.hi += D_us_801806F0[i].y;
+                        entity->params = i;
+                        entity->zPriority = self->zPriority + 1;
+                        entity->facingLeft = self->facingLeft;
+                    }
+                }
+            }
+            if (--self->ext.et_80194D3C.timer == 0) {
+                self->step_s++;
+            }
+            break;
+        case 3:
+            if (AnimateEntity(D_us_80180760, self)) {
+                SetStep(3);
+            }
+            break;
+        }
+        break;
+
+    case 0xA:
+        if (!AnimateEntity(D_us_8018073C, self)) {
+            SetStep(3);
+        }
+        if (self->pose == 3 && !self->poseTimer) {
+            PlaySfxPositional(SFX_B07_STOMP);
+            PlaySfxPositional(SFX_WARG_ATTACK);
+            entity = AllocEntity(
+                &g_Entities_160[0], &g_Entities_160[0x1780 / sizeof(Entity)]);
+            if (entity != NULL) {
+                CreateEntityFromEntity(E_UNK_1D, self, entity);
+                entity->facingLeft = self->facingLeft;
+                if (self->facingLeft) {
+                    entity->posX.i.hi += 0x18;
+                } else {
+                    entity->posX.i.hi -= 0x18;
+                }
+                entity->params = self->ext.et_80194D3C.spawnParams;
+                entity->zPriority = self->zPriority + 1;
+            }
+        }
+        break;
+
+    case 9:
+        switch (self->step_s) {
+        case 0:
+            if (!AnimateEntity(D_us_80180778, self)) {
+                SetSubStep(1);
+            }
+            break;
+        case 1:
+            self->velocityY = -0x60000;
+            if (self->facingLeft) {
+                self->velocityX = -0x28000;
+            } else {
+                self->velocityX = 0x28000;
+            }
+            self->step_s++;
+            /* fallthrough */
+        case 2:
+            MoveEntity();
+            self->velocityY += 0x3800;
+            if (func_us_80194338_from_rbo0(D_us_801806D8) & 1) {
+                PlaySfxPositional(SFX_START_SLAM_B);
+                g_api_func_80102CD8(1);
+                self->step_s++;
+            }
+            break;
+        case 3:
+            if (!AnimateEntity(D_us_80180788, self)) {
+                SetStep(3);
+            }
+            break;
+        }
+        break;
+
+    case 4:
+        switch (self->step_s) {
+        case 0:
+            if (!AnimateEntity(D_us_80180778, self)) {
+                SetSubStep(1);
+            }
+            break;
+        case 1:
+            self->velocityY = -0x60000;
+            if (self->facingLeft) {
+                self->velocityX = 0x28000;
+            } else {
+                self->velocityX = -0x28000;
+            }
+            self->step_s++;
+            /* fallthrough */
+        case 2:
+            MoveEntity();
+            self->velocityY += 0x3800;
+            if (func_us_80194338_from_rbo0(D_us_801806D8) & 1) {
+                PlaySfxPositional(SFX_START_SLAM_B);
+                g_api_func_80102CD8(1);
+                self->step_s++;
+            }
+            break;
+        case 3:
+            if (!AnimateEntity(D_us_80180788, self)) {
+                SetStep(3);
+            }
+            break;
+        }
+        break;
+
+    case 6:
+        switch (self->step_s) {
+        case 0:
+            self->ext.et_80194D3C.spawnTimer = 8;
+            self->step_s++;
+            /* fallthrough */
+        case 1:
+            if (!AnimateEntity(D_us_8018072C, self)) {
+                if (--self->ext.et_80194D3C.spawnTimer == 0) {
+                    SetStep(3);
+                }
+            }
+            // On the head-down pose of the breath animation, spit a flame at
+            // one of the three spawn slots. This sits inside substep 1, not
+            // after the switch: the retail default arm jumps straight to the
+            // function tail, so a substep past 1 never reaches the pose test.
+            if (self->pose == 5 && !self->poseTimer) {
+                PlaySfxPositional(SFX_B07_STOMP);
+                PlaySfxPositional(SFX_WARG_ATTACK);
+                entity = AllocEntity(
+                    &g_Entities_160[0],
+                    &g_Entities_160[0x1780 / sizeof(Entity)]);
+                if (entity != NULL) {
+                    CreateEntityFromEntity(E_UNK_1D, self, entity);
+                    entity->facingLeft = self->facingLeft;
+                    if (self->facingLeft) {
+                        entity->posX.i.hi += 0x18;
+                    } else {
+                        entity->posX.i.hi -= 0x18;
+                    }
+                    entity->params = self->ext.et_80194D3C.spawnParams;
+                    entity->zPriority = self->zPriority + 1;
+                }
+                // The rotation sits inside the pose arm: the pose-false path
+                // jumps straight to the function tail in the retail object.
+                self->ext.et_80194D3C.spawnParams++;
+                if (self->ext.et_80194D3C.spawnParams >= 3) {
+                    self->ext.et_80194D3C.spawnParams = 0;
+                }
+            }
+            break;
+        }
+        break;
+
+    case 8:
+        switch (self->step_s) {
+        case 0:
+            self->hitboxState = 0;
+            D_us_80180848 |= 4;
+            PlaySfxPositional(SFX_WARG_DEATH_HOWL);
+            self->step_s++;
+            /* fallthrough */
+        case 1:
+            // Scatter death flames around the body every eighth frame.
+            if ((g_Timer & 7) == 0) {
+                PlaySfxPositional(SFX_EXPLODE_B);
+                entity = AllocEntity(
+                    &g_Entities_192[0],
+                    &g_Entities_192[0x2F00 / sizeof(Entity)]);
+                if (entity != NULL) {
+                    CreateEntityFromEntity(E_UNK_20, self, entity);
+                    entity->params = 1;
+                    entity->zPriority = self->zPriority + 1;
+                    entity->posX.i.hi += (Random() & 0x3F) - 0x20;
+                    entity->posY.i.hi += (Random() & 0x1F) - 0xC;
+                }
+            }
+            if (!AnimateEntity(D_us_8018076C, self)) {
+                PlaySfxPositional(SFX_BOSS_LARGE_FLAMES);
+                self->ext.et_80194D3C.timer = 0x50;
+                self->step_s++;
+            }
+            break;
+        case 2:
+            entity = AllocEntity(
+                &g_Entities_192[0], &g_Entities_192[0x2F00 / sizeof(Entity)]);
+            if (entity != NULL) {
+                CreateEntityFromEntity(E_UNK_20, self, entity);
+                entity->params = 2;
+                entity->zPriority = self->zPriority + 1;
+                entity->posX.i.hi += (Random() & 0x3F) - 0x20;
+                // The second burst leans away from the body.
+                if (self->facingLeft) {
+                    entity->posX.i.hi -= 0xC;
+                } else {
+                    entity->posX.i.hi += 0xC;
+                }
+                entity->posY.i.hi += 0x18;
+            }
+            if (--self->ext.et_80194D3C.timer == 0) {
+                self->animCurFrame = 0;
+                self->step_s++;
+            }
+            break;
+        case 3:
+            D_us_80180848 |= 8;
+            self->step_s++;
+            break;
+        case 4:
+            break;
+        }
+        break;
+
+    case 0xFF:
+        FntPrint("charal %x\n", self->animCurFrame);
+        if (g_pads_1_pressed & 0x80) {
+            if (self->params) {
+                break;
+            }
+            self->animCurFrame++;
+            self->params |= 1;
+        } else {
+            self->params = 0;
+        }
+        if (g_pads_1_pressed & 0x20) {
+            if (self->step_s) {
+                break;
+            }
+            self->animCurFrame--;
+            self->step_s |= 1;
+        } else {
+            self->step_s = 0;
+        }
+        break;
+    }
+
+    // Keep the body inside the arena. The left wall is checked only while
+    // moving left, and the right wall only while moving right or standing.
+    posX = self->posX.i.hi + g_Tilemap.scrollX.i.hi;
+    if (self->velocityX < 0) {
+        if (posX < 0x68) {
+            self->posX.i.hi = 0x68 - g_Tilemap.scrollX.i.hi;
+        }
+    } else if (posX >= 0x1A1) {
+        self->posX.i.hi = 0x1A0 - g_Tilemap.scrollX.i.hi;
+    }
+
+    // Pick the current animation frame's hitbox. The first two bytes are
+    // signed offsets, the last two are the box dimensions.
+    {
+        u8* hitbox;
+        s32 animFrame;
+
+        // Same idiom as EntityHarpyKick: assign the table base to the pointer
+        // first and then add the scaled frame index. Writing it as a single
+        // subscripted address instead makes gcc target the index register for
+        // the add, which reverses the retail operand order.
+        hitbox = D_us_801807E4;
+        animFrame = D_us_8018081C[self->animCurFrame];
+        hitbox += animFrame * 4;
+
+        self->hitboxOffX = (s8)*hitbox++;
+        self->hitboxOffY = (s8)*hitbox++;
+        self->hitboxWidth = *hitbox++;
+        self->hitboxHeight = *hitbox;
+    }
+}
 
 extern EInit D_us_8018046C;
 extern s32 D_us_801807BC[];

@@ -19,10 +19,10 @@ mistake impossible twice.
 | live authority | current value |
 |---|---|
 | Build oracle | **113/113** from the artifacts on disk |
-| Decompiled | **94.1%**, 8200/8730 functions; 535 US `INCLUDE_ASM` stubs remain |
-| Queue | 983 records: 453 matched, 345 todo, 140 escalated, 43 deferred, 2 near |
-| Provenance | upstream-harvest 69, shim-segment 9, shim-header 55, transplant 136, twin-port 36, permuter 18, claude-manual 6, model-fleet 58, unknown 66 |
-| Automation | 187 modules, 75 suites plus 37 module self-tests, 99 tools, 119 diagnostics |
+| Decompiled | **94.3%**, 8208/8730 functions; 522 US `INCLUDE_ASM` stubs remain |
+| Queue | 983 records: 461 matched, 338 todo, 139 escalated, 44 deferred, 1 near |
+| Provenance | upstream-harvest 69, shim-segment 9, shim-header 55, transplant 136, twin-port 40, permuter 20, claude-manual 6, model-fleet 58, unknown 68 |
+| Automation | 186 modules, 75 suites plus 37 module self-tests, 99 tools, 119 diagnostics |
 
 This block is regenerated from the same queue, checksum manifest, linker maps, provenance classifier, and connector inventory as `README.md`.
 <!-- LIVE-STATUS:END -->
@@ -41,7 +41,6 @@ This block is regenerated from the same queue, checksum manifest, linker maps, p
 | `BOSS/BO3` | 45 | 45 | 0 | 0 | 0 | 15 |
 | `BOSS/BO5` | 18 | 16 | 0 | 2 | 0 | 5 |
 | `BOSS/BO6` | 43 | 0 | 0 | 34 | 9 | 80 |
-| `BOSS/BO7` | 13 | 7 | 0 | 1 | 0 | 13 |
 | `BOSS/RBO1` | 14 | 14 | 0 | 0 | 0 | 6 |
 | `BOSS/RBO2` | 19 | 17 | 0 | 2 | 0 | 9 |
 | `BOSS/RBO4` | 7 | 6 | 0 | 1 | 0 | 0 |
@@ -53,7 +52,7 @@ This block is regenerated from the same queue, checksum manifest, linker maps, p
 | `ST/RCHI` | 9 | 0 | 0 | 7 | 2 | 6 |
 | `ST/RDAI` | 18 | 0 | 0 | 15 | 3 | 0 |
 | `ST/RLIB` | 20 | 19 | 0 | 1 | 0 | 2 |
-| `ST/RNO0` | 31 | 1 | 2 | 18 | 10 | 188 |
+| `ST/RNO0` | 31 | 1 | 1 | 18 | 11 | 188 |
 | `ST/RNO1` | 23 | 23 | 0 | 0 | 0 | 19 |
 | `ST/RNO2` | 32 | 30 | 0 | 2 | 0 | 16 |
 | `ST/RNO4` | 61 | 60 | 0 | 1 | 0 | 23 |
@@ -1428,3 +1427,4 @@ Status: **done**, **open**, **partial**, **void** (turned out unnecessary),
 | 343 | **done** | REA-readiness record and US stub recovery plan produced from a read-only session (docs/REA-STUB-RECOVERY-PLAN.md): 538 raw stubs join to 166 harvest, 40 name-twin, 42 shape/token-twin, 46 donor-named and 244 raw orphans; live generator's 535 excludes SERVANT/FNAME (HD-only). REA deep providers observed unavailable for MIPS PSX on this Windows host (typed target_unavailable; Windows Ghidra P0 admission set excludes MIPS, Kuna excludes MIPS everywhere); enablement instead executed 2026-11-02 as the WSL2 Ghidra headless pilot recorded in section 6 of the plan, 231/231 stub targets decompiled across six overlays. Wave 0 twin/shim regeneration is in current scope; waves 1 to 4 remain owner-resumed matching-lane work; the first wave 0-style landings are recorded under task 344. |
 | 344 | **done** | Landed the BO7 pilot from the recovery plan: five INCLUDE_ASM stubs replaced with byte-identical C in place and in retail order, EntityBigRedFireball (donor src/boss/bo3/e_misc.c), EntityDemonSwitch and EntityDemonSwitchWall (src/st/chi/en_demon_switch_wall.c), EntityBreakableWallDebris and EntityBreakableWall (US donor src/st/chi/en_breakable_wall.c, not chi_psp). Donor statement order copied verbatim in schedule-sensitive blocks; four init and idle order fixes applied with per-symbol asm_diff as the arbiter. Proof: asm_diff(overlay=bo7) score CURRENT (0) on all five, verify_build(us) 113/113 OK on incremental job make_build-091210-32, BO7.BIN sha1 dba86dc3b2709e37de651ad929ae29166a86f045 matching config/splat.us.bobo7.yaml. Queue records reported matched with proof and keep_note. Remaining in BO7: 8 INCLUDE_ASM stubs (EntityCerberusGateDebug, EntityBreakable and EntityBreakableDebris in unk_13258.c, five func_us orphans 80194D3C, 801959E0, 80195AF0, 80195C50, 801963D8 in unk_14CE0.c). |
 | 345 | **done** | Landed func_us_80195C50 (Cerberus pillar update) as hand-derived byte-identical C; permuter retired for this record per owner direction 2026-11-10. The landing's earlier +4-byte overlay growth root-caused: cc1-psx-26 emits switch jump tables after `.align 3` (8-byte) while the retail table sits at rodata 0x24 (0x80192E58), four-aligned only, so the assembler pads one zero word and every later BO7 symbol shifts +4; a normal C switch can never reproduce that boundary. Fixed with the lesson-22 ALIGNED4 computed-goto chassis as in BO6_RicStepCrouch: `static void* const jtbl[] ALIGNED4 = {&&case_0..&&case_7};`, `(u32)self->step >= 8` bounds check to the tail, `goto *jtbl[self->step];`, column-0 case labels, case-final breaks as `goto step_tail;`. Diagnostic build with the real apply route reproduced BO7.BIN byte-identical to retail (144480 bytes, zero differing regions) before landing. Proof: land_match green, make build VERSION=us in 01:03, build/us/BO7.BIN sha1 dba86dc3b2709e37de651ad929ae29166a86f045 verified 113/113 against config/check.us.sha; queue record matched with proof and keep_note=True. Remaining BO7 orphan in unk_14CE0.c: func_us_80194D3C only (its stub .s carries the TU front rodata, string at 0x0 and its 5-word jtbl at 0x10, eight-aligned so a normal switch may work there; emission order of gcc string literals vs tables to be checked empirically). |
+| 346 | **done** | Landed func_us_80194D3C (Cerberus main update), the last BO7 orphan, as hand-derived byte-identical C; BO7 now holds zero `INCLUDE_ASM` stubs and its work-scope row has dropped out of the generated table. The last defect was register allocation, and the cause was variable identity rather than declaration order: retail materialises `&g_Entities` once at 0x14F68 into `$s0` and keeps that same register for the `AllocEntity` results in steps 5, 6 and 8, so the player pointer and the spawn pointer are one C variable (`entity = &PLAYER;`, the idiom already matched in src/boss/rbo3/rbo3.c func_us_80192B38). A separate `player` local becomes its own allocno with 2 references and a 54-instruction live range, ranks last, and pushes `posX` into `$s0` and the player address into `$s3`; reusing `entity` moved `posX` to `$s2` and `side` to `$s3` and closed three of five remaining diff hunks at once, while the other two were benign `%lo` label choices that link to identical addresses. Recorded as MATCHING-LESSONS lesson 33, together with the retraction that the "retail gcc allocator dump" was the candidate's own `-dg` output regenerated from itself. Proof: build job make_build-142717-12 rc=0, asm_diff(func_us_80194D3C, overlay=bo7, plain) CURRENT (0) with no differing lines, verify_build(us) 113/113, build/us/BO7.BIN sha1 dba86dc3b2709e37de651ad929ae29166a86f045 matching config/check.us.sha, function byte range 0x14CE0..0x159E0 sha1 b10d8fc0073f1e443521da488f3aa50f150626fa. Queue record reported matched with proof and keep_note=True. The ET_80194D3C ext member was added to include/entity.h with `s16 timer` because retail tests the timer with `sll 16` while spawnTimer stays u8. |

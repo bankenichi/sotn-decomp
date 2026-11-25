@@ -1738,3 +1738,44 @@ Rule, matching the classifier's own comment: register the method WITH the
 method. Any path that lands a body must write the METHOD marker in the same
 step; a follow-up human pass over hundreds of records is not a backstop, it
 is how 14 correct landings became 14 wrong attributions.
+
+## 33. One C variable can be two values in the retail binary
+
+`func_us_80194D3C` (BO7 Cerberus) was byte-equal everywhere except the step-3
+arena block, and that block differed only in register allocation: retail held
+the player address in `$s0`, the candidate held it in `$s3` with `posX` in
+`$s0`. About a dozen variants of declaration order, scope, and splitting the
+tail into its own `posX` were measured. Every one was equal or worse, and the
+tail split broke the function outright.
+
+The defect was not ordering. Retail uses one variable for two values. It
+materialises `&g_Entities` once at 0x14F68 into `$s0`, then keeps that same
+register for the `AllocEntity` results in three later steps. Reading that as
+"the compiler reused a register" is the wrong inference: the compiler reused a
+variable, because the source had one.
+
+    entity = &PLAYER;          /* step 3 */
+    ...
+    entity = AllocEntity(...); /* steps 5, 6, 8 */
+
+That gives one allocno spanning most of the function, with enough references
+to outrank `posX`. A dedicated `Entity* player` local is a second allocno with
+2 references and a 54-instruction live range, which ranks last, so `posX`
+takes `$s0` and the player address is demoted to `$s3`.
+
+The tell is a callee-saved register that holds two logically unrelated
+pointers across distant basic blocks. Before churning declaration order, check
+whether retail is reusing the variable, and look for the idiom already matched
+elsewhere in the tree: `src/boss/rbo3/rbo3.c` `func_us_80192B38` does
+`entity = &PLAYER; x = entity->posX.i.hi + g_Tilemap.scrollX.i.hi;`.
+
+Two process notes from the same record:
+
+- A claimed "retail allocator dump" was a candidate's own `-dg` output,
+  mislabelled. It reproduced the recorded retail list exactly because it was
+  the same file. A dump is only retail evidence if it came from retail source,
+  which for a stub cannot exist. The priority model built on it was void, and
+  the "impossible priority model" worry it created cost real time.
+- Add the explanatory comment after the match is proven, not before. Comments
+  cannot move codegen, so there is no reason to leave the odd-looking line
+  unexplained in the landed source.

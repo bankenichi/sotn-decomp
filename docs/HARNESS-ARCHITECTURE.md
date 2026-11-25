@@ -15,10 +15,10 @@ in each case so you can tell a deliberate choice from an accident.
 | live authority | current value |
 |---|---|
 | Build oracle | **113/113** from the artifacts on disk |
-| Decompiled | **94.1%**, 8200/8730 functions; 535 US `INCLUDE_ASM` stubs remain |
-| Queue | 983 records: 453 matched, 345 todo, 140 escalated, 43 deferred, 2 near |
-| Provenance | upstream-harvest 69, shim-segment 9, shim-header 55, transplant 136, twin-port 36, permuter 18, claude-manual 6, model-fleet 58, unknown 66 |
-| Automation | 187 modules, 75 suites plus 37 module self-tests, 99 tools, 119 diagnostics |
+| Decompiled | **94.3%**, 8208/8730 functions; 522 US `INCLUDE_ASM` stubs remain |
+| Queue | 983 records: 461 matched, 338 todo, 139 escalated, 44 deferred, 1 near |
+| Provenance | upstream-harvest 69, shim-segment 9, shim-header 55, transplant 136, twin-port 40, permuter 20, claude-manual 6, model-fleet 58, unknown 68 |
+| Automation | 186 modules, 75 suites plus 37 module self-tests, 99 tools, 119 diagnostics |
 
 This block is regenerated from the same queue, checksum manifest, linker maps, provenance classifier, and connector inventory as `README.md`.
 <!-- LIVE-STATUS:END -->
