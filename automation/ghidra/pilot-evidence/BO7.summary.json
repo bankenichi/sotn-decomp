@@ -1,0 +1,22 @@
+{
+"program": "BO7.elf",
+"image_base": "0x80180000",
+"targets": 13,
+"decompiled": 13,
+"failed": 0,
+"functions": [
+  {"name": "EntityBreakableWallDebris", "addr": "0x80193ef0", "status": "ok", "body_bytes": 688, "callees": ["MoveEntity", "AllocEntity", "InitializeEntity", "Random", "CreateEntityFromEntity", "DestroyEntity"], "callers": [], "error": ""},
+  {"name": "EntityBreakableWall", "addr": "0x801941a0", "status": "ok", "body_bytes": 1500, "callees": ["CreateEntityFromCurrentEntity", "AllocEntity", "InitializeEntity", "Random", "CreateEntityFromEntity", "DestroyEntity"], "callers": [], "error": ""},
+  {"name": "EntityCerberusGateDebug", "addr": "0x8019477c", "status": "ok", "body_bytes": 1380, "callees": ["FindFirstUnkPrim", "AllocEntity", "InitializeEntity", "Random", "PlaySfxPositional", "CreateEntityFromEntity"], "callers": [], "error": ""},
+  {"name": "EntityDemonSwitch", "addr": "0x801939cc", "status": "ok", "body_bytes": 228, "callees": ["InitializeEntity"], "callers": [], "error": ""},
+  {"name": "EntityDemonSwitchWall", "addr": "0x80193ab0", "status": "ok", "body_bytes": 1088, "callees": ["CreateEntityFromCurrentEntity", "MoveEntity", "FindFirstUnkPrim", "UpdateFallingPebble", "AllocEntity", "InitializeEntity", "Random", "DestroyEntity"], "callers": [], "error": ""},
+  {"name": "EntityBigRedFireball", "addr": "0x8019ea68", "status": "ok", "body_bytes": 472, "callees": ["AnimateEntity", "MoveEntity", "InitializeEntity", "DestroyEntity"], "callers": [], "error": ""},
+  {"name": "EntityBreakable", "addr": "0x80193258", "status": "ok", "body_bytes": 656, "callees": ["AnimateEntity", "CreateEntityFromCurrentEntity", "ReplaceBreakableWithItemDrop", "AllocEntity", "InitializeEntity", "CreateEntityFromEntity", "DestroyEntity"], "callers": [], "error": ""},
+  {"name": "EntityBreakableDebris", "addr": "0x801934e8", "status": "ok", "body_bytes": 1016, "callees": ["MoveEntity", "UnkPrimHelper", "UnkPolyFunc2", "AllocEntity", "InitializeEntity", "GetSideToPlayer", "Random", "CreateEntityFromEntity", "DestroyEntity"], "callers": [], "error": ""},
+  {"name": "func_us_80194D3C", "addr": "0x80194d3c", "status": "ok", "body_bytes": 3236, "callees": ["AnimateEntity", "MoveEntity", "AllocEntity", "InitializeEntity", "GetDistanceToPlayerX", "GetSideToPlayer", "Random", "SetStep", "PlaySfxPositional", "CreateEntityFromEntity", "SetSubStep", "func_us_80194338_from_rbo0"], "callers": [], "error": ""},
+  {"name": "func_us_801959E0", "addr": "0x801959e0", "status": "ok", "body_bytes": 272, "callees": ["AnimateEntity", "MoveEntity", "AllocEntity", "InitializeEntity", "CreateEntityFromEntity", "DestroyEntity"], "callers": [], "error": ""},
+  {"name": "func_us_80195AF0", "addr": "0x80195af0", "status": "ok", "body_bytes": 352, "callees": ["AnimateEntity", "MoveEntity", "AllocEntity", "InitializeEntity", "CreateEntityFromEntity", "DestroyEntity"], "callers": [], "error": ""},
+  {"name": "func_us_80195C50", "addr": "0x80195c50", "status": "ok", "body_bytes": 1928, "callees": ["PrimDecreaseBrightness", "CreateEntityFromCurrentEntity", "AllocEntity", "InitializeEntity", "Random", "CreateEntityFromEntity"], "callers": [], "error": ""},
+  {"name": "func_us_801963D8", "addr": "0x801963d8", "status": "ok", "body_bytes": 624, "callees": ["AnimateEntity", "MoveEntity", "InitializeEntity", "Random", "DestroyEntity"], "callers": [], "error": ""}
+]
+}
