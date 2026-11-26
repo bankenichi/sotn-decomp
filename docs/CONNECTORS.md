@@ -260,6 +260,78 @@ job_status(<id>)                                      -> poll through completion
 The push job accepts no remote, refspec, or flags. It runs the generated-document
 drift gate and requires a clean worktree and index before starting.
 
+### When the push gate cannot authenticate
+
+On this host the WSL `git` cannot use the credential helper named in
+`~/.gitconfig`, because that entry points at
+`/mnt/c/Program Files/Git/mingw64/libexec/git-core/git-credential-wincred.exe`
+and this Git installation ships the helper under `ucrt64` instead. The gate
+then fails with:
+
+```
+git-credential-wincred.exe: not found
+fatal: could not read Username for 'https://github.com'
+```
+
+The working invocation keeps every gate and supplies the real helper through
+`GIT_CONFIG_COUNT`, in shell-command form so the space in `Program Files`
+survives:
+
+```
+export GIT_CONFIG_COUNT=2
+export GIT_CONFIG_KEY_0=credential.helper
+export GIT_CONFIG_VALUE_0=
+export GIT_CONFIG_KEY_1=credential.helper
+export GIT_CONFIG_VALUE_1='!"/mnt/c/Program Files/Git/ucrt64/libexec/git-core/git-credential-wincred.exe"'
+.venv/bin/python automation/mcp/verified_push.py
+```
+
+Two traps in that snippet are worth stating. A bare path value is rejected
+because git prefixes it with `credential-`, so the `!` shell-command form is
+required. And the empty first value does not remove the inherited helper, so
+the missing-helper line still appears in the output; git falls through to the
+working one and the push succeeds.
+
+Do not run the gate with Windows Python to dodge this. Windows resolves the
+queue and the build directory to different locations, so `readme_status.py`
+there reports a 438-record queue and no build artifacts on disk, and `--write`
+in that environment overwrites the living documents with that wrong state.
+Restore them with `git_checkout_path` if it happens.
+
+Also note that the gate's cleanliness check counts untracked files, so any
+deliberately uncommitted artifact has to be moved out of the tree for the
+duration of the push and moved back afterwards.
+
+### When every Windows binary stops executing
+
+A different failure produces the same symptom from a lower cause. If WSL
+interop dies, `/mnt/c/Windows/System32/cmd.exe` fails with `cannot execute
+binary file: Exec format error`, and the credential helper never runs. The
+check is:
+
+```
+ls /proc/sys/fs/binfmt_misc/
+```
+
+A healthy instance lists `WSLInterop`. If the directory holds only `register`
+and `status`, the kernel handler is gone and no Windows executable can run from
+inside the distribution. Nothing in the repo is wrong, and no amount of
+credential configuration helps.
+
+The handler can be re-registered from the Windows side, where root needs no
+password, and it takes effect immediately without a `wsl --shutdown`:
+
+```
+wsl.exe -d Ubuntu-24.04 -u root -- sh -c \
+  'echo ":WSLInterop:M::MZ::/init:PF" > /proc/sys/fs/binfmt_misc/register'
+```
+
+`/init` must exist in the distribution; it is WSL's own interop stub.
+`/proc/sys/fs/binfmt_misc/WSLInterop` should then report `enabled`,
+`interpreter /init`, `flags: PF`. The registration is a runtime kernel setting
+and does not survive a restart, which is why this is a repair rather than a
+fix.
+
 `elapsed_s` on a job **includes queue wait**, so it is not a runtime. Jobs are
 exclusive; the same call has measured 82s and 271s depending on what else was
 queued.
