@@ -332,6 +332,15 @@ wsl.exe -d Ubuntu-24.04 -u root -- sh -c \
 and does not survive a restart, which is why this is a repair rather than a
 fix.
 
+The entry can also disappear while the instance is running. It went missing
+twice on 2026-11-26 and 2026-11-27; on the second occasion the registry instead
+held `aarch64`, `arm`, `mips64`, `mips64le`, `ppc64le`, `riscv64` and `s390x`
+handlers, and `/etc/binfmt.d` had been touched the same day. That pattern is a
+multi-arch or qemu-user binfmt registration replacing the table rather than
+adding to it. Check the directory before any push that needs the helper, and
+re-register if `WSLInterop` is absent; the other entries do not need to be
+removed and the two sets coexist.
+
 `elapsed_s` on a job **includes queue wait**, so it is not a runtime. Jobs are
 exclusive; the same call has measured 82s and 271s depending on what else was
 queued.
